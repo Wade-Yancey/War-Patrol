@@ -1,0 +1,19 @@
+{
+  "name": "war-patrol",
+  "private": true,
+  "version": "0.1.0",
+  "description": "War Patrol — hosted naval simulation game shell",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "dev": "pnpm --parallel --filter @war-patrol/server --filter @war-patrol/client run dev",
+    "dev:server": "pnpm --filter @war-patrol/server run dev",
+    "dev:client": "pnpm --filter @war-patrol/client run dev",
+    "start": "pnpm --filter @war-patrol/server run start",
+    "verify": "pnpm --filter @war-patrol/server run verify",
+    "typecheck": "pnpm -r run typecheck"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@9.15.0"
+}

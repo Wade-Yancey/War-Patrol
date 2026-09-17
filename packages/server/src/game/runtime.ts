@@ -1,0 +1,361 @@
+import { nanoid } from 'nanoid';
+import {
+  DEFAULT_TURN_SECONDS,
+  SCHEMA_VERSION,
+  type EotSetting,
+  type GameSave,
+  type Scenario,
+  type UnitState,
+} from '@war-patrol/shared';
+import * as store from '../store/fileStore.js';
+import { SessionStore } from './sessions.js';
+import { SseHub } from './sse.js';
+import {
+  mergeOrders,
+  resolveTurn,
+  rollbackToTurn,
+  setTimerDeadline,
+} from './turnEngine.js';
+import { buildViewForSession } from './views.js';
+
+function unitFromScenario(seed: Scenario['units'][number]): UnitState {
+  return {
+    id: seed.id,
+    name: seed.name,
+    side: seed.side,
+    classId: seed.classId,
+    type: seed.type,
+    position: { ...seed.position },
+    heading: seed.heading,
+    speed: seed.speed,
+    eot: seed.eot ?? 'stop',
+    accessToken: seed.accessToken,
+    password: seed.password,
+    stations: seed.stations.map((s) => ({ ...s, capabilities: [...s.capabilities] })),
+    health: seed.health ?? 100,
+    orders: {},
+    maxSpeed: seed.maxSpeed ?? 20,
+    turnRate: seed.turnRate ?? 5,
+  };
+}
+
+export class GameRuntime {
+  readonly sessions = new SessionStore();
+  readonly sse = new SseHub();
+  /** Active in-memory games keyed by save/game id. */
+  private games = new Map<string, GameSave>();
+  private timerHandles = new Map<string, NodeJS.Timeout>();
+
+  constructor() {
+    this.sse.setViewBuilder((client) => {
+      const save = this.games.get(client.gameId);
+      if (!save) return null;
+      return buildViewForSession(save, this.sse, client.role, client.unitId, client.stationId);
+    });
+  }
+
+  getGame(gameId: string): GameSave | undefined {
+    return this.games.get(gameId);
+  }
+
+  requireGame(gameId: string): GameSave {
+    const g = this.games.get(gameId);
+    if (!g) throw Object.assign(new Error('Game not found'), { statusCode: 404 });
+    return g;
+  }
+
+  listActiveGames(): Array<{ id: string; name: string; stateVersion: number }> {
+    return [...this.games.values()].map((g) => ({
+      id: g.id,
+      name: g.name,
+      stateVersion: g.stateVersion,
+    }));
+  }
+
+  async createFromScenario(scenarioId: string, name?: string): Promise<GameSave> {
+    const scenario = await store.loadScenario(scenarioId);
+    const now = new Date().toISOString();
+    const save: GameSave = {
+      schemaVersion: SCHEMA_VERSION,
+      id: nanoid(12),
+      name: name?.trim() || scenario.name,
+      scenarioId: scenario.id,
+      scenarioName: scenario.name,
+      mode: scenario.mode,
+      operatingArea: { ...scenario.operatingArea },
+      umpirePassword: scenario.umpirePassword,
+      createdAt: now,
+      updatedAt: now,
+      stateVersion: 1,
+      turn: {
+        number: 1,
+        phase: 'open',
+        timerDeadline: null,
+        timerSeconds: scenario.defaultTurnSeconds ?? DEFAULT_TURN_SECONDS,
+      },
+      units: scenario.units.map(unitFromScenario),
+      history: [],
+    };
+    this.games.set(save.id, save);
+    await store.writeSave(save);
+    return save;
+  }
+
+  async loadSaveIntoMemory(saveId: string): Promise<GameSave> {
+    const save = await store.loadSave(saveId);
+    this.sessions.clearGame(save.id);
+    this.clearTimer(save.id);
+    this.games.set(save.id, save);
+    this.bumpAndBroadcast(save.id);
+    return save;
+  }
+
+  async persist(gameId: string): Promise<GameSave> {
+    const save = this.requireGame(gameId);
+    save.updatedAt = new Date().toISOString();
+    await store.writeSave(save);
+    return save;
+  }
+
+  private replace(gameId: string, next: GameSave): GameSave {
+    this.games.set(gameId, next);
+    return next;
+  }
+
+  bumpAndBroadcast(gameId: string): void {
+    const save = this.requireGame(gameId);
+    this.sse.broadcast(gameId, save.stateVersion);
+  }
+
+  private touch(gameId: string, mutator: (save: GameSave) => GameSave): GameSave {
+    const current = this.requireGame(gameId);
+    const next = mutator(structuredClone(current));
+    next.stateVersion = current.stateVersion + 1;
+    next.updatedAt = new Date().toISOString();
+    this.replace(gameId, next);
+    this.sse.broadcast(gameId, next.stateVersion);
+    return next;
+  }
+
+  authUmpire(gameId: string, password: string) {
+    const save = this.requireGame(gameId);
+    const expected = save.umpirePassword ?? '';
+    if (expected && password !== expected) {
+      throw Object.assign(new Error('Invalid umpire password'), { statusCode: 401 });
+    }
+    return this.sessions.create({ gameId, role: 'umpire' });
+  }
+
+  authVessel(gameId: string, accessToken: string, password: string | undefined, stationId: string) {
+    const save = this.requireGame(gameId);
+    const unit = save.units.find((u) => u.accessToken === accessToken);
+    if (!unit) {
+      throw Object.assign(new Error('Unknown vessel token'), { statusCode: 404 });
+    }
+    if (unit.password && unit.password !== (password ?? '')) {
+      throw Object.assign(new Error('Invalid vessel password'), { statusCode: 401 });
+    }
+    const station = unit.stations.find((s) => s.id === stationId);
+    if (!station) {
+      throw Object.assign(new Error('Unknown station'), { statusCode: 404 });
+    }
+    return this.sessions.create({
+      gameId,
+      role: 'vessel',
+      unitId: unit.id,
+      stationId,
+    });
+  }
+
+  submitOrders(
+    gameId: string,
+    unitId: string,
+    stationId: string,
+    patch: { course?: number; eot?: EotSetting },
+  ): GameSave {
+    return this.touch(gameId, (save) => {
+      if (save.turn.phase !== 'open') {
+        throw Object.assign(new Error('Ordering is locked'), { statusCode: 409 });
+      }
+      const unit = save.units.find((u) => u.id === unitId);
+      if (!unit) throw Object.assign(new Error('Unit not found'), { statusCode: 404 });
+      const station = unit.stations.find((s) => s.id === stationId);
+      if (!station) throw Object.assign(new Error('Station not found'), { statusCode: 404 });
+
+      if (patch.course !== undefined && !station.capabilities.includes('helm')) {
+        throw Object.assign(new Error('Station cannot set course'), { statusCode: 403 });
+      }
+      if (patch.eot !== undefined && !station.capabilities.includes('engineering') && !station.capabilities.includes('helm')) {
+        // Allow helm OR engineering to set EOT for Phase 1 usability on bridge/conn
+        throw Object.assign(new Error('Station cannot set EOT'), { statusCode: 403 });
+      }
+
+      unit.orders = mergeOrders(unit.orders, patch, stationId);
+      return save;
+    });
+  }
+
+  setTimer(gameId: string, seconds: number): GameSave {
+    this.clearTimer(gameId);
+    const save = this.touch(gameId, (s) => {
+      s.turn.timerSeconds = seconds;
+      if (s.turn.phase === 'open') {
+        s.turn.timerDeadline = setTimerDeadline(seconds);
+      }
+      return s;
+    });
+    this.armTimer(gameId);
+    return save;
+  }
+
+  extendTimer(gameId: string, extraSeconds: number): GameSave {
+    this.clearTimer(gameId);
+    const save = this.touch(gameId, (s) => {
+      const base = s.turn.timerDeadline
+        ? Math.max(Date.now(), Date.parse(s.turn.timerDeadline))
+        : Date.now();
+      s.turn.timerDeadline = setTimerDeadline(extraSeconds, base);
+      s.turn.timerSeconds = s.turn.timerSeconds + extraSeconds;
+      return s;
+    });
+    this.armTimer(gameId);
+    return save;
+  }
+
+  resetTimer(gameId: string): GameSave {
+    this.clearTimer(gameId);
+    const save = this.touch(gameId, (s) => {
+      if (s.turn.phase === 'open') {
+        s.turn.timerDeadline = setTimerDeadline(s.turn.timerSeconds);
+      } else {
+        s.turn.timerDeadline = null;
+      }
+      return s;
+    });
+    this.armTimer(gameId);
+    return save;
+  }
+
+  lockTurn(gameId: string): GameSave {
+    this.clearTimer(gameId);
+    return this.touch(gameId, (s) => {
+      if (s.turn.phase !== 'open') {
+        throw Object.assign(new Error('Turn is not open'), { statusCode: 409 });
+      }
+      s.turn.phase = 'locked';
+      s.turn.timerDeadline = null;
+      return s;
+    });
+  }
+
+  reopenTurn(gameId: string): GameSave {
+    this.clearTimer(gameId);
+    const save = this.touch(gameId, (s) => {
+      if (s.turn.phase !== 'locked' && s.turn.phase !== 'awaiting_resolution') {
+        throw Object.assign(new Error('Turn cannot be reopened'), { statusCode: 409 });
+      }
+      s.turn.phase = 'open';
+      s.turn.timerDeadline = null;
+      return s;
+    });
+    return save;
+  }
+
+  async resolve(gameId: string): Promise<GameSave> {
+    this.clearTimer(gameId);
+    const current = this.requireGame(gameId);
+    if (current.turn.phase !== 'locked' && current.turn.phase !== 'awaiting_resolution' && current.turn.phase !== 'open') {
+      throw Object.assign(new Error('Cannot resolve turn'), { statusCode: 409 });
+    }
+    // Allow resolve from open (umpire force) or locked
+    const prepared =
+      current.turn.phase === 'open'
+        ? this.touch(gameId, (s) => {
+            s.turn.phase = 'locked';
+            s.turn.timerDeadline = null;
+            return s;
+          })
+        : current;
+
+    const resolved = resolveTurn(structuredClone(prepared));
+    this.replace(gameId, resolved);
+    this.sse.broadcast(gameId, resolved.stateVersion);
+    await store.writeSave(resolved);
+    return resolved;
+  }
+
+  async rollback(gameId: string, turnNumber: number): Promise<GameSave> {
+    this.clearTimer(gameId);
+    const next = rollbackToTurn(this.requireGame(gameId), turnNumber);
+    this.replace(gameId, next);
+    this.sse.broadcast(gameId, next.stateVersion);
+    await store.writeSave(next);
+    return next;
+  }
+
+  updateUnit(
+    gameId: string,
+    unitId: string,
+    patch: Partial<Pick<UnitState, 'health' | 'heading' | 'speed' | 'name' | 'password'>> & {
+      position?: Partial<UnitState['position']>;
+    },
+  ): GameSave {
+    return this.touch(gameId, (save) => {
+      const unit = save.units.find((u) => u.id === unitId);
+      if (!unit) throw Object.assign(new Error('Unit not found'), { statusCode: 404 });
+      if (patch.health !== undefined) unit.health = patch.health;
+      if (patch.heading !== undefined) unit.heading = patch.heading;
+      if (patch.speed !== undefined) unit.speed = patch.speed;
+      if (patch.name !== undefined) unit.name = patch.name;
+      if (patch.password !== undefined) unit.password = patch.password || undefined;
+      if (patch.position) {
+        unit.position = { ...unit.position, ...patch.position };
+      }
+      return save;
+    });
+  }
+
+  setUmpirePassword(gameId: string, password: string): GameSave {
+    return this.touch(gameId, (s) => {
+      s.umpirePassword = password || undefined;
+      return s;
+    });
+  }
+
+  rotateAccessToken(gameId: string, unitId: string): GameSave {
+    return this.touch(gameId, (s) => {
+      const unit = s.units.find((u) => u.id === unitId);
+      if (!unit) throw Object.assign(new Error('Unit not found'), { statusCode: 404 });
+      unit.accessToken = nanoid(10);
+      return s;
+    });
+  }
+
+  private clearTimer(gameId: string): void {
+    const h = this.timerHandles.get(gameId);
+    if (h) clearTimeout(h);
+    this.timerHandles.delete(gameId);
+  }
+
+  private armTimer(gameId: string): void {
+    this.clearTimer(gameId);
+    const save = this.games.get(gameId);
+    if (!save?.turn.timerDeadline || save.turn.phase !== 'open') return;
+    const ms = Date.parse(save.turn.timerDeadline) - Date.now();
+    if (ms <= 0) {
+      void this.lockTurn(gameId);
+      return;
+    }
+    const handle = setTimeout(() => {
+      try {
+        const g = this.games.get(gameId);
+        if (g && g.turn.phase === 'open') this.lockTurn(gameId);
+      } catch {
+        /* ignore */
+      }
+    }, ms);
+    this.timerHandles.set(gameId, handle);
+  }
+}
+
+export const runtime = new GameRuntime();

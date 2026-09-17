@@ -1,0 +1,16 @@
+{
+  "id": "fletcher-class",
+  "name": "Fletcher-class Destroyer",
+  "type": "destroyer",
+  "maxSpeed": 36,
+  "turnRate": 8,
+  "defaultStations": [
+    { "id": "bridge", "name": "Bridge", "capabilities": ["helm", "lookout", "plot"] },
+    { "id": "engineering", "name": "Engineering", "capabilities": ["engineering"] },
+    { "id": "sonar", "name": "Sonar", "capabilities": ["hydrophone"] },
+    { "id": "radar", "name": "Radar", "capabilities": ["radar"] },
+    { "id": "guns", "name": "Gun Director", "capabilities": ["weapons"] },
+    { "id": "torpedo", "name": "Torpedo Mount", "capabilities": ["torpedo"] },
+    { "id": "radio", "name": "Radio", "capabilities": ["comms"] }
+  ]
+}
