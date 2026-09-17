@@ -1,0 +1,15 @@
+{
+  "id": "gato-class",
+  "name": "Gato-class Submarine",
+  "type": "submarine",
+  "maxSpeed": 21,
+  "turnRate": 5,
+  "defaultStations": [
+    { "id": "conn", "name": "Conn", "capabilities": ["helm", "plot"] },
+    { "id": "engineering", "name": "Maneuvering", "capabilities": ["engineering"] },
+    { "id": "sonar", "name": "Sonar", "capabilities": ["hydrophone"] },
+    { "id": "periscope", "name": "Periscope", "capabilities": ["lookout"] },
+    { "id": "torpedo-fwd", "name": "Forward Torpedo", "capabilities": ["torpedo"] },
+    { "id": "radio", "name": "Radio", "capabilities": ["comms"] }
+  ]
+}

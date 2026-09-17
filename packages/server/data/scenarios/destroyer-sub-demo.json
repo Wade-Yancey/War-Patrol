@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "id": "destroyer-sub-demo",
+  "name": "Destroyer vs Submarine",
+  "description": "Phase 1 demo: one Fletcher destroyer and one Gato submarine in open water. PvP mode.",
+  "mode": "pvp",
+  "operatingArea": {
+    "minLat": 34.0,
+    "maxLat": 35.0,
+    "minLon": -120.5,
+    "maxLon": -119.0
+  },
+  "umpirePassword": "umpire",
+  "defaultTurnSeconds": 180,
+  "units": [
+    {
+      "id": "dd-101",
+      "name": "USS Porter",
+      "side": "blue",
+      "classId": "fletcher-class",
+      "type": "destroyer",
+      "position": { "lat": 34.35, "lon": -120.1, "depth": 0 },
+      "heading": 90,
+      "speed": 12,
+      "eot": "ahead_standard",
+      "accessToken": "porter-demo",
+      "password": "blue",
+      "health": 100,
+      "maxSpeed": 36,
+      "turnRate": 8,
+      "stations": [
+        { "id": "bridge", "name": "Bridge", "capabilities": ["helm", "lookout", "plot"] },
+        { "id": "engineering", "name": "Engineering", "capabilities": ["engineering"] },
+        { "id": "sonar", "name": "Sonar", "capabilities": ["hydrophone"] },
+        { "id": "radar", "name": "Radar", "capabilities": ["radar"] },
+        { "id": "guns", "name": "Gun Director", "capabilities": ["weapons"] },
+        { "id": "torpedo", "name": "Torpedo Mount", "capabilities": ["torpedo"] },
+        { "id": "radio", "name": "Radio", "capabilities": ["comms"] }
+      ]
+    },
+    {
+      "id": "ss-212",
+      "name": "USS Gato",
+      "side": "red",
+      "classId": "gato-class",
+      "type": "submarine",
+      "position": { "lat": 34.55, "lon": -119.7, "depth": 40 },
+      "heading": 225,
+      "speed": 6,
+      "eot": "ahead_2",
+      "accessToken": "gato-demo",
+      "password": "red",
+      "health": 100,
+      "maxSpeed": 21,
+      "turnRate": 5,
+      "stations": [
+        { "id": "conn", "name": "Conn", "capabilities": ["helm", "plot"] },
+        { "id": "engineering", "name": "Maneuvering", "capabilities": ["engineering"] },
+        { "id": "sonar", "name": "Sonar", "capabilities": ["hydrophone"] },
+        { "id": "periscope", "name": "Periscope", "capabilities": ["lookout"] },
+        { "id": "torpedo-fwd", "name": "Forward Torpedo", "capabilities": ["torpedo"] },
+        { "id": "radio", "name": "Radio", "capabilities": ["comms"] }
+      ]
+    }
+  ]
+}
