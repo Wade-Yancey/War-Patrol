@@ -28,8 +28,8 @@ export function UmpirePage() {
 
   const umpire = view?.role === 'umpire' ? (view as UmpireView) : null;
 
-  const login = async (e: FormEvent) => {
-    e.preventDefault();
+  const login = async (e?: FormEvent) => {
+    e?.preventDefault();
     setAuthError(null);
     try {
       const auth = await api.authUmpire(gameId, password);
@@ -48,8 +48,6 @@ export function UmpirePage() {
       setActionError(err instanceof Error ? err.message : 'Action failed');
     }
   };
-
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
 
   const selectedUnit = useMemo(
     () => umpire?.units.find((u) => u.id === editUnitId) ?? umpire?.units[0],
@@ -72,7 +70,7 @@ export function UmpirePage() {
               autoFocus
             />
           </label>
-          <button className="primary" type="submit">
+          <button className="primary" type="button" onClick={() => void login()}>
             Enter umpire view
           </button>
           <Link to="/">← Home</Link>
@@ -195,9 +193,12 @@ export function UmpirePage() {
                         <td>
                           <div className="stack" style={{ gap: '0.25rem' }}>
                             {v.stations.map((s) => (
-                              <a key={s.stationId} href={`${origin}${s.path}`} target="_blank" rel="noreferrer">
-                                {s.name}
-                              </a>
+                              <div key={s.stationId}>
+                                <Link to={s.path}>{s.name}</Link>
+                                <span className="mono muted" style={{ marginLeft: 8, fontSize: '0.7rem' }}>
+                                  {s.path}
+                                </span>
+                              </div>
                             ))}
                           </div>
                         </td>
