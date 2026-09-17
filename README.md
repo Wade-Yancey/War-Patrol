@@ -9,11 +9,15 @@ Hosted game shell only: create/load games, umpire + vessel auth, SSE state push,
 ## Requirements
 
 - Node.js 20+
-- [pnpm](https://pnpm.io/) 9+
+- [pnpm](https://pnpm.io/) 9+ (via Corepack)
 
 ## Quick start
 
+Enable pnpm with Corepack (Node 20+), then install and run:
+
 ```bash
+corepack enable
+corepack prepare pnpm@9.15.0 --activate
 pnpm install
 pnpm --filter @war-patrol/shared build
 pnpm dev
