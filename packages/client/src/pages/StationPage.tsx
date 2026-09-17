@@ -41,8 +41,8 @@ export function StationPage() {
   const canEot = caps.has('engineering') || caps.has('helm');
   const stubCaps = [...caps].filter((c) => c !== 'helm' && c !== 'engineering');
 
-  const login = async (e: FormEvent) => {
-    e.preventDefault();
+  const login = async (e?: FormEvent) => {
+    e?.preventDefault();
     setAuthError(null);
     try {
       const auth = await api.authVessel(gameId, {
@@ -86,7 +86,7 @@ export function StationPage() {
               autoFocus
             />
           </label>
-          <button className="primary" type="submit">
+          <button className="primary" type="button" onClick={() => void login()}>
             Enter station
           </button>
           <Link to="/">← Home</Link>

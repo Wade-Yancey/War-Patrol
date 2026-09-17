@@ -27,8 +27,8 @@ export function LandingPage() {
     })();
   }, []);
 
-  const createAndEnter = async (e: FormEvent) => {
-    e.preventDefault();
+  const createAndEnter = async (e?: FormEvent) => {
+    e?.preventDefault();
     setBusy(true);
     setError(null);
     try {
@@ -96,7 +96,12 @@ export function LandingPage() {
               autoComplete="current-password"
             />
           </label>
-          <button className="primary" type="submit" disabled={busy || !scenarioId}>
+          <button
+            className="primary"
+            type="button"
+            disabled={busy || !scenarioId}
+            onClick={() => void createAndEnter()}
+          >
             Create & open umpire view
           </button>
           {scenarios.find((s) => s.id === scenarioId)?.description && (
