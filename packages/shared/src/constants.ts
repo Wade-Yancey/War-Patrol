@@ -1,8 +1,8 @@
 /** Schema version for Scenario and Save documents (ARCH-SM-03/08). */
 export const SCHEMA_VERSION = 1 as const;
 
-/** Default wall-clock seconds for an ordering phase (3 min). */
-export const DEFAULT_TURN_SECONDS = 180;
+/** Default wall-clock seconds for an ordering phase (5 min — live-action pace). */
+export const DEFAULT_TURN_SECONDS = 300;
 
 /** Umpire order-timer touch step (30 seconds). */
 export const TIMER_STEP_SECONDS = 30;
