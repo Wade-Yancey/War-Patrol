@@ -294,7 +294,7 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
   const [panLat, setPanLat] = useState(0);
   const [panLon, setPanLon] = useState(0);
   const [cursor, setCursor] = useState<{ lat: number; lon: number } | null>(null);
-  const [showSensorRanges, setShowSensorRanges] = useState(readShowSensorRanges);
+  const [showSensorRanges, setShowSensorRanges] = useState(() => readShowSensorRanges());
   const dragRef = useRef<{
     pointerId: number;
     lastX: number;
@@ -567,7 +567,11 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
           className={showSensorRanges ? 'map-toggle-on' : undefined}
           aria-pressed={showSensorRanges}
           aria-label="Toggle sensor detection range bands"
-          onClick={toggleSensorRanges}
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleSensorRanges();
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
         >
           Ranges
         </button>
