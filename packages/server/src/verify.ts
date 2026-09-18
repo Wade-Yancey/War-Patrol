@@ -378,11 +378,47 @@ async function main() {
 
   // Submit more orders then rollback
   await api('POST', `/api/games/${gameId}/orders`, { course: 10 }, blueToken);
-  const rolled = await api('POST', `/api/games/${gameId}/rollback`, { turnNumber: 1 }, umpireToken);
+
+  const noConfirm = await api(
+    'POST',
+    `/api/games/${gameId}/rollback`,
+    { turnNumber: 1 },
+    umpireToken,
+  );
+  check('rollback rejects missing confirm', noConfirm.status === 400);
+
+  const badConfirm = await api(
+    'POST',
+    `/api/games/${gameId}/rollback`,
+    { turnNumber: 1, confirm: 'yes' },
+    umpireToken,
+  );
+  check('rollback rejects weak confirm', badConfirm.status === 400);
+
+  const rolled = await api(
+    'POST',
+    `/api/games/${gameId}/rollback`,
+    { turnNumber: 1, confirm: 'ROLLBACK' },
+    umpireToken,
+  );
   check('rollback', rolled.status === 200);
   const rolledGame = runtime.requireGame(gameId);
   check('rollback clears orders', Object.keys(rolledGame.units.find((u) => u.id === 'dd-101')!.orders).length === 0);
   check('rollback turn number', rolledGame.turn.number === 2);
+
+  // Resolve again then rollback with typed turn number
+  await api('POST', `/api/games/${gameId}/turn/resolve`, {}, umpireToken);
+  const afterSecond = runtime.requireGame(gameId);
+  check('second resolve turn', afterSecond.turn.number === 3);
+  check('history has turn 2 snapshot', afterSecond.history.some((h) => h.turnNumber === 2));
+  const rolled2 = await api(
+    'POST',
+    `/api/games/${gameId}/rollback`,
+    { turnNumber: 2, confirm: '2' },
+    umpireToken,
+  );
+  check('rollback via turn number confirm', rolled2.status === 200);
+  check('rollback to T2 opens turn 3', runtime.requireGame(gameId).turn.number === 3);
 
   // Patch identity + migrate-style coerce
   const idPatch = await api(
@@ -498,13 +534,53 @@ async function main() {
     umpireToken,
   );
 
-  // Bad password
+  // Bad password (game still in memory)
   const bad = await api('POST', `/api/games/${gameId}/auth/vessel`, {
     accessToken: 'porter-demo',
     password: 'wrong',
     stationId: 'bridge',
   });
   check('rejects bad password', bad.status === 401);
+
+  // Delete save — no orphans in memory or on disk
+  const deleted = await api('DELETE', `/api/saves/${gameId}`);
+  check('delete save', deleted.status === 200 && deleted.json.ok === true);
+  check('delete unloaded memory', runtime.getGame(gameId) === undefined);
+  const savesAfter = await api('GET', '/api/saves');
+  const saveList = Array.isArray(savesAfter.json)
+    ? (savesAfter.json as unknown as Array<{ id: string }>)
+    : [];
+  check('delete removed from list', !saveList.some((s) => s.id === gameId));
+
+  // Disposable scenario delete (do not remove destroyer-sub-demo)
+  const { writeScenario, deleteScenarioFile, loadScenario } = await import('./store/fileStore.js');
+  const tempId = `verify-temp-${Date.now()}`;
+  const demo = await loadScenario('destroyer-sub-demo');
+  await writeScenario({
+    ...demo,
+    id: tempId,
+    name: 'Verify Temp Scenario',
+  });
+  const listedSc = await api('GET', '/api/scenarios');
+  const scList = Array.isArray(listedSc.json)
+    ? (listedSc.json as unknown as Array<{ id: string }>)
+    : [];
+  check('temp scenario listed', scList.some((s) => s.id === tempId));
+  const delSc = await api('DELETE', `/api/scenarios/${tempId}`);
+  check('delete scenario', delSc.status === 200);
+  const gone = await deleteScenarioFile(tempId);
+  check('scenario file gone', gone === false);
+  const listedSc2 = await api('GET', '/api/scenarios');
+  const scList2 = Array.isArray(listedSc2.json)
+    ? (listedSc2.json as unknown as Array<{ id: string }>)
+    : [];
+  check('scenario removed from list', !scList2.some((s) => s.id === tempId));
+
+  // Ground-truth multi-turn stability (separate game; cleans up its save)
+  const { runStabilityCheck } = await import('./stabilityCheck.js');
+  const stab = await runStabilityCheck(base);
+  results.push(...stab);
+  check('stability suite ran', stab.length > 0);
 
   console.log('\n=== War Patrol Phase 1 verification ===');
   for (const line of results) console.log(line);

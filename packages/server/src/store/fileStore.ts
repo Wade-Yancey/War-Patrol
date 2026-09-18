@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, writeFile, access } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile, access, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -101,6 +101,50 @@ export async function writeSave(save: GameSave): Promise<void> {
   assertSchemaVersion(save, 'Save');
   const filePath = path.join(savesDir(), `${save.id}.json`);
   await writeFile(filePath, JSON.stringify(save, null, 2), 'utf8');
+}
+
+/** Remove a save JSON file from disk. Returns false if missing. */
+export async function deleteSaveFile(id: string): Promise<boolean> {
+  await ensureDirs();
+  const filePath = path.join(savesDir(), `${id}.json`);
+  try {
+    await access(filePath);
+  } catch {
+    return false;
+  }
+  await unlink(filePath);
+  return true;
+}
+
+/** Remove a scenario JSON file from disk. Returns false if missing. */
+export async function deleteScenarioFile(id: string): Promise<boolean> {
+  await ensureDirs();
+  const filePath = path.join(scenariosDir(), `${id}.json`);
+  try {
+    await access(filePath);
+  } catch {
+    // Also try matching by scenario.id inside files (filename may differ).
+    const scenarios = await listScenarios();
+    const found = scenarios.find((s) => s.id === id);
+    if (!found) return false;
+    const byId = path.join(scenariosDir(), `${found.id}.json`);
+    try {
+      await access(byId);
+      await unlink(byId);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  await unlink(filePath);
+  return true;
+}
+
+export async function writeScenario(scenario: Scenario): Promise<void> {
+  await ensureDirs();
+  assertSchemaVersion(scenario, 'Scenario');
+  const filePath = path.join(scenariosDir(), `${scenario.id}.json`);
+  await writeFile(filePath, JSON.stringify(scenario, null, 2), 'utf8');
 }
 
 export async function listVesselClasses(): Promise<VesselClassStub[]> {
