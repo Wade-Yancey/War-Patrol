@@ -477,6 +477,18 @@ export interface VesselView {
     | 'sunk'
     | 'sensors_disabled'
     | 'sonar_off';
+  /**
+   * Periscope / lookout visual contacts for stations with the `lookout` capability.
+   * Relative bearing + coarsened range/speed + silhouette class — no names/sides.
+   * Omitted for non-lookout stations.
+   */
+  periscopeContacts?: PeriscopeContact[];
+  /** Configured max periscope visual range (nm). */
+  periscopeMaxRangeNm?: number;
+  /** False when optics cannot see (too deep / sunk / sensors disabled / no set). */
+  periscopeOperational?: boolean;
+  /** Operator-facing reason when periscopeOperational is false. */
+  periscopeUnavailableReason?: 'no_sensor' | 'sunk' | 'sensors_disabled' | 'too_deep';
 }
 
 /**
@@ -495,6 +507,28 @@ export interface HydrophoneContact {
    * - `active_sonar_ping` — intermittent ping from a destroyer with search sonar ON
    */
   kind: 'propeller' | 'active_sonar_ping';
+}
+
+/**
+ * Periscope visual contact — silhouette + coarsened readouts only.
+ * `silhouetteClass` selects the side-profile asset (identity implied by image only).
+ */
+export interface PeriscopeContact {
+  id: string;
+  /**
+   * Relative bearing degrees (−180, 180], coarsened (e.g. 5° steps).
+   * Bow = 0; starboard positive; port negative.
+   */
+  relativeBearing: number;
+  /** Approximate range in nautical miles (coarsened). */
+  rangeNm: number;
+  /** Approximate absolute speed in knots (coarsened). */
+  speedKn: number;
+  /**
+   * Hull class for silhouette mapping only (e.g. Destroyer → destroyer.jpg).
+   * Not a side/name; other classes may lack assets (CRT placeholder).
+   */
+  silhouetteClass: HullClass;
 }
 
 export type ClientView = UmpireView | VesselView;

@@ -249,7 +249,8 @@ async function main() {
           s.id === 'sensors' &&
           Array.isArray(s.capabilities) &&
           (s.capabilities as string[]).includes('radar') &&
-          (s.capabilities as string[]).includes('hydrophone'),
+          (s.capabilities as string[]).includes('hydrophone') &&
+          (s.capabilities as string[]).includes('lookout'),
       ),
   );
   check(
@@ -260,6 +261,11 @@ async function main() {
     'sub has hydrophone sensor',
     Array.isArray(gato.sensors) &&
       (gato.sensors as Json[]).some((s) => s.kind === 'hydrophone'),
+  );
+  check(
+    'sub has lookout/periscope sensor',
+    Array.isArray(gato.sensors) &&
+      (gato.sensors as Json[]).some((s) => s.kind === 'lookout'),
   );
   check('porter radar operational', rv.radarOperational === true);
   check('controls has no radar picture', !('radarContacts' in bv) || bv.radarContacts === undefined);
@@ -367,6 +373,54 @@ async function main() {
   check('sub hydrophone unavailable on surface', sss.hydrophoneOperational === false);
   check('sub hydrophone reason surfaced', sss.hydrophoneUnavailableReason === 'surfaced');
   check('sub radar live on surface (sensors)', sss.radarOperational === true);
+  check('sub periscope live on surface', sss.periscopeOperational === true);
+  check('sub periscope has contacts array', Array.isArray(sss.periscopeContacts));
+  check(
+    'sub periscope max range stub',
+    typeof sss.periscopeMaxRangeNm === 'number' && (sss.periscopeMaxRangeNm as number) === 6,
+  );
+
+  // Place Porter within visual range for deterministic periscope contact
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { position: { lat: 34.43, lon: -119.96 }, speed: 12, eot: 'ahead_standard' },
+    umpireToken,
+  );
+  const periSurf = await api('GET', `/api/games/${gameId}/view`, undefined, subSensorsToken);
+  const periSurfView = periSurf.json.view as Json;
+  const periContacts = periSurfView.periscopeContacts as Array<Json>;
+  check('sub periscope sees destroyer on surface', periContacts.length >= 1, `got ${periContacts.length}`);
+  check(
+    'periscope contact relative bearing + range + speed',
+    typeof periContacts[0].relativeBearing === 'number' &&
+      typeof periContacts[0].rangeNm === 'number' &&
+      typeof periContacts[0].speedKn === 'number',
+  );
+  check(
+    'periscope contact silhouette class only',
+    periContacts[0].silhouetteClass === 'Destroyer' &&
+      !('side' in periContacts[0]) &&
+      !('name' in periContacts[0]) &&
+      !('faction' in periContacts[0]) &&
+      !('position' in periContacts[0]),
+  );
+  check(
+    'controls has no periscope picture',
+    !('periscopeContacts' in bv) || bv.periscopeContacts === undefined,
+  );
+
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { position: { depth: 18 } },
+    umpireToken,
+  );
+  const periAt18 = await api('GET', `/api/games/${gameId}/view`, undefined, subSensorsToken);
+  check(
+    'sub periscope operational at 18 m',
+    (periAt18.json.view as Json).periscopeOperational === true,
+  );
 
   await api(
     'PATCH',
@@ -374,6 +428,19 @@ async function main() {
     { position: { depth: 40 } },
     umpireToken,
   );
+  const periDeep = await api('GET', `/api/games/${gameId}/view`, undefined, subSensorsToken);
+  const periDeepView = periDeep.json.view as Json;
+  check('sub periscope unavailable too deep', periDeepView.periscopeOperational === false);
+  check('sub periscope reason too_deep', periDeepView.periscopeUnavailableReason === 'too_deep');
+
+  // Restore Porter near original for hydrophone checks
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { position: { lat: 34.35, lon: -120.1 }, speed: 12, eot: 'ahead_standard' },
+    umpireToken,
+  );
+
   const subDiveSensors = await api('GET', `/api/games/${gameId}/view`, undefined, subSensorsToken);
   const sds = subDiveSensors.json.view as Json;
   check('sub hydrophone operational submerged', sds.hydrophoneOperational === true);

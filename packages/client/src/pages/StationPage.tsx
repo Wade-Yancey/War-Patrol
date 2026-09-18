@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   EOT_LABELS,
+  PERISCOPE_DEPTH_M,
   SUBMARINE_MAX_DEPTH_M,
   conditionLabel,
   effectiveMaxSpeed,
@@ -22,6 +23,7 @@ import { EotTelegraph } from '../components/EotTelegraph';
 import { HelmCompass } from '../components/HelmCompass';
 import { DiveControls } from '../components/DiveControls';
 import { HydrophoneScope } from '../components/HydrophoneScope';
+import { PeriscopeScope } from '../components/PeriscopeScope';
 import { RadarScope } from '../components/RadarScope';
 import { ActiveSonarScope } from '../components/ActiveSonarScope';
 
@@ -29,7 +31,7 @@ function tokenKey(gameId: string, accessToken: string, stationId: string) {
   return `wp-token:${gameId}:${accessToken}:${stationId}`;
 }
 
-type SensorTab = 'radar' | 'hydrophone' | 'sonar';
+type SensorTab = 'radar' | 'hydrophone' | 'sonar' | 'periscope';
 
 export function StationPage() {
   const { gameId = '', accessToken = '', stationId = '' } = useParams();
@@ -86,26 +88,42 @@ export function StationPage() {
     stationId === 'sensors' ||
     caps.has('radar') ||
     caps.has('hydrophone') ||
-    caps.has('active_sonar');
+    caps.has('active_sonar') ||
+    caps.has('lookout');
   const canHelm = caps.has('helm');
   const canEot = caps.has('engineering') || caps.has('helm');
   const canRadar = caps.has('radar');
   const canHydrophone = caps.has('hydrophone');
   const canActiveSonar = caps.has('active_sonar');
-  const sensorFocus = isSensors && (canRadar || canHydrophone || canActiveSonar);
+  const canPeriscope = caps.has('lookout');
+  const sensorFocus =
+    isSensors && (canRadar || canHydrophone || canActiveSonar || canPeriscope);
 
   const surfaced = vessel ? isRadarSurfaced(vessel.unit.position) : true;
+  const depthM = vessel?.unit.position.depth ?? 0;
+  const atPeriscopeDepth = depthM <= PERISCOPE_DEPTH_M;
 
-  // Sub Sensors: pick a sensible default tab from depth; follow depth changes.
+  // Sub Sensors: pick a sensible default tab from depth; follow depth-band changes.
   useEffect(() => {
     if (!vessel || !isSensors) return;
     if (canHydrophone && canRadar) {
-      const preferred: SensorTab = surfaced ? 'radar' : 'hydrophone';
+      const preferred: SensorTab = surfaced
+        ? 'radar'
+        : canPeriscope && atPeriscopeDepth
+          ? 'periscope'
+          : 'hydrophone';
       setSensorTab((prev) => {
-        if (prev === 'radar' || prev === 'hydrophone') {
-          // Auto-nudge when depth flips availability band.
-          if (surfaced && prev === 'hydrophone') return 'radar';
-          if (!surfaced && prev === 'radar') return 'hydrophone';
+        if (prev === 'radar' || prev === 'hydrophone' || prev === 'periscope') {
+          if (surfaced && (prev === 'hydrophone' || prev === 'periscope')) return 'radar';
+          if (!surfaced && prev === 'radar') {
+            return canPeriscope && atPeriscopeDepth ? 'periscope' : 'hydrophone';
+          }
+          // Crossing periscope ↔ deep: nudge away from unavailable optics / toward hydro.
+          if (!surfaced && prev === 'periscope' && !atPeriscopeDepth) return 'hydrophone';
+          if (!surfaced && prev === 'hydrophone' && canPeriscope && atPeriscopeDepth && depthM > 5) {
+            // Stay on hydro unless we just entered the band with no prior choice — keep selection.
+            return prev;
+          }
           return prev;
         }
         return preferred;
@@ -117,13 +135,30 @@ export function StationPage() {
       return;
     }
     if (canRadar) setSensorTab('radar');
+    else if (canPeriscope) setSensorTab('periscope');
     else if (canHydrophone) setSensorTab('hydrophone');
     else if (canActiveSonar) setSensorTab('sonar');
-  }, [vessel, isSensors, canHydrophone, canRadar, canActiveSonar, surfaced]);
+  }, [
+    vessel,
+    isSensors,
+    canHydrophone,
+    canRadar,
+    canActiveSonar,
+    canPeriscope,
+    surfaced,
+    atPeriscopeDepth,
+    depthM,
+  ]);
 
   const activeTab: SensorTab =
     sensorTab ??
-    (canRadar ? 'radar' : canHydrophone ? 'hydrophone' : 'sonar');
+    (canRadar
+      ? 'radar'
+      : canPeriscope
+        ? 'periscope'
+        : canHydrophone
+          ? 'hydrophone'
+          : 'sonar');
 
   const login = async (e?: FormEvent) => {
     e?.preventDefault();
@@ -232,7 +267,10 @@ export function StationPage() {
 
         {vessel && isSensors && (
           <>
-            {(canRadar && canHydrophone) || (canRadar && canActiveSonar) ? (
+            {(canRadar && canHydrophone) ||
+            (canRadar && canActiveSonar) ||
+            (canRadar && canPeriscope) ||
+            (canHydrophone && canPeriscope) ? (
               <div className="sensor-tabs" role="tablist" aria-label="Sensor instruments">
                 {canRadar && (
                   <button
@@ -243,6 +281,17 @@ export function StationPage() {
                     onClick={() => setSensorTab('radar')}
                   >
                     Radar
+                  </button>
+                )}
+                {canPeriscope && (
+                  <button
+                    type="button"
+                    role="tab"
+                    className={activeTab === 'periscope' ? 'primary' : undefined}
+                    aria-selected={activeTab === 'periscope'}
+                    onClick={() => setSensorTab('periscope')}
+                  >
+                    Periscope
                   </button>
                 )}
                 {canHydrophone && (
@@ -270,7 +319,9 @@ export function StationPage() {
               </div>
             ) : null}
 
-            {canRadar && (activeTab === 'radar' || (!canHydrophone && !canActiveSonar)) && (
+            {canRadar &&
+              (activeTab === 'radar' ||
+                (!canHydrophone && !canActiveSonar && !canPeriscope)) && (
               <section className="panel stack radar-station-panel">
                 <div className="radar-station-head">
                   <h2>Radar · PPI</h2>
@@ -316,6 +367,54 @@ export function StationPage() {
                   <RadarScope
                     contacts={vessel.radarContacts ?? []}
                     maxRangeNm={vessel.radarMaxRangeNm ?? 25}
+                    ownHeading={vessel.unit.heading}
+                  />
+                )}
+              </section>
+            )}
+
+            {canPeriscope && activeTab === 'periscope' && (
+              <section className="panel stack radar-station-panel">
+                <div className="radar-station-head">
+                  <h2>Periscope · Visual</h2>
+                  <p className="muted radar-station-blurb">
+                    Short-range silhouettes only — relative bearing and approximate speed.
+                    {vessel.periscopeOperational
+                      ? ` Visual · ${vessel.periscopeMaxRangeNm ?? 6} nm · usable depth ≤ ${PERISCOPE_DEPTH_M} m.`
+                      : vessel.periscopeUnavailableReason === 'too_deep'
+                        ? ` Depth ≤ ${PERISCOPE_DEPTH_M} m (periscope / surface) required.`
+                        : vessel.periscopeUnavailableReason === 'no_sensor'
+                          ? ' No lookout/periscope set installed.'
+                          : vessel.periscopeUnavailableReason === 'sunk'
+                            ? ' Set offline — unit sunk/destroyed.'
+                            : vessel.periscopeUnavailableReason === 'sensors_disabled'
+                              ? ' Sensors disabled.'
+                              : ''}
+                  </p>
+                </div>
+                {vessel.periscopeOperational === false ? (
+                  <div className="radar-unavailable" role="status">
+                    <p className="readout" style={{ margin: 0 }}>
+                      {vessel.periscopeUnavailableReason === 'too_deep'
+                        ? 'Periscope unavailable — too deep'
+                        : vessel.periscopeUnavailableReason === 'sunk'
+                          ? 'Periscope unavailable — sunk/destroyed'
+                          : vessel.periscopeUnavailableReason === 'sensors_disabled'
+                            ? 'Periscope unavailable — sensors disabled'
+                            : vessel.periscopeUnavailableReason === 'no_sensor'
+                              ? 'Periscope unavailable — no sensor'
+                              : 'Periscope unavailable'}
+                    </p>
+                    <p className="muted" style={{ margin: '0.5rem 0 0', fontSize: '0.85rem' }}>
+                      {vessel.periscopeUnavailableReason === 'too_deep'
+                        ? `Come up to periscope depth or shallower (≤ ${PERISCOPE_DEPTH_M} m) to raise optics.`
+                        : 'This station has no usable periscope picture.'}
+                    </p>
+                  </div>
+                ) : (
+                  <PeriscopeScope
+                    contacts={vessel.periscopeContacts ?? []}
+                    maxRangeNm={vessel.periscopeMaxRangeNm ?? 6}
                     ownHeading={vessel.unit.heading}
                   />
                 )}

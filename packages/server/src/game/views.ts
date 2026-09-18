@@ -11,6 +11,7 @@ import { isV1PlayerUnit } from '@war-patrol/shared';
 import type { SseHub } from './sse.js';
 import { buildActiveSonarContacts } from './activeSonar.js';
 import { buildHydrophoneContacts } from './hydrophone.js';
+import { buildPeriscopeContacts } from './periscope.js';
 import { buildRadarContacts } from './radar.js';
 
 /** Build umpire polylines from start positions + history snapshots + current. */
@@ -161,6 +162,16 @@ export function buildVesselView(
     view.sonarOperational = sonar.operational;
     if (sonar.unavailableReason) {
       view.sonarUnavailableReason = sonar.unavailableReason;
+    }
+  }
+
+  if (station.capabilities.includes('lookout')) {
+    const peri = buildPeriscopeContacts(unit, save);
+    view.periscopeContacts = peri.contacts;
+    view.periscopeMaxRangeNm = peri.maxRangeNm;
+    view.periscopeOperational = peri.operational;
+    if (peri.unavailableReason) {
+      view.periscopeUnavailableReason = peri.unavailableReason;
     }
   }
 
