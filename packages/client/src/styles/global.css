@@ -1051,9 +1051,10 @@ label {
     width: 11.5rem;
     max-width: 11.5rem;
     max-height: min(calc(100vw - 13rem), calc(100dvh - 4.75rem));
-    overflow-x: hidden;
+    overflow-x: visible;
     overflow-y: auto;
-    padding: 0.1rem 0;
+    padding: 0.1rem 0.35rem;
+    box-sizing: border-box;
     justify-content: flex-start;
   }
 
@@ -1514,9 +1515,11 @@ label {
   width: 11.5rem;
   max-width: 11.5rem;
   max-height: min(calc(100vw - 14rem), calc(100dvh - 5.25rem));
-  overflow-x: hidden;
+  /* Visible so range thumb is not clipped; vertical scroll still allowed. */
+  overflow-x: visible;
   overflow-y: auto;
-  padding: 0.15rem 0;
+  padding: 0.15rem 0.35rem;
+  box-sizing: border-box;
   justify-content: flex-start;
 }
 
@@ -1589,9 +1592,11 @@ label {
   align-items: stretch;
   gap: 0.4rem;
   width: 100%;
+  min-width: 0;
+  overflow: visible;
 }
 
-.hydrophone-controls button {
+.hydrophone-controls > button {
   min-height: 2.5rem;
   padding: 0.4rem 0.65rem;
   font-size: 0.85rem;
@@ -1600,14 +1605,99 @@ label {
 .hydrophone-fine {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.25rem;
   width: 100%;
+  min-width: 0;
+  overflow: visible;
 }
 
-.hydrophone-fine input[type='range'] {
+.hydrophone-fine-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.2rem;
   width: 100%;
+  min-width: 0;
+  overflow: visible;
+}
+
+.hydrophone-nudge {
+  flex: 0 0 auto;
+  min-width: 2.35rem;
+  min-height: 2.5rem;
+  padding: 0.2rem 0.35rem;
+  font-size: 0.85rem;
+  line-height: 1;
+  font-family: var(--font-display);
+  color: var(--phosphor);
+  background: var(--bezel-inset);
+  border: 1px solid color-mix(in srgb, var(--phosphor) 55%, transparent);
+  border-radius: 2px;
+}
+
+.hydrophone-nudge:hover:not(:disabled) {
+  border-color: var(--phosphor);
+  color: var(--accent-strong);
+}
+
+.hydrophone-nudge:active:not(:disabled) {
+  background: var(--phosphor-deep);
+}
+
+.hydrophone-fine-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  height: 2.5rem;
+  min-height: 2.5rem;
+  margin: 0;
+  padding: 0 0.35rem;
+  box-sizing: border-box;
+  background: transparent;
+  border: none;
   accent-color: var(--phosphor);
-  min-height: 1.75rem;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.hydrophone-fine-slider:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.hydrophone-fine-slider::-webkit-slider-runnable-track {
+  height: 0.45rem;
+  background: var(--phosphor-deep);
+  border: 1px solid var(--line);
+  border-radius: 1px;
+}
+
+.hydrophone-fine-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 1.35rem;
+  height: 1.35rem;
+  margin-top: -0.5rem;
+  background: var(--phosphor);
+  border: 2px solid var(--bg-void);
+  border-radius: 2px;
+}
+
+.hydrophone-fine-slider::-moz-range-track {
+  height: 0.45rem;
+  background: var(--phosphor-deep);
+  border: 1px solid var(--line);
+  border-radius: 1px;
+}
+
+.hydrophone-fine-slider::-moz-range-thumb {
+  width: 1.35rem;
+  height: 1.35rem;
+  background: var(--phosphor);
+  border: 2px solid var(--bg-void);
+  border-radius: 2px;
 }
 
 .hydrophone-caption {

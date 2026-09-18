@@ -9,6 +9,8 @@ import {
 } from '@war-patrol/shared';
 
 const PROP_SAMPLE_URL = '/audio/echo-propeller.wav';
+/** Fine-adjust nudge step for ◀ / ▶ flanking the bearing slider (degrees). */
+const BEARING_NUDGE_DEG = 1;
 
 interface Props {
   contacts: HydrophoneContact[];
@@ -283,6 +285,10 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
     if (ok) setListening(true);
   };
 
+  const nudgeBearing = (dir: -1 | 1) => {
+    setListenBearing((prev) => normalizeHeading(Math.round(prev) + dir * BEARING_NUDGE_DEG));
+  };
+
   const listenLabel = String(Math.round(listen)).padStart(3, '0');
   const hdgLabel = String(Math.round(hdg)).padStart(3, '0');
   const levelPct = Math.round(signalLevel * 100);
@@ -458,18 +464,37 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
           >
             {listening ? 'Stop listening' : 'Start listening'}
           </button>
-          <label className="hydrophone-fine">
-            <span className="hydrophone-key">Fine</span>
-            <input
-              type="range"
-              min={0}
-              max={359}
-              step={1}
-              value={Math.round(listen)}
-              onChange={(e) => setListenBearing(Number(e.target.value))}
-              aria-label="Listen bearing fine adjust"
-            />
-          </label>
+          <div className="hydrophone-fine">
+            <span className="hydrophone-key">Fine · {BEARING_NUDGE_DEG}°</span>
+            <div className="hydrophone-fine-row">
+              <button
+                type="button"
+                className="hydrophone-nudge"
+                aria-label={`Decrease listen bearing ${BEARING_NUDGE_DEG} degree`}
+                onClick={() => nudgeBearing(-1)}
+              >
+                ◀
+              </button>
+              <input
+                type="range"
+                className="hydrophone-fine-slider"
+                min={0}
+                max={359}
+                step={1}
+                value={Math.round(listen)}
+                onChange={(e) => setListenBearing(Number(e.target.value))}
+                aria-label="Listen bearing fine adjust"
+              />
+              <button
+                type="button"
+                className="hydrophone-nudge"
+                aria-label={`Increase listen bearing ${BEARING_NUDGE_DEG} degree`}
+                onClick={() => nudgeBearing(1)}
+              >
+                ▶
+              </button>
+            </div>
+          </div>
         </div>
 
         <p className="hydrophone-caption muted mono">
