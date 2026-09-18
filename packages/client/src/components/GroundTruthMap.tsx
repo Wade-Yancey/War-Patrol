@@ -1,6 +1,15 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
-import type { BoundingBox, UnitState, UnitTrail } from '@war-patrol/shared';
-import { clamp, normalizeHeading, projectToUv, unprojectFromUv } from '@war-patrol/shared';
+import type { BoundingBox, SensorDef, UnitState, UnitTrail } from '@war-patrol/shared';
+import {
+  METERS_PER_DEG_LAT,
+  METERS_PER_NM,
+  RADAR_MAX_RANGE_NM,
+  clamp,
+  metersPerDegLon,
+  normalizeHeading,
+  projectToUv,
+  unprojectFromUv,
+} from '@war-patrol/shared';
 
 interface Props {
   area: BoundingBox;
@@ -21,9 +30,70 @@ function unitAccent(unit: UnitState): string {
   return SIDE_COLORS[key] ?? SIDE_COLORS.neutral!;
 }
 
-const W = 640;
-const H = 420;
+/** Wider / taller plot — full-width umpire ground-truth (Wade). */
+const W = 960;
+const H = 540;
 const ASPECT = W / H;
+
+/**
+ * Compact north-up bearing rose inset (top-right).
+ * Screen Y grows down; 0° = north = up (same convention as unit heading ticks).
+ */
+const COMPASS_CX = W - 78;
+const COMPASS_CY = 78;
+const COMPASS_R = 54;
+
+type CompassTick = {
+  deg: number;
+  major: boolean;
+  label: string | null;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  lx: number;
+  ly: number;
+};
+
+function polarAt(cx: number, cy: number, deg: number, r: number): { x: number; y: number } {
+  const rad = ((deg - 90) * Math.PI) / 180;
+  return { x: cx + Math.cos(rad) * r, y: cy + Math.sin(rad) * r };
+}
+
+/** Static rose geometry — built once; no per-frame work. */
+const COMPASS_TICKS: CompassTick[] = (() => {
+  const cardinals: Record<number, string> = { 0: 'N', 90: 'E', 180: 'S', 270: 'W' };
+  const marks: CompassTick[] = [];
+  for (let deg = 0; deg < 360; deg += 10) {
+    const major = deg % 30 === 0;
+    const tickLen = major ? 11 : 5;
+    const outer = polarAt(COMPASS_CX, COMPASS_CY, deg, COMPASS_R);
+    const inner = polarAt(COMPASS_CX, COMPASS_CY, deg, COMPASS_R - tickLen);
+    const labelPt = polarAt(COMPASS_CX, COMPASS_CY, deg, COMPASS_R - 20);
+    let label: string | null = null;
+    if (cardinals[deg] != null) label = cardinals[deg]!;
+    else if (deg % 30 === 0) label = String(deg);
+    marks.push({
+      deg,
+      major,
+      label,
+      x1: inner.x,
+      y1: inner.y,
+      x2: outer.x,
+      y2: outer.y,
+      lx: labelPt.x,
+      ly: labelPt.y,
+    });
+  }
+  return marks;
+})();
+
+const COMPASS_N_TIP = polarAt(COMPASS_CX, COMPASS_CY, 0, COMPASS_R + 10);
+const COMPASS_N_LEFT = polarAt(COMPASS_CX, COMPASS_CY, 0, COMPASS_R + 1);
+const COMPASS_CROSS_N = polarAt(COMPASS_CX, COMPASS_CY, 0, COMPASS_R - 28);
+const COMPASS_CROSS_S = polarAt(COMPASS_CX, COMPASS_CY, 180, COMPASS_R - 28);
+const COMPASS_CROSS_E = polarAt(COMPASS_CX, COMPASS_CY, 90, COMPASS_R - 28);
+const COMPASS_CROSS_W = polarAt(COMPASS_CX, COMPASS_CY, 270, COMPASS_R - 28);
 
 /** Discrete zoom multipliers (higher = closer). Includes zoom-out below ×1. */
 const ZOOM_STEPS = [0.35, 0.5, 0.7, 1, 1.5, 2.25, 3.5, 5] as const;
@@ -36,11 +106,71 @@ const DEFAULT_ZOOM_IDX = ZOOM_STEPS.indexOf(1);
  */
 const GRID_STEP_DEG = 0.1;
 
+/** Persist umpire map sensor-range overlay preference across reloads. */
+const SENSOR_RANGES_STORAGE_KEY = 'wp-umpire-map-sensor-ranges';
+
+function readShowSensorRanges(): boolean {
+  try {
+    return localStorage.getItem(SENSOR_RANGES_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeShowSensorRanges(on: boolean) {
+  try {
+    localStorage.setItem(SENSOR_RANGES_STORAGE_KEY, on ? '1' : '0');
+  } catch {
+    /* private mode / quota — ignore */
+  }
+}
+
+/**
+ * Installed sensors that already carry a detection radius.
+ * Radar falls back to the stub max; other kinds only if maxRangeNm is set
+ * (do not invent hydrophone/sonar ranges).
+ */
+function sensorRangesForUnit(unit: UnitState): { kind: SensorDef['kind']; rangeNm: number }[] {
+  const sensors = unit.sensors;
+  if (!sensors?.length) return [];
+  const out: { kind: SensorDef['kind']; rangeNm: number }[] = [];
+  for (const s of sensors) {
+    if (s.kind === 'radar') {
+      const rangeNm = s.maxRangeNm ?? RADAR_MAX_RANGE_NM;
+      if (rangeNm > 0) out.push({ kind: 'radar', rangeNm });
+      continue;
+    }
+    if (typeof s.maxRangeNm === 'number' && s.maxRangeNm > 0) {
+      out.push({ kind: s.kind, rangeNm: s.maxRangeNm });
+    }
+  }
+  return out;
+}
+
+function sensorsSignature(unit: UnitState): string {
+  const sensors = unit.sensors;
+  if (!sensors?.length) return '';
+  return sensors.map((s) => `${s.kind}:${s.maxRangeNm ?? ''}`).join(',');
+}
+
+/** Equirectangular east/north circle → screen ellipse radii (ARCH-SP-02). */
+function rangeBandRadiiPx(lat: number, rangeNm: number, view: BoundingBox): { rx: number; ry: number } {
+  const meters = rangeNm * METERS_PER_NM;
+  const dLat = meters / METERS_PER_DEG_LAT;
+  const dLon = meters / metersPerDegLon(lat);
+  const spanLat = view.maxLat - view.minLat || 1;
+  const spanLon = view.maxLon - view.minLon || 1;
+  return {
+    rx: (dLon / spanLon) * W,
+    ry: (dLat / spanLat) * H,
+  };
+}
+
 function unitsSignature(units: UnitState[]): string {
   return units
     .map(
       (u) =>
-        `${u.id}:${u.position.lat.toFixed(5)},${u.position.lon.toFixed(5)},${u.heading.toFixed(1)},${normalizeHeading(u.orderedCourse ?? u.heading).toFixed(1)},${u.speed.toFixed(1)},${u.position.depth.toFixed(0)},${u.type},${u.class},${u.name},${u.faction},${u.condition},${u.subsystems?.propulsion},${u.subsystems?.sensors},${u.flightLevel ?? ''}`,
+        `${u.id}:${u.position.lat.toFixed(5)},${u.position.lon.toFixed(5)},${u.heading.toFixed(1)},${normalizeHeading(u.orderedCourse ?? u.heading).toFixed(1)},${u.speed.toFixed(1)},${u.position.depth.toFixed(0)},${u.type},${u.class},${u.name},${u.faction},${u.condition},${u.subsystems?.propulsion},${u.subsystems?.sensors},${u.flightLevel ?? ''},${sensorsSignature(u)}`,
     )
     .join('|');
 }
@@ -164,12 +294,21 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
   const [panLat, setPanLat] = useState(0);
   const [panLon, setPanLon] = useState(0);
   const [cursor, setCursor] = useState<{ lat: number; lon: number } | null>(null);
+  const [showSensorRanges, setShowSensorRanges] = useState(readShowSensorRanges);
   const dragRef = useRef<{
     pointerId: number;
     lastX: number;
     lastY: number;
   } | null>(null);
   const frameRef = useRef<HTMLDivElement>(null);
+
+  const toggleSensorRanges = useCallback(() => {
+    setShowSensorRanges((prev) => {
+      const next = !prev;
+      writeShowSensorRanges(next);
+      return next;
+    });
+  }, []);
 
   // Reset camera when the unit set or operating area changes (not on every move).
   useEffect(() => {
@@ -282,6 +421,45 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
     [units, view, zoom],
   );
 
+  /** Optional sensor detection radii — memoized; skipped when overlay is off. */
+  const rangeBands = useMemo(() => {
+    if (!showSensorRanges) return [];
+    const bands: {
+      key: string;
+      x: number;
+      y: number;
+      rx: number;
+      ry: number;
+      color: string;
+      label: string;
+      labelY: number;
+    }[] = [];
+    for (const unit of units) {
+      const ranges = sensorRangesForUnit(unit);
+      if (!ranges.length) continue;
+      const { u, v } = projectToUv(unit.position.lat, unit.position.lon, view);
+      const x = u * W;
+      const y = v * H;
+      const color = unitAccent(unit);
+      for (const r of ranges) {
+        const { rx, ry } = rangeBandRadiiPx(unit.position.lat, r.rangeNm, view);
+        // Cull rings that cannot intersect the plot (cheap).
+        if (x + rx < -8 || x - rx > W + 8 || y + ry < -8 || y - ry > H + 8) continue;
+        bands.push({
+          key: `${unit.id}-${r.kind}-${r.rangeNm}`,
+          x,
+          y,
+          rx,
+          ry,
+          color,
+          label: `${r.kind.toUpperCase()} ${r.rangeNm} NM`,
+          labelY: y + ry + 11,
+        });
+      }
+    }
+    return bands;
+  }, [units, view, showSensorRanges]);
+
   /** Operating-area outline in the same world projection (when it intersects the view). */
   const areaOutline = useMemo(() => {
     const corners = [
@@ -358,7 +536,7 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
 
   return (
     <div className="map-frame">
-      <div className="map-toolbar" role="toolbar" aria-label="Map scale and pan">
+      <div className="map-toolbar" role="toolbar" aria-label="Map scale, pan, and overlays">
         <button type="button" onClick={zoomOut} disabled={zoomIdx <= 0} aria-label="Zoom out">
           −
         </button>
@@ -373,6 +551,15 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
         </button>
         <button type="button" onClick={recenter} aria-label="Recenter on units">
           Recenter
+        </button>
+        <button
+          type="button"
+          className={showSensorRanges ? 'map-toggle-on' : undefined}
+          aria-pressed={showSensorRanges}
+          aria-label="Toggle sensor detection range bands"
+          onClick={toggleSensorRanges}
+        >
+          Ranges
         </button>
         <span className="mono muted map-cursor-readout" aria-live="polite">
           {cursor ? formatCursor(cursor.lat, cursor.lon) : 'LAT/LON · HOVER PLOT'}
@@ -392,7 +579,7 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
           viewBox={`0 0 ${W} ${H}`}
           width="100%"
           role="img"
-          aria-label="Ground truth lat/lon map — drag to pan"
+          aria-label="Ground truth lat/lon map with true north compass — drag to pan"
         >
           <rect width={W} height={H} fill="#061a0e" />
 
@@ -449,8 +636,38 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
           </g>
 
           <text x={12} y={18} fill="#5a9a68" fontSize={10} fontFamily="IBM Plex Mono, monospace">
-            GROUND TRUTH · LAT/LON · {GRID_STEP_DEG}° GRID · TRAILS
+            GROUND TRUTH · LAT/LON · {GRID_STEP_DEG}° GRID · TRAILS · TRUE N
+            {showSensorRanges ? ' · RANGES' : ''}
           </text>
+
+          {/* Sensor detection radii — under trails/units; only when toggle is on */}
+          {rangeBands.map((b) => (
+            <g key={b.key} pointerEvents="none">
+              <ellipse
+                cx={b.x}
+                cy={b.y}
+                rx={b.rx}
+                ry={b.ry}
+                fill={b.color}
+                fillOpacity={0.04}
+                stroke={b.color}
+                strokeWidth={1.25}
+                strokeOpacity={0.55}
+                strokeDasharray="5 4"
+              />
+              <text
+                x={b.x}
+                y={clamp(b.labelY, 12, H - 4)}
+                textAnchor="middle"
+                fill={b.color}
+                fillOpacity={0.75}
+                fontSize={9}
+                fontFamily="IBM Plex Mono, monospace"
+              >
+                {b.label}
+              </text>
+            </g>
+          ))}
 
           {/* Trails under units — simple polylines (CRT-friendly, cheap) */}
           {trailPolylines.map((t) => (
@@ -531,6 +748,86 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
                 </text>
               </g>
             ))}
+
+          {/* North-up bearing rose — corner inset so units stay readable */}
+          <g className="map-compass" pointerEvents="none" aria-hidden="true">
+            <circle
+              cx={COMPASS_CX}
+              cy={COMPASS_CY}
+              r={COMPASS_R + 14}
+              fill="#041208"
+              fillOpacity={0.82}
+              stroke="#1a4a28"
+              strokeWidth={1}
+            />
+            <circle
+              cx={COMPASS_CX}
+              cy={COMPASS_CY}
+              r={COMPASS_R}
+              fill="none"
+              stroke="#2a6a3c"
+              strokeWidth={1.25}
+            />
+            <line
+              x1={COMPASS_CROSS_N.x}
+              y1={COMPASS_CROSS_N.y}
+              x2={COMPASS_CROSS_S.x}
+              y2={COMPASS_CROSS_S.y}
+              stroke="#1a4a28"
+              strokeWidth={1}
+            />
+            <line
+              x1={COMPASS_CROSS_W.x}
+              y1={COMPASS_CROSS_W.y}
+              x2={COMPASS_CROSS_E.x}
+              y2={COMPASS_CROSS_E.y}
+              stroke="#1a4a28"
+              strokeWidth={1}
+            />
+            {COMPASS_TICKS.map((t) => (
+              <g key={`cmp-${t.deg}`}>
+                <line
+                  x1={t.x1}
+                  y1={t.y1}
+                  x2={t.x2}
+                  y2={t.y2}
+                  stroke={t.deg === 0 ? '#7dff9a' : '#3dff6a'}
+                  strokeWidth={t.major ? 1.5 : 1}
+                  strokeOpacity={t.major ? 0.9 : 0.45}
+                />
+                {t.label && (
+                  <text
+                    x={t.lx}
+                    y={t.ly}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fill={t.deg === 0 ? '#7dff9a' : '#5a9a68'}
+                    fontSize={t.deg % 90 === 0 ? 11 : 8}
+                    fontFamily="IBM Plex Mono, monospace"
+                    fontWeight={t.deg === 0 ? 700 : 400}
+                  >
+                    {t.label}
+                  </text>
+                )}
+              </g>
+            ))}
+            <polygon
+              points={`${COMPASS_N_TIP.x},${COMPASS_N_TIP.y} ${COMPASS_N_TIP.x - 5},${COMPASS_N_LEFT.y} ${COMPASS_N_TIP.x + 5},${COMPASS_N_LEFT.y}`}
+              fill="#7dff9a"
+              fillOpacity={0.95}
+            />
+            <circle cx={COMPASS_CX} cy={COMPASS_CY} r={2.5} fill="#3dff6a" />
+            <text
+              x={COMPASS_CX}
+              y={COMPASS_CY + COMPASS_R + 11}
+              textAnchor="middle"
+              fill="#5a9a68"
+              fontSize={8}
+              fontFamily="IBM Plex Mono, monospace"
+            >
+              TRUE °
+            </text>
+          </g>
         </svg>
       </div>
     </div>

@@ -1052,6 +1052,13 @@ label {
   font-size: 0.85rem;
 }
 
+.map-toolbar button.map-toggle-on,
+.map-toolbar button[aria-pressed='true'] {
+  border-color: var(--phosphor);
+  background: var(--phosphor-deep);
+  color: var(--accent-strong);
+}
+
 .map-zoom-readout {
   min-width: 2.75rem;
   text-align: center;
@@ -1081,6 +1088,19 @@ label {
   width: 100%;
   height: auto;
   pointer-events: none;
+}
+
+/* Umpire GT map — full container width, modules stack below */
+.umpire-gt-map {
+  width: 100%;
+}
+
+.umpire-gt-map .map-frame {
+  width: 100%;
+}
+
+.umpire-modules {
+  width: 100%;
 }
 
 .header-bar {
