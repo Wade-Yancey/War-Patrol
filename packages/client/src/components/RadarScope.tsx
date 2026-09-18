@@ -121,18 +121,21 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
     const r = frac * SCOPE_R;
     const x = CX + Math.cos(rad) * r;
     const y = CY + Math.sin(rad) * r;
-    const blipR = 2.5 + 6 * b.strength;
+    const blipR = 4 + 5 * b.strength;
     const labelN = contactIndexById.get(b.id);
-    // Keep label readable: prefer right of blip, flip left near the right rim.
+    const live = labelN != null;
+    // High-contrast solid phosphor — no blur/glow filters (tablet perf).
+    const opacity = live ? Math.max(0.92, 0.85 + 0.15 * b.strength) : Math.max(0.25, fade * 0.55);
     const labelOnLeft = x > CX + SCOPE_R * 0.35;
     return {
       ...b,
       x,
       y,
-      opacity: 0.25 + 0.75 * fade * (0.35 + 0.65 * b.strength),
+      opacity,
       r: blipR,
       labelN,
-      labelX: labelOnLeft ? x - blipR - 8 : x + blipR + 8,
+      labelOpacity: live ? 1 : Math.max(0.35, fade * 0.7),
+      labelX: labelOnLeft ? x - blipR - 10 : x + blipR + 10,
       labelAnchor: labelOnLeft ? ('end' as const) : ('start' as const),
     };
   });
@@ -232,24 +235,23 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
         </g>
 
         {blips.map((b) => (
-          <g key={b.id} opacity={b.opacity}>
-            <circle cx={b.x} cy={b.y} r={b.r} fill="#3dff6a" />
-            <circle
-              cx={b.x}
-              cy={b.y}
-              r={b.r + 3}
-              fill="none"
-              stroke="#7dff9a"
-              strokeWidth={0.8}
-              opacity={0.5}
-            />
+          <g key={b.id}>
+            <g opacity={b.opacity}>
+              <circle cx={b.x} cy={b.y} r={b.r + 2} fill="none" stroke="#7dff9a" strokeWidth={1.5} />
+              <circle cx={b.x} cy={b.y} r={b.r} fill="#b8ffc8" />
+              <circle cx={b.x} cy={b.y} r={Math.max(2, b.r * 0.45)} fill="#e8ffe8" />
+            </g>
             {b.labelN != null && (
               <text
                 x={b.labelX}
-                y={b.y + 4}
+                y={b.y + 5}
                 textAnchor={b.labelAnchor}
-                fill="#7dff9a"
-                fontSize={14}
+                fill="#c8ffd4"
+                stroke="#041208"
+                strokeWidth={3}
+                paintOrder="stroke"
+                opacity={b.labelOpacity}
+                fontSize={16}
                 fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
               >
                 Contact {b.labelN}
