@@ -120,7 +120,9 @@ export function StationPage() {
                 'Connecting…'
               )}
             </p>
-            {vessel && <span className="side-badge">{vessel.unit.side} side</span>}
+            {vessel && (
+              <span className={`side-badge side-badge--${side}`}>{vessel.unit.side} side</span>
+            )}
           </div>
           <div className="stack" style={{ alignItems: 'flex-end', gap: '0.35rem' }}>
             <div className="row" style={{ alignItems: 'center' }}>

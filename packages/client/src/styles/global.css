@@ -20,7 +20,8 @@
   --bezel: #121a14;
   --bezel-edge: #2a3830;
   --bezel-inset: #060d08;
-  --side-tint: transparent;
+  --side-blue: #4a9fd4;
+  --side-red: #d45a4a;
   --hit: 2.75rem;
   --font-display: 'Share Tech Mono', 'IBM Plex Mono', ui-monospace, monospace;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
@@ -33,51 +34,6 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
-}
-
-/* Blue team: cool cyan-green phosphor, blue undertone — still terminal */
-[data-side='blue'] {
-  --phosphor: #3de8b0;
-  --phosphor-dim: #1a7a68;
-  --phosphor-deep: #0a3a38;
-  --phosphor-glow: rgba(61, 232, 176, 0.28);
-  --bg-void: #010810;
-  --bg-crt: #041218;
-  --bg-panel: #0a1a1e;
-  --bg-elevated: #0f2228;
-  --ink: #c0ffe8;
-  --ink-muted: #5a9888;
-  --accent-strong: #7dffd0;
-  --line: rgba(61, 220, 190, 0.24);
-  --map-water: #061820;
-  --map-grid: rgba(61, 220, 190, 0.16);
-  --bezel: #12181a;
-  --bezel-edge: #2a3838;
-  --bezel-inset: #060d10;
-  --side-tint: rgba(40, 90, 140, 0.14);
-}
-
-/* Red team: warm olive-green phosphor, red undertone — still terminal */
-[data-side='red'] {
-  --phosphor: #9ae03a;
-  --phosphor-dim: #6a8f1a;
-  --phosphor-deep: #3a3d0a;
-  --phosphor-glow: rgba(154, 224, 58, 0.28);
-  --bg-void: #0a0804;
-  --bg-crt: #141004;
-  --bg-panel: #1a180a;
-  --bg-elevated: #242010;
-  --ink: #e8f8c0;
-  --ink-muted: #8a9a5a;
-  --accent-strong: #c8ff6a;
-  --danger: #e87850;
-  --line: rgba(180, 200, 60, 0.24);
-  --map-water: #1a1408;
-  --map-grid: rgba(180, 200, 60, 0.16);
-  --bezel: #1a1612;
-  --bezel-edge: #383028;
-  --bezel-inset: #0d0a06;
-  --side-tint: rgba(140, 40, 30, 0.14);
 }
 
 * {
@@ -95,8 +51,6 @@ body {
   min-height: 100vh;
   min-height: 100dvh;
 }
-
-/* CRT atmosphere lives on .crt-bezel so [data-side] phosphor vars apply */
 
 a {
   color: var(--accent-strong);
@@ -224,9 +178,7 @@ label {
   inset: 0;
   pointer-events: none;
   z-index: 3;
-  background:
-    linear-gradient(var(--side-tint), var(--side-tint)),
-    radial-gradient(ellipse at center, transparent 42%, rgba(0, 0, 0, 0.55) 100%);
+  background: radial-gradient(ellipse at center, transparent 42%, rgba(0, 0, 0, 0.55) 100%);
 }
 
 .crt-bezel::after {
@@ -694,15 +646,65 @@ label {
   border-bottom: 1px solid var(--line);
 }
 
+/* Small side accent on the bezel — not a full-page tint */
+.side-stripe {
+  position: absolute;
+  top: clamp(0.5rem, 1.5vw, 1rem);
+  bottom: clamp(0.5rem, 1.5vw, 1rem);
+  left: 0.35rem;
+  width: 5px;
+  z-index: 5;
+  pointer-events: none;
+  border-radius: 1px;
+}
+
+.side-stripe--blue {
+  background: var(--side-blue);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--side-blue) 45%, transparent);
+}
+
+.side-stripe--red {
+  background: var(--side-red);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--side-red) 45%, transparent);
+}
+
 .side-badge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   margin-top: 0.35rem;
   font-size: 0.7rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--phosphor);
+  color: var(--ink-muted);
   border: 1px solid var(--line);
   padding: 0.25rem 0.5rem;
+}
+
+.side-badge::before {
+  content: '';
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 1px;
+  background: var(--phosphor);
+}
+
+.side-badge--blue {
+  border-color: color-mix(in srgb, var(--side-blue) 55%, var(--line));
+  color: color-mix(in srgb, var(--side-blue) 70%, var(--ink));
+}
+
+.side-badge--blue::before {
+  background: var(--side-blue);
+}
+
+.side-badge--red {
+  border-color: color-mix(in srgb, var(--side-red) 55%, var(--line));
+  color: color-mix(in srgb, var(--side-red) 70%, var(--ink));
+}
+
+.side-badge--red::before {
+  background: var(--side-red);
 }
 
 @media (max-width: 600px) {
