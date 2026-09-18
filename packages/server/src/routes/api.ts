@@ -9,6 +9,7 @@ import type {
   UnitCondition,
   VesselType,
 } from '@war-patrol/shared';
+import { isV1PlayerUnit } from '@war-patrol/shared';
 import { nanoid } from 'nanoid';
 import * as store from '../store/fileStore.js';
 import { parseBearer, parseSseToken } from '../game/sessions.js';
@@ -114,17 +115,23 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         gameId: save.id,
         name: save.name,
         stateVersion: save.stateVersion,
-        vesselLinks: save.units.map((u) => ({
-          unitId: u.id,
-          name: u.name,
-          accessToken: u.accessToken,
-          passwordProtected: Boolean(u.password),
-          stations: u.stations.map((s) => ({
-            stationId: s.id,
-            name: s.name,
-            path: `/g/${save.id}/v/${u.accessToken}/s/${s.id}`,
-          })),
-        })),
+        vesselLinks: save.units.map((u) => {
+          const playerVessel = isV1PlayerUnit(u);
+          return {
+            unitId: u.id,
+            name: u.name,
+            accessToken: u.accessToken,
+            passwordProtected: Boolean(u.password),
+            playerVessel,
+            stations: playerVessel
+              ? u.stations.map((s) => ({
+                  stationId: s.id,
+                  name: s.name,
+                  path: `/g/${save.id}/v/${u.accessToken}/s/${s.id}`,
+                }))
+              : [],
+          };
+        }),
       };
     } catch (err) {
       const e = httpError(err);

@@ -530,14 +530,21 @@ export function UmpirePage() {
                             </td>
                             <td>
                               <div className="stack" style={{ gap: '0.25rem' }}>
-                                {v.stations.map((s) => (
-                                  <div key={s.stationId}>
-                                    <Link to={s.path}>{s.name}</Link>
-                                    <span className="mono muted" style={{ marginLeft: 8, fontSize: '0.7rem' }}>
-                                      {s.path}
-                                    </span>
-                                  </div>
-                                ))}
+                                {v.stations.length === 0 ? (
+                                  <span className="muted" style={{ fontSize: '0.8rem' }}>
+                                    NPC / umpire-only — no player stations in v1
+                                    (Destroyer + Submarine only)
+                                  </span>
+                                ) : (
+                                  v.stations.map((s) => (
+                                    <div key={s.stationId}>
+                                      <Link to={s.path}>{s.name}</Link>
+                                      <span className="mono muted" style={{ marginLeft: 8, fontSize: '0.7rem' }}>
+                                        {s.path}
+                                      </span>
+                                    </div>
+                                  ))
+                                )}
                               </div>
                             </td>
                             <td>

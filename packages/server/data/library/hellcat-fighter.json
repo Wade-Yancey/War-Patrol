@@ -6,7 +6,5 @@
   "maxSpeed": 320,
   "turnRate": 12,
   "radarSignature": "small",
-  "defaultStations": [
-    { "id": "cockpit", "name": "Cockpit", "capabilities": ["helm", "lookout", "weapons"] }
-  ]
+  "defaultStations": []
 }

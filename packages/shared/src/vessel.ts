@@ -86,6 +86,33 @@ export function classesForType(type: VesselType): HullClass[] {
 }
 
 /**
+ * Hull classes with **player station flows** in the first iteration.
+ * Cruiser / carrier / merchant / oiler / battleship / aircraft may exist as
+ * umpire/NPC units later, but v1 only links stations for Destroyer + Fleet Submarine.
+ */
+export const V1_PLAYER_HULL_CLASSES: readonly HullClass[] = [
+  'Destroyer',
+  'Fleet Submarine',
+];
+
+const V1_PLAYER_CLASS_SET = new Set<string>(V1_PLAYER_HULL_CLASSES);
+
+/** True when this hull class gets player join URLs / station auth in v1. */
+export function isV1PlayerHullClass(hullClass: HullClass | string | undefined): boolean {
+  return typeof hullClass === 'string' && V1_PLAYER_CLASS_SET.has(hullClass);
+}
+
+/** True when the unit is a v1 player vessel (DD or fleet sub). */
+export function isV1PlayerUnit(unit: {
+  type?: unknown;
+  class?: unknown;
+  classId?: unknown;
+}): boolean {
+  const { class: hullClass } = resolveVesselIdentity(unit);
+  return isV1PlayerHullClass(hullClass);
+}
+
+/**
  * Resolve type + class from possibly-legacy save/scenario fields.
  * Prefers explicit valid `class`; coerces `type` to match; migrates old enums.
  */
