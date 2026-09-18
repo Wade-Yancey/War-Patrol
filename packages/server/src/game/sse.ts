@@ -125,11 +125,13 @@ export class SseHub {
   /** Heartbeat to keep proxies from closing idle streams. */
   startHeartbeat(intervalMs = 25000): NodeJS.Timeout {
     return setInterval(() => {
-      for (const client of this.clients.values()) {
+      for (const client of [...this.clients.values()]) {
         try {
           client.reply.raw.write(`: ping\n\n`);
         } catch {
-          this.clients.delete(client.id);
+          if (this.clients.delete(client.id)) {
+            this.onConnectionsChanged?.(client.gameId);
+          }
         }
       }
     }, intervalMs);
