@@ -1025,21 +1025,6 @@ label {
     width: min(100%, min(calc(100vw - 0.9rem), calc(100dvh - 4.75rem)));
   }
 
-  .hydrophone-station-panel {
-    padding: 0.25rem 0.2rem 0.4rem;
-    border-color: transparent;
-    background: transparent;
-  }
-
-  .hydrophone-svg {
-    width: min(100%, calc(100vw - 0.9rem), calc(100dvh - 4.75rem));
-    max-height: min(calc(100vw - 0.9rem), calc(100dvh - 4.75rem));
-  }
-
-  .hydrophone-aux {
-    width: min(100%, min(calc(100vw - 0.9rem), calc(100dvh - 4.75rem)));
-  }
-
   .station-turn-panel {
     padding: 0.55rem 0.65rem;
   }
@@ -1104,37 +1089,7 @@ label {
     max-height: none;
   }
 
-  .hydrophone-scope {
-    flex-direction: row;
-    flex-wrap: nowrap;
-    align-items: center;
-    justify-content: center;
-    gap: 0.75rem;
-    width: max-content;
-    max-width: 100%;
-  }
-
-  .hydrophone-scope-plot {
-    flex: 0 0 auto;
-    width: auto;
-  }
-
-  .hydrophone-svg {
-    width: min(78vh, 820px, calc(100vw - 15rem));
-    max-width: min(78vh, 820px, calc(100vw - 15rem));
-    max-height: min(78vh, 820px);
-  }
-
-  .hydrophone-aux {
-    width: 12rem;
-    max-width: 12rem;
-    max-height: min(78vh, 820px);
-    overflow-x: hidden;
-    overflow-y: auto;
-    padding: 0.15rem 0;
-    justify-content: flex-start;
-  }
-
+  /* Hydrophone aux chrome densifies beside the shared radar-scope layout. */
   .hydrophone-readouts {
     flex-direction: column;
     align-items: flex-start;
@@ -1160,22 +1115,6 @@ label {
   .radar-side-panel {
     width: 12rem;
     max-width: 12rem;
-    max-height: min(84vh, 920px);
-  }
-
-  .hydrophone-scope {
-    gap: 0.9rem;
-  }
-
-  .hydrophone-svg {
-    width: min(84vh, 920px, calc(100vw - 16rem));
-    max-width: min(84vh, 920px, calc(100vw - 16rem));
-    max-height: min(84vh, 920px);
-  }
-
-  .hydrophone-aux {
-    width: 12.5rem;
-    max-width: 12.5rem;
     max-height: min(84vh, 920px);
   }
 }
@@ -1492,71 +1431,10 @@ label {
   line-height: 1.35;
 }
 
-/* Hydrophone bearing dial — tablet-first like radar PPI; audio-first (≠ active sonar) */
-.hydrophone-station-panel {
-  margin-top: 0;
-  padding: 0.4rem 0.45rem 0.55rem;
-  max-width: 100%;
-  box-sizing: border-box;
-}
-
-.hydrophone-station-panel.stack {
-  align-items: stretch;
-  gap: 0.35rem;
-}
-
-.hydrophone-scope {
-  /* Dominant dial + compact aux chrome below / beside — mirrors radar console. */
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.45rem;
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-  margin: 0 auto;
-}
-
-.hydrophone-scope-plot {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-  width: 100%;
-}
-
-.hydrophone-dial {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
+/* Hydrophone chrome — layout/sizing reuses .radar-scope / .radar-scope-svg / .radar-side-panel (#29). */
 .hydrophone-svg {
-  /* Tablet-first: nearly full viewport square; bearings stay in SVG viewBox. */
-  display: block;
-  width: min(100%, calc(100vw - 1.25rem), calc(100dvh - 5.25rem));
-  height: auto;
-  aspect-ratio: 1 / 1;
-  max-height: min(calc(100vw - 1.25rem), calc(100dvh - 5.25rem));
-  max-width: 100%;
   touch-action: none;
-  user-select: none;
   cursor: crosshair;
-  flex: none;
-  margin-inline: auto;
-}
-
-.hydrophone-aux {
-  flex: 0 0 auto;
-  width: min(100%, min(calc(100vw - 1.25rem), calc(100dvh - 5.25rem)));
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  min-width: 0;
-  box-sizing: border-box;
 }
 
 .hydrophone-needle {
