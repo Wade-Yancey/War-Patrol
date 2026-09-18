@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
+import { CrtShell } from '../components/CrtShell';
 
 export function LandingPage() {
   const navigate = useNavigate();
@@ -59,101 +60,106 @@ export function LandingPage() {
   };
 
   return (
-    <div className="app-shell fade-in">
-      <header style={{ marginBottom: '2rem' }}>
-        <p className="brand">War Patrol</p>
-        <p className="subhead">
-          Hosted game shell — create an engagement, share vessel station links, and run
-          turn-based ordering without revealing ground truth to players.
-        </p>
-      </header>
-
-      {error && <p className="error">{error}</p>}
-
-      <div className="grid-2">
-        <form className="panel stack" onSubmit={createAndEnter}>
-          <h2>Create game</h2>
-          <label>
-            Scenario
-            <select value={scenarioId} onChange={(e) => setScenarioId(e.target.value)}>
-              {scenarios.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name} ({s.mode}, {s.unitCount} units)
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Game name (optional)
-            <input value={gameName} onChange={(e) => setGameName(e.target.value)} placeholder="Local demo" />
-          </label>
-          <label>
-            Umpire password
-            <input
-              type="password"
-              value={umpirePassword}
-              onChange={(e) => setUmpirePassword(e.target.value)}
-              autoComplete="current-password"
-            />
-          </label>
-          <button
-            className="primary"
-            type="button"
-            disabled={busy || !scenarioId}
-            onClick={() => void createAndEnter()}
-          >
-            Create & open umpire view
-          </button>
-          {scenarios.find((s) => s.id === scenarioId)?.description && (
-            <p className="muted" style={{ margin: 0, fontSize: '0.9rem' }}>
-              {scenarios.find((s) => s.id === scenarioId)?.description}
+    <CrtShell>
+      <div className="app-shell">
+        <header className="header-bar">
+          <div>
+            <span className="brand-mark">Naval simulation · terminal</span>
+            <p className="brand">War Patrol</p>
+            <p className="subhead">
+              Hosted game shell — create an engagement, share vessel station links, and run
+              turn-based ordering without revealing ground truth to players.
             </p>
-          )}
-        </form>
+          </div>
+        </header>
 
-        <section className="panel stack">
-          <h2>Load save</h2>
-          <label>
-            Umpire password (for login after load)
-            <input
-              type="password"
-              value={umpirePassword}
-              onChange={(e) => setUmpirePassword(e.target.value)}
-            />
-          </label>
-          {saves.length === 0 ? (
-            <p className="muted">No saves on disk yet.</p>
-          ) : (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Updated</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {saves.map((s) => (
-                  <tr key={s.id}>
-                    <td>{s.name}</td>
-                    <td className="mono muted">{new Date(s.updatedAt).toLocaleString()}</td>
-                    <td>
-                      <button type="button" disabled={busy} onClick={() => void loadSave(s.id)}>
-                        Load
-                      </button>
-                    </td>
-                  </tr>
+        {error && <p className="error">{error}</p>}
+
+        <div className="grid-2">
+          <form className="panel stack" onSubmit={createAndEnter}>
+            <h2>Create game</h2>
+            <label>
+              Scenario
+              <select value={scenarioId} onChange={(e) => setScenarioId(e.target.value)}>
+                {scenarios.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} ({s.mode}, {s.unitCount} units)
+                  </option>
                 ))}
-              </tbody>
-            </table>
-          )}
-          <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-            Demo vessel links use passwords <span className="mono">blue</span> /{' '}
-            <span className="mono">red</span>. Umpire default is <span className="mono">umpire</span>.
-          </p>
-          <Link to="/join">Join with vessel link →</Link>
-        </section>
+              </select>
+            </label>
+            <label>
+              Game name (optional)
+              <input value={gameName} onChange={(e) => setGameName(e.target.value)} placeholder="Local demo" />
+            </label>
+            <label>
+              Umpire password
+              <input
+                type="password"
+                value={umpirePassword}
+                onChange={(e) => setUmpirePassword(e.target.value)}
+                autoComplete="current-password"
+              />
+            </label>
+            <button
+              className="primary"
+              type="button"
+              disabled={busy || !scenarioId}
+              onClick={() => void createAndEnter()}
+            >
+              Create & open umpire view
+            </button>
+            {scenarios.find((s) => s.id === scenarioId)?.description && (
+              <p className="muted" style={{ margin: 0, fontSize: '0.9rem' }}>
+                {scenarios.find((s) => s.id === scenarioId)?.description}
+              </p>
+            )}
+          </form>
+
+          <section className="panel stack">
+            <h2>Load save</h2>
+            <label>
+              Umpire password (for login after load)
+              <input
+                type="password"
+                value={umpirePassword}
+                onChange={(e) => setUmpirePassword(e.target.value)}
+              />
+            </label>
+            {saves.length === 0 ? (
+              <p className="muted">No saves on disk yet.</p>
+            ) : (
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Updated</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {saves.map((s) => (
+                    <tr key={s.id}>
+                      <td>{s.name}</td>
+                      <td className="mono muted">{new Date(s.updatedAt).toLocaleString()}</td>
+                      <td>
+                        <button type="button" disabled={busy} onClick={() => void loadSave(s.id)}>
+                          Load
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+              Demo vessel links use passwords <span className="mono">blue</span> /{' '}
+              <span className="mono">red</span>. Umpire default is <span className="mono">umpire</span>.
+            </p>
+            <Link to="/join">Join with vessel link →</Link>
+          </section>
+        </div>
       </div>
-    </div>
+    </CrtShell>
   );
 }

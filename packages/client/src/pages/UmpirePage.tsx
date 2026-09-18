@@ -5,6 +5,8 @@ import { api } from '../api/client';
 import { useGameStream } from '../hooks/useGameStream';
 import { GroundTruthMap } from '../components/GroundTruthMap';
 import { TurnStatus } from '../components/TurnStatus';
+import { CrtShell } from '../components/CrtShell';
+import { TouchNumber } from '../components/TouchNumber';
 
 function tokenKey(gameId: string) {
   return `wp-token:${gameId}:umpire`;
@@ -56,257 +58,259 @@ export function UmpirePage() {
 
   if (!token) {
     return (
-      <div className="app-shell fade-in">
-        <p className="brand">War Patrol</p>
-        <p className="subhead">Umpire login for game {gameId}</p>
-        {authError && <p className="error">{authError}</p>}
-        <form className="panel stack" onSubmit={login} style={{ maxWidth: 420, marginTop: '1.5rem' }}>
-          <label>
-            Password
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoFocus
-            />
-          </label>
-          <button className="primary" type="button" onClick={() => void login()}>
-            Enter umpire view
-          </button>
-          <Link to="/">← Home</Link>
-        </form>
-      </div>
+      <CrtShell>
+        <div className="app-shell">
+          <span className="brand-mark">Umpire console</span>
+          <p className="brand">War Patrol</p>
+          <p className="subhead">Umpire login for game {gameId}</p>
+          {authError && <p className="error">{authError}</p>}
+          <form className="panel stack" onSubmit={login} style={{ maxWidth: 420, marginTop: '1.5rem' }}>
+            <label>
+              Password
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoFocus
+              />
+            </label>
+            <button className="primary" type="button" onClick={() => void login()}>
+              Enter umpire view
+            </button>
+            <Link to="/">← Home</Link>
+          </form>
+        </div>
+      </CrtShell>
     );
   }
 
   return (
-    <div className="app-shell fade-in">
-      <header
-        className="row"
-        style={{ justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}
-      >
-        <div>
-          <p className="brand" style={{ fontSize: '1.5rem' }}>
-            War Patrol
-          </p>
-          <p className="muted" style={{ margin: '0.25rem 0 0' }}>
-            Umpire · {umpire?.name ?? gameId}
-          </p>
-        </div>
-        <div className="stack" style={{ alignItems: 'flex-end', gap: '0.35rem' }}>
-          <div className="row" style={{ alignItems: 'center' }}>
-            <span className={`live-dot ${connected ? '' : 'off'}`} />
-            <span className="mono muted">v{stateVersion}</span>
+    <CrtShell>
+      <div className="app-shell">
+        <header className="header-bar">
+          <div>
+            <span className="brand-mark">Umpire · ground truth</span>
+            <p className="brand" style={{ fontSize: 'clamp(1.35rem, 3.5vw, 1.85rem)' }}>
+              War Patrol
+            </p>
+            <p className="muted" style={{ margin: '0.25rem 0 0' }}>
+              {umpire?.name ?? gameId}
+            </p>
           </div>
-          <Link to="/">Home</Link>
-        </div>
-      </header>
-
-      {(error || actionError) && <p className="error">{error || actionError}</p>}
-
-      {umpire && (
-        <>
-          <section className="panel stack">
-            <h2>Turn controls</h2>
-            <TurnStatus turn={umpire.turn} />
-            <div className="row">
-              <label>
-                Timer (sec)
-                <input
-                  type="number"
-                  min={0}
-                  value={timerSeconds}
-                  onChange={(e) => setTimerSeconds(Number(e.target.value))}
-                  style={{ width: 100 }}
-                />
-              </label>
-              <button type="button" onClick={() => void run(() => api.turnTimer(gameId, token, timerSeconds))}>
-                Set timer
-              </button>
-              <button type="button" onClick={() => void run(() => api.turnExtend(gameId, token, 60))}>
-                +60s
-              </button>
-              <button type="button" onClick={() => void run(() => api.turnResetTimer(gameId, token))}>
-                Reset timer
-              </button>
-              <button type="button" onClick={() => void run(() => api.turnLock(gameId, token))}>
-                Lock
-              </button>
-              <button type="button" onClick={() => void run(() => api.turnReopen(gameId, token))}>
-                Reopen
-              </button>
-              <button
-                className="primary"
-                type="button"
-                onClick={() => void run(() => api.turnResolve(gameId, token))}
-              >
-                Resolve
-              </button>
-              <button type="button" onClick={() => void run(() => api.saveGame(gameId, token))}>
-                Save to disk
-              </button>
+          <div className="stack" style={{ alignItems: 'flex-end', gap: '0.35rem' }}>
+            <div className="row" style={{ alignItems: 'center' }}>
+              <span className={`live-dot ${connected ? '' : 'off'}`} />
+              <span className="mono muted">v{stateVersion}</span>
             </div>
-            {umpire.historyTurnNumbers.length > 0 && (
-              <div className="row" style={{ alignItems: 'center' }}>
-                <span className="muted">Rollback to end of turn:</span>
-                {umpire.historyTurnNumbers.map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    className="danger"
-                    onClick={() => void run(() => api.rollback(gameId, token, n))}
-                  >
-                    T{n}
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
+            <Link to="/">Home</Link>
+          </div>
+        </header>
 
-          <div className="grid-2" style={{ marginTop: '1rem' }}>
-            <section className="panel">
-              <h2>Ground truth</h2>
-              <GroundTruthMap area={umpire.operatingArea} units={umpire.units} />
+        {(error || actionError) && <p className="error">{error || actionError}</p>}
+
+        {umpire && (
+          <>
+            <section className="panel stack">
+              <h2>Turn controls</h2>
+              <TurnStatus turn={umpire.turn} />
+              <TouchNumber
+                label="Timer (seconds)"
+                value={timerSeconds}
+                onChange={setTimerSeconds}
+                min={0}
+                max={3600}
+                step={15}
+                unit="s"
+                showSlider
+              />
+              <div className="row">
+                <button type="button" onClick={() => void run(() => api.turnTimer(gameId, token, timerSeconds))}>
+                  Set timer
+                </button>
+                <button type="button" onClick={() => void run(() => api.turnExtend(gameId, token, 60))}>
+                  +60s
+                </button>
+                <button type="button" onClick={() => void run(() => api.turnResetTimer(gameId, token))}>
+                  Reset timer
+                </button>
+                <button type="button" onClick={() => void run(() => api.turnLock(gameId, token))}>
+                  Lock
+                </button>
+                <button type="button" onClick={() => void run(() => api.turnReopen(gameId, token))}>
+                  Reopen
+                </button>
+                <button
+                  className="primary"
+                  type="button"
+                  onClick={() => void run(() => api.turnResolve(gameId, token))}
+                >
+                  Resolve
+                </button>
+                <button type="button" onClick={() => void run(() => api.saveGame(gameId, token))}>
+                  Save to disk
+                </button>
+              </div>
+              {umpire.historyTurnNumbers.length > 0 && (
+                <div className="row" style={{ alignItems: 'center' }}>
+                  <span className="muted">Rollback to end of turn:</span>
+                  {umpire.historyTurnNumbers.map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      className="danger"
+                      onClick={() => void run(() => api.rollback(gameId, token, n))}
+                    >
+                      T{n}
+                    </button>
+                  ))}
+                </div>
+              )}
             </section>
 
-            <div className="stack">
+            <div className="grid-2" style={{ marginTop: '1rem' }}>
               <section className="panel">
-                <h2>Vessel links & passwords</h2>
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Vessel</th>
-                      <th>Stations</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {umpire.vesselLinks.map((v) => (
-                      <tr key={v.unitId}>
-                        <td>
-                          <div>{v.name}</div>
-                          <div className="mono muted" style={{ fontSize: '0.75rem' }}>
-                            token {v.accessToken}
-                            {v.passwordProtected ? ' · password set' : ' · open'}
-                          </div>
-                        </td>
-                        <td>
-                          <div className="stack" style={{ gap: '0.25rem' }}>
-                            {v.stations.map((s) => (
-                              <div key={s.stationId}>
-                                <Link to={s.path}>{s.name}</Link>
-                                <span className="mono muted" style={{ marginLeft: 8, fontSize: '0.7rem' }}>
-                                  {s.path}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </td>
-                        <td>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void run(async () => {
-                                await api.rotateToken(gameId, token, v.unitId);
-                              })
-                            }
-                          >
-                            Rotate token
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <h2>Ground truth</h2>
+                <GroundTruthMap area={umpire.operatingArea} units={umpire.units} />
               </section>
 
-              <section className="panel stack">
-                <h2>Unit edit</h2>
-                <label>
-                  Unit
-                  <select
-                    value={selectedUnit?.id ?? ''}
-                    onChange={(e) => {
-                      setEditUnitId(e.target.value);
-                      const u = umpire.units.find((x) => x.id === e.target.value);
-                      if (u) setEditHealth(u.health);
-                    }}
-                  >
-                    {umpire.units.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Health (placeholder)
-                  <input
-                    type="number"
+              <div className="stack">
+                <section className="panel">
+                  <h2>Vessel links & passwords</h2>
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Vessel</th>
+                        <th>Stations</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {umpire.vesselLinks.map((v) => (
+                        <tr key={v.unitId}>
+                          <td>
+                            <div>{v.name}</div>
+                            <div className="mono muted" style={{ fontSize: '0.75rem' }}>
+                              token {v.accessToken}
+                              {v.passwordProtected ? ' · password set' : ' · open'}
+                            </div>
+                          </td>
+                          <td>
+                            <div className="stack" style={{ gap: '0.25rem' }}>
+                              {v.stations.map((s) => (
+                                <div key={s.stationId}>
+                                  <Link to={s.path}>{s.name}</Link>
+                                  <span className="mono muted" style={{ marginLeft: 8, fontSize: '0.7rem' }}>
+                                    {s.path}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void run(async () => {
+                                  await api.rotateToken(gameId, token, v.unitId);
+                                })
+                              }
+                            >
+                              Rotate token
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </section>
+
+                <section className="panel stack">
+                  <h2>Unit edit</h2>
+                  <label>
+                    Unit
+                    <select
+                      value={selectedUnit?.id ?? ''}
+                      onChange={(e) => {
+                        setEditUnitId(e.target.value);
+                        const u = umpire.units.find((x) => x.id === e.target.value);
+                        if (u) setEditHealth(u.health);
+                      }}
+                    >
+                      {umpire.units.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <TouchNumber
+                    label="Health (placeholder)"
+                    value={editHealth}
+                    onChange={setEditHealth}
                     min={0}
                     max={100}
-                    value={editHealth}
-                    onChange={(e) => setEditHealth(Number(e.target.value))}
+                    step={5}
+                    unit="%"
                   />
-                </label>
-                <button
-                  type="button"
-                  disabled={!selectedUnit}
-                  onClick={() =>
-                    void run(() =>
-                      api.updateUnit(gameId, token, selectedUnit!.id, { health: editHealth }),
-                    )
-                  }
-                >
-                  Apply health
-                </button>
-                {selectedUnit && (
-                  <label>
-                    Vessel password
-                    <div className="row">
-                      <input
-                        id="vessel-pw"
-                        defaultValue={selectedUnit.password ?? ''}
-                        key={selectedUnit.id + String(stateVersion)}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const el = document.getElementById('vessel-pw') as HTMLInputElement;
-                          void run(() =>
-                            api.updateUnit(gameId, token, selectedUnit.id, {
-                              password: el.value,
-                            }),
-                          );
-                        }}
-                      >
-                        Set password
-                      </button>
-                    </div>
-                  </label>
-                )}
-              </section>
+                  <button
+                    type="button"
+                    disabled={!selectedUnit}
+                    onClick={() =>
+                      void run(() =>
+                        api.updateUnit(gameId, token, selectedUnit!.id, { health: editHealth }),
+                      )
+                    }
+                  >
+                    Apply health
+                  </button>
+                  {selectedUnit && (
+                    <label>
+                      Vessel password
+                      <div className="row">
+                        <input
+                          id="vessel-pw"
+                          defaultValue={selectedUnit.password ?? ''}
+                          key={selectedUnit.id + String(stateVersion)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const el = document.getElementById('vessel-pw') as HTMLInputElement;
+                            void run(() =>
+                              api.updateUnit(gameId, token, selectedUnit.id, {
+                                password: el.value,
+                              }),
+                            );
+                          }}
+                        >
+                          Set password
+                        </button>
+                      </div>
+                    </label>
+                  )}
+                </section>
 
-              <section className="panel">
-                <h2>Connections</h2>
-                {umpire.connections.length === 0 ? (
-                  <p className="muted">No live SSE clients.</p>
-                ) : (
-                  <ul className="mono" style={{ margin: 0, paddingLeft: '1.1rem' }}>
-                    {umpire.connections.map((c, i) => (
-                      <li key={i}>
-                        {c.role}
-                        {c.unitId ? ` · ${c.unitId}` : ''}
-                        {c.stationId ? ` / ${c.stationId}` : ''} ×{c.count}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
+                <section className="panel">
+                  <h2>Connections</h2>
+                  {umpire.connections.length === 0 ? (
+                    <p className="muted">No live SSE clients.</p>
+                  ) : (
+                    <ul className="mono" style={{ margin: 0, paddingLeft: '1.1rem' }}>
+                      {umpire.connections.map((c, i) => (
+                        <li key={i}>
+                          {c.role}
+                          {c.unitId ? ` · ${c.unitId}` : ''}
+                          {c.stationId ? ` / ${c.stationId}` : ''} ×{c.count}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              </div>
             </div>
-          </div>
-        </>
-      )}
-    </div>
+          </>
+        )}
+      </div>
+    </CrtShell>
   );
 }

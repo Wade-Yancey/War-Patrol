@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { CrtShell } from '../components/CrtShell';
 
 /** Manual join helper when pasting a station path. */
 export function JoinPage() {
@@ -19,20 +20,23 @@ export function JoinPage() {
   };
 
   return (
-    <div className="app-shell fade-in">
-      <p className="brand">War Patrol</p>
-      <p className="subhead">Paste a station URL or path from the umpire.</p>
-      {error && <p className="error">{error}</p>}
-      <form className="panel stack" onSubmit={go} style={{ maxWidth: 520, marginTop: '1.5rem' }}>
-        <label>
-          Station path
-          <input value={path} onChange={(e) => setPath(e.target.value)} />
-        </label>
-        <button className="primary" type="submit">
-          Open station
-        </button>
-        <Link to="/">← Back</Link>
-      </form>
-    </div>
+    <CrtShell>
+      <div className="app-shell">
+        <span className="brand-mark">Station access</span>
+        <p className="brand">War Patrol</p>
+        <p className="subhead">Paste a station URL or path from the umpire.</p>
+        {error && <p className="error">{error}</p>}
+        <form className="panel stack" onSubmit={go} style={{ maxWidth: 520, marginTop: '1.5rem' }}>
+          <label>
+            Station path
+            <input value={path} onChange={(e) => setPath(e.target.value)} />
+          </label>
+          <button className="primary" type="submit">
+            Open station
+          </button>
+          <Link to="/">← Back</Link>
+        </form>
+      </div>
+    </CrtShell>
   );
 }
