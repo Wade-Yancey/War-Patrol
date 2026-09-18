@@ -1025,6 +1025,49 @@ label {
     width: min(100%, min(calc(100vw - 0.9rem), calc(100dvh - 4.75rem)));
   }
 
+  /* Hydrophone: always CRT console row — dial left, aux hugging right. */
+  .hydrophone-scope.radar-scope {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.55rem;
+    width: max-content;
+    max-width: 100%;
+  }
+
+  .hydrophone-scope .radar-scope-plot {
+    width: auto;
+  }
+
+  .hydrophone-scope .radar-scope-svg {
+    /* Step down from radar tablet full-bleed (~15% smaller). */
+    width: min(calc(100vw - 13.5rem), calc(100dvh - 5.75rem), 26rem);
+    max-width: min(calc(100vw - 13.5rem), calc(100dvh - 5.75rem), 26rem);
+    max-height: min(calc(100vw - 13.5rem), calc(100dvh - 5.75rem), 26rem);
+  }
+
+  .hydrophone-scope .radar-side-panel {
+    width: 11.5rem;
+    max-width: 11.5rem;
+    max-height: min(calc(100dvh - 5.75rem), 26rem);
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 0.1rem 0;
+    justify-content: flex-start;
+  }
+
+  .hydrophone-readouts {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 0.25rem;
+  }
+
+  .hydrophone-caption {
+    text-align: left;
+  }
+
   .station-turn-panel {
     padding: 0.55rem 0.65rem;
   }
@@ -1068,6 +1111,17 @@ label {
     justify-content: flex-start;
   }
 
+  .hydrophone-scope .radar-scope-svg {
+    /* Desktop: a little smaller than radar PPI (78vh/820 → ~66vh/680). */
+    width: min(66vh, 680px, calc(100vw - 15rem));
+    max-width: min(66vh, 680px, calc(100vw - 15rem));
+    max-height: min(66vh, 680px);
+  }
+
+  .hydrophone-scope .radar-side-panel {
+    max-height: min(66vh, 680px);
+  }
+
   .radar-scale-buttons {
     /* Vertical strip along the scope — reads as console controls. */
     grid-template-columns: 1fr;
@@ -1088,17 +1142,6 @@ label {
   .radar-contact-list ul {
     max-height: none;
   }
-
-  /* Hydrophone aux chrome densifies beside the shared radar-scope layout. */
-  .hydrophone-readouts {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.25rem;
-  }
-
-  .hydrophone-caption {
-    text-align: left;
-  }
 }
 
 @media (min-width: 1100px) {
@@ -1116,6 +1159,18 @@ label {
     width: 12rem;
     max-width: 12rem;
     max-height: min(84vh, 920px);
+  }
+
+  .hydrophone-scope .radar-scope-svg {
+    width: min(70vh, 740px, calc(100vw - 16rem));
+    max-width: min(70vh, 740px, calc(100vw - 16rem));
+    max-height: min(70vh, 740px);
+  }
+
+  .hydrophone-scope .radar-side-panel {
+    width: 12rem;
+    max-width: 12rem;
+    max-height: min(70vh, 740px);
   }
 }
 
@@ -1431,7 +1486,39 @@ label {
   line-height: 1.35;
 }
 
-/* Hydrophone chrome — layout/sizing reuses .radar-scope / .radar-scope-svg / .radar-side-panel (#29). */
+/* Hydrophone — CRT console: dial left, aux right; dial stepped down from radar #29. */
+.hydrophone-scope.radar-scope {
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  width: max-content;
+  max-width: 100%;
+}
+
+.hydrophone-scope .radar-scope-plot {
+  flex: 0 0 auto;
+  width: auto;
+}
+
+.hydrophone-scope .radar-scope-svg {
+  /* Default: leave room for right aux; ~15% under radar full-bleed. */
+  width: min(calc(100vw - 14rem), calc(100dvh - 6rem), 28rem);
+  max-width: min(calc(100vw - 14rem), calc(100dvh - 6rem), 28rem);
+  max-height: min(calc(100vw - 14rem), calc(100dvh - 6rem), 28rem);
+}
+
+.hydrophone-scope .radar-side-panel {
+  width: 11.5rem;
+  max-width: 11.5rem;
+  max-height: min(calc(100dvh - 6rem), 28rem);
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0.15rem 0;
+  justify-content: flex-start;
+}
+
 .hydrophone-svg {
   touch-action: none;
   cursor: crosshair;
@@ -1449,9 +1536,11 @@ label {
 
 .hydrophone-readouts {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.35rem 0.85rem;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 0.25rem;
   width: 100%;
 }
 
@@ -1461,12 +1550,17 @@ label {
   gap: 0.35rem;
 }
 
+.hydrophone-readout--band .hydrophone-val {
+  font-size: 0.85rem;
+}
+
 .hydrophone-key {
   font-family: var(--font-display);
   font-size: 0.65rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--phosphor-dim);
+  min-width: 2.4rem;
 }
 
 .hydrophone-val {
@@ -1517,8 +1611,8 @@ label {
 
 .hydrophone-caption {
   margin: 0;
-  font-size: 0.7rem;
-  text-align: center;
+  font-size: 0.65rem;
+  text-align: left;
   line-height: 1.3;
 }
 
@@ -1548,6 +1642,31 @@ label {
 .hydrophone-band--none {
   color: var(--ink-muted);
   opacity: 0.7;
+}
+
+.hydrophone-band-label {
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+}
+
+/* Very narrow phones: stack aux under dial so the dial still fits. */
+@media (max-width: 520px) {
+  .hydrophone-scope.radar-scope {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .hydrophone-scope .radar-scope-svg {
+    width: min(100%, calc(100vw - 1.25rem), calc(100dvh - 10rem), 22rem);
+    max-width: min(100%, calc(100vw - 1.25rem), calc(100dvh - 10rem), 22rem);
+    max-height: min(calc(100vw - 1.25rem), calc(100dvh - 10rem), 22rem);
+  }
+
+  .hydrophone-scope .radar-side-panel {
+    width: min(100%, 22rem);
+    max-width: min(100%, 22rem);
+    max-height: none;
+  }
 }
 
 @media (max-width: 600px) {
