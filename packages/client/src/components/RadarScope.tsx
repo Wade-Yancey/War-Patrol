@@ -105,19 +105,35 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
   }, []);
 
   const headingRad = ((ownHeading - 90) * Math.PI) / 180;
+
+  /** Same anonymous indices as the contact table (bearing order). */
+  const contactIndexById = useMemo(() => {
+    const map = new Map<string, number>();
+    contacts.forEach((c, i) => map.set(c.id, i + 1));
+    return map;
+  }, [contacts]);
+
   const blips = [...persistRef.current.values()].map((b) => {
     const age = now - b.lastSeenAt;
     const fade = Math.max(0, 1 - age / 7000);
     const frac = Math.min(1, b.rangeNm / Math.max(maxRangeNm, 0.001));
     const rad = ((b.bearing - 90) * Math.PI) / 180;
     const r = frac * SCOPE_R;
+    const x = CX + Math.cos(rad) * r;
+    const y = CY + Math.sin(rad) * r;
+    const blipR = 2.5 + 6 * b.strength;
+    const labelN = contactIndexById.get(b.id);
+    // Keep label readable: prefer right of blip, flip left near the right rim.
+    const labelOnLeft = x > CX + SCOPE_R * 0.35;
     return {
       ...b,
-      x: CX + Math.cos(rad) * r,
-      y: CY + Math.sin(rad) * r,
+      x,
+      y,
       opacity: 0.25 + 0.75 * fade * (0.35 + 0.65 * b.strength),
-      // Strength (incl. signature) drives blip size on the scope.
-      r: 2.5 + 6 * b.strength,
+      r: blipR,
+      labelN,
+      labelX: labelOnLeft ? x - blipR - 8 : x + blipR + 8,
+      labelAnchor: labelOnLeft ? ('end' as const) : ('start' as const),
     };
   });
 
@@ -227,6 +243,18 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
               strokeWidth={0.8}
               opacity={0.5}
             />
+            {b.labelN != null && (
+              <text
+                x={b.labelX}
+                y={b.y + 4}
+                textAnchor={b.labelAnchor}
+                fill="#7dff9a"
+                fontSize={14}
+                fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
+              >
+                Contact {b.labelN}
+              </text>
+            )}
           </g>
         ))}
 
