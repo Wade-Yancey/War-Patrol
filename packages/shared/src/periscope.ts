@@ -86,8 +86,8 @@ export function periscopeSilhouetteScale(
 
 /**
  * Public asset path for a hull-class silhouette (side profile).
- * Destroyer → `/silhouettes/destroyer.png` (transparent side elevation derived
- * from Wade’s recognition JPG). Other classes → null (placeholder).
+ * Destroyer → `/silhouettes/destroyer.png` — solid opaque black side elevation
+ * on transparent (thresholded from Wade’s recognition JPG). Other classes → null.
  */
 export function silhouetteUrlForClass(
   hullClass: HullClass | string | undefined,
