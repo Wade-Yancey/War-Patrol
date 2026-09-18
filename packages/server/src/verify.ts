@@ -448,6 +448,32 @@ async function main() {
     umpireToken,
   );
 
+  // Speed clamped to class max
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { speed: 99 },
+    umpireToken,
+  );
+  const overSpeed = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
+  check('speed clamped to destroyer max', overSpeed.speed === overSpeed.maxSpeed && overSpeed.maxSpeed === 36);
+
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { class: 'Fleet Submarine', type: 'Submarine', speed: 30 },
+    umpireToken,
+  );
+  const asSub = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
+  check('class change adopts fleet sub maxSpeed', asSub.maxSpeed === 20);
+  check('speed clamped after class change', asSub.speed === 20 && asSub.class === 'Fleet Submarine');
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { type: 'Ship', class: 'Destroyer', name: 'USS Porter', faction: 'Blue', speed: 12 },
+    umpireToken,
+  );
+
   // Ship depth forced to surface
   await api(
     'PATCH',
