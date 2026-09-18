@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   EOT_LABELS,
+  SUBMARINE_MAX_DEPTH_M,
   conditionLabel,
   effectiveMaxSpeed,
+  formatDepthMeters,
   formatPendingOrdersSummary,
   hasPendingOrders,
   isRadarSurfaced,
@@ -18,6 +20,7 @@ import { CrtShell } from '../components/CrtShell';
 import { TouchNumber } from '../components/TouchNumber';
 import { EotTelegraph } from '../components/EotTelegraph';
 import { HelmCompass } from '../components/HelmCompass';
+import { DiveControls } from '../components/DiveControls';
 import { HydrophoneScope } from '../components/HydrophoneScope';
 import { RadarScope } from '../components/RadarScope';
 import { ActiveSonarScope } from '../components/ActiveSonarScope';
@@ -38,6 +41,7 @@ export function StationPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [course, setCourse] = useState(0);
   const [eot, setEot] = useState<EotSetting>('ahead_standard');
+  const [depth, setDepth] = useState(0);
   const [seeded, setSeeded] = useState(false);
   const [sensorTab, setSensorTab] = useState<SensorTab | null>(null);
   const [sonarBusy, setSonarBusy] = useState(false);
@@ -69,6 +73,11 @@ export function StationPage() {
     setSeeded(true);
     setCourse(Math.round(vessel.unit.orders.course ?? vessel.unit.orderedCourse ?? vessel.unit.heading));
     setEot(vessel.unit.orders.eot ?? vessel.unit.eot);
+    setDepth(
+      Math.round(
+        vessel.unit.orders.depth ?? vessel.unit.orderedDepth ?? vessel.unit.position.depth,
+      ),
+    );
   }, [vessel, seeded]);
 
   const caps = useMemo(() => new Set(vessel?.station.capabilities ?? []), [vessel]);
@@ -132,7 +141,7 @@ export function StationPage() {
     }
   };
 
-  const submit = async (patch: { course?: number; eot?: EotSetting }) => {
+  const submit = async (patch: { course?: number; eot?: EotSetting; depth?: number }) => {
     if (!token) return;
     setActionError(null);
     try {
@@ -456,8 +465,141 @@ export function StationPage() {
         )}
 
         {vessel && isControls && !isSensors && (
-          <>
-            <section className="panel stack">
+          <div className="controls-station">
+            <section className="panel stack controls-helm-panel">
+              <div className="controls-section-head">
+                <h2>Helm</h2>
+                <p className="muted controls-section-blurb">
+                  Gyro compass dominates — set course with the dial controls, then submit.
+                </p>
+              </div>
+              {canHelm && (
+                <>
+                  <HelmCompass
+                    heading={vessel.unit.heading}
+                    orderedCourse={vessel.unit.orderedCourse}
+                    draftCourse={course}
+                    turnRate={vessel.unit.turnRate}
+                  />
+                  <TouchNumber
+                    label="Ordered / steering course"
+                    value={course}
+                    onChange={setCourse}
+                    min={0}
+                    max={359}
+                    step={1}
+                    wrap
+                    unit="°"
+                    disabled={!vessel.canSubmitOrders}
+                    format={(v) => `${String(v).padStart(3, '0')}°`}
+                  />
+                  <div className="control-actions">
+                    <button
+                      className="primary"
+                      type="button"
+                      disabled={!vessel.canSubmitOrders}
+                      onClick={() => void submit({ course })}
+                    >
+                      Submit course
+                    </button>
+                  </div>
+                </>
+              )}
+            </section>
+
+            {canHelm && vessel.unit.type === 'Submarine' && (
+              <section className="panel stack controls-dive-panel">
+                <div className="controls-section-head">
+                  <h2>Dive</h2>
+                  <p className="muted controls-section-blurb">
+                    Preset depths or set meters directly. Ships have no dive UI.
+                  </p>
+                </div>
+                <DiveControls
+                  depth={vessel.unit.position.depth}
+                  orderedDepth={vessel.unit.orderedDepth ?? vessel.unit.position.depth}
+                  draftDepth={depth}
+                  onDraftDepthChange={setDepth}
+                  maxDepthM={SUBMARINE_MAX_DEPTH_M}
+                  disabled={!vessel.canSubmitOrders}
+                  onSubmit={(d) => void submit({ depth: d })}
+                />
+              </section>
+            )}
+
+            {canEot && (
+              <section className="panel stack controls-eot-panel">
+                <div className="controls-section-head">
+                  <h2>Engine order telegraph</h2>
+                  <p className="muted controls-section-blurb">
+                    Ring up a bell — acknowledged on resolve; hull speed ramps.
+                  </p>
+                </div>
+                <EotTelegraph
+                  value={eot}
+                  onChange={setEot}
+                  disabled={!vessel.canSubmitOrders}
+                />
+                <div className="control-actions">
+                  <button
+                    className="primary"
+                    type="button"
+                    disabled={!vessel.canSubmitOrders}
+                    onClick={() => void submit({ eot })}
+                  >
+                    Ring up EOT
+                  </button>
+                </div>
+              </section>
+            )}
+
+            <section className="panel controls-status-strip" aria-label="Own ship status">
+              <div className="controls-status-grid">
+                <div className="controls-status-item">
+                  <span className="controls-status-key">HDG</span>
+                  <span className="readout">{Math.round(vessel.unit.heading).toString().padStart(3, '0')}°</span>
+                </div>
+                <div className="controls-status-item">
+                  <span className="controls-status-key">CRS</span>
+                  <span className="readout">
+                    {Math.round(vessel.unit.orderedCourse).toString().padStart(3, '0')}°
+                  </span>
+                </div>
+                <div className="controls-status-item">
+                  <span className="controls-status-key">SPD</span>
+                  <span className="readout">
+                    {vessel.unit.speed.toFixed(1)}
+                    <span className="muted" style={{ marginLeft: 4, fontSize: '0.75em' }}>
+                      /{speedCeiling.toFixed(0)} kn
+                    </span>
+                  </span>
+                </div>
+                <div className="controls-status-item">
+                  <span className="controls-status-key">EOT</span>
+                  <span className="readout">{EOT_LABELS[vessel.unit.eot]}</span>
+                </div>
+                {vessel.unit.type === 'Submarine' && (
+                  <div className="controls-status-item">
+                    <span className="controls-status-key">DPT</span>
+                    <span className="readout">
+                      {formatDepthMeters(vessel.unit.position.depth)}
+                      {Math.round(vessel.unit.orderedDepth ?? vessel.unit.position.depth) !==
+                        Math.round(vessel.unit.position.depth) && (
+                        <span className="muted" style={{ marginLeft: 6, fontSize: '0.75em' }}>
+                          → {formatDepthMeters(vessel.unit.orderedDepth ?? 0)}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                )}
+                <div className="controls-status-item controls-status-item--wide">
+                  <span className="controls-status-key">ORD</span>
+                  <span className="readout">{formatPendingOrdersSummary(vessel.unit.orders)}</span>
+                </div>
+              </div>
+            </section>
+
+            <section className="panel stack station-turn-panel">
               <h2>Turn</h2>
               <TurnStatus turn={vessel.turn} turnLengthSeconds={vessel.turnLengthSeconds} />
               {hasPendingOrders(vessel.unit.orders) ? (
@@ -489,160 +631,71 @@ export function StationPage() {
               )}
             </section>
 
-            <div className="grid-2" style={{ marginTop: '1rem' }}>
-              <section className="panel">
-                <h2>Own ship readouts</h2>
-                <table className="table mono">
-                  <tbody>
+            <details className="panel controls-ownship-details">
+              <summary>Own ship details</summary>
+              <table className="table mono">
+                <tbody>
+                  <tr>
+                    <th>Faction</th>
+                    <td className="readout">{vessel.unit.faction}</td>
+                  </tr>
+                  <tr>
+                    <th>Type</th>
+                    <td className="readout">{vessel.unit.type}</td>
+                  </tr>
+                  <tr>
+                    <th>Class</th>
+                    <td className="readout">{vessel.unit.class}</td>
+                  </tr>
+                  <tr>
+                    <th>Condition</th>
+                    <td className="readout">
+                      {conditionLabel(vessel.unit.type, vessel.unit.condition)}
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>Propulsion</th>
+                    <td className="readout">{vessel.unit.subsystems.propulsion}</td>
+                  </tr>
+                  <tr>
+                    <th>Sensors</th>
+                    <td className="readout">{vessel.unit.subsystems.sensors}</td>
+                  </tr>
+                  {vessel.unit.type === 'Aircraft' && (
                     <tr>
-                      <th>Faction</th>
-                      <td className="readout">{vessel.unit.faction}</td>
+                      <th>Flight level</th>
+                      <td className="readout">{vessel.unit.flightLevel ?? 'medium'}</td>
                     </tr>
+                  )}
+                  {vessel.unit.type === 'Submarine' && (
                     <tr>
-                      <th>Type</th>
-                      <td className="readout">{vessel.unit.type}</td>
+                      <th>Depth</th>
+                      <td className="readout">{formatDepthMeters(vessel.unit.position.depth)}</td>
                     </tr>
-                    <tr>
-                      <th>Class</th>
-                      <td className="readout">{vessel.unit.class}</td>
-                    </tr>
-                    <tr>
-                      <th>Condition</th>
-                      <td className="readout">
-                        {conditionLabel(vessel.unit.type, vessel.unit.condition)}
-                      </td>
-                    </tr>
-                    <tr>
-                      <th>Propulsion</th>
-                      <td className="readout">{vessel.unit.subsystems.propulsion}</td>
-                    </tr>
-                    <tr>
-                      <th>Sensors</th>
-                      <td className="readout">{vessel.unit.subsystems.sensors}</td>
-                    </tr>
-                    {vessel.unit.type === 'Aircraft' && (
-                      <tr>
-                        <th>Flight level</th>
-                        <td className="readout">{vessel.unit.flightLevel ?? 'medium'}</td>
-                      </tr>
-                    )}
-                    {vessel.unit.type === 'Submarine' && (
-                      <tr>
-                        <th>Depth</th>
-                        <td className="readout">{vessel.unit.position.depth.toFixed(0)} m</td>
-                      </tr>
-                    )}
-                    <tr>
-                      <th>Lat</th>
-                      <td className="readout">{vessel.unit.position.lat.toFixed(4)}</td>
-                    </tr>
-                    <tr>
-                      <th>Lon</th>
-                      <td className="readout">{vessel.unit.position.lon.toFixed(4)}</td>
-                    </tr>
-                    <tr>
-                      <th>Heading</th>
-                      <td className="readout">{vessel.unit.heading.toFixed(0)}°</td>
-                    </tr>
-                    <tr>
-                      <th>Ordered course</th>
-                      <td className="readout">{vessel.unit.orderedCourse.toFixed(0)}°</td>
-                    </tr>
-                    <tr>
-                      <th>Speed</th>
-                      <td className="readout">
-                        {vessel.unit.speed.toFixed(1)} kn
-                        <span className="muted" style={{ marginLeft: 8, fontSize: '0.8em' }}>
-                          max {speedCeiling.toFixed(0)} kn
-                          {vessel.unit.type === 'Submarine' && vessel.unit.position.depth > 5
-                            ? ' submerged'
-                            : ''}
-                        </span>
-                      </td>
-                    </tr>
-                    <tr>
-                      <th>Turn rate</th>
-                      <td className="readout">
-                        {vessel.unit.turnRate.toFixed(0)}°/min · {vessel.unit.radarSignature}
-                      </td>
-                    </tr>
-                    <tr>
-                      <th>EOT</th>
-                      <td className="readout">{EOT_LABELS[vessel.unit.eot]}</td>
-                    </tr>
-                    <tr>
-                      <th>Pending</th>
-                      <td className="readout">
-                        {formatPendingOrdersSummary(vessel.unit.orders)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </section>
+                  )}
+                  <tr>
+                    <th>Lat</th>
+                    <td className="readout">{vessel.unit.position.lat.toFixed(4)}</td>
+                  </tr>
+                  <tr>
+                    <th>Lon</th>
+                    <td className="readout">{vessel.unit.position.lon.toFixed(4)}</td>
+                  </tr>
+                  <tr>
+                    <th>Turn rate</th>
+                    <td className="readout">
+                      {vessel.unit.turnRate.toFixed(0)}°/min · {vessel.unit.radarSignature}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </details>
 
-              <div className="stack">
-                {canHelm && (
-                  <section className="panel stack">
-                    <h2>Helm</h2>
-                    <HelmCompass
-                      heading={vessel.unit.heading}
-                      orderedCourse={vessel.unit.orderedCourse}
-                      draftCourse={course}
-                      turnRate={vessel.unit.turnRate}
-                    />
-                    <TouchNumber
-                      label="Ordered / steering course"
-                      value={course}
-                      onChange={setCourse}
-                      min={0}
-                      max={359}
-                      step={1}
-                      wrap
-                      unit="°"
-                      disabled={!vessel.canSubmitOrders}
-                      format={(v) => `${String(v).padStart(3, '0')}°`}
-                    />
-                    <div className="control-actions">
-                      <button
-                        className="primary"
-                        type="button"
-                        disabled={!vessel.canSubmitOrders}
-                        onClick={() => void submit({ course })}
-                      >
-                        Submit course
-                      </button>
-                    </div>
-                  </section>
-                )}
-
-                {canEot && (
-                  <section className="panel stack">
-                    <h2>Engine order telegraph</h2>
-                    <EotTelegraph
-                      value={eot}
-                      onChange={setEot}
-                      disabled={!vessel.canSubmitOrders}
-                    />
-                    <div className="control-actions">
-                      <button
-                        className="primary"
-                        type="button"
-                        disabled={!vessel.canSubmitOrders}
-                        onClick={() => void submit({ eot })}
-                      >
-                        Ring up EOT
-                      </button>
-                    </div>
-                  </section>
-                )}
-
-                <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-                  Ambient bridge audio (nearby depth charges / sonar via BT speakers) planned for this
-                  screen later — not in this build.
-                </p>
-              </div>
-            </div>
-          </>
+            <p className="muted controls-ambient-note">
+              Ambient bridge audio (nearby depth charges / sonar via BT speakers) planned for this
+              screen later — not in this build.
+            </p>
+          </div>
         )}
       </div>
     </CrtShell>

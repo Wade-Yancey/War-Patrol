@@ -3,6 +3,7 @@ import {
   DEFAULT_TURN_SECONDS,
   SCHEMA_VERSION,
   clampSpeedToMax,
+  clampSubmarineDepth,
   defaultMaxSpeed,
   defaultRadarSignature,
   defaultSensors,
@@ -16,6 +17,7 @@ import {
   resolveFaction,
   resolveFlightLevel,
   resolveMaxSpeed,
+  resolveOrderedDepth,
   resolveStartGameTimeSeconds,
   resolveSubsystems,
   resolveTurnLengthSeconds,
@@ -70,6 +72,11 @@ function unitFromScenario(seed: Scenario['units'][number]): UnitState {
     subsystems,
     heading,
     orderedCourse: normalizeHeading(seed.orderedCourse ?? seed.heading),
+    orderedDepth: resolveOrderedDepth(
+      identity.type,
+      seed.position.depth,
+      seed.orderedDepth,
+    ),
     speed: seed.speed,
     eot: seed.eot ?? 'stop',
     accessToken: seed.accessToken,
@@ -145,6 +152,7 @@ function normalizeUnit(unit: UnitState): UnitState {
     class: identity.class,
   });
   const position = normalizePositionForType(identity.type, { ...unit.position });
+  const orderedDepth = resolveOrderedDepth(identity.type, position.depth, unit.orderedDepth);
   const maxSpeed = resolveMaxSpeed({
     maxSpeed: unit.maxSpeed,
     class: identity.class,
@@ -175,6 +183,7 @@ function normalizeUnit(unit: UnitState): UnitState {
     subsystems,
     heading,
     orderedCourse,
+    orderedDepth,
     speed,
     eot,
     radarSignature,
@@ -412,7 +421,7 @@ export class GameRuntime {
     gameId: string,
     unitId: string,
     stationId: string,
-    patch: { course?: number; eot?: EotSetting },
+    patch: { course?: number; eot?: EotSetting; depth?: number },
   ): GameSave {
     return this.touch(gameId, (save) => {
       if (save.turn.phase !== 'open') {
@@ -430,11 +439,27 @@ export class GameRuntime {
         // Allow helm OR engineering to set EOT for Phase 1 usability on controls
         throw Object.assign(new Error('Station cannot set EOT'), { statusCode: 403 });
       }
+      if (patch.depth !== undefined) {
+        if (!station.capabilities.includes('helm')) {
+          throw Object.assign(new Error('Station cannot set depth'), { statusCode: 403 });
+        }
+        if (unit.type !== 'Submarine') {
+          throw Object.assign(new Error('Only submarines can set depth'), { statusCode: 400 });
+        }
+      }
 
-      unit.orders = mergeOrders(unit.orders, patch, stationId);
+      const normalizedPatch = {
+        ...patch,
+        ...(patch.depth !== undefined ? { depth: clampSubmarineDepth(patch.depth) } : {}),
+      };
+      unit.orders = mergeOrders(unit.orders, normalizedPatch, stationId);
       // Steering course is live as soon as helm rings it up (persists across turns).
-      if (patch.course !== undefined) {
-        unit.orderedCourse = normalizeHeading(patch.course);
+      if (normalizedPatch.course !== undefined) {
+        unit.orderedCourse = normalizeHeading(normalizedPatch.course);
+      }
+      // Depth set-point is live; actual depth changes on resolve.
+      if (normalizedPatch.depth !== undefined) {
+        unit.orderedDepth = clampSubmarineDepth(normalizedPatch.depth);
       }
       return save;
     });
@@ -609,6 +634,10 @@ export class GameRuntime {
       if (patch.password !== undefined) unit.password = patch.password || undefined;
       if (patch.position) {
         unit.position = { ...unit.position, ...patch.position };
+        // Umpire depth edits also retarget the standing ordered depth.
+        if (patch.position.depth !== undefined) {
+          unit.orderedDepth = resolveOrderedDepth(unit.type, patch.position.depth, patch.position.depth);
+        }
       }
       if (patch.type !== undefined || patch.class !== undefined) {
         const identity = resolveVesselIdentity({

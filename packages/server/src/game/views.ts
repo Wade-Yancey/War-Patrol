@@ -116,6 +116,7 @@ export function buildVesselView(
       subsystems: unit.subsystems,
       heading: unit.heading,
       orderedCourse: unit.orderedCourse,
+      orderedDepth: unit.orderedDepth,
       speed: unit.speed,
       eot: unit.eot,
       orders: unit.orders,
