@@ -2,6 +2,7 @@ import { nanoid } from 'nanoid';
 import {
   DEFAULT_TURN_SECONDS,
   SCHEMA_VERSION,
+  clampSpeedToMax,
   defaultMaxSpeed,
   defaultRadarSignature,
   defaultSensors,
@@ -112,6 +113,14 @@ function normalizeUnit(unit: UnitState): UnitState {
     speed = 0;
     eot = 'stop';
   }
+  const maxSpeed = resolveMaxSpeed({
+    maxSpeed: unit.maxSpeed,
+    class: identity.class,
+    type: identity.type,
+  });
+  if (condition !== 'sunk' && subsystems.propulsion !== 'disabled') {
+    speed = clampSpeedToMax(speed, maxSpeed);
+  }
   return {
     ...unit,
     type: identity.type,
@@ -125,11 +134,7 @@ function normalizeUnit(unit: UnitState): UnitState {
     speed,
     eot,
     radarSignature,
-    maxSpeed: resolveMaxSpeed({
-      maxSpeed: unit.maxSpeed,
-      class: identity.class,
-      type: identity.type,
-    }),
+    maxSpeed,
     turnRate: resolveTurnRate({
       turnRate: unit.turnRate,
       radarSignature,
@@ -513,6 +518,8 @@ export class GameRuntime {
           ...patch.subsystems,
         });
       }
+      // Always clamp signed speed to ±maxSpeed (class table / library).
+      unit.speed = clampSpeedToMax(unit.speed, unit.maxSpeed);
       // Re-normalize so type rules (surface depth, flight level, dead-in-water) stick.
       save.units[idx] = normalizeUnit(unit);
       return save;

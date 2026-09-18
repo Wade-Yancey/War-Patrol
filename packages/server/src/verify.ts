@@ -8,6 +8,8 @@ import { runtime } from './game/runtime.js';
 import {
   CLASS_MAX_SPEED_KNOTS,
   CLASS_SPEED_STEP_FRACTION,
+  clampSpeedToMax,
+  editMaxSpeedForClass,
   formatWallDuration,
   parseWallDuration,
   resolveMaxSpeed,
@@ -48,6 +50,24 @@ async function main() {
     resolveMaxSpeed({ class: 'Battleship' }) === 33,
   );
   check('destroyer accelerates faster than merchant', CLASS_SPEED_STEP_FRACTION.Destroyer > CLASS_SPEED_STEP_FRACTION.Merchant);
+  check(
+    'editMaxSpeed prefers unit when class matches',
+    editMaxSpeedForClass({
+      draftClass: 'Fleet Submarine',
+      unitClass: 'Fleet Submarine',
+      unitMaxSpeed: 21,
+    }) === 21,
+  );
+  check(
+    'editMaxSpeed uses class table when draft differs',
+    editMaxSpeedForClass({
+      draftClass: 'Merchant',
+      unitClass: 'Destroyer',
+      unitMaxSpeed: 36,
+    }) === 11,
+  );
+  check('clampSpeedToMax caps high', clampSpeedToMax(99, 36) === 36);
+  check('clampSpeedToMax caps reverse', clampSpeedToMax(-50, 36) === -36);
 
   const api = async (
     method: string,
@@ -352,6 +372,43 @@ async function main() {
   );
   const restoredDd = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
   check('destroyer class restores 36 kn', restoredDd.maxSpeed === 36);
+
+  // Umpire speed patch is clamped to ±maxSpeed
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { speed: 99 },
+    umpireToken,
+  );
+  check(
+    'speed patch clamped to maxSpeed',
+    runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!.speed === 36,
+  );
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { speed: -50 },
+    umpireToken,
+  );
+  check(
+    'reverse speed patch clamped',
+    runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!.speed === -36,
+  );
+  // Class change with overspeed clamps to new class max
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { speed: 30, class: 'Merchant' },
+    umpireToken,
+  );
+  const merchantOverspeed = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
+  check('class change clamps speed to 11', merchantOverspeed.speed === 11 && merchantOverspeed.maxSpeed === 11);
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { type: 'Ship', class: 'Destroyer', name: 'USS Porter', speed: 12 },
+    umpireToken,
+  );
 
   // Ship depth forced to surface
   await api(

@@ -9,8 +9,10 @@ import {
   TIMER_STEP_SECONDS,
   VESSEL_TYPES,
   classesForType,
+  clampSpeedToMax,
   coerceVesselIdentity,
   conditionLabel,
+  editMaxSpeedForClass,
   formatWallDuration,
   parseWallDuration,
   snapWallDuration,
@@ -74,6 +76,18 @@ export function UmpirePage() {
 
   const classOptions = useMemo(() => classesForType(editType), [editType]);
 
+  /** Speed slider cap: unit maxSpeed when class matches; else historical class table. */
+  const editSpeedCap = useMemo(() => {
+    if (!selectedUnit) return 36;
+    return Math.round(
+      editMaxSpeedForClass({
+        draftClass: editClass,
+        unitClass: selectedUnit.class,
+        unitMaxSpeed: selectedUnit.maxSpeed,
+      }),
+    );
+  }, [selectedUnit, editClass]);
+
   const loadDraftFromUnit = (u: NonNullable<typeof selectedUnit>) => {
     const identity = coerceVesselIdentity(u.type, u.class);
     setEditName(u.name);
@@ -115,8 +129,10 @@ export function UmpirePage() {
     markDirty();
     setEditType(next);
     const allowed = classesForType(next);
+    let nextClass = editClass;
     if (!allowed.includes(editClass)) {
-      setEditClass(allowed[0] ?? 'Destroyer');
+      nextClass = allowed[0] ?? 'Destroyer';
+      setEditClass(nextClass);
     }
     if (next === 'Aircraft' && !editFlightLevel) {
       setEditFlightLevel('medium');
@@ -124,6 +140,19 @@ export function UmpirePage() {
     if (next === 'Ship') {
       setEditDepth(0);
     }
+    // Re-cap speed to the (possibly new) class max.
+    const cap = selectedUnit
+      ? editMaxSpeedForClass({
+          draftClass: nextClass,
+          unitClass: selectedUnit.class,
+          unitMaxSpeed: selectedUnit.maxSpeed,
+        })
+      : editMaxSpeedForClass({
+          draftClass: nextClass,
+          unitClass: nextClass,
+          unitMaxSpeed: 0,
+        });
+    setEditSpeed((s) => Math.round(clampSpeedToMax(s, cap)));
   };
 
   const onClassChange = (next: HullClass) => {
@@ -131,6 +160,18 @@ export function UmpirePage() {
     const identity = coerceVesselIdentity(editType, next);
     setEditClass(identity.class);
     setEditType(identity.type);
+    const cap = selectedUnit
+      ? editMaxSpeedForClass({
+          draftClass: identity.class,
+          unitClass: selectedUnit.class,
+          unitMaxSpeed: selectedUnit.maxSpeed,
+        })
+      : editMaxSpeedForClass({
+          draftClass: identity.class,
+          unitClass: identity.class,
+          unitMaxSpeed: 0,
+        });
+    setEditSpeed((s) => Math.round(clampSpeedToMax(s, cap)));
   };
 
   const login = async (e?: FormEvent) => {
@@ -577,15 +618,19 @@ export function UmpirePage() {
                           value={editSpeed}
                           onChange={(v) => {
                             markDirty();
-                            setEditSpeed(v);
+                            setEditSpeed(Math.round(clampSpeedToMax(v, editSpeedCap)));
                           }}
-                          min={-Math.round(selectedUnit.maxSpeed)}
-                          max={Math.round(selectedUnit.maxSpeed)}
+                          min={-editSpeedCap}
+                          max={editSpeedCap}
                           step={1}
                           unit="kn"
                           showSlider
                           disabled={editCondition === 'sunk' || editPropulsion === 'disabled'}
                         />
+                        <p className="mono muted" style={{ margin: 0, fontSize: '0.75rem' }}>
+                          Cap ±{editSpeedCap} kn ({editClass}
+                          {selectedUnit.class !== editClass ? ' draft' : ''})
+                        </p>
                         <div className="control-actions">
                           <button
                             className="primary"

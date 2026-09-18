@@ -89,3 +89,29 @@ export function resolveSpeedStepFraction(opts: {
   });
   return defaultSpeedStepFraction(hullClass);
 }
+
+/**
+ * Effective max speed for umpire edit / display.
+ * Prefer the unit's stored maxSpeed when the draft class matches the unit;
+ * otherwise use the historical class-table default (so changing class in the
+ * form immediately re-caps the speed slider before Apply).
+ */
+export function editMaxSpeedForClass(opts: {
+  draftClass: HullClass;
+  unitClass: HullClass;
+  unitMaxSpeed: number;
+}): number {
+  if (opts.draftClass === opts.unitClass && opts.unitMaxSpeed > 0) {
+    return opts.unitMaxSpeed;
+  }
+  return defaultMaxSpeed(opts.draftClass);
+}
+
+/** Clamp signed speed (knots) to ±maxSpeed. */
+export function clampSpeedToMax(speed: number, maxSpeed: number): number {
+  const cap = Math.abs(maxSpeed);
+  if (!Number.isFinite(speed) || !Number.isFinite(cap) || cap <= 0) return 0;
+  if (speed > cap) return cap;
+  if (speed < -cap) return -cap;
+  return speed;
+}
