@@ -76,7 +76,7 @@ export function hydrophoneContactGain(
 }
 
 /**
- * Coarse range band for operator CRT (no precise nm spoiler).
+ * Coarse range band for operator CRT (secondary to approx nm).
  * Thresholds relative to {@link HYDROPHONE_RANGE_REF_NM} (8 nm ≈ half-gain):
  * Near ≤ 5 nm, Medium ≤ 12 nm, else Far (still within hearing).
  */
@@ -85,7 +85,7 @@ export type HydrophoneRangeBand = 'near' | 'medium' | 'far' | 'none';
 export const HYDROPHONE_RANGE_BAND_NEAR_NM = 5;
 export const HYDROPHONE_RANGE_BAND_MEDIUM_NM = 12;
 
-/** Minimum beam gain before a range band is shown (needle must be roughly on target). */
+/** Minimum beam gain before range approx / band is shown (needle roughly on target). */
 export const HYDROPHONE_RANGE_BAND_BEAM_MIN = 0.2;
 
 export function hydrophoneRangeBandFromRangeNm(rangeNm: number): HydrophoneRangeBand {
@@ -96,16 +96,38 @@ export function hydrophoneRangeBandFromRangeNm(rangeNm: number): HydrophoneRange
 }
 
 /**
- * Peak contact on the listen bearing → intensity + coarse range band.
- * Band uses true range of the loudest contact only when beam is aligned enough;
- * otherwise band is `none` (sweep) so misalignment does not look like "far".
+ * Invert range falloff to a FoW-friendly approximate range (nm).
+ * `rangeGain = 1 / (1 + (r/R0)²)` → `r = R0 × √(1/g − 1)`.
+ * Coarsened: 1 nm steps below 10 nm, 2 nm steps at/above — never a precise float.
+ */
+export function approximateRangeNmFromRangeGain(
+  rangeGain: number,
+  refNm: number = HYDROPHONE_RANGE_REF_NM,
+): number | null {
+  if (!Number.isFinite(rangeGain) || rangeGain <= 0.02) return null;
+  if (rangeGain >= 0.999) return 0;
+  const r = refNm * Math.sqrt(1 / rangeGain - 1);
+  if (!Number.isFinite(r) || r < 0) return null;
+  if (r < 10) return Math.max(0, Math.round(r));
+  return Math.round(r / 2) * 2;
+}
+
+/**
+ * Peak contact on the listen bearing → intensity + approx nm + coarse band.
+ * Approx nm inverts range falloff of the loudest contact when beam is aligned;
+ * otherwise approx/band are withheld so beam loss does not look like distance.
  */
 export function hydrophoneListenCue(
   contacts: ReadonlyArray<{ rangeNm: number; bearing: number }>,
   listenBearingDeg: number,
-): { intensity: number; rangeBand: HydrophoneRangeBand; peakRangeNm: number | null } {
+): {
+  intensity: number;
+  rangeBand: HydrophoneRangeBand;
+  peakRangeNm: number | null;
+  approxRangeNm: number | null;
+} {
   if (contacts.length === 0) {
-    return { intensity: 0, rangeBand: 'none', peakRangeNm: null };
+    return { intensity: 0, rangeBand: 'none', peakRangeNm: null, approxRangeNm: null };
   }
   let bestGain = 0;
   let bestBeam = 0;
@@ -119,11 +141,17 @@ export function hydrophoneListenCue(
       bestRange = c.rangeNm;
     }
   }
+  const aligned = bestBeam >= HYDROPHONE_RANGE_BAND_BEAM_MIN && bestRange != null;
+  // Prefer rangeGain of peak contact (intensity/beam) so beam attenuation is not
+  // double-counted as distance; coarsen for FoW.
+  const rangeGainOnly =
+    aligned && bestBeam > 0 ? Math.min(1, bestGain / bestBeam) : 0;
+  const approxRangeNm = aligned
+    ? approximateRangeNmFromRangeGain(rangeGainOnly)
+    : null;
   const rangeBand =
-    bestBeam >= HYDROPHONE_RANGE_BAND_BEAM_MIN && bestRange != null
-      ? hydrophoneRangeBandFromRangeNm(bestRange)
-      : 'none';
-  return { intensity: bestGain, rangeBand, peakRangeNm: bestRange };
+    aligned && bestRange != null ? hydrophoneRangeBandFromRangeNm(bestRange) : 'none';
+  return { intensity: bestGain, rangeBand, peakRangeNm: bestRange, approxRangeNm };
 }
 
 /**
