@@ -121,18 +121,17 @@ function normalizeUnit(unit: UnitState): UnitState {
     class: identity.class,
   });
   const position = normalizePositionForType(identity.type, { ...unit.position });
-  let speed = unit.speed;
-  let eot = unit.eot;
-  if (condition === 'sunk' || subsystems.propulsion === 'disabled') {
-    speed = 0;
-    eot = 'stop';
-  }
   const maxSpeed = resolveMaxSpeed({
     maxSpeed: unit.maxSpeed,
     class: identity.class,
     type: identity.type,
   });
-  if (condition !== 'sunk' && subsystems.propulsion !== 'disabled') {
+  let speed = unit.speed;
+  let eot = unit.eot;
+  if (condition === 'sunk' || subsystems.propulsion === 'disabled') {
+    speed = 0;
+    eot = 'stop';
+  } else {
     const ceiling = effectiveMaxSpeed({
       type: identity.type,
       maxSpeed,
@@ -588,11 +587,16 @@ export class GameRuntime {
         });
       }
       // Clamp using effective ceiling (submerged subs → ~9 kn); normalizeUnit re-checks.
+      const maxSpeed =
+        typeof unit.maxSpeed === 'number' && unit.maxSpeed > 0
+          ? unit.maxSpeed
+          : defaultMaxSpeed(unit.class);
+      unit.maxSpeed = maxSpeed;
       unit.speed = clampSpeedToMax(
         unit.speed,
         effectiveMaxSpeed({
           type: unit.type,
-          maxSpeed: unit.maxSpeed,
+          maxSpeed,
           depth: unit.position.depth,
         }),
       );

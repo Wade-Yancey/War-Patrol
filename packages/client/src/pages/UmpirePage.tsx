@@ -96,6 +96,8 @@ export function UmpirePage() {
       }),
     );
   }, [selectedUnit, editClass, editType, editDepth]);
+  /** Alias for labels (PR #22 UX). */
+  const editMaxSpeed = editSpeedCap;
 
   const loadDraftFromUnit = (u: NonNullable<typeof selectedUnit>) => {
     const identity = coerceVesselIdentity(u.type, u.class);
@@ -740,7 +742,7 @@ export function UmpirePage() {
                           format={(v) => `${String(v).padStart(3, '0')}°`}
                         />
                         <TouchNumber
-                          label="Speed"
+                          label={`Speed (max ${editMaxSpeed} kn)`}
                           value={editSpeed}
                           onChange={(v) => {
                             markDirty();
@@ -752,6 +754,7 @@ export function UmpirePage() {
                           unit="kn"
                           showSlider
                           disabled={editCondition === 'sunk' || editPropulsion === 'disabled'}
+                          hint={`Class cap ±${editMaxSpeed} kn · tap readout to type`}
                         />
                         <p className="mono muted" style={{ margin: 0, fontSize: '0.75rem' }}>
                           Cap ±{editSpeedCap} kn ({editClass}
@@ -768,7 +771,7 @@ export function UmpirePage() {
                                 () =>
                                   api.updateUnit(gameId, token, selectedUnit.id, {
                                     heading: editHeading,
-                                    speed: editSpeed,
+                                    speed: clampSpeedToMax(editSpeed, editMaxSpeed),
                                   }),
                                 'Navigation applied',
                               )

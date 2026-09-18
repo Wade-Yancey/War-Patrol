@@ -30,6 +30,9 @@ export const CLASS_MAX_SPEED_KNOTS: Record<HullClass, number> = {
   Bomber: 250,
 };
 
+/** @deprecated Prefer {@link CLASS_MAX_SPEED_KNOTS}. */
+export const CLASS_DEFAULT_MAX_SPEED = CLASS_MAX_SPEED_KNOTS;
+
 /**
  * Fleet-submarine submerged max (knots). Same depth band as radar surface:
  * depth > {@link RADAR_SURFACE_DEPTH_M} → submerged.
@@ -59,6 +62,16 @@ const DEFAULT_SPEED_STEP = 0.35;
 /** Class default max speed (knots). */
 export function defaultMaxSpeed(hullClass: HullClass): number {
   return CLASS_MAX_SPEED_KNOTS[hullClass] ?? DEFAULT_MAX_SPEED;
+}
+
+/**
+ * Class default max speed accepting optional / legacy class strings (#22 API).
+ * Invalid → Destroyer default (36), not a silent 20.
+ */
+export function defaultMaxSpeedForClass(hullClass: HullClass | string | undefined): number {
+  if (isHullClass(hullClass)) return defaultMaxSpeed(hullClass);
+  const { class: resolved } = resolveVesselIdentity({ class: hullClass, type: hullClass });
+  return defaultMaxSpeed(resolved);
 }
 
 /** Class default EOT speed-step fraction (0–1 of maxSpeed per turn). */

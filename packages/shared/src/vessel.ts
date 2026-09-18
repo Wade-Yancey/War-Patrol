@@ -178,6 +178,11 @@ export function factionAccent(faction: Faction): 'blue' | 'red' | 'civilian' {
   return sideFromFaction(faction) as 'blue' | 'red' | 'civilian';
 }
 
+/**
+ * Speed table / clamp helpers live in {@link ./performance.js} (re-exported from
+ * package root). Kept out of this module to avoid duplicate `export *` names.
+ */
+
 export function defaultSubsystems(): UnitSubsystems {
   return { propulsion: 'intact', sensors: 'intact' };
 }
