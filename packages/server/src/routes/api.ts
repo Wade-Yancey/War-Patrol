@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AuthSession, EotSetting } from '@war-patrol/shared';
 import { nanoid } from 'nanoid';
 import * as store from '../store/fileStore.js';
-import { parseBearer } from '../game/sessions.js';
+import { parseBearer, parseSseToken } from '../game/sessions.js';
 import { runtime } from '../game/runtime.js';
 import { buildViewForSession } from '../game/views.js';
 import type { SseClient } from '../game/sse.js';
@@ -17,8 +17,7 @@ function httpError(err: unknown): { statusCode: number; message: string } {
   return { statusCode: 500, message: err instanceof Error ? err.message : 'Internal error' };
 }
 
-function requireSession(request: FastifyRequest, gameId?: string): AuthSession {
-  const token = parseBearer(request.headers.authorization);
+function sessionFromToken(token: string | undefined, gameId?: string): AuthSession {
   const session = runtime.sessions.get(token);
   if (!session) {
     throw Object.assign(new Error('Unauthorized'), { statusCode: 401 });
@@ -27,6 +26,21 @@ function requireSession(request: FastifyRequest, gameId?: string): AuthSession {
     throw Object.assign(new Error('Wrong game'), { statusCode: 403 });
   }
   return session;
+}
+
+function requireSession(request: FastifyRequest, gameId?: string): AuthSession {
+  return sessionFromToken(parseBearer(request.headers.authorization), gameId);
+}
+
+/** SSE-only: Bearer or `?token=` (browser EventSource cannot set Authorization). */
+function requireSseSession(
+  request: FastifyRequest<{ Querystring: { token?: string } }>,
+  gameId?: string,
+): AuthSession {
+  return sessionFromToken(
+    parseSseToken(request.headers.authorization, request.query?.token),
+    gameId,
+  );
 }
 
 function requireUmpire(request: FastifyRequest, gameId?: string): AuthSession {
@@ -179,10 +193,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.get<{
     Params: { gameId: string };
-    Querystring: { lastVersion?: string };
+    Querystring: { lastVersion?: string; token?: string };
   }>('/api/games/:gameId/events', async (request, reply) => {
     try {
-      const session = requireSession(request, request.params.gameId);
+      const session = requireSseSession(request, request.params.gameId);
       const save = runtime.requireGame(session.gameId);
       const client: SseClient = {
         id: nanoid(16),

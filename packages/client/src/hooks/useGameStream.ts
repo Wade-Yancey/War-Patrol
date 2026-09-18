@@ -145,10 +145,10 @@ export function useGameStream({ gameId, token, enabled = true }: Options) {
         }
         if (signal.aborted || cancelled || myGeneration !== generation) return;
 
-        const res = await fetch(`/api/games/${gameId}/events`, {
-          headers: { Authorization: `Bearer ${token}` },
-          signal,
-        });
+        // Token goes on the URL: native EventSource cannot set Authorization, and some
+        // proxies drop Authorization on long-lived streams. Do not log this URL.
+        const eventsUrl = `/api/games/${gameId}/events?token=${encodeURIComponent(token)}`;
+        const res = await fetch(eventsUrl, { signal });
         if (!res.ok || !res.body) {
           throw new Error(`SSE failed (${res.status})`);
         }

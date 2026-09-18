@@ -190,14 +190,24 @@ async function main() {
     umpireToken,
   );
 
-  // 4. SSE: wait for resolve push
+  // 4. SSE: query-token auth (EventSource-safe) + wait for resolve push
+  const sseUnauth = await fetch(`${base}/api/games/${gameId}/events`);
+  check('SSE rejects missing token', sseUnauth.status === 401);
+
+  const sseBad = await fetch(
+    `${base}/api/games/${gameId}/events?token=${encodeURIComponent('not-a-real-token')}`,
+  );
+  check('SSE rejects bad query token', sseBad.status === 401);
+
   let sseVersions: number[] = [];
   const sseAbort = new AbortController();
   const ssePromise = (async () => {
-    const res = await fetch(`${base}/api/games/${gameId}/events`, {
-      headers: { Authorization: `Bearer ${blueToken}` },
-      signal: sseAbort.signal,
-    });
+    // Prefer query token — matches browser EventSource / client reconnect path.
+    const res = await fetch(
+      `${base}/api/games/${gameId}/events?token=${encodeURIComponent(blueToken)}`,
+      { signal: sseAbort.signal },
+    );
+    check('SSE accepts query token', res.status === 200 && Boolean(res.body));
     const reader = res.body?.getReader();
     if (!reader) return;
     const decoder = new TextDecoder();
@@ -221,6 +231,13 @@ async function main() {
       if (sseVersions.length >= 3) break;
     }
   })();
+
+  // Bearer still accepted on SSE for non-browser clients.
+  const sseBearer = await fetch(`${base}/api/games/${gameId}/events`, {
+    headers: { Authorization: `Bearer ${umpireToken}` },
+  });
+  check('SSE accepts Bearer', sseBearer.status === 200 && Boolean(sseBearer.body));
+  sseBearer.body?.cancel().catch(() => undefined);
 
   await new Promise((r) => setTimeout(r, 200));
 
