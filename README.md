@@ -51,7 +51,15 @@ pnpm --filter @war-patrol/shared build
 pnpm verify
 ```
 
-Runs create → join → orders → lock → resolve (SSE) → save/rollback checks.
+Runs create → join → orders → lock → resolve (SSE) → save/rollback (with confirm) → delete save/scenario → multi-turn ground-truth stability.
+
+Stability alone (8 turns, known orders, kinematics + radar surface rules):
+
+```bash
+pnpm verify:stability
+```
+
+Asserts positions / headings / speeds / in-game clock against an independent expected model, turn-rate caps, no NaN/teleports, and radar clear when submerged.
 
 ## Layout
 

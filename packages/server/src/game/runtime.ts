@@ -272,6 +272,37 @@ export class GameRuntime {
     return save;
   }
 
+  /** Unload an in-memory game: timers, sessions, SSE, map entry — no disk write. */
+  unloadGame(gameId: string): boolean {
+    if (!this.games.has(gameId)) return false;
+    this.clearTimer(gameId);
+    this.sessions.clearGame(gameId);
+    this.sse.dropGame(gameId);
+    this.games.delete(gameId);
+    return true;
+  }
+
+  /**
+   * Delete a save file and drop any in-memory copy / sessions (no orphans).
+   * Returns false if the file was already missing (still unloads memory if present).
+   */
+  async deleteSave(saveId: string): Promise<{ deletedFile: boolean; unloaded: boolean }> {
+    const unloaded = this.unloadGame(saveId);
+    const deletedFile = await store.deleteSaveFile(saveId);
+    if (!deletedFile && !unloaded) {
+      throw Object.assign(new Error('Save not found'), { statusCode: 404 });
+    }
+    return { deletedFile, unloaded };
+  }
+
+  /** Delete a scenario JSON file from disk. */
+  async deleteScenario(scenarioId: string): Promise<void> {
+    const ok = await store.deleteScenarioFile(scenarioId);
+    if (!ok) {
+      throw Object.assign(new Error('Scenario not found'), { statusCode: 404 });
+    }
+  }
+
   private replace(gameId: string, next: GameSave): GameSave {
     this.games.set(gameId, next);
     return next;
@@ -443,7 +474,19 @@ export class GameRuntime {
     return resolved;
   }
 
-  async rollback(gameId: string, turnNumber: number): Promise<GameSave> {
+  /**
+   * Rollback requires explicit confirmation (ARCH-SM-13):
+   * `confirm` must be `"ROLLBACK"` or the target turn number as a string.
+   */
+  async rollback(gameId: string, turnNumber: number, confirm: string): Promise<GameSave> {
+    const expectedTurn = String(turnNumber);
+    const normalized = confirm.trim().toUpperCase();
+    if (normalized !== 'ROLLBACK' && confirm.trim() !== expectedTurn) {
+      throw Object.assign(
+        new Error('Rollback requires confirm: "ROLLBACK" or the target turn number'),
+        { statusCode: 400 },
+      );
+    }
     this.clearTimer(gameId);
     const next = rollbackToTurn(this.requireGame(gameId), turnNumber);
     this.replace(gameId, next);

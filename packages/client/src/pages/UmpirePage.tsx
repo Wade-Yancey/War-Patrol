@@ -12,6 +12,7 @@ import {
   classesForType,
   coerceVesselIdentity,
   conditionLabel,
+  formatGameClock,
   formatWallDuration,
   parseWallDuration,
   snapWallDuration,
@@ -30,6 +31,7 @@ import { GroundTruthMap } from '../components/GroundTruthMap';
 import { TurnStatus } from '../components/TurnStatus';
 import { CrtShell } from '../components/CrtShell';
 import { TouchNumber } from '../components/TouchNumber';
+import { ConfirmAction } from '../components/ConfirmAction';
 
 function tokenKey(gameId: string) {
   return `wp-token:${gameId}:umpire`;
@@ -59,6 +61,7 @@ export function UmpirePage() {
   const [editPassword, setEditPassword] = useState('');
   const [dirty, setDirty] = useState(false);
   const [applyNote, setApplyNote] = useState<string | null>(null);
+  const [rollbackTarget, setRollbackTarget] = useState<number | null>(null);
 
   const { view, stateVersion, connected, error, refresh } = useGameStream({
     gameId,
@@ -364,7 +367,7 @@ export function UmpirePage() {
                 {umpire.historyTurnNumbers.length > 0 && (
                   <div className="stack" style={{ gap: '0.4rem' }}>
                     <span className="muted" style={{ fontSize: '0.8rem' }}>
-                      Rollback to end of turn (dangerous):
+                      Rollback to end of turn (requires confirmation):
                     </span>
                     <div className="row">
                       {umpire.historyTurnNumbers.map((n) => (
@@ -372,8 +375,8 @@ export function UmpirePage() {
                           key={n}
                           type="button"
                           className="danger"
-                          disabled={busy}
-                          onClick={() => void run(() => api.rollback(gameId, token, n))}
+                          disabled={busy || rollbackTarget !== null}
+                          onClick={() => setRollbackTarget(n)}
                         >
                           T{n}
                         </button>
@@ -383,6 +386,40 @@ export function UmpirePage() {
                 )}
               </section>
             </div>
+
+            {rollbackTarget !== null && token && (
+              <div style={{ marginTop: '1rem' }}>
+                <ConfirmAction
+                  title={`Rollback to end of turn ${rollbackTarget}`}
+                  warning={
+                    <>
+                      <p>
+                        <strong>Destructive.</strong> Restores units to the snapshot after turn{' '}
+                        {rollbackTarget} resolved, clears in-progress orders, and discards every later
+                        turn.
+                      </p>
+                      <p>
+                        Current turn {umpire.turn.number} and in-game clock{' '}
+                        <span className="mono">{formatGameClock(umpire.turn.gameTimeSeconds)}</span>{' '}
+                        will be replaced by the restored clock. Later movement and history are gone.
+                      </p>
+                    </>
+                  }
+                  confirmTokens={['ROLLBACK', String(rollbackTarget)]}
+                  confirmHint={`Type ROLLBACK or ${rollbackTarget} to confirm`}
+                  placeholder="ROLLBACK"
+                  confirmLabel={`Execute rollback to T${rollbackTarget}`}
+                  busy={busy}
+                  onCancel={() => setRollbackTarget(null)}
+                  onConfirm={(matched) =>
+                    void run(async () => {
+                      await api.rollback(gameId, token, rollbackTarget, matched);
+                      setRollbackTarget(null);
+                    })
+                  }
+                />
+              </div>
+            )}
 
             <div className="grid-2" style={{ marginTop: '1rem' }}>
               <section className="panel">

@@ -3,18 +3,41 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { setAuthToken } from '../api/authStorage';
 import { CrtShell } from '../components/CrtShell';
+import { ConfirmAction } from '../components/ConfirmAction';
+
+type ScenarioRow = {
+  id: string;
+  name: string;
+  description?: string;
+  mode: string;
+  unitCount: number;
+};
+
+type SaveRow = { id: string; name: string; updatedAt: string };
+
+type PendingDelete =
+  | { kind: 'save'; id: string; name: string }
+  | { kind: 'scenario'; id: string; name: string };
 
 export function LandingPage() {
   const navigate = useNavigate();
-  const [scenarios, setScenarios] = useState<
-    Array<{ id: string; name: string; description?: string; mode: string; unitCount: number }>
-  >([]);
-  const [saves, setSaves] = useState<Array<{ id: string; name: string; updatedAt: string }>>([]);
+  const [scenarios, setScenarios] = useState<ScenarioRow[]>([]);
+  const [saves, setSaves] = useState<SaveRow[]>([]);
   const [scenarioId, setScenarioId] = useState('destroyer-sub-demo');
   const [gameName, setGameName] = useState('');
   const [umpirePassword, setUmpirePassword] = useState('umpire');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
+
+  const refreshLists = async () => {
+    const [sc, sv] = await Promise.all([api.scenarios(), api.saves()]);
+    setScenarios(sc);
+    setSaves(sv);
+    if (sc.length && !sc.some((s) => s.id === scenarioId)) {
+      setScenarioId(sc[0]!.id);
+    }
+  };
 
   useEffect(() => {
     void (async () => {
@@ -60,6 +83,25 @@ export function LandingPage() {
     }
   };
 
+  const runDelete = async () => {
+    if (!pendingDelete) return;
+    setBusy(true);
+    setError(null);
+    try {
+      if (pendingDelete.kind === 'save') {
+        await api.deleteSave(pendingDelete.id);
+      } else {
+        await api.deleteScenario(pendingDelete.id);
+      }
+      setPendingDelete(null);
+      await refreshLists();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <CrtShell>
       <div className="app-shell">
@@ -75,6 +117,48 @@ export function LandingPage() {
         </header>
 
         {error && <p className="error">{error}</p>}
+
+        {pendingDelete && (
+          <div style={{ marginBottom: '1rem' }}>
+            <ConfirmAction
+              title={
+                pendingDelete.kind === 'save'
+                  ? `Delete save · ${pendingDelete.name}`
+                  : `Delete scenario · ${pendingDelete.name}`
+              }
+              warning={
+                pendingDelete.kind === 'save' ? (
+                  <>
+                    <p>
+                      This permanently removes the save file from disk and unloads it from memory if
+                      active. Open sessions for that game will disconnect.
+                    </p>
+                    <p>
+                      <strong>This cannot be undone.</strong>
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p>
+                      This permanently deletes the scenario JSON file. Existing games already created
+                      from it keep running, but you will not be able to create new games from this
+                      scenario.
+                    </p>
+                    <p>
+                      <strong>This cannot be undone.</strong>
+                    </p>
+                  </>
+                )
+              }
+              confirmTokens={['DELETE']}
+              confirmHint='Type DELETE to confirm'
+              confirmLabel={pendingDelete.kind === 'save' ? 'Delete save' : 'Delete scenario'}
+              busy={busy}
+              onCancel={() => setPendingDelete(null)}
+              onConfirm={() => void runDelete()}
+            />
+          </div>
+        )}
 
         <div className="grid-2">
           <form className="panel stack" onSubmit={createAndEnter}>
@@ -115,6 +199,42 @@ export function LandingPage() {
                 {scenarios.find((s) => s.id === scenarioId)?.description}
               </p>
             )}
+            {scenarios.length > 0 && (
+              <div className="stack" style={{ gap: '0.4rem' }}>
+                <span className="muted" style={{ fontSize: '0.8rem' }}>
+                  Scenario files on disk
+                </span>
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Id</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {scenarios.map((s) => (
+                      <tr key={s.id}>
+                        <td>{s.name}</td>
+                        <td className="mono muted" style={{ fontSize: '0.75rem' }}>
+                          {s.id}
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="danger"
+                            disabled={busy || pendingDelete !== null}
+                            onClick={() => setPendingDelete({ kind: 'scenario', id: s.id, name: s.name })}
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </form>
 
           <section className="panel stack">
@@ -144,9 +264,19 @@ export function LandingPage() {
                       <td>{s.name}</td>
                       <td className="mono muted">{new Date(s.updatedAt).toLocaleString()}</td>
                       <td>
-                        <button type="button" disabled={busy} onClick={() => void loadSave(s.id)}>
-                          Load
-                        </button>
+                        <div className="row" style={{ gap: '0.35rem', flexWrap: 'wrap' }}>
+                          <button type="button" disabled={busy} onClick={() => void loadSave(s.id)}>
+                            Load
+                          </button>
+                          <button
+                            type="button"
+                            className="danger"
+                            disabled={busy || pendingDelete !== null}
+                            onClick={() => setPendingDelete({ kind: 'save', id: s.id, name: s.name })}
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
