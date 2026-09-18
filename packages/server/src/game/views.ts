@@ -1,12 +1,45 @@
 import type {
   ClientView,
   GameSave,
+  TrailPoint,
   UnitState,
+  UnitTrail,
   UmpireView,
   VesselView,
 } from '@war-patrol/shared';
 import type { SseHub } from './sse.js';
 import { buildRadarContacts } from './radar.js';
+
+/** Build umpire polylines from start positions + history snapshots + current. */
+export function buildUnitTrails(save: GameSave): UnitTrail[] {
+  const history = [...save.history].sort((a, b) => a.turnNumber - b.turnNumber);
+  return save.units.map((unit) => {
+    const points: TrailPoint[] = [];
+    const push = (lat: number, lon: number, turnNumber: number) => {
+      const last = points[points.length - 1];
+      if (
+        last &&
+        Math.abs(last.lat - lat) < 1e-7 &&
+        Math.abs(last.lon - lon) < 1e-7
+      ) {
+        return;
+      }
+      points.push({ lat, lon, turnNumber });
+    };
+
+    const origin = save.startTrails?.find((t) => t.unitId === unit.id)?.points[0];
+    if (origin) push(origin.lat, origin.lon, origin.turnNumber);
+
+    for (const snap of history) {
+      const u = snap.units.find((x) => x.id === unit.id);
+      if (!u) continue;
+      push(u.position.lat, u.position.lon, snap.turnNumber);
+    }
+
+    push(unit.position.lat, unit.position.lon, save.turn.number);
+    return { unitId: unit.id, points };
+  });
+}
 
 export function buildUmpireView(save: GameSave, sse: SseHub): UmpireView {
   return {
@@ -19,7 +52,9 @@ export function buildUmpireView(save: GameSave, sse: SseHub): UmpireView {
     operatingArea: save.operatingArea,
     stateVersion: save.stateVersion,
     turn: save.turn,
+    turnLengthSeconds: save.turnLengthSeconds,
     units: save.units,
+    trails: buildUnitTrails(save),
     historyTurnNumbers: save.history.map((h) => h.turnNumber),
     vesselLinks: save.units.map((u) => ({
       unitId: u.id,
@@ -55,6 +90,7 @@ export function buildVesselView(
     name: save.name,
     stateVersion: save.stateVersion,
     turn: save.turn,
+    turnLengthSeconds: save.turnLengthSeconds,
     unit: {
       id: unit.id,
       name: unit.name,
@@ -62,11 +98,14 @@ export function buildVesselView(
       type: unit.type,
       position: unit.position,
       heading: unit.heading,
+      orderedCourse: unit.orderedCourse,
       speed: unit.speed,
       eot: unit.eot,
       orders: unit.orders,
       health: unit.health,
       maxSpeed: unit.maxSpeed,
+      turnRate: unit.turnRate,
+      radarSignature: unit.radarSignature,
       stations: unit.stations,
     },
     stationId,

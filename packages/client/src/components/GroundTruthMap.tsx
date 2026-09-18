@@ -1,10 +1,12 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
-import type { BoundingBox, UnitState } from '@war-patrol/shared';
-import { clamp, projectToUv, unprojectFromUv } from '@war-patrol/shared';
+import type { BoundingBox, UnitState, UnitTrail } from '@war-patrol/shared';
+import { clamp, normalizeHeading, projectToUv, unprojectFromUv } from '@war-patrol/shared';
 
 interface Props {
   area: BoundingBox;
   units: UnitState[];
+  /** Prior-turn position trails (umpire ground truth). */
+  trails?: UnitTrail[];
 }
 
 const SIDE_COLORS: Record<string, string> = {
@@ -32,7 +34,17 @@ function unitsSignature(units: UnitState[]): string {
   return units
     .map(
       (u) =>
-        `${u.id}:${u.position.lat.toFixed(5)},${u.position.lon.toFixed(5)},${u.heading.toFixed(1)},${u.speed.toFixed(1)},${u.position.depth.toFixed(0)}`,
+        `${u.id}:${u.position.lat.toFixed(5)},${u.position.lon.toFixed(5)},${u.heading.toFixed(1)},${normalizeHeading(u.orderedCourse ?? u.heading).toFixed(1)},${u.speed.toFixed(1)},${u.position.depth.toFixed(0)}`,
+    )
+    .join('|');
+}
+
+function trailsSignature(trails: UnitTrail[] | undefined): string {
+  if (!trails?.length) return '';
+  return trails
+    .map(
+      (t) =>
+        `${t.unitId}:${t.points.map((p) => `${p.turnNumber}@${p.lat.toFixed(5)},${p.lon.toFixed(5)}`).join('>')}`,
     )
     .join('|');
 }
@@ -132,10 +144,15 @@ function shouldLabelGridValue(value: number, step: number, tickCount: number): b
   return Math.abs(q - Math.round(q)) < 1e-6;
 }
 
-function GroundTruthMapInner({ area, units }: Props) {
+function GroundTruthMapInner({ area, units, trails = [] }: Props) {
   const unitIds = useMemo(() => [...units.map((u) => u.id)].sort().join(','), [units]);
   const areaKey = useMemo(() => areaSignature(area), [area]);
   const baseView = useMemo(() => fitUnitsView(units, area), [units, area]);
+  const trailByUnit = useMemo(() => {
+    const map = new Map<string, UnitTrail>();
+    for (const t of trails) map.set(t.unitId, t);
+    return map;
+  }, [trails]);
 
   const [zoomIdx, setZoomIdx] = useState(DEFAULT_ZOOM_IDX);
   const [panLat, setPanLat] = useState(0);
@@ -191,6 +208,28 @@ function GroundTruthMapInner({ area, units }: Props) {
     return { parallels, meridians, step };
   }, [view]);
 
+  const trailPolylines = useMemo(() => {
+    return units
+      .map((unit) => {
+        const trail = trailByUnit.get(unit.id);
+        if (!trail || trail.points.length < 2) return null;
+        const color = SIDE_COLORS[unit.side] ?? '#c8ffd4';
+        const pts = trail.points.map((p) => {
+          const { u, v } = projectToUv(p.lat, p.lon, view);
+          return { x: u * W, y: v * H, u, v };
+        });
+        // Skip if entirely off-plot (cheap cull)
+        const anyOn = pts.some((p) => p.u >= -0.08 && p.u <= 1.08 && p.v >= -0.08 && p.v <= 1.08);
+        if (!anyOn) return null;
+        return {
+          id: unit.id,
+          color,
+          points: pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '),
+        };
+      })
+      .filter((x): x is { id: string; color: string; points: string } => Boolean(x));
+  }, [units, trailByUnit, view]);
+
   const markers = useMemo(
     () =>
       units.map((unit) => {
@@ -198,17 +237,25 @@ function GroundTruthMapInner({ area, units }: Props) {
         const x = u * W;
         const y = v * H;
         const color = SIDE_COLORS[unit.side] ?? '#c8ffd4';
-        const rad = ((unit.heading - 90) * Math.PI) / 180;
+        const heading = normalizeHeading(unit.heading);
+        const ordered = normalizeHeading(unit.orderedCourse ?? unit.heading);
+        const hRad = ((heading - 90) * Math.PI) / 180;
+        const oRad = ((ordered - 90) * Math.PI) / 180;
         const tipLen = clamp(14 + zoom * 2, 14, 22);
+        const courseLen = tipLen + 10;
+        const courseDelta = Math.abs(((ordered - heading + 540) % 360) - 180);
         return {
           id: unit.id,
           name: unit.name.toUpperCase(),
           x,
           y,
           color,
-          tipX: x + Math.cos(rad) * tipLen,
-          tipY: y + Math.sin(rad) * tipLen,
-          label: `${unit.speed.toFixed(0)} KN · ${unit.heading.toFixed(0)}°${
+          tipX: x + Math.cos(hRad) * tipLen,
+          tipY: y + Math.sin(hRad) * tipLen,
+          courseX: x + Math.cos(oRad) * courseLen,
+          courseY: y + Math.sin(oRad) * courseLen,
+          showOrdered: courseDelta > 0.5,
+          label: `${unit.speed.toFixed(0)} KN · HDG ${heading.toFixed(0)}° · CRS ${ordered.toFixed(0)}°${
             unit.position.depth > 0 ? ` · ${unit.position.depth.toFixed(0)} M` : ''
           }`,
           onPlot: u >= -0.05 && u <= 1.05 && v >= -0.05 && v <= 1.05,
@@ -384,8 +431,22 @@ function GroundTruthMapInner({ area, units }: Props) {
           </g>
 
           <text x={12} y={18} fill="#5a9a68" fontSize={10} fontFamily="IBM Plex Mono, monospace">
-            GROUND TRUTH · LAT/LON · {GRID_STEP_DEG}° GRID
+            GROUND TRUTH · LAT/LON · {GRID_STEP_DEG}° GRID · TRAILS
           </text>
+
+          {/* Trails under units — simple polylines (CRT-friendly, cheap) */}
+          {trailPolylines.map((t) => (
+            <polyline
+              key={`trail-${t.id}`}
+              points={t.points}
+              fill="none"
+              stroke={t.color}
+              strokeWidth={1.25}
+              strokeOpacity={0.55}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          ))}
 
           {markers
             .filter((m) => m.onPlot)
@@ -393,6 +454,19 @@ function GroundTruthMapInner({ area, units }: Props) {
               <g key={m.id}>
                 <circle cx={m.x} cy={m.y} r={8} fill="none" stroke={m.color} strokeWidth={1.5} />
                 <circle cx={m.x} cy={m.y} r={3} fill={m.color} />
+                {m.showOrdered && (
+                  <line
+                    x1={m.x}
+                    y1={m.y}
+                    x2={m.courseX}
+                    y2={m.courseY}
+                    stroke={m.color}
+                    strokeWidth={1.25}
+                    strokeOpacity={0.55}
+                    strokeDasharray="4 3"
+                    strokeLinecap="square"
+                  />
+                )}
                 <line
                   x1={m.x}
                   y1={m.y}
@@ -437,5 +511,6 @@ export const GroundTruthMap = memo(GroundTruthMapInner, (prev, next) => {
   ) {
     return false;
   }
+  if (trailsSignature(prev.trails) !== trailsSignature(next.trails)) return false;
   return unitsSignature(prev.units) === unitsSignature(next.units);
 });

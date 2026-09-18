@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "destroyer-sub-demo",
   "name": "Destroyer vs Submarine",
-  "description": "Demo: Fletcher destroyer vs Gato submarine. Both have Radar. Sub starts surfaced (visible + own PPI live); dive below ~5 m to clear the echo and disable sub radar. PvP mode.",
+  "description": "Demo: Fletcher destroyer vs Gato submarine. Both have Radar. Sub starts surfaced (visible + own PPI live); dive below ~5 m to clear the echo and disable sub radar. PvP mode. In-game clock advances 5 min per turn.",
   "mode": "pvp",
   "operatingArea": {
     "minLat": 34.0,
@@ -12,6 +12,8 @@
   },
   "umpirePassword": "umpire",
   "defaultTurnSeconds": 180,
+  "turnLengthSeconds": 300,
+  "startGameTimeSeconds": 28800,
   "units": [
     {
       "id": "dd-101",
@@ -27,7 +29,6 @@
       "password": "blue",
       "health": 100,
       "maxSpeed": 36,
-      "turnRate": 8,
       "radarSignature": "medium",
       "sensors": [{ "kind": "radar", "maxRangeNm": 25 }],
       "stations": [
@@ -54,7 +55,6 @@
       "password": "red",
       "health": 100,
       "maxSpeed": 21,
-      "turnRate": 5,
       "radarSignature": "small",
       "sensors": [{ "kind": "radar", "maxRangeNm": 25 }],
       "stations": [

@@ -79,8 +79,13 @@ export interface UnitState {
   classId: string;
   type: VesselType;
   position: LatLonDepth;
-  /** Heading degrees true. */
+  /** Current heading degrees true (bow direction). */
   heading: number;
+  /**
+   * Ordered / steering course degrees true (helm set-point).
+   * Ship turns toward this over resolves; persists across turns.
+   */
+  orderedCourse: number;
   /** Speed in knots (signed: negative = reverse). */
   speed: number;
   /** Current acknowledged EOT setting. */
@@ -96,9 +101,12 @@ export interface UnitState {
   orders: UnitOrders;
   /** Max speed knots for class (from library stub). */
   maxSpeed: number;
-  /** Turn rate deg/min stub. */
+  /**
+   * Steady turn rate deg per in-game minute.
+   * Derived from radarSignature (size) unless scenario overrides.
+   */
   turnRate: number;
-  /** Radar echo size for detection (class/unit). */
+  /** Radar echo size / hull-size proxy (small|medium|large). */
   radarSignature: RadarSignature;
   /** Installed sensors (destroyers and subs include radar for play). */
   sensors: SensorDef[];
@@ -112,6 +120,8 @@ export interface ScenarioUnitSeed {
   type: VesselType;
   position: LatLonDepth;
   heading: number;
+  /** Initial ordered course; defaults to heading. */
+  orderedCourse?: number;
   speed: number;
   eot?: EotSetting;
   accessToken: string;
@@ -119,6 +129,7 @@ export interface ScenarioUnitSeed {
   stations: StationDef[];
   health?: number;
   maxSpeed?: number;
+  /** Explicit deg/min override; else from radarSignature size. */
   turnRate?: number;
   radarSignature?: RadarSignature;
   sensors?: SensorDef[];
@@ -132,7 +143,15 @@ export interface Scenario {
   mode: 'pvp' | 'pve';
   operatingArea: BoundingBox;
   umpirePassword?: string;
+  /** Wall-clock ordering-phase duration (seconds). */
   defaultTurnSeconds: number;
+  /**
+   * In-game seconds advanced per resolved turn (default 300 = 5 min).
+   * Used for movement kinematics and the scenario clock.
+   */
+  turnLengthSeconds?: number;
+  /** In-game clock at turn 1 (seconds since midnight; default 08:00). */
+  startGameTimeSeconds?: number;
   units: ScenarioUnitSeed[];
 }
 
@@ -143,6 +162,11 @@ export interface TurnState {
   timerDeadline: string | null;
   /** Configured duration in seconds for the current / next open phase. */
   timerSeconds: number;
+  /**
+   * In-game clock (seconds since midnight, may exceed 86400 if multi-day).
+   * Advances by save.turnLengthSeconds on each resolve.
+   */
+  gameTimeSeconds: number;
 }
 
 export interface TurnSnapshot {
@@ -151,6 +175,21 @@ export interface TurnSnapshot {
   stateVersion: number;
   units: UnitState[];
   turn: TurnState;
+  /** In-game clock after this resolve (mirrors turn.gameTimeSeconds). */
+  gameTimeSeconds: number;
+}
+
+/** Lightweight lat/lon breadcrumb for umpire trails. */
+export interface TrailPoint {
+  lat: number;
+  lon: number;
+  /** Turn number when this position was the unit's post-resolve state (0 = scenario start). */
+  turnNumber: number;
+}
+
+export interface UnitTrail {
+  unitId: string;
+  points: TrailPoint[];
 }
 
 export interface GameSave {
@@ -166,6 +205,13 @@ export interface GameSave {
   updatedAt: string;
   stateVersion: number;
   turn: TurnState;
+  /** In-game seconds advanced per resolved turn. */
+  turnLengthSeconds: number;
+  /**
+   * Scenario-start positions for umpire trails (turn 0 breadcrumbs).
+   * History snapshots alone are post-resolve and would omit the origin.
+   */
+  startTrails: UnitTrail[];
   units: UnitState[];
   history: TurnSnapshot[];
 }
@@ -208,7 +254,10 @@ export interface UmpireView {
   operatingArea: BoundingBox;
   stateVersion: number;
   turn: TurnState;
+  turnLengthSeconds: number;
   units: UnitState[];
+  /** Prior-turn position trails per unit (history + current). */
+  trails: UnitTrail[];
   historyTurnNumbers: number[];
   vesselLinks: Array<{
     unitId: string;
@@ -252,6 +301,7 @@ export interface VesselView {
   name: string;
   stateVersion: number;
   turn: TurnState;
+  turnLengthSeconds: number;
   unit: Pick<
     UnitState,
     | 'id'
@@ -260,11 +310,14 @@ export interface VesselView {
     | 'type'
     | 'position'
     | 'heading'
+    | 'orderedCourse'
     | 'speed'
     | 'eot'
     | 'orders'
     | 'health'
     | 'maxSpeed'
+    | 'turnRate'
+    | 'radarSignature'
     | 'stations'
   >;
   stationId: string;

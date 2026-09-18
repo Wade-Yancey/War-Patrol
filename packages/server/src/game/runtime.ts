@@ -4,6 +4,10 @@ import {
   SCHEMA_VERSION,
   defaultRadarSignature,
   defaultSensors,
+  normalizeHeading,
+  resolveStartGameTimeSeconds,
+  resolveTurnLengthSeconds,
+  resolveTurnRate,
   type EotSetting,
   type GameSave,
   type Scenario,
@@ -21,6 +25,8 @@ import {
 import { buildViewForSession } from './views.js';
 
 function unitFromScenario(seed: Scenario['units'][number]): UnitState {
+  const radarSignature = seed.radarSignature ?? defaultRadarSignature(seed.type);
+  const heading = normalizeHeading(seed.heading);
   return normalizeUnit({
     id: seed.id,
     name: seed.name,
@@ -28,7 +34,8 @@ function unitFromScenario(seed: Scenario['units'][number]): UnitState {
     classId: seed.classId,
     type: seed.type,
     position: { ...seed.position },
-    heading: seed.heading,
+    heading,
+    orderedCourse: normalizeHeading(seed.orderedCourse ?? seed.heading),
     speed: seed.speed,
     eot: seed.eot ?? 'stop',
     accessToken: seed.accessToken,
@@ -37,13 +44,17 @@ function unitFromScenario(seed: Scenario['units'][number]): UnitState {
     health: seed.health ?? 100,
     orders: {},
     maxSpeed: seed.maxSpeed ?? 20,
-    turnRate: seed.turnRate ?? 5,
-    radarSignature: seed.radarSignature ?? defaultRadarSignature(seed.type),
+    turnRate: resolveTurnRate({
+      turnRate: seed.turnRate,
+      radarSignature,
+      type: seed.type,
+    }),
+    radarSignature,
     sensors: seed.sensors ? seed.sensors.map((s) => ({ ...s })) : defaultSensors(seed.type),
   });
 }
 
-/** Fill missing sensor / signature fields for older saves; ensure Radar station when radar is installed. */
+/** Fill missing sensor / signature / course fields for older saves. */
 function normalizeUnit(unit: UnitState): UnitState {
   const sensors = unit.sensors ?? defaultSensors(unit.type);
   const stations = unit.stations.map((s) => ({ ...s, capabilities: [...s.capabilities] }));
@@ -55,18 +66,58 @@ function normalizeUnit(unit: UnitState): UnitState {
   ) {
     stations.push({ id: 'radar', name: 'Radar', capabilities: ['radar'] });
   }
+  const radarSignature = unit.radarSignature ?? defaultRadarSignature(unit.type);
+  const heading = normalizeHeading(unit.heading);
+  const orderedCourse =
+    typeof unit.orderedCourse === 'number'
+      ? normalizeHeading(unit.orderedCourse)
+      : heading;
   return {
     ...unit,
-    radarSignature: unit.radarSignature ?? defaultRadarSignature(unit.type),
+    heading,
+    orderedCourse,
+    radarSignature,
+    turnRate: resolveTurnRate({
+      turnRate: unit.turnRate,
+      radarSignature,
+      type: unit.type,
+    }),
     sensors,
     stations,
   };
 }
 
 function normalizeSave(save: GameSave): GameSave {
+  const units = save.units.map((u) => normalizeUnit(structuredClone(u)));
+  const turnLengthSeconds = resolveTurnLengthSeconds(save.turnLengthSeconds);
+  const gameTimeSeconds =
+    typeof save.turn?.gameTimeSeconds === 'number'
+      ? save.turn.gameTimeSeconds
+      : resolveStartGameTimeSeconds(undefined);
+  const startTrails =
+    save.startTrails ??
+    units.map((u) => ({
+      unitId: u.id,
+      points: [{ lat: u.position.lat, lon: u.position.lon, turnNumber: 0 }],
+    }));
   return {
     ...save,
-    units: save.units.map((u) => normalizeUnit(structuredClone(u))),
+    turnLengthSeconds,
+    startTrails,
+    turn: {
+      ...save.turn,
+      gameTimeSeconds,
+    },
+    units,
+    history: (save.history ?? []).map((h) => ({
+      ...h,
+      gameTimeSeconds: h.gameTimeSeconds ?? h.turn?.gameTimeSeconds ?? gameTimeSeconds,
+      turn: {
+        ...h.turn,
+        gameTimeSeconds: h.turn?.gameTimeSeconds ?? h.gameTimeSeconds ?? gameTimeSeconds,
+      },
+      units: h.units.map((u) => normalizeUnit(structuredClone(u))),
+    })),
   };
 }
 
@@ -112,6 +163,9 @@ export class GameRuntime {
   async createFromScenario(scenarioId: string, name?: string): Promise<GameSave> {
     const scenario = await store.loadScenario(scenarioId);
     const now = new Date().toISOString();
+    const units = scenario.units.map(unitFromScenario);
+    const turnLengthSeconds = resolveTurnLengthSeconds(scenario.turnLengthSeconds);
+    const gameTimeSeconds = resolveStartGameTimeSeconds(scenario.startGameTimeSeconds);
     const save: GameSave = {
       schemaVersion: SCHEMA_VERSION,
       id: nanoid(12),
@@ -124,13 +178,19 @@ export class GameRuntime {
       createdAt: now,
       updatedAt: now,
       stateVersion: 1,
+      turnLengthSeconds,
       turn: {
         number: 1,
         phase: 'open',
         timerDeadline: null,
         timerSeconds: scenario.defaultTurnSeconds ?? DEFAULT_TURN_SECONDS,
+        gameTimeSeconds,
       },
-      units: scenario.units.map(unitFromScenario),
+      startTrails: units.map((u) => ({
+        unitId: u.id,
+        points: [{ lat: u.position.lat, lon: u.position.lon, turnNumber: 0 }],
+      })),
+      units,
       history: [],
     };
     this.games.set(save.id, save);
@@ -228,6 +288,10 @@ export class GameRuntime {
       }
 
       unit.orders = mergeOrders(unit.orders, patch, stationId);
+      // Steering course is live as soon as helm rings it up (persists across turns).
+      if (patch.course !== undefined) {
+        unit.orderedCourse = normalizeHeading(patch.course);
+      }
       return save;
     });
   }

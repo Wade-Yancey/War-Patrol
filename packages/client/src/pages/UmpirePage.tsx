@@ -142,7 +142,7 @@ export function UmpirePage() {
           <>
             <section className="panel stack">
               <h2>Turn status</h2>
-              <TurnStatus turn={umpire.turn} />
+              <TurnStatus turn={umpire.turn} turnLengthSeconds={umpire.turnLengthSeconds} />
               <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
                 Open = crews enter orders · Lock = freeze orders · Resolve = apply movement and open the next
                 turn.
@@ -262,7 +262,11 @@ export function UmpirePage() {
             <div className="grid-2" style={{ marginTop: '1rem' }}>
               <section className="panel">
                 <h2>Ground truth</h2>
-                <GroundTruthMap area={umpire.operatingArea} units={umpire.units} />
+                <GroundTruthMap
+                  area={umpire.operatingArea}
+                  units={umpire.units}
+                  trails={umpire.trails}
+                />
               </section>
 
               <div className="stack">
