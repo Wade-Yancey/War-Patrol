@@ -4,6 +4,7 @@
   "type": "destroyer",
   "maxSpeed": 36,
   "turnRate": 8,
+  "radarSignature": "medium",
   "defaultStations": [
     { "id": "bridge", "name": "Bridge", "capabilities": ["helm", "lookout", "plot"] },
     { "id": "engineering", "name": "Engineering", "capabilities": ["engineering"] },

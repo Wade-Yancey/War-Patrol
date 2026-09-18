@@ -96,7 +96,12 @@ async function main() {
   const contacts = rv.radarContacts as Array<Json>;
   check('radar sees surfaced contact', contacts.length >= 1, `got ${contacts.length}`);
   check('radar contact polar only', !('position' in contacts[0]) && typeof contacts[0].bearing === 'number');
+  check('radar contact no identity fields', !('side' in contacts[0]) && !('name' in contacts[0]) && !('classId' in contacts[0]));
   check('radar has max range', typeof rv.radarMaxRangeNm === 'number');
+  const porter = (uv.units as Json[]).find((u) => u.id === 'dd-101')!;
+  const gato = (uv.units as Json[]).find((u) => u.id === 'ss-212')!;
+  check('destroyer radarSignature medium', porter.radarSignature === 'medium');
+  check('sub radarSignature small', gato.radarSignature === 'small');
   check('bridge has no radar picture', !('radarContacts' in bv) || bv.radarContacts === undefined);
 
   // Dive sub → radar contact clears

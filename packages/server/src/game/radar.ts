@@ -1,8 +1,12 @@
 import {
   RADAR_MAX_RANGE_NM,
+  RADAR_SIGNATURE_RANGE_FACTOR,
+  RADAR_SIGNATURE_STRENGTH,
   bearingRangeNm,
+  defaultRadarSignature,
   type GameSave,
   type RadarContact,
+  type RadarSignature,
   type UnitState,
 } from '@war-patrol/shared';
 
@@ -12,7 +16,7 @@ const SURFACE_DEPTH_M = 5;
 /**
  * Minimal server-authoritative radar picture (ARCH-DET / ARCH-SP-05).
  * Own ship never appears. Other units are reduced to opaque polar blips —
- * no absolute positions, names, or sides leak to the client.
+ * no absolute positions, names, sides, or class leak to the client.
  */
 export function buildRadarContacts(own: UnitState, save: GameSave): {
   contacts: RadarContact[];
@@ -25,10 +29,17 @@ export function buildRadarContacts(own: UnitState, save: GameSave): {
     if (other.id === own.id) continue;
     if (other.position.depth > SURFACE_DEPTH_M) continue;
 
+    const signature = resolveSignature(other);
+    const detectRange = maxRangeNm * RADAR_SIGNATURE_RANGE_FACTOR[signature];
     const { bearing, rangeNm } = bearingRangeNm(own.position, other.position);
-    if (rangeNm > maxRangeNm || rangeNm <= 0) continue;
+    if (rangeNm > detectRange || rangeNm <= 0) continue;
 
-    const strength = Math.max(0.15, 1 - rangeNm / maxRangeNm);
+    const rangeFactor = Math.max(0, 1 - rangeNm / detectRange);
+    const strength = Math.min(
+      1,
+      Math.max(0.12, rangeFactor * RADAR_SIGNATURE_STRENGTH[signature]),
+    );
+
     contacts.push({
       id: `r-${hashTrackId(own.id, other.id)}`,
       bearing: Math.round(bearing * 10) / 10,
@@ -37,8 +48,13 @@ export function buildRadarContacts(own: UnitState, save: GameSave): {
     });
   }
 
-  contacts.sort((a, b) => a.bearing - b.bearing);
+  // Bearing order — operator reads Contact 1…N as raw sensor indices.
+  contacts.sort((a, b) => a.bearing - b.bearing || a.rangeNm - b.rangeNm);
   return { contacts, maxRangeNm };
+}
+
+function resolveSignature(unit: UnitState): RadarSignature {
+  return unit.radarSignature ?? defaultRadarSignature(unit.type);
 }
 
 /** Stable opaque track id — not reversible to unit id without the own-ship salt. */
