@@ -529,34 +529,32 @@ label {
 }
 
 .radar-scope {
+  /* CRT console cluster: dominant scope + controls hugging beside it. */
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
-  align-items: stretch;
+  align-items: center;
+  gap: 0.65rem;
   width: 100%;
   max-width: 100%;
   min-width: 0;
   box-sizing: border-box;
+  margin: 0 auto;
 }
 
-/* Remaining space after the side panel; keeps the PPI circular and centered. */
 .radar-scope-plot {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
+  min-width: 0;
 }
 
 .radar-scope-svg {
   display: block;
-  /* Square box only — never stretch into a non-circular flex item. */
-  width: min(100%, 92vw, 70vh);
+  width: min(100%, 92vw, 68vh);
   height: auto;
   aspect-ratio: 1 / 1;
-  max-height: min(70vh, 720px);
+  max-height: min(68vh, 680px);
   max-width: 100%;
   touch-action: manipulation;
   user-select: none;
@@ -565,16 +563,12 @@ label {
 
 .radar-side-panel {
   flex: 0 0 auto;
-  width: 100%;
-  max-width: 18rem;
-  margin: 0 auto;
+  width: min(100%, 16rem);
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.55rem;
   min-width: 0;
   box-sizing: border-box;
-  /* Hug contact/scale content — no dead band past the table. */
-  align-self: center;
 }
 
 .radar-scale-panel,
@@ -681,57 +675,68 @@ label {
   .radar-scope {
     flex-direction: row;
     flex-wrap: nowrap;
-    align-items: stretch;
-    justify-content: flex-start;
-    gap: 0.5rem;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    width: max-content;
+    max-width: 100%;
   }
 
   .radar-scope-plot {
-    flex: 1 1 0;
-    width: auto;
-    align-self: stretch;
+    flex: 0 0 auto;
   }
 
   .radar-scope-svg {
-    /* Fill the plot area up to a square capped by height — stay circular. */
-    width: min(100%, 70vh, 720px);
-    max-width: 100%;
-    max-height: min(70vh, 720px);
+    /* Square PPI sized to viewport height; never flex-stretched. */
+    width: min(64vh, 620px, calc(100vw - 15rem));
+    max-width: min(64vh, 620px, calc(100vw - 15rem));
+    max-height: min(64vh, 620px);
   }
 
   .radar-side-panel {
-    flex: 0 0 auto;
-    width: max-content;
-    max-width: 13.5rem;
-    min-width: 11.25rem;
-    margin: 0;
-    align-self: flex-start;
+    width: 11.5rem;
+    max-width: 11.5rem;
+    max-height: min(64vh, 620px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 0.15rem 0;
+    /* Column hugging the scope rim — scale on top, contacts below. */
+    justify-content: flex-start;
   }
 
   .radar-scale-buttons {
-    grid-template-columns: 1fr 1fr;
+    /* Vertical strip along the scope — reads as console controls. */
+    grid-template-columns: 1fr;
+    gap: 0.3rem;
   }
 
   .radar-scale-buttons button {
-    min-height: 2.5rem;
-    font-size: 0.75rem;
-    padding: 0.35rem 0.4rem;
+    min-height: 2.35rem;
+    font-size: 0.78rem;
+    padding: 0.3rem 0.45rem;
+  }
+
+  .radar-contact-list {
+    flex: 1 1 auto;
+    min-height: 0;
   }
 }
 
 @media (min-width: 1100px) {
   .radar-scope {
-    gap: 0.55rem;
+    gap: 0.85rem;
   }
 
   .radar-scope-svg {
-    width: min(100%, 74vh, 760px);
-    max-height: min(74vh, 760px);
+    width: min(68vh, 700px, calc(100vw - 16rem));
+    max-width: min(68vh, 700px, calc(100vw - 16rem));
+    max-height: min(68vh, 700px);
   }
 
   .radar-side-panel {
-    max-width: 14rem;
-    min-width: 11.5rem;
+    width: 12rem;
+    max-width: 12rem;
+    max-height: min(68vh, 700px);
   }
 }
 
