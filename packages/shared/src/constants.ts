@@ -91,3 +91,18 @@ export const HYDROPHONE_BEAM_POWER = 4;
 
 /** Absolute speed (kn) at/above which a hull is treated as underway (emits propeller noise). */
 export const HYDROPHONE_UNDERWAY_SPEED_KN = 0.1;
+
+/**
+ * Destroyer active search sonar stub max range (nm).
+ * Shorter than surface-search radar — forward cone only.
+ */
+export const ACTIVE_SONAR_MAX_RANGE_NM = 8;
+
+/**
+ * Half-angle (degrees) of the active-search forward cone about own heading.
+ * Full cone width = 2 × this value (stub: ±30°).
+ */
+export const ACTIVE_SONAR_HALF_ANGLE_DEG = 30;
+
+/** Wall-clock seconds between placeholder active-sonar pings (own set + hydrophone hear). */
+export const ACTIVE_SONAR_PING_INTERVAL_SEC = 2;

@@ -73,6 +73,15 @@ export const api = {
       token,
       body: JSON.stringify(body),
     }),
+  setActiveSonar: (gameId: string, token: string, enabled: boolean) =>
+    request<{ ok: boolean; stateVersion: number; activeSonarEnabled: boolean }>(
+      `/api/games/${gameId}/active-sonar`,
+      {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ enabled }),
+      },
+    ),
   turnTimer: (gameId: string, token: string, seconds: number) =>
     request(`/api/games/${gameId}/turn/timer`, {
       method: 'POST',

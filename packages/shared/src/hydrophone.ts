@@ -3,6 +3,7 @@ import {
   HYDROPHONE_MAX_RANGE_NM,
   HYDROPHONE_RANGE_REF_NM,
   HYDROPHONE_UNDERWAY_SPEED_KN,
+  RADAR_SURFACE_DEPTH_M,
 } from './constants.js';
 import { normalizeHeading } from './geo.js';
 import type { HullClass, SensorDef, UnitState } from './types.js';
@@ -15,6 +16,19 @@ export function findHydrophoneSensor(unit: Pick<UnitState, 'sensors'>): SensorDe
 
 export function hasHydrophoneSensor(unit: Pick<UnitState, 'sensors'>): boolean {
   return Boolean(findHydrophoneSensor(unit));
+}
+
+/**
+ * Fleet-sub hydrophone is submerged-only (depth > surface band).
+ * Surface ships with a hydrophone (legacy) are not depth-gated.
+ */
+export function isHydrophoneDepthOk(
+  unit: Pick<UnitState, 'type' | 'position'>,
+): { ok: boolean; reason?: 'surfaced' } {
+  if (unit.type === 'Submarine' && unit.position.depth <= RADAR_SURFACE_DEPTH_M) {
+    return { ok: false, reason: 'surfaced' };
+  }
+  return { ok: true };
 }
 
 /**
@@ -173,7 +187,7 @@ export function hydrophoneContactVoiceOffset(contactId: string): {
   return { playbackRate, loopStartFraction };
 }
 
-/** Default hydrophone install for a hull class (alongside radar where applicable). */
+/** Default hydrophone install — fleet submarines only (destroyers use active sonar). */
 export function defaultHydrophoneSensor(
   hullClassOrType: HullClass | string | undefined,
 ): SensorDef | undefined {
@@ -182,10 +196,6 @@ export function defaultHydrophoneSensor(
     class: isHullClass(hullClassOrType) ? hullClassOrType : undefined,
   });
   switch (hullClass) {
-    case 'Destroyer':
-    case 'Cruiser':
-    case 'Battleship':
-    case 'Aircraft Carrier':
     case 'Fleet Submarine':
       return { kind: 'hydrophone', maxRangeNm: HYDROPHONE_MAX_RANGE_NM };
     default:

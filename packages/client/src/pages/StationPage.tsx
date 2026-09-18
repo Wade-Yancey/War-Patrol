@@ -6,6 +6,7 @@ import {
   effectiveMaxSpeed,
   formatPendingOrdersSummary,
   hasPendingOrders,
+  isRadarSurfaced,
   type EotSetting,
   type VesselView,
 } from '@war-patrol/shared';
@@ -19,10 +20,13 @@ import { EotTelegraph } from '../components/EotTelegraph';
 import { HelmCompass } from '../components/HelmCompass';
 import { HydrophoneScope } from '../components/HydrophoneScope';
 import { RadarScope } from '../components/RadarScope';
+import { ActiveSonarScope } from '../components/ActiveSonarScope';
 
 function tokenKey(gameId: string, accessToken: string, stationId: string) {
   return `wp-token:${gameId}:${accessToken}:${stationId}`;
 }
+
+type SensorTab = 'radar' | 'hydrophone' | 'sonar';
 
 export function StationPage() {
   const { gameId = '', accessToken = '', stationId = '' } = useParams();
@@ -35,6 +39,8 @@ export function StationPage() {
   const [course, setCourse] = useState(0);
   const [eot, setEot] = useState<EotSetting>('ahead_standard');
   const [seeded, setSeeded] = useState(false);
+  const [sensorTab, setSensorTab] = useState<SensorTab | null>(null);
+  const [sonarBusy, setSonarBusy] = useState(false);
 
   const { view, stateVersion, connected, error } = useGameStream({
     gameId,
@@ -66,13 +72,49 @@ export function StationPage() {
   }, [vessel, seeded]);
 
   const caps = useMemo(() => new Set(vessel?.station.capabilities ?? []), [vessel]);
+  const isControls = stationId === 'controls' || caps.has('helm') || caps.has('engineering');
+  const isSensors =
+    stationId === 'sensors' ||
+    caps.has('radar') ||
+    caps.has('hydrophone') ||
+    caps.has('active_sonar');
   const canHelm = caps.has('helm');
   const canEot = caps.has('engineering') || caps.has('helm');
   const canRadar = caps.has('radar');
   const canHydrophone = caps.has('hydrophone');
-  const stubCaps = [...caps].filter(
-    (c) => c !== 'helm' && c !== 'engineering' && c !== 'radar' && c !== 'hydrophone',
-  );
+  const canActiveSonar = caps.has('active_sonar');
+  const sensorFocus = isSensors && (canRadar || canHydrophone || canActiveSonar);
+
+  const surfaced = vessel ? isRadarSurfaced(vessel.unit.position) : true;
+
+  // Sub Sensors: pick a sensible default tab from depth; follow depth changes.
+  useEffect(() => {
+    if (!vessel || !isSensors) return;
+    if (canHydrophone && canRadar) {
+      const preferred: SensorTab = surfaced ? 'radar' : 'hydrophone';
+      setSensorTab((prev) => {
+        if (prev === 'radar' || prev === 'hydrophone') {
+          // Auto-nudge when depth flips availability band.
+          if (surfaced && prev === 'hydrophone') return 'radar';
+          if (!surfaced && prev === 'radar') return 'hydrophone';
+          return prev;
+        }
+        return preferred;
+      });
+      return;
+    }
+    if (canActiveSonar && canRadar) {
+      setSensorTab((prev) => prev ?? 'radar');
+      return;
+    }
+    if (canRadar) setSensorTab('radar');
+    else if (canHydrophone) setSensorTab('hydrophone');
+    else if (canActiveSonar) setSensorTab('sonar');
+  }, [vessel, isSensors, canHydrophone, canRadar, canActiveSonar, surfaced]);
+
+  const activeTab: SensorTab =
+    sensorTab ??
+    (canRadar ? 'radar' : canHydrophone ? 'hydrophone' : 'sonar');
 
   const login = async (e?: FormEvent) => {
     e?.preventDefault();
@@ -97,6 +139,19 @@ export function StationPage() {
       await api.orders(gameId, token, patch);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Order failed');
+    }
+  };
+
+  const toggleActiveSonar = async (enabled: boolean) => {
+    if (!token) return;
+    setActionError(null);
+    setSonarBusy(true);
+    try {
+      await api.setActiveSonar(gameId, token, enabled);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Sonar toggle failed');
+    } finally {
+      setSonarBusy(false);
     }
   };
 
@@ -133,11 +188,7 @@ export function StationPage() {
 
   return (
     <CrtShell side={sideAccent as 'blue' | 'red' | 'civilian' | 'neutral'} faction={faction}>
-      <div
-        className={`app-shell${
-          vessel && (canRadar || canHydrophone) ? ' app-shell--radar-focus' : ''
-        }`}
-      >
+      <div className={`app-shell${vessel && sensorFocus ? ' app-shell--radar-focus' : ''}`}>
         <header className="header-bar">
           <div>
             <span className="brand-mark">Station console</span>
@@ -162,7 +213,7 @@ export function StationPage() {
           <div className="stack" style={{ alignItems: 'flex-end', gap: '0.35rem' }}>
             <div className="row" style={{ alignItems: 'center' }}>
               <span className={`live-dot ${connected ? '' : 'off'}`} />
-              <span className="mono muted">{connected ? 'LIVE' : 'RECONNECTING'}</span>
+              <span className={`mono muted`}>{connected ? 'LIVE' : 'RECONNECTING'}</span>
               <span className="mono muted">v{stateVersion}</span>
             </div>
           </div>
@@ -170,9 +221,47 @@ export function StationPage() {
 
         {(error || actionError) && <p className="error">{error || actionError}</p>}
 
-        {vessel && (
+        {vessel && isSensors && (
           <>
-            {canRadar && (
+            {(canRadar && canHydrophone) || (canRadar && canActiveSonar) ? (
+              <div className="sensor-tabs" role="tablist" aria-label="Sensor instruments">
+                {canRadar && (
+                  <button
+                    type="button"
+                    role="tab"
+                    className={activeTab === 'radar' ? 'primary' : undefined}
+                    aria-selected={activeTab === 'radar'}
+                    onClick={() => setSensorTab('radar')}
+                  >
+                    Radar
+                  </button>
+                )}
+                {canHydrophone && (
+                  <button
+                    type="button"
+                    role="tab"
+                    className={activeTab === 'hydrophone' ? 'primary' : undefined}
+                    aria-selected={activeTab === 'hydrophone'}
+                    onClick={() => setSensorTab('hydrophone')}
+                  >
+                    Hydrophone
+                  </button>
+                )}
+                {canActiveSonar && (
+                  <button
+                    type="button"
+                    role="tab"
+                    className={activeTab === 'sonar' ? 'primary' : undefined}
+                    aria-selected={activeTab === 'sonar'}
+                    onClick={() => setSensorTab('sonar')}
+                  >
+                    Active sonar
+                  </button>
+                )}
+              </div>
+            ) : null}
+
+            {canRadar && (activeTab === 'radar' || (!canHydrophone && !canActiveSonar)) && (
               <section className="panel stack radar-station-panel">
                 <div className="radar-station-head">
                   <h2>Radar · PPI</h2>
@@ -224,34 +313,43 @@ export function StationPage() {
               </section>
             )}
 
-            {canHydrophone && (
+            {canHydrophone && activeTab === 'hydrophone' && (
               <section className="panel stack radar-station-panel">
                 <div className="radar-station-head">
                   <h2>Hydrophone · Bearing listen</h2>
                   <p className="muted radar-station-blurb">
-                    Train the needle by ear — no visual contacts. Underway propellers only; volume falls with
-                    range and misalignment.
+                    Train the needle by ear — no visual contacts. Underway propellers and active-sonar pings;
+                    volume falls with range and misalignment.
                     {vessel.hydrophoneOperational
                       ? ` Passive · ${vessel.hydrophoneMaxRangeNm ?? 30} nm.`
-                      : vessel.hydrophoneUnavailableReason === 'no_sensor'
-                        ? ' No hydrophone set installed.'
-                        : vessel.hydrophoneUnavailableReason === 'sunk'
-                          ? ' Set offline — unit sunk/destroyed.'
-                          : vessel.hydrophoneUnavailableReason === 'sensors_disabled'
-                            ? ' Sensors disabled.'
-                            : ''}
+                      : vessel.hydrophoneUnavailableReason === 'surfaced'
+                        ? ' Submerged only (depth &gt; 5 m).'
+                        : vessel.hydrophoneUnavailableReason === 'no_sensor'
+                          ? ' No hydrophone set installed.'
+                          : vessel.hydrophoneUnavailableReason === 'sunk'
+                            ? ' Set offline — unit sunk/destroyed.'
+                            : vessel.hydrophoneUnavailableReason === 'sensors_disabled'
+                              ? ' Sensors disabled.'
+                              : ''}
                   </p>
                 </div>
                 {vessel.hydrophoneOperational === false ? (
                   <div className="radar-unavailable" role="status">
                     <p className="readout" style={{ margin: 0 }}>
-                      {vessel.hydrophoneUnavailableReason === 'sunk'
-                        ? 'Hydrophone unavailable — sunk/destroyed'
-                        : vessel.hydrophoneUnavailableReason === 'sensors_disabled'
-                          ? 'Hydrophone unavailable — sensors disabled'
-                          : vessel.hydrophoneUnavailableReason === 'no_sensor'
-                            ? 'Hydrophone unavailable — no sensor'
-                            : 'Hydrophone unavailable'}
+                      {vessel.hydrophoneUnavailableReason === 'surfaced'
+                        ? 'Hydrophone unavailable — surfaced'
+                        : vessel.hydrophoneUnavailableReason === 'sunk'
+                          ? 'Hydrophone unavailable — sunk/destroyed'
+                          : vessel.hydrophoneUnavailableReason === 'sensors_disabled'
+                            ? 'Hydrophone unavailable — sensors disabled'
+                            : vessel.hydrophoneUnavailableReason === 'no_sensor'
+                              ? 'Hydrophone unavailable — no sensor'
+                              : 'Hydrophone unavailable'}
+                    </p>
+                    <p className="muted" style={{ margin: '0.5rem 0 0', fontSize: '0.85rem' }}>
+                      {vessel.hydrophoneUnavailableReason === 'surfaced'
+                        ? 'Dive below 5 m to listen. No hydrophone on the surface.'
+                        : 'This station has no usable hydrophone picture.'}
                     </p>
                   </div>
                 ) : (
@@ -264,7 +362,102 @@ export function StationPage() {
               </section>
             )}
 
-            <section className={`panel stack${canRadar || canHydrophone ? ' station-turn-panel' : ''}`}>
+            {canActiveSonar && activeTab === 'sonar' && (
+              <section className="panel stack radar-station-panel">
+                <div className="radar-station-head">
+                  <h2>Active search sonar</h2>
+                  <p className="muted radar-station-blurb">
+                    Forward cone only (±{vessel.sonarHalfAngleDeg ?? 30}° about heading). Toggle search to
+                    ping and paint anonymous contacts inside the cone.
+                    {vessel.sonarMaxRangeNm ? ` Max ${vessel.sonarMaxRangeNm} nm.` : ''}
+                  </p>
+                </div>
+                <div className="sonar-toggle-row">
+                  <button
+                    type="button"
+                    className={vessel.unit.activeSonarEnabled ? 'primary' : undefined}
+                    disabled={
+                      sonarBusy ||
+                      vessel.sonarUnavailableReason === 'no_sensor' ||
+                      vessel.sonarUnavailableReason === 'sunk' ||
+                      vessel.sonarUnavailableReason === 'sensors_disabled'
+                    }
+                    aria-pressed={vessel.unit.activeSonarEnabled}
+                    onClick={() => void toggleActiveSonar(!vessel.unit.activeSonarEnabled)}
+                  >
+                    {vessel.unit.activeSonarEnabled ? 'Search sonar ON' : 'Search sonar OFF'}
+                  </button>
+                  <span className="mono muted">
+                    {vessel.unit.activeSonarEnabled ? 'PINGING' : 'STANDBY'}
+                  </span>
+                </div>
+                {vessel.sonarUnavailableReason === 'no_sensor' ||
+                vessel.sonarUnavailableReason === 'sunk' ||
+                vessel.sonarUnavailableReason === 'sensors_disabled' ? (
+                  <div className="radar-unavailable" role="status">
+                    <p className="readout" style={{ margin: 0 }}>
+                      {vessel.sonarUnavailableReason === 'sunk'
+                        ? 'Sonar unavailable — sunk/destroyed'
+                        : vessel.sonarUnavailableReason === 'sensors_disabled'
+                          ? 'Sonar unavailable — sensors disabled'
+                          : 'Sonar unavailable — no sensor'}
+                    </p>
+                  </div>
+                ) : vessel.sonarOperational === false ? (
+                  <div className="radar-unavailable" role="status">
+                    <p className="readout" style={{ margin: 0 }}>
+                      Active sonar standby — toggle ON to search
+                    </p>
+                    <p className="muted" style={{ margin: '0.5rem 0 0', fontSize: '0.85rem' }}>
+                      No blips while the set is off. Pings are audible to listening hydrophones when ON.
+                    </p>
+                  </div>
+                ) : (
+                  <ActiveSonarScope
+                    contacts={vessel.sonarContacts ?? []}
+                    maxRangeNm={vessel.sonarMaxRangeNm ?? 8}
+                    halfAngleDeg={vessel.sonarHalfAngleDeg ?? 30}
+                    ownHeading={vessel.unit.heading}
+                    pinging={Boolean(vessel.unit.activeSonarEnabled)}
+                  />
+                )}
+              </section>
+            )}
+
+            {/* Turn status under sensor instruments */}
+
+            <section className="panel stack station-turn-panel">
+              <h2>Turn</h2>
+              <TurnStatus turn={vessel.turn} turnLengthSeconds={vessel.turnLengthSeconds} />
+              {hasPendingOrders(vessel.unit.orders) ? (
+                <div className="orders-of-record" role="status">
+                  <span className="status-pill open">Of record</span>
+                  <span className="mono readout">{formatPendingOrdersSummary(vessel.unit.orders)}</span>
+                  {vessel.unit.orders.updatedByStationId && (
+                    <span className="mono muted">via {vessel.unit.orders.updatedByStationId}</span>
+                  )}
+                </div>
+              ) : (
+                <p className="muted mono" style={{ margin: 0, fontSize: '0.85rem' }}>
+                  No pending orders filed for this turn.
+                </p>
+              )}
+              {vessel.stationConnections.some((c) => c.count > 1) && (
+                <p className="mono" style={{ margin: 0, color: 'var(--accent-strong)' }}>
+                  Multi-connection: last write wins —{' '}
+                  {vessel.stationConnections
+                    .filter((c) => c.count > 0)
+                    .map((c) => `${c.stationId}×${c.count}`)
+                    .join(', ')}
+                </p>
+              )}
+            </section>
+          </>
+        )}
+
+        {vessel && isControls && !isSensors && (
+          <>
+            <section className="panel stack">
               <h2>Turn</h2>
               <TurnStatus turn={vessel.turn} turnLengthSeconds={vessel.turnLengthSeconds} />
               {hasPendingOrders(vessel.unit.orders) ? (
@@ -443,21 +636,10 @@ export function StationPage() {
                   </section>
                 )}
 
-                {stubCaps.length > 0 && (
-                  <section className="panel">
-                    <h2>Other stations (stub)</h2>
-                    <p className="muted" style={{ marginTop: 0 }}>
-                      Capability panels deferred:
-                    </p>
-                    <div className="row">
-                      {stubCaps.map((c) => (
-                        <span key={c} className="status-pill">
-                          {c}
-                        </span>
-                      ))}
-                    </div>
-                  </section>
-                )}
+                <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
+                  Ambient bridge audio (nearby depth charges / sonar via BT speakers) planned for this
+                  screen later — not in this build.
+                </p>
               </div>
             </div>
           </>

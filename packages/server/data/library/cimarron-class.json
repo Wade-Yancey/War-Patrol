@@ -7,8 +7,6 @@
   "turnRate": 7,
   "radarSignature": "medium",
   "defaultStations": [
-    { "id": "bridge", "name": "Bridge", "capabilities": ["helm", "lookout", "plot"] },
-    { "id": "engineering", "name": "Engineering", "capabilities": ["engineering"] },
-    { "id": "radio", "name": "Radio", "capabilities": ["comms"] }
+    { "id": "controls", "name": "Controls", "capabilities": ["helm", "engineering", "plot"] }
   ]
 }

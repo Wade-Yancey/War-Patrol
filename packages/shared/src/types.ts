@@ -59,6 +59,7 @@ export type StationCapability =
   | 'lookout'
   | 'hydrophone'
   | 'radar'
+  | 'active_sonar'
   | 'weapons'
   | 'torpedo'
   | 'comms'
@@ -165,6 +166,11 @@ export interface UnitState {
   radarSignature: RadarSignature;
   /** Installed sensors (destroyers and subs include radar for play). */
   sensors: SensorDef[];
+  /**
+   * Destroyer active search sonar operator toggle (immediate, not turn-order).
+   * When true and the set is installed/healthy, the unit pings and paints a forward-cone picture.
+   */
+  activeSonarEnabled: boolean;
 }
 
 export interface ScenarioUnitSeed {
@@ -198,6 +204,8 @@ export interface ScenarioUnitSeed {
   turnRate?: number;
   radarSignature?: RadarSignature;
   sensors?: SensorDef[];
+  /** Optional seed for destroyer active sonar toggle (default false). */
+  activeSonarEnabled?: boolean;
 }
 
 export interface Scenario {
@@ -404,6 +412,7 @@ export interface VesselView {
     | 'turnRate'
     | 'radarSignature'
     | 'stations'
+    | 'activeSonarEnabled'
   >;
   stationId: string;
   station: StationDef;
@@ -429,10 +438,30 @@ export interface VesselView {
   hydrophoneContacts?: HydrophoneContact[];
   /** Configured max hydrophone hearing range (nm). */
   hydrophoneMaxRangeNm?: number;
-  /** False when hydrophone cannot listen (sunk / sensors disabled / no set). */
+  /** False when hydrophone cannot listen (sunk / sensors disabled / no set / surfaced sub). */
   hydrophoneOperational?: boolean;
   /** Operator-facing reason when hydrophoneOperational is false. */
-  hydrophoneUnavailableReason?: 'no_sensor' | 'sunk' | 'sensors_disabled';
+  hydrophoneUnavailableReason?: 'no_sensor' | 'sunk' | 'sensors_disabled' | 'surfaced';
+  /**
+   * Active search sonar picture for stations with the `active_sonar` capability.
+   * Forward cone only — omitted for non-sonar stations.
+   */
+  sonarContacts?: RadarContact[];
+  /** Configured max active-sonar range (nm). */
+  sonarMaxRangeNm?: number;
+  /** Cone half-angle about own heading (degrees). */
+  sonarHalfAngleDeg?: number;
+  /**
+   * True when the set can paint (installed, healthy, and operator toggle ON).
+   * When toggle is OFF, operational is false with reason `sonar_off`.
+   */
+  sonarOperational?: boolean;
+  /** Operator-facing reason when sonarOperational is false. */
+  sonarUnavailableReason?:
+    | 'no_sensor'
+    | 'sunk'
+    | 'sensors_disabled'
+    | 'sonar_off';
 }
 
 /**
@@ -445,6 +474,12 @@ export interface HydrophoneContact {
   bearing: number;
   /** Slant-plane range in nautical miles (equirectangular). */
   rangeNm: number;
+  /**
+   * Emitter class for audio mixing:
+   * - `propeller` — continuous underwater noise from an underway hull
+   * - `active_sonar_ping` — intermittent ping from a destroyer with search sonar ON
+   */
+  kind: 'propeller' | 'active_sonar_ping';
 }
 
 export type ClientView = UmpireView | VesselView;

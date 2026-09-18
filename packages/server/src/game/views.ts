@@ -9,6 +9,7 @@ import type {
 } from '@war-patrol/shared';
 import { isV1PlayerUnit } from '@war-patrol/shared';
 import type { SseHub } from './sse.js';
+import { buildActiveSonarContacts } from './activeSonar.js';
 import { buildHydrophoneContacts } from './hydrophone.js';
 import { buildRadarContacts } from './radar.js';
 
@@ -123,6 +124,7 @@ export function buildVesselView(
       turnRate: unit.turnRate,
       radarSignature: unit.radarSignature,
       stations: unit.stations,
+      activeSonarEnabled: Boolean(unit.activeSonarEnabled),
     },
     stationId,
     station,
@@ -147,6 +149,17 @@ export function buildVesselView(
     view.hydrophoneOperational = hydro.operational;
     if (hydro.unavailableReason) {
       view.hydrophoneUnavailableReason = hydro.unavailableReason;
+    }
+  }
+
+  if (station.capabilities.includes('active_sonar')) {
+    const sonar = buildActiveSonarContacts(unit, save);
+    view.sonarContacts = sonar.contacts;
+    view.sonarMaxRangeNm = sonar.maxRangeNm;
+    view.sonarHalfAngleDeg = sonar.halfAngleDeg;
+    view.sonarOperational = sonar.operational;
+    if (sonar.unavailableReason) {
+      view.sonarUnavailableReason = sonar.unavailableReason;
     }
   }
 
