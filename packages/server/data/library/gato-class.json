@@ -6,7 +6,10 @@
   "maxSpeed": 21,
   "turnRate": 12,
   "radarSignature": "small",
-  "sensors": [{ "kind": "radar", "maxRangeNm": 25 }],
+  "sensors": [
+    { "kind": "radar", "maxRangeNm": 25 },
+    { "kind": "hydrophone", "maxRangeNm": 30 }
+  ],
   "defaultStations": [
     { "id": "conn", "name": "Conn", "capabilities": ["helm", "plot"] },
     { "id": "engineering", "name": "Maneuvering", "capabilities": ["engineering"] },

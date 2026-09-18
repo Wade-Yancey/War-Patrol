@@ -232,6 +232,107 @@ async function main() {
   check('porter radar operational', rv.radarOperational === true);
   check('bridge has no radar picture', !('radarContacts' in bv) || bv.radarContacts === undefined);
 
+  // 3c. Hydrophone station: polar audio cues, works submerged, no visual identity
+  const hydroAuth = await api('POST', `/api/games/${gameId}/auth/vessel`, {
+    accessToken: 'porter-demo',
+    password: 'blue',
+    stationId: 'sonar',
+  });
+  check('hydrophone station auth', hydroAuth.status === 200);
+  const hydroToken = hydroAuth.json.token as string;
+  const hydroViewRes = await api('GET', `/api/games/${gameId}/view`, undefined, hydroToken);
+  check('hydrophone view ok', hydroViewRes.status === 200);
+  const hv = hydroViewRes.json.view as Json;
+  check('hydrophone operational', hv.hydrophoneOperational === true);
+  check('hydrophone has contacts array', Array.isArray(hv.hydrophoneContacts));
+  const hContacts = hv.hydrophoneContacts as Array<Json>;
+  check('hydrophone hears underway contact', hContacts.length >= 1, `got ${hContacts.length}`);
+  check(
+    'hydrophone contact polar only',
+    !('position' in hContacts[0]) &&
+      typeof hContacts[0].bearing === 'number' &&
+      typeof hContacts[0].rangeNm === 'number',
+  );
+  check(
+    'hydrophone contact no identity fields',
+    !('side' in hContacts[0]) &&
+      !('name' in hContacts[0]) &&
+      !('classId' in hContacts[0]) &&
+      !('class' in hContacts[0]) &&
+      !('type' in hContacts[0]) &&
+      !('faction' in hContacts[0]) &&
+      !('signature' in hContacts[0]),
+  );
+  check(
+    'hydrophone has max range',
+    typeof hv.hydrophoneMaxRangeNm === 'number' && (hv.hydrophoneMaxRangeNm as number) > 0,
+  );
+  check(
+    'hydrophone max beyond radar stub',
+    (hv.hydrophoneMaxRangeNm as number) >= (rv.radarMaxRangeNm as number),
+  );
+  check(
+    'destroyer has hydrophone sensor',
+    Array.isArray(porter.sensors) &&
+      (porter.sensors as Json[]).some((s) => s.kind === 'hydrophone'),
+  );
+  check(
+    'sub has hydrophone sensor',
+    Array.isArray(gato.sensors) &&
+      (gato.sensors as Json[]).some((s) => s.kind === 'hydrophone'),
+  );
+  check('bridge has no hydrophone picture', !('hydrophoneContacts' in bv) || bv.hydrophoneContacts === undefined);
+  check('radar station has no hydrophone picture', !('hydrophoneContacts' in rv) || rv.hydrophoneContacts === undefined);
+
+  // Stop Gato → no propeller emission
+  await api('PATCH', `/api/games/${gameId}/units/ss-212`, { speed: 0, eot: 'stop' }, umpireToken);
+  const hydroStopped = await api('GET', `/api/games/${gameId}/view`, undefined, hydroToken);
+  check(
+    'hydrophone silent when contact stopped',
+    Array.isArray((hydroStopped.json.view as Json).hydrophoneContacts) &&
+      ((hydroStopped.json.view as Json).hydrophoneContacts as unknown[]).length === 0,
+  );
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { speed: 6, eot: 'ahead_2' },
+    umpireToken,
+  );
+
+  // Dive sub → hydrophone still hears (unlike radar); sub own hydrophone still works
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { position: { depth: 40 } },
+    umpireToken,
+  );
+  const hydroAfterDive = await api('GET', `/api/games/${gameId}/view`, undefined, hydroToken);
+  check(
+    'hydrophone still hears submerged underway target',
+    Array.isArray((hydroAfterDive.json.view as Json).hydrophoneContacts) &&
+      ((hydroAfterDive.json.view as Json).hydrophoneContacts as unknown[]).length >= 1,
+  );
+  const subHydroAuth = await api('POST', `/api/games/${gameId}/auth/vessel`, {
+    accessToken: 'gato-demo',
+    password: 'red',
+    stationId: 'sonar',
+  });
+  check('sub hydrophone station auth', subHydroAuth.status === 200);
+  const subHydroToken = subHydroAuth.json.token as string;
+  const subHydroDive = await api('GET', `/api/games/${gameId}/view`, undefined, subHydroToken);
+  const shd = subHydroDive.json.view as Json;
+  check('sub hydrophone operational submerged', shd.hydrophoneOperational === true);
+  check(
+    'sub hydrophone hears destroyer while submerged',
+    Array.isArray(shd.hydrophoneContacts) && (shd.hydrophoneContacts as unknown[]).length >= 1,
+  );
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { position: { depth: 0 } },
+    umpireToken,
+  );
+
   // Sub radar while surfaced can see destroyer
   const subRadarAuth = await api('POST', `/api/games/${gameId}/auth/vessel`, {
     accessToken: 'gato-demo',

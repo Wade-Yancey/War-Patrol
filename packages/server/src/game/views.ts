@@ -9,6 +9,7 @@ import type {
 } from '@war-patrol/shared';
 import { isV1PlayerUnit } from '@war-patrol/shared';
 import type { SseHub } from './sse.js';
+import { buildHydrophoneContacts } from './hydrophone.js';
 import { buildRadarContacts } from './radar.js';
 
 /** Build umpire polylines from start positions + history snapshots + current. */
@@ -136,6 +137,16 @@ export function buildVesselView(
     view.radarOperational = radar.operational;
     if (radar.unavailableReason) {
       view.radarUnavailableReason = radar.unavailableReason;
+    }
+  }
+
+  if (station.capabilities.includes('hydrophone')) {
+    const hydro = buildHydrophoneContacts(unit, save);
+    view.hydrophoneContacts = hydro.contacts;
+    view.hydrophoneMaxRangeNm = hydro.maxRangeNm;
+    view.hydrophoneOperational = hydro.operational;
+    if (hydro.unavailableReason) {
+      view.hydrophoneUnavailableReason = hydro.unavailableReason;
     }
   }
 

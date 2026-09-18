@@ -6,7 +6,10 @@
   "maxSpeed": 36,
   "turnRate": 7,
   "radarSignature": "medium",
-  "sensors": [{ "kind": "radar", "maxRangeNm": 25 }],
+  "sensors": [
+    { "kind": "radar", "maxRangeNm": 25 },
+    { "kind": "hydrophone", "maxRangeNm": 30 }
+  ],
   "defaultStations": [
     { "id": "bridge", "name": "Bridge", "capabilities": ["helm", "lookout", "plot"] },
     { "id": "engineering", "name": "Engineering", "capabilities": ["engineering"] },

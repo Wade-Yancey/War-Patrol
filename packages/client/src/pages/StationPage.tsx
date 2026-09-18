@@ -17,6 +17,7 @@ import { CrtShell } from '../components/CrtShell';
 import { TouchNumber } from '../components/TouchNumber';
 import { EotTelegraph } from '../components/EotTelegraph';
 import { HelmCompass } from '../components/HelmCompass';
+import { HydrophoneScope } from '../components/HydrophoneScope';
 import { RadarScope } from '../components/RadarScope';
 
 function tokenKey(gameId: string, accessToken: string, stationId: string) {
@@ -68,8 +69,9 @@ export function StationPage() {
   const canHelm = caps.has('helm');
   const canEot = caps.has('engineering') || caps.has('helm');
   const canRadar = caps.has('radar');
+  const canHydrophone = caps.has('hydrophone');
   const stubCaps = [...caps].filter(
-    (c) => c !== 'helm' && c !== 'engineering' && c !== 'radar',
+    (c) => c !== 'helm' && c !== 'engineering' && c !== 'radar' && c !== 'hydrophone',
   );
 
   const login = async (e?: FormEvent) => {
@@ -131,7 +133,11 @@ export function StationPage() {
 
   return (
     <CrtShell side={sideAccent as 'blue' | 'red' | 'civilian' | 'neutral'} faction={faction}>
-      <div className={`app-shell${vessel && canRadar ? ' app-shell--radar-focus' : ''}`}>
+      <div
+        className={`app-shell${
+          vessel && (canRadar || canHydrophone) ? ' app-shell--radar-focus' : ''
+        }`}
+      >
         <header className="header-bar">
           <div>
             <span className="brand-mark">Station console</span>
@@ -218,7 +224,47 @@ export function StationPage() {
               </section>
             )}
 
-            <section className={`panel stack${canRadar ? ' station-turn-panel' : ''}`}>
+            {canHydrophone && (
+              <section className="panel stack hydrophone-station-panel">
+                <div className="radar-station-head">
+                  <h2>Hydrophone · Bearing listen</h2>
+                  <p className="muted radar-station-blurb">
+                    Train the needle by ear — no visual contacts. Underway propellers only; volume falls with
+                    range and misalignment.
+                    {vessel.hydrophoneOperational
+                      ? ` Passive · ${vessel.hydrophoneMaxRangeNm ?? 30} nm.`
+                      : vessel.hydrophoneUnavailableReason === 'no_sensor'
+                        ? ' No hydrophone set installed.'
+                        : vessel.hydrophoneUnavailableReason === 'sunk'
+                          ? ' Set offline — unit sunk/destroyed.'
+                          : vessel.hydrophoneUnavailableReason === 'sensors_disabled'
+                            ? ' Sensors disabled.'
+                            : ''}
+                  </p>
+                </div>
+                {vessel.hydrophoneOperational === false ? (
+                  <div className="radar-unavailable" role="status">
+                    <p className="readout" style={{ margin: 0 }}>
+                      {vessel.hydrophoneUnavailableReason === 'sunk'
+                        ? 'Hydrophone unavailable — sunk/destroyed'
+                        : vessel.hydrophoneUnavailableReason === 'sensors_disabled'
+                          ? 'Hydrophone unavailable — sensors disabled'
+                          : vessel.hydrophoneUnavailableReason === 'no_sensor'
+                            ? 'Hydrophone unavailable — no sensor'
+                            : 'Hydrophone unavailable'}
+                    </p>
+                  </div>
+                ) : (
+                  <HydrophoneScope
+                    contacts={vessel.hydrophoneContacts ?? []}
+                    maxRangeNm={vessel.hydrophoneMaxRangeNm ?? 30}
+                    ownHeading={vessel.unit.heading}
+                  />
+                )}
+              </section>
+            )}
+
+            <section className={`panel stack${canRadar || canHydrophone ? ' station-turn-panel' : ''}`}>
               <h2>Turn</h2>
               <TurnStatus turn={vessel.turn} turnLengthSeconds={vessel.turnLengthSeconds} />
               {hasPendingOrders(vessel.unit.orders) ? (

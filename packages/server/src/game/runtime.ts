@@ -97,7 +97,7 @@ function normalizeUnit(unit: UnitState): UnitState {
     class: (unit as UnitState & { class?: HullClass }).class,
     classId: unit.classId,
   });
-  const sensors = unit.sensors ?? defaultSensors(identity.class);
+  let sensors = unit.sensors ?? defaultSensors(identity.class);
   const stations = unit.stations.map((s) => ({ ...s, capabilities: [...s.capabilities] }));
   const hasRadarSensor = sensors.some((s) => s.kind === 'radar');
   // Destroyers, cruisers, and (Wade) submarines with radar get a dedicated Radar station.
@@ -106,6 +106,15 @@ function normalizeUnit(unit: UnitState): UnitState {
     !stations.some((s) => s.capabilities.includes('radar'))
   ) {
     stations.push({ id: 'radar', name: 'Radar', capabilities: ['radar'] });
+  }
+  // Sonar station present but legacy save omitted hydrophone sensor — install default set.
+  if (
+    stations.some((s) => s.capabilities.includes('hydrophone')) &&
+    !sensors.some((s) => s.kind === 'hydrophone')
+  ) {
+    const defaults = defaultSensors(identity.class);
+    const hydro = defaults.find((s) => s.kind === 'hydrophone');
+    if (hydro) sensors = [...sensors, { ...hydro }];
   }
   const radarSignature = unit.radarSignature ?? defaultRadarSignature(identity.class);
   const heading = normalizeHeading(unit.heading);
