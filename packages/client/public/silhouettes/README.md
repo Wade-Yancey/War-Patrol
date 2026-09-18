@@ -4,7 +4,7 @@ Hull-class → image map used by the submarine Periscope Sensors tab (side eleva
 
 | Hull class | Asset | Notes |
 | --- | --- | --- |
-| Destroyer | `destroyer.jpg` | Side profile. Wade provided a destroyer-class silhouette (side + plan); **side** is used. Agent VM lacked the original upload path — stub JPG/PNG/SVG checked in; replace `destroyer.jpg` with Wade’s side crop when available. |
+| Destroyer | `destroyer.jpg` | Wade’s destroyer-class silhouette (side elevation). Side profile used for periscope. Optional `destroyer.svg` / `destroyer.png` stubs remain unused by the client resolver. |
 | Other classes | _(none)_ | Missing → CRT `?` placeholder. Add kebab files later or reuse stub. |
 
 Resolver: `silhouetteUrlForClass()` in `@war-patrol/shared` (`periscope.ts`).
