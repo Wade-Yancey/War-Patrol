@@ -417,8 +417,15 @@ export function UmpirePage() {
                           <tr key={v.unitId}>
                             <td>
                               <div>{v.name}</div>
+                              {unit && (
+                                <span
+                                  className={`side-badge side-badge--${unit.faction.toLowerCase()} vessel-faction-badge`}
+                                >
+                                  {unit.faction}
+                                </span>
+                              )}
                               <div className="mono muted" style={{ fontSize: '0.75rem' }}>
-                                {unit ? `${unit.faction} · ${unit.type} · ${unit.class}` : '—'}
+                                {unit ? `${unit.type} · ${unit.class}` : '—'}
                               </div>
                               <div className="mono muted" style={{ fontSize: '0.75rem' }}>
                                 token {v.accessToken}
@@ -457,9 +464,27 @@ export function UmpirePage() {
                   </table>
                 </section>
 
-                <section className="panel stack unit-edit">
+                <section
+                  className={`panel stack unit-edit${selectedUnit ? ` unit-edit--${editFaction.toLowerCase()}` : ''}`}
+                >
+                  {selectedUnit && (
+                    <div
+                      className={`unit-edit-faction-stripe unit-edit-faction-stripe--${editFaction.toLowerCase()}`}
+                      aria-hidden="true"
+                    />
+                  )}
                   <div className="unit-edit-header">
-                    <h2>Unit edit</h2>
+                    <div className="unit-edit-title-row">
+                      <h2>Unit edit</h2>
+                      {selectedUnit && (
+                        <span
+                          className={`side-badge side-badge--${editFaction.toLowerCase()}`}
+                          title={`${editFaction} faction`}
+                        >
+                          {editFaction}
+                        </span>
+                      )}
+                    </div>
                     <span className={`mono muted unit-edit-status${dirty ? ' dirty' : ''}`}>
                       {dirty ? 'DRAFT' : 'LIVE'}
                     </span>
@@ -492,7 +517,15 @@ export function UmpirePage() {
                   {selectedUnit && (
                     <>
                       <div className="unit-edit-group">
-                        <h3>Identity</h3>
+                        <div className="unit-edit-identity-head">
+                          <h3>Identity</h3>
+                          <span
+                            className={`side-badge side-badge--${editFaction.toLowerCase()}`}
+                            title={`${editFaction} faction`}
+                          >
+                            {editFaction}
+                          </span>
+                        </div>
                         <label>
                           Name
                           <input
@@ -549,7 +582,29 @@ export function UmpirePage() {
                             ))}
                           </select>
                         </label>
-                        <div className={`faction-stripe faction-stripe--${editFaction.toLowerCase()}`} aria-hidden />
+                        <div
+                          className="unit-edit-faction-preview"
+                          role="group"
+                          aria-label="Faction accent"
+                        >
+                          {FACTIONS.map((f) => (
+                            <button
+                              key={f}
+                              type="button"
+                              className={`unit-edit-faction-chip${
+                                editFaction === f ? ' is-active' : ''
+                              } unit-edit-faction-chip--${f.toLowerCase()}`}
+                              disabled={busy}
+                              onClick={() => {
+                                markDirty();
+                                setEditFaction(f);
+                              }}
+                            >
+                              <span className="unit-edit-faction-chip-swatch" aria-hidden />
+                              {f}
+                            </button>
+                          ))}
+                        </div>
                         <p className="mono muted" style={{ margin: 0, fontSize: '0.75rem' }}>
                           Library {selectedUnit.classId}
                         </p>

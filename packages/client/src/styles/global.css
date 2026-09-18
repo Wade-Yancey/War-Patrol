@@ -21,7 +21,8 @@
   --bezel-inset: #060d08;
   --side-blue: #4a9fd4;
   --side-red: #d45a4a;
-  --side-civilian: #9b6fd4;
+  /* Civilian accent — purple stripe/badge only; CRT stays green */
+  --side-civilian: #a56de8;
   --hit: 2.75rem;
   --font-display: 'Share Tech Mono', 'IBM Plex Mono', ui-monospace, monospace;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
@@ -495,11 +496,44 @@ label {
   color: var(--accent-strong);
 }
 
+.unit-edit {
+  position: relative;
+  padding-left: 1.15rem;
+}
+
+.unit-edit-faction-stripe {
+  position: absolute;
+  top: 0.55rem;
+  bottom: 0.55rem;
+  left: 0.4rem;
+  width: 5px;
+  pointer-events: none;
+}
+
+.unit-edit-faction-stripe--blue {
+  background: var(--side-blue);
+}
+
+.unit-edit-faction-stripe--red {
+  background: var(--side-red);
+}
+
+.unit-edit-faction-stripe--civilian {
+  background: var(--side-civilian);
+}
+
 .unit-edit-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+}
+
+.unit-edit-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
 }
 
 .unit-edit-header h2 {
@@ -513,6 +547,17 @@ label {
 
 .unit-edit-status.dirty {
   color: var(--phosphor);
+}
+
+.unit-edit-identity-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+
+.unit-edit-identity-head h3 {
+  margin: 0;
 }
 
 .unit-edit-group {
@@ -565,6 +610,60 @@ label {
   min-width: 5.5rem;
   min-height: 2.75rem;
   text-transform: capitalize;
+}
+
+.unit-edit-faction-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.unit-edit-faction-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 1 1 auto;
+  min-width: 5.5rem;
+  min-height: 2.75rem;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+}
+
+.unit-edit-faction-chip-swatch {
+  width: 0.55rem;
+  height: 0.55rem;
+  flex-shrink: 0;
+}
+
+.unit-edit-faction-chip--blue .unit-edit-faction-chip-swatch {
+  background: var(--side-blue);
+}
+
+.unit-edit-faction-chip--red .unit-edit-faction-chip-swatch {
+  background: var(--side-red);
+}
+
+.unit-edit-faction-chip--civilian .unit-edit-faction-chip-swatch {
+  background: var(--side-civilian);
+}
+
+.unit-edit-faction-chip--blue.is-active {
+  border-color: var(--side-blue);
+  color: #9cc8e8;
+}
+
+.unit-edit-faction-chip--red.is-active {
+  border-color: var(--side-red);
+  color: #e8a898;
+}
+
+.unit-edit-faction-chip--civilian.is-active {
+  border-color: var(--side-civilian);
+  color: #d2b8f0;
 }
 
 .radar-station-panel {
@@ -966,6 +1065,11 @@ label {
 
 .faction-stripe--civilian {
   background: var(--side-civilian);
+}
+
+/* Vessel links: small faction badge under name */
+.vessel-faction-badge {
+  margin-top: 0.2rem;
 }
 
 @media (max-width: 600px) {
