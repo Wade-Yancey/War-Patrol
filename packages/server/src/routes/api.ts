@@ -55,6 +55,29 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/api/saves', async () => store.listSaves());
 
+  app.delete<{ Params: { saveId: string } }>('/api/saves/:saveId', async (request, reply) => {
+    try {
+      const result = await runtime.deleteSave(request.params.saveId);
+      return { ok: true, ...result };
+    } catch (err) {
+      const e = httpError(err);
+      return reply.code(e.statusCode).send({ error: e.message });
+    }
+  });
+
+  app.delete<{ Params: { scenarioId: string } }>(
+    '/api/scenarios/:scenarioId',
+    async (request, reply) => {
+      try {
+        await runtime.deleteScenario(request.params.scenarioId);
+        return { ok: true };
+      } catch (err) {
+        const e = httpError(err);
+        return reply.code(e.statusCode).send({ error: e.message });
+      }
+    },
+  );
+
   app.get('/api/games', async () => runtime.listActiveGames());
 
   app.post<{ Body: { scenarioId: string; name?: string } }>('/api/games', async (request, reply) => {
@@ -346,23 +369,29 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  app.post<{ Params: { gameId: string }; Body: { turnNumber: number } }>(
-    '/api/games/:gameId/rollback',
-    async (request, reply) => {
-      try {
-        requireUmpire(request, request.params.gameId);
-        const turnNumber = Number(request.body?.turnNumber);
-        if (!Number.isFinite(turnNumber)) {
-          return reply.code(400).send({ error: 'turnNumber required' });
-        }
-        const save = await runtime.rollback(request.params.gameId, turnNumber);
-        return { turn: save.turn, stateVersion: save.stateVersion };
-      } catch (err) {
-        const e = httpError(err);
-        return reply.code(e.statusCode).send({ error: e.message });
+  app.post<{
+    Params: { gameId: string };
+    Body: { turnNumber: number; confirm?: string };
+  }>('/api/games/:gameId/rollback', async (request, reply) => {
+    try {
+      requireUmpire(request, request.params.gameId);
+      const turnNumber = Number(request.body?.turnNumber);
+      if (!Number.isFinite(turnNumber)) {
+        return reply.code(400).send({ error: 'turnNumber required' });
       }
-    },
-  );
+      const confirm = request.body?.confirm;
+      if (typeof confirm !== 'string' || !confirm.trim()) {
+        return reply.code(400).send({
+          error: 'confirm required — type ROLLBACK or the target turn number (ARCH-SM-13)',
+        });
+      }
+      const save = await runtime.rollback(request.params.gameId, turnNumber, confirm);
+      return { turn: save.turn, stateVersion: save.stateVersion };
+    } catch (err) {
+      const e = httpError(err);
+      return reply.code(e.statusCode).send({ error: e.message });
+    }
+  });
 
   app.patch<{
     Params: { gameId: string; unitId: string };

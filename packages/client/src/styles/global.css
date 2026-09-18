@@ -319,6 +319,29 @@ label {
   border-radius: 2px;
 }
 
+.confirm-action {
+  border-color: rgba(224, 112, 80, 0.55);
+  background: rgba(224, 112, 80, 0.08);
+}
+
+.confirm-warning {
+  color: #ffc8b8;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.confirm-warning p {
+  margin: 0 0 0.5rem;
+}
+
+.confirm-warning p:last-child {
+  margin-bottom: 0;
+}
+
+.confirm-warning strong {
+  color: #ffe0d4;
+}
+
 .live-dot {
   width: 0.55rem;
   height: 0.55rem;

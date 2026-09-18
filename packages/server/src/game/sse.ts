@@ -61,6 +61,19 @@ export class SseHub {
     this.onConnectionsChanged?.(existing.gameId);
   }
 
+  /** Drop all SSE clients for a game (e.g. save deleted / unloaded). */
+  dropGame(gameId: string): void {
+    for (const client of [...this.clients.values()]) {
+      if (client.gameId !== gameId) continue;
+      this.clients.delete(client.id);
+      try {
+        client.reply.raw.end();
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
   /** Connection counts for multi-connect indicator (ARCH-AC-09–12). */
   connectionSummary(gameId: string): Array<{
     unitId: string | null;

@@ -61,6 +61,12 @@ export const api = {
     }),
   saveGame: (gameId: string, token: string) =>
     request<{ ok: boolean }>(`/api/games/${gameId}/save`, { method: 'POST', token }),
+  deleteSave: (saveId: string) =>
+    request<{ ok: boolean; deletedFile: boolean; unloaded: boolean }>(`/api/saves/${saveId}`, {
+      method: 'DELETE',
+    }),
+  deleteScenario: (scenarioId: string) =>
+    request<{ ok: boolean }>(`/api/scenarios/${scenarioId}`, { method: 'DELETE' }),
   orders: (gameId: string, token: string, body: { course?: number; eot?: EotSetting }) =>
     request<{ ok: boolean; stateVersion: number }>(`/api/games/${gameId}/orders`, {
       method: 'POST',
@@ -87,11 +93,11 @@ export const api = {
     request(`/api/games/${gameId}/turn/reopen`, { method: 'POST', token, body: '{}' }),
   turnResolve: (gameId: string, token: string) =>
     request(`/api/games/${gameId}/turn/resolve`, { method: 'POST', token, body: '{}' }),
-  rollback: (gameId: string, token: string, turnNumber: number) =>
+  rollback: (gameId: string, token: string, turnNumber: number, confirm: string) =>
     request(`/api/games/${gameId}/rollback`, {
       method: 'POST',
       token,
-      body: JSON.stringify({ turnNumber }),
+      body: JSON.stringify({ turnNumber, confirm }),
     }),
   updateUnit: (
     gameId: string,
