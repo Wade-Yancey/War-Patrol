@@ -30,6 +30,7 @@ import { api } from '../api/client';
 import { getAuthToken, setAuthToken } from '../api/authStorage';
 import { useGameStream } from '../hooks/useGameStream';
 import { GroundTruthMap } from '../components/GroundTruthMap';
+import { PendingOrdersPanel } from '../components/PendingOrdersPanel';
 import { TurnStatus } from '../components/TurnStatus';
 import { CrtShell } from '../components/CrtShell';
 import { TouchNumber } from '../components/TouchNumber';
@@ -294,6 +295,10 @@ export function UmpirePage() {
                 turn.
               </p>
             </section>
+
+            <div style={{ marginTop: '1rem' }}>
+              <PendingOrdersPanel units={umpire.units} />
+            </div>
 
             <div className="umpire-controls" style={{ marginTop: '1rem' }}>
               <section className="panel stack umpire-control-group">
