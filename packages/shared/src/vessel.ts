@@ -1,4 +1,11 @@
-import type { HullClass, VesselType } from './types.js';
+import type {
+  FlightLevel,
+  HullClass,
+  UnitCondition,
+  UnitState,
+  UnitSubsystems,
+  VesselType,
+} from './types.js';
 
 /** High-level vessel kinds (platform category). */
 export const VESSEL_TYPES: readonly VesselType[] = ['Submarine', 'Ship', 'Aircraft'];
@@ -16,6 +23,12 @@ export const HULL_CLASSES: readonly HullClass[] = [
   'Bomber',
 ];
 
+export const FLIGHT_LEVELS: readonly FlightLevel[] = ['low', 'medium', 'high'];
+
+export const UNIT_CONDITIONS: readonly UnitCondition[] = ['afloat', 'sunk'];
+
+export const SUBSYSTEM_STATES = ['intact', 'disabled'] as const;
+
 /** Canonical class → type mapping. */
 export const CLASS_TO_TYPE: Record<HullClass, VesselType> = {
   'Fleet Submarine': 'Submarine',
@@ -31,6 +44,7 @@ export const CLASS_TO_TYPE: Record<HullClass, VesselType> = {
 
 const HULL_CLASS_SET = new Set<string>(HULL_CLASSES);
 const VESSEL_TYPE_SET = new Set<string>(VESSEL_TYPES);
+const FLIGHT_LEVEL_SET = new Set<string>(FLIGHT_LEVELS);
 
 /** Legacy Phase-1 `type` values before Submarine|Ship|Aircraft split. */
 const LEGACY_TYPE_MAP: Record<string, { type: VesselType; class: HullClass }> = {
@@ -47,6 +61,10 @@ export function isVesselType(value: unknown): value is VesselType {
 
 export function isHullClass(value: unknown): value is HullClass {
   return typeof value === 'string' && HULL_CLASS_SET.has(value);
+}
+
+export function isFlightLevel(value: unknown): value is FlightLevel {
+  return typeof value === 'string' && FLIGHT_LEVEL_SET.has(value);
 }
 
 /** Type required by a hull class (e.g. Fleet Submarine → Submarine). */
@@ -106,4 +124,73 @@ export function coerceVesselIdentity(
   hullClass: HullClass | undefined,
 ): { type: VesselType; class: HullClass } {
   return resolveVesselIdentity({ type, class: hullClass });
+}
+
+export function defaultSubsystems(): UnitSubsystems {
+  return { propulsion: 'intact', sensors: 'intact' };
+}
+
+export function resolveSubsystems(
+  partial?: Partial<UnitSubsystems> | null,
+): UnitSubsystems {
+  const d = defaultSubsystems();
+  if (!partial) return d;
+  return {
+    propulsion: partial.propulsion === 'disabled' ? 'disabled' : 'intact',
+    sensors: partial.sensors === 'disabled' ? 'disabled' : 'intact',
+  };
+}
+
+export function resolveCondition(value: unknown): UnitCondition {
+  return value === 'sunk' ? 'sunk' : 'afloat';
+}
+
+export function resolveFlightLevel(
+  type: VesselType,
+  value: unknown,
+): FlightLevel | undefined {
+  if (type !== 'Aircraft') return undefined;
+  if (isFlightLevel(value)) return value;
+  return 'medium';
+}
+
+/** True when unit can still make way under its own power. */
+export function canMakeWay(unit: Pick<UnitState, 'condition' | 'subsystems'>): boolean {
+  return unit.condition !== 'sunk' && unit.subsystems?.propulsion !== 'disabled';
+}
+
+/** True when unit still exists as a radar/contactable target. */
+export function isRadarTargetable(unit: Pick<UnitState, 'condition'>): boolean {
+  return unit.condition !== 'sunk';
+}
+
+/** Own-ship radar set usable (not sunk, sensors intact). */
+export function canUseSensors(
+  unit: Pick<UnitState, 'condition' | 'subsystems'>,
+): { ok: boolean; reason?: 'sunk' | 'sensors_disabled' } {
+  if (unit.condition === 'sunk') return { ok: false, reason: 'sunk' };
+  if (unit.subsystems?.sensors === 'disabled') return { ok: false, reason: 'sensors_disabled' };
+  return { ok: true };
+}
+
+/**
+ * Normalize position elevation rules by type:
+ * - Ship → depth 0 (surface only)
+ * - Aircraft → depth 0 (flight level is separate)
+ * - Submarine → keep depth
+ */
+export function normalizePositionForType(
+  type: VesselType,
+  position: { lat: number; lon: number; depth: number },
+): { lat: number; lon: number; depth: number } {
+  if (type === 'Ship' || type === 'Aircraft') {
+    return { ...position, depth: 0 };
+  }
+  return { ...position };
+}
+
+/** Operator label for sunk/destroyed by type. */
+export function conditionLabel(type: VesselType, condition: UnitCondition): string {
+  if (condition === 'afloat') return type === 'Aircraft' ? 'Airborne' : 'Afloat';
+  return type === 'Aircraft' ? 'Destroyed' : 'Sunk';
 }

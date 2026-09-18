@@ -1,5 +1,6 @@
 import {
   KNOTS_TO_MPS,
+  canMakeWay,
   clamp,
   eotTargetSpeed,
   moveAlongHeading,
@@ -56,6 +57,16 @@ export function resolveTurn(save: GameSave): GameSave {
 }
 
 function applyUnitOrders(unit: UnitState, turnLengthSeconds: number): UnitState {
+  // Sunk / destroyed or dead propulsion: no way — clear motion, ignore orders kinematics.
+  if (!canMakeWay(unit)) {
+    return {
+      ...unit,
+      speed: 0,
+      eot: 'stop',
+      orders: {},
+    };
+  }
+
   const orders = unit.orders;
   let orderedCourse =
     typeof unit.orderedCourse === 'number' ? unit.orderedCourse : unit.heading;

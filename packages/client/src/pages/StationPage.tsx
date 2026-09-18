@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { EOT_LABELS, type EotSetting, type VesselView } from '@war-patrol/shared';
+import { EOT_LABELS, conditionLabel, type EotSetting, type VesselView } from '@war-patrol/shared';
 import { api } from '../api/client';
 import { useGameStream } from '../hooks/useGameStream';
 import { TurnStatus } from '../components/TurnStatus';
@@ -172,17 +172,34 @@ export function StationPage() {
                         ? ` Surface search · ${vessel.radarMaxRangeNm ?? 25} nm.`
                         : vessel.radarUnavailableReason === 'no_sensor'
                           ? ' No radar set installed on this vessel.'
-                          : ''}
+                          : vessel.radarUnavailableReason === 'sunk'
+                            ? ' Set offline — unit sunk/destroyed.'
+                            : vessel.radarUnavailableReason === 'sensors_disabled'
+                              ? ' Sensors disabled.'
+                              : ''}
                   </p>
                 </div>
-                {vessel.radarOperational === false && vessel.radarUnavailableReason === 'submerged' ? (
+                {vessel.radarOperational === false ? (
                   <div className="radar-unavailable" role="status">
                     <p className="readout" style={{ margin: 0 }}>
-                      Radar unavailable — submerged
+                      {vessel.radarUnavailableReason === 'submerged'
+                        ? 'Radar unavailable — submerged'
+                        : vessel.radarUnavailableReason === 'sunk'
+                          ? 'Radar unavailable — sunk/destroyed'
+                          : vessel.radarUnavailableReason === 'sensors_disabled'
+                            ? 'Radar unavailable — sensors disabled'
+                            : vessel.radarUnavailableReason === 'no_sensor'
+                              ? 'Radar unavailable — no sensor'
+                              : 'Radar unavailable'}
                     </p>
                     <p className="muted" style={{ margin: '0.5rem 0 0', fontSize: '0.85rem' }}>
-                      Surface (depth ≤ 5 m) to energize the set and paint contacts. Submerged hulls also do not
-                      return echoes to other radars.
+                      {vessel.radarUnavailableReason === 'submerged'
+                        ? 'Surface (depth ≤ 5 m) to energize the set and paint contacts. Submerged hulls also do not return echoes to other radars.'
+                        : vessel.radarUnavailableReason === 'sensors_disabled'
+                          ? 'Repair or re-enable the sensors subsystem to restore the PPI.'
+                          : vessel.radarUnavailableReason === 'sunk'
+                            ? 'This unit no longer contributes to the sensor picture.'
+                            : 'This station has no usable radar picture.'}
                     </p>
                   </div>
                 ) : (
@@ -209,16 +226,38 @@ export function StationPage() {
                       <td className="readout">{vessel.unit.class}</td>
                     </tr>
                     <tr>
+                      <th>Condition</th>
+                      <td className="readout">
+                        {conditionLabel(vessel.unit.type, vessel.unit.condition)}
+                      </td>
+                    </tr>
+                    <tr>
+                      <th>Propulsion</th>
+                      <td className="readout">{vessel.unit.subsystems.propulsion}</td>
+                    </tr>
+                    <tr>
+                      <th>Sensors</th>
+                      <td className="readout">{vessel.unit.subsystems.sensors}</td>
+                    </tr>
+                    {vessel.unit.type === 'Aircraft' && (
+                      <tr>
+                        <th>Flight level</th>
+                        <td className="readout">{vessel.unit.flightLevel ?? 'medium'}</td>
+                      </tr>
+                    )}
+                    {vessel.unit.type === 'Submarine' && (
+                      <tr>
+                        <th>Depth</th>
+                        <td className="readout">{vessel.unit.position.depth.toFixed(0)} m</td>
+                      </tr>
+                    )}
+                    <tr>
                       <th>Lat</th>
                       <td className="readout">{vessel.unit.position.lat.toFixed(4)}</td>
                     </tr>
                     <tr>
                       <th>Lon</th>
                       <td className="readout">{vessel.unit.position.lon.toFixed(4)}</td>
-                    </tr>
-                    <tr>
-                      <th>Depth</th>
-                      <td className="readout">{vessel.unit.position.depth.toFixed(0)} m</td>
                     </tr>
                     <tr>
                       <th>Heading</th>

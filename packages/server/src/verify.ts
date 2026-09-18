@@ -121,8 +121,13 @@ async function main() {
   check('sub radarSignature small', gato.radarSignature === 'small');
   check('porter type Ship', porter.type === 'Ship');
   check('porter class Destroyer', porter.class === 'Destroyer');
+  check('porter afloat', porter.condition === 'afloat');
+  check('porter propulsion intact', (porter.subsystems as Json).propulsion === 'intact');
+  check('porter sensors intact', (porter.subsystems as Json).sensors === 'intact');
+  check('porter depth surface', (porter.position as Json).depth === 0);
   check('gato type Submarine', gato.type === 'Submarine');
   check('gato class Fleet Submarine', gato.class === 'Fleet Submarine');
+  check('gato afloat', gato.condition === 'afloat');
   check('destroyer turnRate medium size', porter.turnRate === 7);
   check('sub turnRate small size', gato.turnRate === 12);
   check('orderedCourse seeded to heading (porter)', porter.orderedCourse === porter.heading);
@@ -305,6 +310,66 @@ async function main() {
     'PATCH',
     `/api/games/${gameId}/units/dd-101`,
     { type: 'Ship', class: 'Destroyer', name: 'USS Porter' },
+    umpireToken,
+  );
+
+  // Ship depth forced to surface
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { position: { depth: 40 } },
+    umpireToken,
+  );
+  check(
+    'ship depth forced to 0',
+    runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!.position.depth === 0,
+  );
+
+  // Sensors disabled → no radar picture
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { subsystems: { sensors: 'disabled' } },
+    umpireToken,
+  );
+  const radarSensorsOff = await api('GET', `/api/games/${gameId}/view`, undefined, radarToken);
+  const rso = radarSensorsOff.json.view as Json;
+  check('sensors disabled radar off', rso.radarOperational === false);
+  check('sensors disabled reason', rso.radarUnavailableReason === 'sensors_disabled');
+
+  // Propulsion disabled → stop
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { subsystems: { propulsion: 'disabled', sensors: 'intact' }, speed: 12 },
+    umpireToken,
+  );
+  const deadInWater = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
+  check('propulsion disabled forces stop', deadInWater.speed === 0 && deadInWater.eot === 'stop');
+
+  // Sunk clears as radar target
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { condition: 'sunk' },
+    umpireToken,
+  );
+  const radarAfterSink = await api('GET', `/api/games/${gameId}/view`, undefined, radarToken);
+  check(
+    'sunk target not on radar',
+    Array.isArray((radarAfterSink.json.view as Json).radarContacts) &&
+      ((radarAfterSink.json.view as Json).radarContacts as unknown[]).length === 0,
+  );
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { condition: 'afloat' },
+    umpireToken,
+  );
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { subsystems: { propulsion: 'intact', sensors: 'intact' }, speed: 12, eot: 'ahead_standard' },
     umpireToken,
   );
 

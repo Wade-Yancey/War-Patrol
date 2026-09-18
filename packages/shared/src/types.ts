@@ -20,6 +20,23 @@ export type HullClass =
   | 'Fighter'
   | 'Bomber';
 
+/** Aircraft elevation band (no free altitude number). */
+export type FlightLevel = 'low' | 'medium' | 'high';
+
+/**
+ * Hull / airframe condition.
+ * `sunk` = sunk for ships/subs, destroyed for aircraft — unit stops contributing.
+ */
+export type UnitCondition = 'afloat' | 'sunk';
+
+/** Major subsystem health (umpire-editable). */
+export type SubsystemState = 'intact' | 'disabled';
+
+export interface UnitSubsystems {
+  propulsion: SubsystemState;
+  sensors: SubsystemState;
+}
+
 /** Relative radar cross-section / echo size (detection stub). */
 export type RadarSignature = 'small' | 'medium' | 'large';
 
@@ -99,6 +116,15 @@ export interface UnitState {
   /** Hull / airframe class (Destroyer, Fleet Submarine, …). */
   class: HullClass;
   position: LatLonDepth;
+  /**
+   * Aircraft elevation band only (Ship/Submarine ignore).
+   * Defaults to `medium` for Aircraft; omitted or ignored otherwise.
+   */
+  flightLevel?: FlightLevel;
+  /** Afloat vs sunk/destroyed. Defaults afloat. */
+  condition: UnitCondition;
+  /** Propulsion + sensors integrity. Defaults intact. */
+  subsystems: UnitSubsystems;
   /** Current heading degrees true (bow direction). */
   heading: number;
   /**
@@ -142,6 +168,10 @@ export interface ScenarioUnitSeed {
   /** Hull class; optional on older scenarios — filled by migration. */
   class?: HullClass;
   position: LatLonDepth;
+  /** Aircraft only — low | medium | high. */
+  flightLevel?: FlightLevel;
+  condition?: UnitCondition;
+  subsystems?: Partial<UnitSubsystems>;
   heading: number;
   /** Initial ordered course; defaults to heading. */
   orderedCourse?: number;
@@ -336,6 +366,9 @@ export interface VesselView {
     | 'type'
     | 'class'
     | 'position'
+    | 'flightLevel'
+    | 'condition'
+    | 'subsystems'
     | 'heading'
     | 'orderedCourse'
     | 'speed'
@@ -362,7 +395,7 @@ export interface VesselView {
   /** False when radar set cannot emit (e.g. submarine submerged). */
   radarOperational?: boolean;
   /** Operator-facing reason when radarOperational is false. */
-  radarUnavailableReason?: 'submerged' | 'no_sensor';
+  radarUnavailableReason?: 'submerged' | 'no_sensor' | 'sunk' | 'sensors_disabled';
 }
 
 export type ClientView = UmpireView | VesselView;

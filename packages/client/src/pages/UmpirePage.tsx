@@ -2,17 +2,23 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   DEFAULT_TURN_SECONDS,
+  FLIGHT_LEVELS,
   HULL_CLASSES,
+  SUBSYSTEM_STATES,
   TIMER_EXTEND_SECONDS,
   TIMER_STEP_SECONDS,
   VESSEL_TYPES,
   classesForType,
   coerceVesselIdentity,
+  conditionLabel,
   formatWallDuration,
   parseWallDuration,
   snapWallDuration,
+  type FlightLevel,
   type HullClass,
+  type SubsystemState,
   type UmpireView,
+  type UnitCondition,
   type VesselType,
 } from '@war-patrol/shared';
 import { api } from '../api/client';
@@ -40,6 +46,10 @@ export function UmpirePage() {
   const [editClass, setEditClass] = useState<HullClass>('Destroyer');
   const [editHealth, setEditHealth] = useState(100);
   const [editDepth, setEditDepth] = useState(0);
+  const [editFlightLevel, setEditFlightLevel] = useState<FlightLevel>('medium');
+  const [editCondition, setEditCondition] = useState<UnitCondition>('afloat');
+  const [editPropulsion, setEditPropulsion] = useState<SubsystemState>('intact');
+  const [editSensors, setEditSensors] = useState<SubsystemState>('intact');
   const [editHeading, setEditHeading] = useState(0);
   const [editSpeed, setEditSpeed] = useState(0);
   const [editPassword, setEditPassword] = useState('');
@@ -71,6 +81,10 @@ export function UmpirePage() {
     setEditClass(identity.class);
     setEditHealth(u.health);
     setEditDepth(Math.round(u.position.depth));
+    setEditFlightLevel(u.flightLevel ?? 'medium');
+    setEditCondition(u.condition ?? 'afloat');
+    setEditPropulsion(u.subsystems?.propulsion ?? 'intact');
+    setEditSensors(u.subsystems?.sensors ?? 'intact');
     setEditHeading(Math.round(u.heading));
     setEditSpeed(Math.round(u.speed));
     setEditPassword(u.password ?? '');
@@ -103,6 +117,12 @@ export function UmpirePage() {
     const allowed = classesForType(next);
     if (!allowed.includes(editClass)) {
       setEditClass(allowed[0] ?? 'Destroyer');
+    }
+    if (next === 'Aircraft' && !editFlightLevel) {
+      setEditFlightLevel('medium');
+    }
+    if (next === 'Ship') {
+      setEditDepth(0);
     }
   };
 
@@ -523,6 +543,9 @@ export function UmpirePage() {
                                     name: editName.trim() || selectedUnit.name,
                                     type: editType,
                                     class: editClass,
+                                    ...(editType === 'Aircraft'
+                                      ? { flightLevel: editFlightLevel }
+                                      : {}),
                                   }),
                                 'Identity applied',
                               )
@@ -561,6 +584,7 @@ export function UmpirePage() {
                           step={1}
                           unit="kn"
                           showSlider
+                          disabled={editCondition === 'sunk' || editPropulsion === 'disabled'}
                         />
                         <div className="control-actions">
                           <button
@@ -583,42 +607,164 @@ export function UmpirePage() {
                         </div>
                       </div>
 
+                      {editType === 'Submarine' && (
+                        <div className="unit-edit-group">
+                          <h3>Depth</h3>
+                          <TouchNumber
+                            label="Depth (radar surface ≤5 m)"
+                            value={editDepth}
+                            onChange={(v) => {
+                              markDirty();
+                              setEditDepth(v);
+                            }}
+                            min={0}
+                            max={300}
+                            step={5}
+                            unit="m"
+                            showSlider
+                          />
+                          <div className="control-actions">
+                            <button
+                              type="button"
+                              disabled={busy || editDepth === 0}
+                              onClick={() => {
+                                markDirty();
+                                setEditDepth(0);
+                              }}
+                            >
+                              Surface
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => {
+                                markDirty();
+                                setEditDepth(40);
+                              }}
+                            >
+                              Dive 40 m
+                            </button>
+                            <button
+                              className="primary"
+                              type="button"
+                              disabled={busy}
+                              onClick={() =>
+                                void run(
+                                  () =>
+                                    api.updateUnit(gameId, token, selectedUnit.id, {
+                                      position: { depth: editDepth },
+                                    }),
+                                  'Depth applied',
+                                )
+                              }
+                            >
+                              Apply depth
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {editType === 'Aircraft' && (
+                        <div className="unit-edit-group">
+                          <h3>Flight level</h3>
+                          <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
+                            Aircraft use discrete elevation bands only — no free altitude.
+                          </p>
+                          <div className="unit-edit-chip-row" role="group" aria-label="Flight level">
+                            {FLIGHT_LEVELS.map((level) => (
+                              <button
+                                key={level}
+                                type="button"
+                                className={editFlightLevel === level ? 'primary' : undefined}
+                                disabled={busy}
+                                onClick={() => {
+                                  markDirty();
+                                  setEditFlightLevel(level);
+                                }}
+                              >
+                                {level}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="control-actions">
+                            <button
+                              className="primary"
+                              type="button"
+                              disabled={busy}
+                              onClick={() =>
+                                void run(
+                                  () =>
+                                    api.updateUnit(gameId, token, selectedUnit.id, {
+                                      flightLevel: editFlightLevel,
+                                      type: 'Aircraft',
+                                      class: editClass,
+                                    }),
+                                  'Flight level applied',
+                                )
+                              }
+                            >
+                              Apply flight level
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="unit-edit-group">
-                        <h3>Depth</h3>
-                        <TouchNumber
-                          label="Depth (radar surface ≤5 m)"
-                          value={editDepth}
-                          onChange={(v) => {
-                            markDirty();
-                            setEditDepth(v);
-                          }}
-                          min={0}
-                          max={300}
-                          step={5}
-                          unit="m"
-                          showSlider
-                        />
+                        <h3>Condition &amp; systems</h3>
+                        <div className="unit-edit-pair">
+                          <label className="unit-edit-select">
+                            Hull / airframe
+                            <select
+                              value={editCondition}
+                              onChange={(e) => {
+                                markDirty();
+                                setEditCondition(e.target.value as UnitCondition);
+                              }}
+                            >
+                              <option value="afloat">
+                                {conditionLabel(editType, 'afloat')}
+                              </option>
+                              <option value="sunk">{conditionLabel(editType, 'sunk')}</option>
+                            </select>
+                          </label>
+                          <label className="unit-edit-select">
+                            Propulsion
+                            <select
+                              value={editPropulsion}
+                              onChange={(e) => {
+                                markDirty();
+                                setEditPropulsion(e.target.value as SubsystemState);
+                              }}
+                            >
+                              {SUBSYSTEM_STATES.map((s) => (
+                                <option key={s} value={s}>
+                                  {s}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        <label className="unit-edit-select">
+                          Sensors
+                          <select
+                            value={editSensors}
+                            onChange={(e) => {
+                              markDirty();
+                              setEditSensors(e.target.value as SubsystemState);
+                            }}
+                          >
+                            {SUBSYSTEM_STATES.map((s) => (
+                              <option key={s} value={s}>
+                                {s}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <p className="muted" style={{ margin: 0, fontSize: '0.75rem' }}>
+                          Sunk/destroyed stops movement and radar. Disabled propulsion forces stop; disabled
+                          sensors blank the PPI and remove useful emissions.
+                        </p>
                         <div className="control-actions">
-                          <button
-                            type="button"
-                            disabled={busy || editDepth === 0}
-                            onClick={() => {
-                              markDirty();
-                              setEditDepth(0);
-                            }}
-                          >
-                            Surface
-                          </button>
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => {
-                              markDirty();
-                              setEditDepth(40);
-                            }}
-                          >
-                            Dive 40 m
-                          </button>
                           <button
                             className="primary"
                             type="button"
@@ -627,13 +773,17 @@ export function UmpirePage() {
                               void run(
                                 () =>
                                   api.updateUnit(gameId, token, selectedUnit.id, {
-                                    position: { depth: editDepth },
+                                    condition: editCondition,
+                                    subsystems: {
+                                      propulsion: editPropulsion,
+                                      sensors: editSensors,
+                                    },
                                   }),
-                                'Depth applied',
+                                'Condition applied',
                               )
                             }
                           >
-                            Apply depth
+                            Apply condition
                           </button>
                         </div>
                       </div>

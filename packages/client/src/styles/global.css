@@ -553,6 +553,19 @@ label {
   font-size: 0.8rem;
 }
 
+.unit-edit-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.unit-edit-chip-row button {
+  flex: 1 1 auto;
+  min-width: 5.5rem;
+  min-height: 2.75rem;
+  text-transform: capitalize;
+}
+
 .radar-station-panel {
   margin-top: 0.75rem;
   padding: 0.5rem 0.55rem 0.7rem;
