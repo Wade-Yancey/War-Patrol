@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
+import { setAuthToken } from '../api/authStorage';
 import { CrtShell } from '../components/CrtShell';
 
 export function LandingPage() {
@@ -35,7 +36,7 @@ export function LandingPage() {
     try {
       const created = await api.createGame(scenarioId, gameName || undefined);
       const auth = await api.authUmpire(created.gameId, umpirePassword);
-      sessionStorage.setItem(`wp-token:${created.gameId}:umpire`, auth.token);
+      setAuthToken(`wp-token:${created.gameId}:umpire`, auth.token);
       navigate(`/g/${created.gameId}/umpire`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Create failed');
@@ -50,7 +51,7 @@ export function LandingPage() {
     try {
       const loaded = await api.loadSave(saveId);
       const auth = await api.authUmpire(loaded.gameId, umpirePassword);
-      sessionStorage.setItem(`wp-token:${loaded.gameId}:umpire`, auth.token);
+      setAuthToken(`wp-token:${loaded.gameId}:umpire`, auth.token);
       navigate(`/g/${loaded.gameId}/umpire`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Load failed');

@@ -5,6 +5,7 @@ export class SessionStore {
   private sessions = new Map<string, AuthSession>();
 
   create(input: Omit<AuthSession, 'token' | 'createdAt'>): AuthSession {
+    // Always mint a new session — never revoke sibling tabs on the same station (ARCH-AC-09).
     const session: AuthSession = {
       ...input,
       token: nanoid(32),

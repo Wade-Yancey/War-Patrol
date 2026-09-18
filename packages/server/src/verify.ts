@@ -190,6 +190,73 @@ async function main() {
     umpireToken,
   );
 
+  // Re-auth must not revoke sibling station tabs (ARCH-AC-09).
+  const blueAuthAgain = await api('POST', `/api/games/${gameId}/auth/vessel`, {
+    accessToken: 'porter-demo',
+    password: 'blue',
+    stationId: 'bridge',
+  });
+  check('re-auth bridge creates new session', blueAuthAgain.status === 200);
+  const blueToken2 = blueAuthAgain.json.token as string;
+  check('re-auth issues distinct token', blueToken2 !== blueToken);
+  const oldStillValid = await api('GET', `/api/games/${gameId}/view`, undefined, blueToken);
+  check('prior bridge session still valid after re-auth', oldStillValid.status === 200);
+
+  // Concurrent SSE: umpire + Porter Bridge + Porter Radar + Gato Conn (multi-tab).
+  const openSseClient = async (label: string, token: string, signal: AbortSignal) => {
+    const res = await fetch(
+      `${base}/api/games/${gameId}/events?token=${encodeURIComponent(token)}`,
+      { signal },
+    );
+    check(`SSE ${label} open`, res.status === 200 && Boolean(res.body));
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let gotState = false;
+    const deadline = Date.now() + 3000;
+    while (!gotState && Date.now() < deadline) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop() ?? '';
+      for (const part of parts) {
+        if (part.split('\n').some((l) => l.startsWith('data: '))) {
+          gotState = true;
+          break;
+        }
+      }
+    }
+    check(`SSE ${label} received state`, gotState);
+    return { reader, res };
+  };
+
+  const multiAbort = new AbortController();
+  const multiClients = await Promise.all([
+    openSseClient('umpire', umpireToken, multiAbort.signal),
+    openSseClient('porter-bridge', blueToken, multiAbort.signal),
+    openSseClient('porter-radar', radarToken, multiAbort.signal),
+    openSseClient('gato-conn', redToken, multiAbort.signal),
+    openSseClient('porter-bridge-tab2', blueToken2, multiAbort.signal),
+  ]);
+  const umpireLive = await api('GET', `/api/games/${gameId}/view`, undefined, umpireToken);
+  const connections = (umpireLive.json.view as Json).connections as Array<Json>;
+  check(
+    'multi-tab connection counts',
+    Array.isArray(connections) && connections.reduce((n, c) => n + Number(c.count ?? 0), 0) >= 5,
+    `got ${JSON.stringify(connections)}`,
+  );
+  multiAbort.abort();
+  await Promise.all(
+    multiClients.map(async (c) => {
+      try {
+        await c.reader.cancel();
+      } catch {
+        /* ignore */
+      }
+    }),
+  );
+
   // 4. SSE: query-token auth (EventSource-safe) + wait for resolve push
   const sseUnauth = await fetch(`${base}/api/games/${gameId}/events`);
   check('SSE rejects missing token', sseUnauth.status === 401);

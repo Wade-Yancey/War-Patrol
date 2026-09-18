@@ -86,16 +86,37 @@ export function useGameStream({ gameId, token, enabled = true }: Options) {
     ): Promise<ReadableStreamReadResult<Uint8Array>> =>
       new Promise((resolve, reject) => {
         let settled = false;
-        const idle = window.setTimeout(() => {
+        let idle: number | undefined;
+
+        const clearIdle = () => {
+          if (idle !== undefined) {
+            window.clearTimeout(idle);
+            idle = undefined;
+          }
+        };
+
+        const armIdle = () => {
+          clearIdle();
+          // Background tabs throttle timers/streams; don't treat that as a dead connection.
+          if (document.visibilityState === 'hidden') return;
+          idle = window.setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            document.removeEventListener('visibilitychange', onVisibility);
+            reject(new Error('SSE idle timeout'));
+          }, IDLE_TIMEOUT_MS);
+        };
+
+        const onVisibility = () => {
           if (settled) return;
-          settled = true;
-          reject(new Error('SSE idle timeout'));
-        }, IDLE_TIMEOUT_MS);
+          armIdle();
+        };
 
         const onAbort = () => {
           if (settled) return;
           settled = true;
-          window.clearTimeout(idle);
+          clearIdle();
+          document.removeEventListener('visibilitychange', onVisibility);
           reject(new DOMException('Aborted', 'AbortError'));
         };
 
@@ -104,19 +125,23 @@ export function useGameStream({ gameId, token, enabled = true }: Options) {
           return;
         }
         signal.addEventListener('abort', onAbort, { once: true });
+        document.addEventListener('visibilitychange', onVisibility);
+        armIdle();
 
         reader.read().then(
           (result) => {
             if (settled) return;
             settled = true;
-            window.clearTimeout(idle);
+            clearIdle();
+            document.removeEventListener('visibilitychange', onVisibility);
             signal.removeEventListener('abort', onAbort);
             resolve(result);
           },
           (err: unknown) => {
             if (settled) return;
             settled = true;
-            window.clearTimeout(idle);
+            clearIdle();
+            document.removeEventListener('visibilitychange', onVisibility);
             signal.removeEventListener('abort', onAbort);
             reject(err);
           },
