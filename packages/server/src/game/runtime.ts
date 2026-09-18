@@ -107,7 +107,17 @@ function normalizeUnit(unit: UnitState): UnitState {
   ) {
     stations.push({ id: 'radar', name: 'Radar', capabilities: ['radar'] });
   }
-  // Sonar station present but legacy save omitted hydrophone sensor — install default set.
+  // Legacy "Sonar" station id/name → Hydrophone (passive listen ≠ active sonar).
+  for (const s of stations) {
+    if (
+      s.capabilities.includes('hydrophone') &&
+      (s.id === 'sonar' || s.name === 'Sonar')
+    ) {
+      s.id = 'hydrophone';
+      s.name = 'Hydrophone';
+    }
+  }
+  // Hydrophone station present but legacy save omitted hydrophone sensor — install default set.
   if (
     stations.some((s) => s.capabilities.includes('hydrophone')) &&
     !sensors.some((s) => s.kind === 'hydrophone')

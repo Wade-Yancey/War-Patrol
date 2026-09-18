@@ -13,7 +13,7 @@
   "defaultStations": [
     { "id": "bridge", "name": "Bridge", "capabilities": ["helm", "lookout", "plot"] },
     { "id": "engineering", "name": "Engineering", "capabilities": ["engineering"] },
-    { "id": "sonar", "name": "Sonar", "capabilities": ["hydrophone"] },
+    { "id": "hydrophone", "name": "Hydrophone", "capabilities": ["hydrophone"] },
     { "id": "radar", "name": "Radar", "capabilities": ["radar"] },
     { "id": "guns", "name": "Gun Director", "capabilities": ["weapons"] },
     { "id": "torpedo", "name": "Torpedo Mount", "capabilities": ["torpedo"] },

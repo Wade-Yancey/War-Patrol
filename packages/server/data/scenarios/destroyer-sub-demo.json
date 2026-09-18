@@ -39,7 +39,7 @@
       "stations": [
         { "id": "bridge", "name": "Bridge", "capabilities": ["helm", "lookout", "plot"] },
         { "id": "engineering", "name": "Engineering", "capabilities": ["engineering"] },
-        { "id": "sonar", "name": "Sonar", "capabilities": ["hydrophone"] },
+        { "id": "hydrophone", "name": "Hydrophone", "capabilities": ["hydrophone"] },
         { "id": "radar", "name": "Radar", "capabilities": ["radar"] },
         { "id": "guns", "name": "Gun Director", "capabilities": ["weapons"] },
         { "id": "torpedo", "name": "Torpedo Mount", "capabilities": ["torpedo"] },
@@ -70,7 +70,7 @@
       "stations": [
         { "id": "conn", "name": "Conn", "capabilities": ["helm", "plot"] },
         { "id": "engineering", "name": "Maneuvering", "capabilities": ["engineering"] },
-        { "id": "sonar", "name": "Sonar", "capabilities": ["hydrophone"] },
+        { "id": "hydrophone", "name": "Hydrophone", "capabilities": ["hydrophone"] },
         { "id": "radar", "name": "Radar", "capabilities": ["radar"] },
         { "id": "periscope", "name": "Periscope", "capabilities": ["lookout"] },
         { "id": "torpedo-fwd", "name": "Forward Torpedo", "capabilities": ["torpedo"] },

@@ -1025,6 +1025,21 @@ label {
     width: min(100%, min(calc(100vw - 0.9rem), calc(100dvh - 4.75rem)));
   }
 
+  .hydrophone-station-panel {
+    padding: 0.25rem 0.2rem 0.4rem;
+    border-color: transparent;
+    background: transparent;
+  }
+
+  .hydrophone-svg {
+    width: min(100%, calc(100vw - 0.9rem), calc(100dvh - 4.75rem));
+    max-height: min(calc(100vw - 0.9rem), calc(100dvh - 4.75rem));
+  }
+
+  .hydrophone-aux {
+    width: min(100%, min(calc(100vw - 0.9rem), calc(100dvh - 4.75rem)));
+  }
+
   .station-turn-panel {
     padding: 0.55rem 0.65rem;
   }
@@ -1088,6 +1103,47 @@ label {
   .radar-contact-list ul {
     max-height: none;
   }
+
+  .hydrophone-scope {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    width: max-content;
+    max-width: 100%;
+  }
+
+  .hydrophone-scope-plot {
+    flex: 0 0 auto;
+    width: auto;
+  }
+
+  .hydrophone-svg {
+    width: min(78vh, 820px, calc(100vw - 15rem));
+    max-width: min(78vh, 820px, calc(100vw - 15rem));
+    max-height: min(78vh, 820px);
+  }
+
+  .hydrophone-aux {
+    width: 12rem;
+    max-width: 12rem;
+    max-height: min(78vh, 820px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 0.15rem 0;
+    justify-content: flex-start;
+  }
+
+  .hydrophone-readouts {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+
+  .hydrophone-caption {
+    text-align: left;
+  }
 }
 
 @media (min-width: 1100px) {
@@ -1104,6 +1160,22 @@ label {
   .radar-side-panel {
     width: 12rem;
     max-width: 12rem;
+    max-height: min(84vh, 920px);
+  }
+
+  .hydrophone-scope {
+    gap: 0.9rem;
+  }
+
+  .hydrophone-svg {
+    width: min(84vh, 920px, calc(100vw - 16rem));
+    max-width: min(84vh, 920px, calc(100vw - 16rem));
+    max-height: min(84vh, 920px);
+  }
+
+  .hydrophone-aux {
+    width: 12.5rem;
+    max-width: 12.5rem;
     max-height: min(84vh, 920px);
   }
 }
@@ -1411,35 +1483,71 @@ label {
   line-height: 1.35;
 }
 
-/* Hydrophone bearing dial — CRT companion to helm compass; audio-first */
+/* Hydrophone bearing dial — tablet-first like radar PPI; audio-first (≠ active sonar) */
 .hydrophone-station-panel {
-  width: max-content;
+  margin-top: 0;
+  padding: 0.4rem 0.45rem 0.55rem;
   max-width: 100%;
-  margin-inline: auto;
+  box-sizing: border-box;
+}
+
+.hydrophone-station-panel.stack {
+  align-items: stretch;
+  gap: 0.35rem;
 }
 
 .hydrophone-scope {
+  /* Dominant dial + compact aux chrome below / beside — mirrors radar console. */
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.55rem;
+  gap: 0.45rem;
   width: 100%;
-  max-width: 22rem;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   margin: 0 auto;
+}
+
+.hydrophone-scope-plot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  width: 100%;
 }
 
 .hydrophone-dial {
   width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .hydrophone-svg {
+  /* Tablet-first: nearly full viewport square; bearings stay in SVG viewBox. */
   display: block;
-  width: min(100%, 18rem);
+  width: min(100%, calc(100vw - 1.25rem), calc(100dvh - 5.25rem));
   height: auto;
   aspect-ratio: 1 / 1;
+  max-height: min(calc(100vw - 1.25rem), calc(100dvh - 5.25rem));
+  max-width: 100%;
   touch-action: none;
   user-select: none;
   cursor: crosshair;
+  flex: none;
+  margin-inline: auto;
+}
+
+.hydrophone-aux {
+  flex: 0 0 auto;
+  width: min(100%, min(calc(100vw - 1.25rem), calc(100dvh - 5.25rem)));
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .hydrophone-needle {
@@ -1456,32 +1564,32 @@ label {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 0.65rem 1.1rem;
+  gap: 0.35rem 0.85rem;
   width: 100%;
 }
 
 .hydrophone-readout {
   display: flex;
   align-items: baseline;
-  gap: 0.4rem;
+  gap: 0.35rem;
 }
 
 .hydrophone-key {
   font-family: var(--font-display);
-  font-size: 0.68rem;
-  letter-spacing: 0.14em;
+  font-size: 0.65rem;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--phosphor-dim);
 }
 
 .hydrophone-val {
-  font-size: 1.35rem;
+  font-size: 1.15rem;
   letter-spacing: 0.04em;
 }
 
 .hydrophone-meter {
   width: 100%;
-  height: 0.45rem;
+  height: 0.4rem;
   border: 1px solid color-mix(in srgb, var(--phosphor) 40%, transparent);
   background: #041208;
   overflow: hidden;
@@ -1497,28 +1605,62 @@ label {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 0.55rem;
+  gap: 0.4rem;
   width: 100%;
+}
+
+.hydrophone-controls button {
+  min-height: 2.5rem;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.85rem;
 }
 
 .hydrophone-fine {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.2rem;
   width: 100%;
 }
 
 .hydrophone-fine input[type='range'] {
   width: 100%;
   accent-color: var(--phosphor);
-  min-height: 2rem;
+  min-height: 1.75rem;
 }
 
 .hydrophone-caption {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   text-align: center;
-  line-height: 1.35;
+  line-height: 1.3;
+}
+
+.hydrophone-meter-scale {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin-top: -0.15rem;
+}
+
+.hydrophone-band--near {
+  color: var(--accent-strong);
+}
+
+.hydrophone-band--medium {
+  color: var(--phosphor);
+}
+
+.hydrophone-band--far {
+  color: var(--ink-muted);
+}
+
+.hydrophone-band--none {
+  color: var(--ink-muted);
+  opacity: 0.7;
 }
 
 @media (max-width: 600px) {

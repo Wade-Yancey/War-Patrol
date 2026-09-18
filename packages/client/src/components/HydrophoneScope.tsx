@@ -1,8 +1,11 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import {
   hydrophoneContactGain,
+  hydrophoneContactVoiceOffset,
+  hydrophoneListenCue,
   normalizeHeading,
   type HydrophoneContact,
+  type HydrophoneRangeBand,
 } from '@war-patrol/shared';
 
 const PROP_SAMPLE_URL = '/audio/echo-propeller.wav';
@@ -35,6 +38,19 @@ function bearingFromPointer(
   return normalizeHeading(deg);
 }
 
+function rangeBandLabel(band: HydrophoneRangeBand): string {
+  switch (band) {
+    case 'near':
+      return 'NEAR';
+    case 'medium':
+      return 'MED';
+    case 'far':
+      return 'FAR';
+    default:
+      return '—';
+  }
+}
+
 type ContactVoice = {
   id: string;
   source: AudioBufferSourceNode;
@@ -42,7 +58,7 @@ type ContactVoice = {
 };
 
 /**
- * CRT hydrophone bearing dial — audio-first.
+ * CRT hydrophone bearing dial — audio-first (passive listen ≠ active sonar).
  * Operator trains a listen needle; Web Audio mixes looping propeller samples
  * with per-contact gain from range × beam alignment. No visual contacts.
  */
@@ -72,14 +88,12 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
   const hdg = normalizeHeading(ownHeading);
   const listen = normalizeHeading(listenBearing);
 
-  const signalLevel = useMemo(() => {
-    if (contacts.length === 0) return 0;
-    let peak = 0;
-    for (const c of contacts) {
-      peak = Math.max(peak, hydrophoneContactGain(c.rangeNm, listen, c.bearing));
-    }
-    return peak;
-  }, [contacts, listen]);
+  const cue = useMemo(
+    () => hydrophoneListenCue(contacts, listen),
+    [contacts, listen],
+  );
+  const signalLevel = cue.intensity;
+  const rangeBand = cue.rangeBand;
 
   const ticks = useMemo(() => {
     const marks: Array<{
@@ -194,10 +208,16 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
         const source = ctx.createBufferSource();
         source.buffer = buffer;
         source.loop = true;
+        const { playbackRate, loopStartFraction } = hydrophoneContactVoiceOffset(c.id);
+        source.playbackRate.value = playbackRate;
+        // Offset loop phase so overlapping contacts do not stack identically.
+        const offsetSec = loopStartFraction * Math.max(0.01, buffer.duration);
+        source.loopStart = offsetSec;
+        source.loopEnd = buffer.duration;
         source.connect(gain);
         gain.connect(master);
         try {
-          source.start(0);
+          source.start(0, offsetSec);
         } catch {
           continue;
         }
@@ -265,169 +285,198 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
   const listenLabel = String(Math.round(listen)).padStart(3, '0');
   const hdgLabel = String(Math.round(hdg)).padStart(3, '0');
   const levelPct = Math.round(signalLevel * 100);
+  const bandLabel = rangeBandLabel(rangeBand);
+  const ariaRange =
+    rangeBand === 'none'
+      ? 'range indeterminate — train needle on the contact'
+      : `approximate range ${bandLabel}`;
 
   return (
     <div className="hydrophone-scope">
-      <div
-        className="hydrophone-dial"
-        role="img"
-        aria-label={`Hydrophone listen bearing ${listenLabel} degrees. No visual contacts — audio only.`}
-      >
-        <svg
-          ref={svgRef}
-          className="hydrophone-svg"
-          viewBox={`0 0 ${SIZE} ${SIZE}`}
-          preserveAspectRatio="xMidYMid meet"
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
+      <div className="hydrophone-scope-plot">
+        <div
+          className="hydrophone-dial"
+          role="img"
+          aria-label={`Hydrophone listen bearing ${listenLabel} degrees. Intensity ${levelPct} percent. ${ariaRange}. No visual contacts — audio only.`}
         >
-          <circle
-            cx={CX}
-            cy={CY}
-            r={R + 28}
-            fill="#0a120c"
-            stroke="#2a3830"
-            strokeWidth={8}
-          />
-          <circle cx={CX} cy={CY} r={R} fill="#041208" stroke="#1a8f3c" strokeWidth={2} />
-          <circle
-            cx={CX}
-            cy={CY}
-            r={R - 48}
-            fill="none"
-            stroke="rgba(61,255,106,0.1)"
-            strokeWidth={1}
-          />
+          <svg
+            ref={svgRef}
+            className="hydrophone-svg"
+            viewBox={`0 0 ${SIZE} ${SIZE}`}
+            preserveAspectRatio="xMidYMid meet"
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
+          >
+            <circle
+              cx={CX}
+              cy={CY}
+              r={R + 28}
+              fill="#0a120c"
+              stroke="#2a3830"
+              strokeWidth={8}
+            />
+            <circle cx={CX} cy={CY} r={R} fill="#041208" stroke="#1a8f3c" strokeWidth={2} />
+            <circle
+              cx={CX}
+              cy={CY}
+              r={R - 48}
+              fill="none"
+              stroke="rgba(61,255,106,0.1)"
+              strokeWidth={1}
+            />
 
-          {ticks.map((t) => (
-            <g key={t.deg}>
+            {ticks.map((t) => (
+              <g key={t.deg}>
+                <line
+                  x1={t.x1}
+                  y1={t.y1}
+                  x2={t.x2}
+                  y2={t.y2}
+                  stroke={t.major ? '#3dff6a' : 'rgba(61,255,106,0.4)'}
+                  strokeWidth={t.major ? 2 : 1}
+                />
+                {t.cardinal && (
+                  <text
+                    x={t.tx}
+                    y={t.ty}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fill="#7dff9a"
+                    fontSize={18}
+                    fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
+                    fontWeight={700}
+                  >
+                    {t.cardinal}
+                  </text>
+                )}
+                {t.major && !t.cardinal && (
+                  <text
+                    x={t.tx}
+                    y={t.ty}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fill="#5a9a68"
+                    fontSize={11}
+                    fontFamily="IBM Plex Mono, monospace"
+                  >
+                    {String(t.deg).padStart(3, '0')}
+                  </text>
+                )}
+              </g>
+            ))}
+
+            {/* Own-ship lubber — faint, not a contact. */}
+            <g
+              className="hydrophone-needle"
+              style={{ transform: `rotate(${hdg}deg)`, transformOrigin: `${CX}px ${CY}px` }}
+              opacity={0.45}
+            >
               <line
-                x1={t.x1}
-                y1={t.y1}
-                x2={t.x2}
-                y2={t.y2}
-                stroke={t.major ? '#3dff6a' : 'rgba(61,255,106,0.4)'}
-                strokeWidth={t.major ? 2 : 1}
+                x1={CX}
+                y1={CY - (R - 52)}
+                x2={CX}
+                y2={CY - (R - 8)}
+                stroke="#7dff9a"
+                strokeWidth={2}
               />
-              {t.cardinal && (
-                <text
-                  x={t.tx}
-                  y={t.ty}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fill="#7dff9a"
-                  fontSize={18}
-                  fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
-                  fontWeight={700}
-                >
-                  {t.cardinal}
-                </text>
-              )}
-              {t.major && !t.cardinal && (
-                <text
-                  x={t.tx}
-                  y={t.ty}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fill="#5a9a68"
-                  fontSize={11}
-                  fontFamily="IBM Plex Mono, monospace"
-                >
-                  {String(t.deg).padStart(3, '0')}
-                </text>
-              )}
             </g>
-          ))}
 
-          {/* Own-ship lubber — faint, not a contact. */}
-          <g
-            className="hydrophone-needle"
-            style={{ transform: `rotate(${hdg}deg)`, transformOrigin: `${CX}px ${CY}px` }}
-            opacity={0.45}
-          >
-            <line
-              x1={CX}
-              y1={CY - (R - 52)}
-              x2={CX}
-              y2={CY - (R - 8)}
-              stroke="#7dff9a"
-              strokeWidth={2}
-            />
-          </g>
-
-          {/* Listen needle — operator trains this. */}
-          <g
-            className="hydrophone-needle"
-            style={{ transform: `rotate(${listen}deg)`, transformOrigin: `${CX}px ${CY}px` }}
-          >
-            <line
-              x1={CX}
-              y1={CY + 18}
-              x2={CX}
-              y2={CY - (R - 10)}
-              stroke="#3dff6a"
-              strokeWidth={3}
-            />
-            <polygon
-              points={`${CX},${CY - (R + 14)} ${CX - 10},${CY - (R - 2)} ${CX + 10},${CY - (R - 2)}`}
-              fill="#7dff9a"
-            />
-            <circle cx={CX} cy={CY} r={7} fill="#041208" stroke="#3dff6a" strokeWidth={2} />
-          </g>
-        </svg>
-      </div>
-
-      <div className="hydrophone-readouts">
-        <div className="hydrophone-readout">
-          <span className="hydrophone-key">LSTN</span>
-          <span className="readout hydrophone-val">{listenLabel}°</span>
-        </div>
-        <div className="hydrophone-readout">
-          <span className="hydrophone-key">HDG</span>
-          <span className="readout hydrophone-val">{hdgLabel}°</span>
-        </div>
-        <div className="hydrophone-readout">
-          <span className="hydrophone-key">SIG</span>
-          <span className="readout hydrophone-val">{levelPct}%</span>
+            {/* Listen needle — operator trains this. */}
+            <g
+              className="hydrophone-needle"
+              style={{ transform: `rotate(${listen}deg)`, transformOrigin: `${CX}px ${CY}px` }}
+            >
+              <line
+                x1={CX}
+                y1={CY + 18}
+                x2={CX}
+                y2={CY - (R - 10)}
+                stroke="#3dff6a"
+                strokeWidth={3}
+              />
+              <polygon
+                points={`${CX},${CY - (R + 14)} ${CX - 10},${CY - (R - 2)} ${CX + 10},${CY - (R - 2)}`}
+                fill="#7dff9a"
+              />
+              <circle cx={CX} cy={CY} r={7} fill="#041208" stroke="#3dff6a" strokeWidth={2} />
+            </g>
+          </svg>
         </div>
       </div>
 
-      <div className="hydrophone-meter" aria-hidden>
-        <div className="hydrophone-meter-fill" style={{ width: `${levelPct}%` }} />
-      </div>
+      <div className="hydrophone-aux">
+        <div className="hydrophone-readouts">
+          <div className="hydrophone-readout">
+            <span className="hydrophone-key">LSTN</span>
+            <span className="readout hydrophone-val">{listenLabel}°</span>
+          </div>
+          <div className="hydrophone-readout">
+            <span className="hydrophone-key">HDG</span>
+            <span className="readout hydrophone-val">{hdgLabel}°</span>
+          </div>
+          <div className="hydrophone-readout">
+            <span className="hydrophone-key">INT</span>
+            <span className="readout hydrophone-val">{levelPct}%</span>
+          </div>
+          <div className="hydrophone-readout">
+            <span className="hydrophone-key">RNG</span>
+            <span
+              className={`readout hydrophone-val hydrophone-band hydrophone-band--${rangeBand}`}
+            >
+              {bandLabel}
+            </span>
+          </div>
+        </div>
 
-      <div className="hydrophone-controls">
-        <button
-          type="button"
-          className={listening ? 'primary' : undefined}
-          onClick={() => void toggleListen()}
+        <div
+          className="hydrophone-meter"
+          role="meter"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={levelPct}
+          aria-label="Hydrophone signal intensity"
         >
-          {listening ? 'Stop listening' : 'Start listening'}
-        </button>
-        <label className="hydrophone-fine">
-          <span className="hydrophone-key">Fine</span>
-          <input
-            type="range"
-            min={0}
-            max={359}
-            step={1}
-            value={Math.round(listen)}
-            onChange={(e) => setListenBearing(Number(e.target.value))}
-            aria-label="Listen bearing fine adjust"
-          />
-        </label>
-      </div>
+          <div className="hydrophone-meter-fill" style={{ width: `${levelPct}%` }} />
+        </div>
+        <div className="hydrophone-meter-scale" aria-hidden>
+          <span>weak</span>
+          <span>strong</span>
+        </div>
 
-      <p className="hydrophone-caption muted mono">
-        Drag dial or use fine slider · max {maxRangeNm} nm ·{' '}
-        {contacts.length === 0
-          ? 'no underway contacts in range'
-          : `${contacts.length} acoustic contact${contacts.length === 1 ? '' : 's'} (audio only)`}
-        {listening && audioReady ? ' · LIVE' : ''}
-      </p>
-      {audioError && <p className="error">{audioError}</p>}
+        <div className="hydrophone-controls">
+          <button
+            type="button"
+            className={listening ? 'primary' : undefined}
+            onClick={() => void toggleListen()}
+          >
+            {listening ? 'Stop listening' : 'Start listening'}
+          </button>
+          <label className="hydrophone-fine">
+            <span className="hydrophone-key">Fine</span>
+            <input
+              type="range"
+              min={0}
+              max={359}
+              step={1}
+              value={Math.round(listen)}
+              onChange={(e) => setListenBearing(Number(e.target.value))}
+              aria-label="Listen bearing fine adjust"
+            />
+          </label>
+        </div>
+
+        <p className="hydrophone-caption muted mono">
+          INT = range×beam gain · RNG Near≤5 / Med≤12 / Far nm when needle is on contact · max{' '}
+          {maxRangeNm} nm ·{' '}
+          {contacts.length === 0
+            ? 'no underway contacts in range'
+            : `${contacts.length} acoustic contact${contacts.length === 1 ? '' : 's'} (audio only)`}
+          {listening && audioReady ? ' · LIVE' : ''}
+        </p>
+        {audioError && <p className="error">{audioError}</p>}
+      </div>
     </div>
   );
 }
