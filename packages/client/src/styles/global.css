@@ -765,9 +765,16 @@ label {
   font-size: 0.8rem;
 }
 
+.map-cursor-readout {
+  margin-left: auto;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
 .map-viewport {
   touch-action: none;
-  cursor: grab;
+  cursor: crosshair;
   user-select: none;
   -webkit-user-select: none;
 }

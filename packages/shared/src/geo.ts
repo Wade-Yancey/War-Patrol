@@ -50,6 +50,13 @@ export function projectToUv(
   return { u, v };
 }
 
+/** Inverse of projectToUv — equirectangular UV back to geographic lat/lon (ARCH-SP-02). */
+export function unprojectFromUv(u: number, v: number, area: BoundingBox): { lat: number; lon: number } {
+  const lon = area.minLon + u * (area.maxLon - area.minLon);
+  const lat = area.maxLat - v * (area.maxLat - area.minLat);
+  return { lat, lon };
+}
+
 export function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
 }
