@@ -94,6 +94,7 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
   );
   const signalLevel = cue.intensity;
   const rangeBand = cue.rangeBand;
+  const approxRangeNm = cue.approxRangeNm;
 
   const ticks = useMemo(() => {
     const marks: Array<{
@@ -286,13 +287,15 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
   const hdgLabel = String(Math.round(hdg)).padStart(3, '0');
   const levelPct = Math.round(signalLevel * 100);
   const bandLabel = rangeBandLabel(rangeBand);
+  const approxLabel =
+    approxRangeNm == null ? '—' : `~${approxRangeNm} nm`;
   const ariaRange =
-    rangeBand === 'none'
+    approxRangeNm == null
       ? 'range indeterminate — train needle on the contact'
-      : `approximate range ${bandLabel}`;
+      : `approximate range ${approxRangeNm} nautical miles`;
 
   return (
-    <div className="radar-scope radar-console">
+    <div className="radar-scope radar-console hydrophone-scope">
       <div className="radar-scope-plot">
         <svg
           ref={svgRef}
@@ -421,9 +424,15 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
             <span
               className={`readout hydrophone-val hydrophone-band hydrophone-band--${rangeBand}`}
             >
-              {bandLabel}
+              {approxLabel}
             </span>
           </div>
+          {rangeBand !== 'none' && (
+            <div className="hydrophone-readout hydrophone-readout--band">
+              <span className="hydrophone-key">BAND</span>
+              <span className="readout hydrophone-val hydrophone-band-label">{bandLabel}</span>
+            </div>
+          )}
         </div>
 
         <div
@@ -464,7 +473,7 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
         </div>
 
         <p className="hydrophone-caption muted mono">
-          INT = range×beam gain · RNG Near≤5 / Med≤12 / Far nm when needle is on contact · max{' '}
+          RNG ≈ invert range falloff (R0=8 nm) when needle is on contact · ~nm coarsened · max{' '}
           {maxRangeNm} nm ·{' '}
           {contacts.length === 0
             ? 'no underway contacts in range'
