@@ -399,6 +399,28 @@ async function main() {
   );
   check('red orders', redOrders.status === 200);
 
+  const umpirePending = await api('GET', `/api/games/${gameId}/view`, undefined, umpireToken);
+  const pendingUnits = ((umpirePending.json.view as Json).units as Array<{
+    id: string;
+    name: string;
+    orders: { course?: number; eot?: string; updatedByStationId?: string };
+  }>);
+  const bluePending = pendingUnits.find((u) => u.id === 'dd-101');
+  const redPending = pendingUnits.find((u) => u.id === 'ss-212');
+  check(
+    'umpire sees blue pending orders',
+    bluePending?.orders.course === 45 && bluePending?.orders.eot === 'ahead_full',
+  );
+  check(
+    'umpire sees red pending orders',
+    redPending?.orders.course === 180 && redPending?.orders.eot === 'ahead_1',
+  );
+  check('umpire pending has station writer', Boolean(bluePending?.orders.updatedByStationId));
+  check(
+    'umpire pending roster names',
+    Boolean(bluePending?.name && redPending?.name),
+  );
+
   // 6. Lock + resolve
   const locked = await api('POST', `/api/games/${gameId}/turn/lock`, {}, umpireToken);
   check('lock turn', locked.status === 200 && (locked.json.turn as Json).phase === 'locked');

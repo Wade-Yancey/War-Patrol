@@ -519,6 +519,99 @@ label {
   color: var(--accent-strong);
 }
 
+.pending-orders-panel {
+  border-color: color-mix(in srgb, var(--phosphor) 35%, var(--line));
+}
+
+.pending-orders-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+
+.pending-orders-head h2 {
+  margin: 0;
+}
+
+.pending-orders-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.pending-order-row {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 0.65rem;
+  padding: 0.55rem 0.65rem 0.55rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--bg-panel) 70%, #000);
+}
+
+.pending-order-row--out {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
+}
+
+.pending-order-row--in {
+  border-color: color-mix(in srgb, var(--ok) 40%, var(--line));
+}
+
+.pending-order-row .faction-stripe {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+}
+
+.pending-order-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.pending-order-id {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.45rem 0.75rem;
+}
+
+.pending-order-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.75rem;
+}
+
+.pending-order-summary {
+  font-size: 0.95rem;
+}
+
+.pending-order-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  font-size: 0.75rem;
+}
+
+.orders-of-record {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--ok) 45%, var(--line));
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--ok) 8%, var(--bg-panel));
+}
+
 .unit-edit {
   position: relative;
   padding-left: 1.15rem;

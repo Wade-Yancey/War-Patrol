@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { EOT_LABELS, conditionLabel, type EotSetting, type VesselView } from '@war-patrol/shared';
+import {
+  EOT_LABELS,
+  formatPendingOrdersSummary,
+  hasPendingOrders,
+  conditionLabel,
+  type EotSetting,
+  type VesselView,
+} from '@war-patrol/shared';
 import { api } from '../api/client';
 import { getAuthToken, setAuthToken } from '../api/authStorage';
 import { useGameStream } from '../hooks/useGameStream';
@@ -153,6 +160,19 @@ export function StationPage() {
             <section className="panel stack">
               <h2>Turn</h2>
               <TurnStatus turn={vessel.turn} turnLengthSeconds={vessel.turnLengthSeconds} />
+              {hasPendingOrders(vessel.unit.orders) ? (
+                <div className="orders-of-record" role="status">
+                  <span className="status-pill open">Of record</span>
+                  <span className="mono readout">{formatPendingOrdersSummary(vessel.unit.orders)}</span>
+                  {vessel.unit.orders.updatedByStationId && (
+                    <span className="mono muted">via {vessel.unit.orders.updatedByStationId}</span>
+                  )}
+                </div>
+              ) : (
+                <p className="muted mono" style={{ margin: 0, fontSize: '0.85rem' }}>
+                  No pending orders filed for this turn.
+                </p>
+              )}
               {!vessel.canSubmitOrders && (
                 <p className="muted" style={{ margin: 0 }}>
                   Ordering closed for this phase or this station cannot submit.
@@ -297,11 +317,7 @@ export function StationPage() {
                     <tr>
                       <th>Pending</th>
                       <td className="readout">
-                        {vessel.unit.orders.course !== undefined
-                          ? `CRS ${vessel.unit.orders.course.toFixed(0)}°`
-                          : '—'}
-                        {' / '}
-                        {vessel.unit.orders.eot ? EOT_LABELS[vessel.unit.orders.eot] : '—'}
+                        {formatPendingOrdersSummary(vessel.unit.orders)}
                       </td>
                     </tr>
                   </tbody>
