@@ -11,6 +11,10 @@ import {
 const PROP_SAMPLE_URL = '/audio/echo-propeller.wav';
 /** Fine-adjust nudge step for ◀ / ▶ flanking the bearing slider (degrees). */
 const BEARING_NUDGE_DEG = 1;
+/** Delay before continuous hold-repeat starts (ms). */
+const NUDGE_HOLD_DELAY_MS = 400;
+/** Tick interval while ◀ / ▶ are held (ms) — ~12.5 °/s at 1° step. */
+const NUDGE_HOLD_INTERVAL_MS = 80;
 
 interface Props {
   contacts: HydrophoneContact[];
@@ -78,6 +82,8 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
   const voicesRef = useRef<Map<string, ContactVoice>>(new Map());
   const listenRef = useRef(listenBearing);
   const contactsRef = useRef(contacts);
+  const nudgeHoldDelayRef = useRef<number | null>(null);
+  const nudgeHoldIntervalRef = useRef<number | null>(null);
 
   useEffect(() => {
     listenRef.current = listenBearing;
@@ -242,13 +248,25 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
     syncVoices();
   }, [listening, contacts, listenBearing, syncVoices, stopAllVoices]);
 
+  const stopNudgeHold = useCallback(() => {
+    if (nudgeHoldDelayRef.current != null) {
+      window.clearTimeout(nudgeHoldDelayRef.current);
+      nudgeHoldDelayRef.current = null;
+    }
+    if (nudgeHoldIntervalRef.current != null) {
+      window.clearInterval(nudgeHoldIntervalRef.current);
+      nudgeHoldIntervalRef.current = null;
+    }
+  }, []);
+
   useEffect(() => {
     return () => {
+      stopNudgeHold();
       stopAllVoices();
       void audioCtxRef.current?.close();
       audioCtxRef.current = null;
     };
-  }, [stopAllVoices]);
+  }, [stopAllVoices, stopNudgeHold]);
 
   const onPointerDown = (e: PointerEvent<SVGSVGElement>) => {
     const el = svgRef.current;
@@ -285,8 +303,29 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
     if (ok) setListening(true);
   };
 
-  const nudgeBearing = (dir: -1 | 1) => {
+  const nudgeBearing = useCallback((dir: -1 | 1) => {
     setListenBearing((prev) => normalizeHeading(Math.round(prev) + dir * BEARING_NUDGE_DEG));
+  }, []);
+
+  const startNudgeHold = (dir: -1 | 1) => (e: PointerEvent<HTMLButtonElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    stopNudgeHold();
+    nudgeBearing(dir);
+    nudgeHoldDelayRef.current = window.setTimeout(() => {
+      nudgeHoldDelayRef.current = null;
+      nudgeHoldIntervalRef.current = window.setInterval(() => {
+        nudgeBearing(dir);
+      }, NUDGE_HOLD_INTERVAL_MS);
+    }, NUDGE_HOLD_DELAY_MS);
+  };
+
+  const endNudgeHold = (e: PointerEvent<HTMLButtonElement>) => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    stopNudgeHold();
   };
 
   const listenLabel = String(Math.round(listen)).padStart(3, '0');
@@ -471,7 +510,14 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
                 type="button"
                 className="hydrophone-nudge"
                 aria-label={`Decrease listen bearing ${BEARING_NUDGE_DEG} degree`}
-                onClick={() => nudgeBearing(-1)}
+                onPointerDown={startNudgeHold(-1)}
+                onPointerUp={endNudgeHold}
+                onPointerLeave={endNudgeHold}
+                onPointerCancel={endNudgeHold}
+                onClick={(e) => {
+                  /* Keyboard activation only — pointer path already nudged on down. */
+                  if (e.detail === 0) nudgeBearing(-1);
+                }}
               >
                 ◀
               </button>
@@ -489,7 +535,13 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
                 type="button"
                 className="hydrophone-nudge"
                 aria-label={`Increase listen bearing ${BEARING_NUDGE_DEG} degree`}
-                onClick={() => nudgeBearing(1)}
+                onPointerDown={startNudgeHold(1)}
+                onPointerUp={endNudgeHold}
+                onPointerLeave={endNudgeHold}
+                onPointerCancel={endNudgeHold}
+                onClick={(e) => {
+                  if (e.detail === 0) nudgeBearing(1);
+                }}
               >
                 ▶
               </button>
