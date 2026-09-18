@@ -425,10 +425,13 @@ async function main() {
     const isPng = Boolean(
       buf && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47,
     );
+    // IHDR width/height at bytes 16–23 (big-endian); expect a wide side elevation.
+    const width = buf && isPng ? buf.readUInt32BE(16) : 0;
+    const height = buf && isPng ? buf.readUInt32BE(20) : 0;
     check(
       'destroyer silhouette PNG present',
-      isPng && (buf?.byteLength ?? 0) > 2000,
-      resolved ?? 'missing',
+      isPng && width >= 300 && height >= 70 && height < width,
+      resolved ? `${resolved} ${width}x${height}` : 'missing',
     );
   }
   check(
