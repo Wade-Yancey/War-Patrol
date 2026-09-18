@@ -2,6 +2,9 @@ import { SCHEMA_VERSION } from './constants.js';
 
 export type SideId = string;
 
+/** Allegiance / force identity (umpire + own-ship; not leaked via FoW sensors). */
+export type Faction = 'Red' | 'Blue' | 'Civilian';
+
 /** High-level platform category (Submarine | Ship | Aircraft). */
 export type VesselType = 'Submarine' | 'Ship' | 'Aircraft';
 
@@ -108,7 +111,13 @@ export interface UnitOrders {
 export interface UnitState {
   id: string;
   name: string;
+  /**
+   * Legacy side id (lowercase blue/red/civilian). Kept in sync with {@link faction}
+   * for older clients and stripe CSS hooks.
+   */
   side: SideId;
+  /** Force allegiance: Red | Blue | Civilian. */
+  faction: Faction;
   /** Library definition id (e.g. fletcher-class). */
   classId: string;
   /** Platform category: Submarine | Ship | Aircraft. */
@@ -161,7 +170,10 @@ export interface UnitState {
 export interface ScenarioUnitSeed {
   id: string;
   name: string;
+  /** Legacy side id; used to migrate faction when faction omitted. */
   side: SideId;
+  /** Force allegiance; optional on older scenarios — migrated from side. */
+  faction?: Faction;
   classId: string;
   /** Platform category; legacy destroyer|submarine|… values are migrated on load. */
   type: VesselType | string;
@@ -277,6 +289,11 @@ export interface VesselClassStub {
   type: VesselType;
   /** Hull / airframe class for this library entry. */
   class: HullClass;
+  /**
+   * Optional default faction for new units of this class
+   * (e.g. Merchant/Oiler → Civilian).
+   */
+  defaultFaction?: Faction;
   /** Max speed knots (historical approximation for the concrete hull). */
   maxSpeed: number;
   /** Steady turn rate deg per in-game minute. */
@@ -365,6 +382,7 @@ export interface VesselView {
     | 'id'
     | 'name'
     | 'side'
+    | 'faction'
     | 'type'
     | 'class'
     | 'position'

@@ -12,8 +12,14 @@ interface Props {
 const SIDE_COLORS: Record<string, string> = {
   blue: '#6ec8ff',
   red: '#ff8a6a',
+  civilian: '#c49bff',
   neutral: '#b8ffc8',
 };
+
+function unitAccent(unit: UnitState): string {
+  const key = (unit.faction ?? unit.side ?? 'neutral').toString().toLowerCase();
+  return SIDE_COLORS[key] ?? SIDE_COLORS.neutral!;
+}
 
 const W = 640;
 const H = 420;
@@ -34,7 +40,7 @@ function unitsSignature(units: UnitState[]): string {
   return units
     .map(
       (u) =>
-        `${u.id}:${u.position.lat.toFixed(5)},${u.position.lon.toFixed(5)},${u.heading.toFixed(1)},${normalizeHeading(u.orderedCourse ?? u.heading).toFixed(1)},${u.speed.toFixed(1)},${u.position.depth.toFixed(0)},${u.type},${u.class},${u.name},${u.condition},${u.subsystems?.propulsion},${u.subsystems?.sensors},${u.flightLevel ?? ''}`,
+        `${u.id}:${u.position.lat.toFixed(5)},${u.position.lon.toFixed(5)},${u.heading.toFixed(1)},${normalizeHeading(u.orderedCourse ?? u.heading).toFixed(1)},${u.speed.toFixed(1)},${u.position.depth.toFixed(0)},${u.type},${u.class},${u.name},${u.faction},${u.condition},${u.subsystems?.propulsion},${u.subsystems?.sensors},${u.flightLevel ?? ''}`,
     )
     .join('|');
 }
@@ -213,7 +219,7 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
       .map((unit) => {
         const trail = trailByUnit.get(unit.id);
         if (!trail || trail.points.length < 2) return null;
-        const color = SIDE_COLORS[unit.side] ?? '#c8ffd4';
+        const color = unitAccent(unit);
         const pts = trail.points.map((p) => {
           const { u, v } = projectToUv(p.lat, p.lon, view);
           return { x: u * W, y: v * H, u, v };
@@ -236,7 +242,7 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
         const { u, v } = projectToUv(unit.position.lat, unit.position.lon, view);
         const x = u * W;
         const y = v * H;
-        const color = SIDE_COLORS[unit.side] ?? '#c8ffd4';
+        const color = unitAccent(unit);
         const heading = normalizeHeading(unit.heading);
         const ordered = normalizeHeading(unit.orderedCourse ?? unit.heading);
         const hRad = ((heading - 90) * Math.PI) / 180;
@@ -255,7 +261,7 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
           courseX: x + Math.cos(oRad) * courseLen,
           courseY: y + Math.sin(oRad) * courseLen,
           showOrdered: courseDelta > 0.5,
-          identity: `${unit.class.toUpperCase()} · ${unit.type.toUpperCase()}${
+          identity: `${unit.faction.toUpperCase()} · ${unit.class.toUpperCase()} · ${unit.type.toUpperCase()}${
             unit.condition === 'sunk'
               ? unit.type === 'Aircraft'
                 ? ' · DESTROYED'

@@ -8,8 +8,10 @@ import { runtime } from './game/runtime.js';
 import {
   CLASS_MAX_SPEED_KNOTS,
   CLASS_SPEED_STEP_FRACTION,
+  SUBMERGED_MAX_SPEED_KNOTS,
   clampSpeedToMax,
   editMaxSpeedForClass,
+  effectiveMaxSpeed,
   formatWallDuration,
   parseWallDuration,
   resolveMaxSpeed,
@@ -68,6 +70,19 @@ async function main() {
   );
   check('clampSpeedToMax caps high', clampSpeedToMax(99, 36) === 36);
   check('clampSpeedToMax caps reverse', clampSpeedToMax(-50, 36) === -36);
+  check('submerged max is 9 kn', SUBMERGED_MAX_SPEED_KNOTS === 9);
+  check(
+    'effectiveMaxSpeed surfaced hull',
+    effectiveMaxSpeed({ type: 'Submarine', maxSpeed: 21, depth: 0 }) === 21,
+  );
+  check(
+    'effectiveMaxSpeed submerged caps 9',
+    effectiveMaxSpeed({ type: 'Submarine', maxSpeed: 21, depth: 40 }) === 9,
+  );
+  check(
+    'ships ignore depth for speed',
+    effectiveMaxSpeed({ type: 'Ship', maxSpeed: 36, depth: 40 }) === 36,
+  );
 
   const api = async (
     method: string,
@@ -124,6 +139,7 @@ async function main() {
   check('blue unit is Porter', (bv.unit as Json).name === 'USS Porter');
   check('blue own-ship type', (bv.unit as Json).type === 'Ship');
   check('blue own-ship class', (bv.unit as Json).class === 'Destroyer');
+  check('blue own-ship faction', (bv.unit as Json).faction === 'Blue');
   check('blue has no units array', !('units' in bv));
 
   const umpireView = await api('GET', `/api/games/${gameId}/view`, undefined, umpireToken);
@@ -146,7 +162,7 @@ async function main() {
   const contacts = rv.radarContacts as Array<Json>;
   check('radar sees surfaced contact', contacts.length >= 1, `got ${contacts.length}`);
   check('radar contact polar only', !('position' in contacts[0]) && typeof contacts[0].bearing === 'number');
-  check('radar contact no identity fields', !('side' in contacts[0]) && !('name' in contacts[0]) && !('classId' in contacts[0]) && !('class' in contacts[0]) && !('type' in contacts[0]));
+  check('radar contact no identity fields', !('side' in contacts[0]) && !('name' in contacts[0]) && !('classId' in contacts[0]) && !('class' in contacts[0]) && !('type' in contacts[0]) && !('faction' in contacts[0]));
   check(
     'radar contact has signature size',
     contacts[0].signature === 'small' ||
@@ -163,6 +179,7 @@ async function main() {
   check('porter type Ship', porter.type === 'Ship');
   check('porter class Destroyer', porter.class === 'Destroyer');
   check('porter maxSpeed Fletcher 36 kn', porter.maxSpeed === 36);
+  check('porter faction Blue', porter.faction === 'Blue');
   check('porter afloat', porter.condition === 'afloat');
   check('porter propulsion intact', (porter.subsystems as Json).propulsion === 'intact');
   check('porter sensors intact', (porter.subsystems as Json).sensors === 'intact');
@@ -171,6 +188,7 @@ async function main() {
   check('gato class Fleet Submarine', gato.class === 'Fleet Submarine');
   check('gato maxSpeed Gato 21 kn', gato.maxSpeed === 21);
   check('demo speeds distinct', (porter.maxSpeed as number) > (gato.maxSpeed as number));
+  check('gato faction Red', gato.faction === 'Red');
   check('gato afloat', gato.condition === 'afloat');
   check('destroyer turnRate medium size', porter.turnRate === 7);
   check('sub turnRate small size', gato.turnRate === 12);
@@ -246,14 +264,91 @@ async function main() {
     umpireToken,
   );
 
-  // 4. SSE: wait for resolve push
+  // Re-auth must not revoke sibling station tabs (ARCH-AC-09).
+  const blueAuthAgain = await api('POST', `/api/games/${gameId}/auth/vessel`, {
+    accessToken: 'porter-demo',
+    password: 'blue',
+    stationId: 'bridge',
+  });
+  check('re-auth bridge creates new session', blueAuthAgain.status === 200);
+  const blueToken2 = blueAuthAgain.json.token as string;
+  check('re-auth issues distinct token', blueToken2 !== blueToken);
+  const oldStillValid = await api('GET', `/api/games/${gameId}/view`, undefined, blueToken);
+  check('prior bridge session still valid after re-auth', oldStillValid.status === 200);
+
+  // Concurrent SSE: umpire + Porter Bridge + Porter Radar + Gato Conn (multi-tab).
+  const openSseClient = async (label: string, token: string, signal: AbortSignal) => {
+    const res = await fetch(
+      `${base}/api/games/${gameId}/events?token=${encodeURIComponent(token)}`,
+      { signal },
+    );
+    check(`SSE ${label} open`, res.status === 200 && Boolean(res.body));
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let gotState = false;
+    const deadline = Date.now() + 3000;
+    while (!gotState && Date.now() < deadline) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop() ?? '';
+      for (const part of parts) {
+        if (part.split('\n').some((l) => l.startsWith('data: '))) {
+          gotState = true;
+          break;
+        }
+      }
+    }
+    check(`SSE ${label} received state`, gotState);
+    return { reader, res };
+  };
+
+  const multiAbort = new AbortController();
+  const multiClients = await Promise.all([
+    openSseClient('umpire', umpireToken, multiAbort.signal),
+    openSseClient('porter-bridge', blueToken, multiAbort.signal),
+    openSseClient('porter-radar', radarToken, multiAbort.signal),
+    openSseClient('gato-conn', redToken, multiAbort.signal),
+    openSseClient('porter-bridge-tab2', blueToken2, multiAbort.signal),
+  ]);
+  const umpireLive = await api('GET', `/api/games/${gameId}/view`, undefined, umpireToken);
+  const connections = (umpireLive.json.view as Json).connections as Array<Json>;
+  check(
+    'multi-tab connection counts',
+    Array.isArray(connections) && connections.reduce((n, c) => n + Number(c.count ?? 0), 0) >= 5,
+    `got ${JSON.stringify(connections)}`,
+  );
+  multiAbort.abort();
+  await Promise.all(
+    multiClients.map(async (c) => {
+      try {
+        await c.reader.cancel();
+      } catch {
+        /* ignore */
+      }
+    }),
+  );
+
+  // 4. SSE: query-token auth (EventSource-safe) + wait for resolve push
+  const sseUnauth = await fetch(`${base}/api/games/${gameId}/events`);
+  check('SSE rejects missing token', sseUnauth.status === 401);
+
+  const sseBad = await fetch(
+    `${base}/api/games/${gameId}/events?token=${encodeURIComponent('not-a-real-token')}`,
+  );
+  check('SSE rejects bad query token', sseBad.status === 401);
+
   let sseVersions: number[] = [];
   const sseAbort = new AbortController();
   const ssePromise = (async () => {
-    const res = await fetch(`${base}/api/games/${gameId}/events`, {
-      headers: { Authorization: `Bearer ${blueToken}` },
-      signal: sseAbort.signal,
-    });
+    // Prefer query token — matches browser EventSource / client reconnect path.
+    const res = await fetch(
+      `${base}/api/games/${gameId}/events?token=${encodeURIComponent(blueToken)}`,
+      { signal: sseAbort.signal },
+    );
+    check('SSE accepts query token', res.status === 200 && Boolean(res.body));
     const reader = res.body?.getReader();
     if (!reader) return;
     const decoder = new TextDecoder();
@@ -277,6 +372,13 @@ async function main() {
       if (sseVersions.length >= 3) break;
     }
   })();
+
+  // Bearer still accepted on SSE for non-browser clients.
+  const sseBearer = await fetch(`${base}/api/games/${gameId}/events`, {
+    headers: { Authorization: `Bearer ${umpireToken}` },
+  });
+  check('SSE accepts Bearer', sseBearer.status === 200 && Boolean(sseBearer.body));
+  sseBearer.body?.cancel().catch(() => undefined);
 
   await new Promise((r) => setTimeout(r, 200));
 
@@ -335,11 +437,47 @@ async function main() {
 
   // Submit more orders then rollback
   await api('POST', `/api/games/${gameId}/orders`, { course: 10 }, blueToken);
-  const rolled = await api('POST', `/api/games/${gameId}/rollback`, { turnNumber: 1 }, umpireToken);
+
+  const noConfirm = await api(
+    'POST',
+    `/api/games/${gameId}/rollback`,
+    { turnNumber: 1 },
+    umpireToken,
+  );
+  check('rollback rejects missing confirm', noConfirm.status === 400);
+
+  const badConfirm = await api(
+    'POST',
+    `/api/games/${gameId}/rollback`,
+    { turnNumber: 1, confirm: 'yes' },
+    umpireToken,
+  );
+  check('rollback rejects weak confirm', badConfirm.status === 400);
+
+  const rolled = await api(
+    'POST',
+    `/api/games/${gameId}/rollback`,
+    { turnNumber: 1, confirm: 'ROLLBACK' },
+    umpireToken,
+  );
   check('rollback', rolled.status === 200);
   const rolledGame = runtime.requireGame(gameId);
   check('rollback clears orders', Object.keys(rolledGame.units.find((u) => u.id === 'dd-101')!.orders).length === 0);
   check('rollback turn number', rolledGame.turn.number === 2);
+
+  // Resolve again then rollback with typed turn number
+  await api('POST', `/api/games/${gameId}/turn/resolve`, {}, umpireToken);
+  const afterSecond = runtime.requireGame(gameId);
+  check('second resolve turn', afterSecond.turn.number === 3);
+  check('history has turn 2 snapshot', afterSecond.history.some((h) => h.turnNumber === 2));
+  const rolled2 = await api(
+    'POST',
+    `/api/games/${gameId}/rollback`,
+    { turnNumber: 2, confirm: '2' },
+    umpireToken,
+  );
+  check('rollback via turn number confirm', rolled2.status === 200);
+  check('rollback to T2 opens turn 3', runtime.requireGame(gameId).turn.number === 3);
 
   // Patch identity + migrate-style coerce
   const idPatch = await api(
@@ -364,10 +502,20 @@ async function main() {
   check('merchant maxSpeed class default 11', asMerchant.maxSpeed === 11);
   check('merchant type Ship', asMerchant.type === 'Ship');
 
+  // Faction patch + migrate-from-side behavior is covered by seed defaults;
+  // also verify Civilian can be set and side stays in sync.
   await api(
     'PATCH',
     `/api/games/${gameId}/units/dd-101`,
-    { type: 'Ship', class: 'Destroyer', name: 'USS Porter' },
+    { faction: 'Civilian' },
+    umpireToken,
+  );
+  const civ = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
+  check('faction Civilian', civ.faction === 'Civilian' && civ.side === 'civilian');
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { type: 'Ship', class: 'Destroyer', name: 'USS Porter', faction: 'Blue' },
     umpireToken,
   );
   const restoredDd = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
@@ -407,6 +555,43 @@ async function main() {
     'PATCH',
     `/api/games/${gameId}/units/dd-101`,
     { type: 'Ship', class: 'Destroyer', name: 'USS Porter', speed: 12 },
+    umpireToken,
+  );
+
+  // Submerged submarine speed ceiling ~9 kn (hull maxSpeed stays 21).
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { speed: 18, position: { depth: 0 } },
+    umpireToken,
+  );
+  check(
+    'surfaced sub can hold 18 kn',
+    runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!.speed === 18,
+  );
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { position: { depth: 40 } },
+    umpireToken,
+  );
+  const dived = runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!;
+  check('submerged clamps speed to 9', dived.speed === 9);
+  check('hull maxSpeed unchanged while submerged', dived.maxSpeed === 21);
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { speed: 15, position: { depth: 40 } },
+    umpireToken,
+  );
+  check(
+    'submerged speed patch capped at 9',
+    runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!.speed === 9,
+  );
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { position: { depth: 0 }, speed: 6 },
     umpireToken,
   );
 
@@ -470,13 +655,53 @@ async function main() {
     umpireToken,
   );
 
-  // Bad password
+  // Bad password (game still in memory)
   const bad = await api('POST', `/api/games/${gameId}/auth/vessel`, {
     accessToken: 'porter-demo',
     password: 'wrong',
     stationId: 'bridge',
   });
   check('rejects bad password', bad.status === 401);
+
+  // Delete save — no orphans in memory or on disk
+  const deleted = await api('DELETE', `/api/saves/${gameId}`);
+  check('delete save', deleted.status === 200 && deleted.json.ok === true);
+  check('delete unloaded memory', runtime.getGame(gameId) === undefined);
+  const savesAfter = await api('GET', '/api/saves');
+  const saveList = Array.isArray(savesAfter.json)
+    ? (savesAfter.json as unknown as Array<{ id: string }>)
+    : [];
+  check('delete removed from list', !saveList.some((s) => s.id === gameId));
+
+  // Disposable scenario delete (do not remove destroyer-sub-demo)
+  const { writeScenario, deleteScenarioFile, loadScenario } = await import('./store/fileStore.js');
+  const tempId = `verify-temp-${Date.now()}`;
+  const demo = await loadScenario('destroyer-sub-demo');
+  await writeScenario({
+    ...demo,
+    id: tempId,
+    name: 'Verify Temp Scenario',
+  });
+  const listedSc = await api('GET', '/api/scenarios');
+  const scList = Array.isArray(listedSc.json)
+    ? (listedSc.json as unknown as Array<{ id: string }>)
+    : [];
+  check('temp scenario listed', scList.some((s) => s.id === tempId));
+  const delSc = await api('DELETE', `/api/scenarios/${tempId}`);
+  check('delete scenario', delSc.status === 200);
+  const gone = await deleteScenarioFile(tempId);
+  check('scenario file gone', gone === false);
+  const listedSc2 = await api('GET', '/api/scenarios');
+  const scList2 = Array.isArray(listedSc2.json)
+    ? (listedSc2.json as unknown as Array<{ id: string }>)
+    : [];
+  check('scenario removed from list', !scList2.some((s) => s.id === tempId));
+
+  // Ground-truth multi-turn stability (separate game; cleans up its save)
+  const { runStabilityCheck } = await import('./stabilityCheck.js');
+  const stab = await runStabilityCheck(base);
+  results.push(...stab);
+  check('stability suite ran', stab.length > 0);
 
   console.log('\n=== War Patrol Phase 1 verification ===');
   for (const line of results) console.log(line);

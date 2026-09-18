@@ -6,9 +6,11 @@ import {
   defaultMaxSpeed,
   defaultRadarSignature,
   defaultSensors,
+  effectiveMaxSpeed,
   normalizeHeading,
   normalizePositionForType,
   resolveCondition,
+  resolveFaction,
   resolveFlightLevel,
   resolveMaxSpeed,
   resolveStartGameTimeSeconds,
@@ -16,6 +18,7 @@ import {
   resolveTurnLengthSeconds,
   resolveTurnRate,
   resolveVesselIdentity,
+  sideFromFaction,
   type EotSetting,
   type GameSave,
   type HullClass,
@@ -44,10 +47,16 @@ function unitFromScenario(seed: Scenario['units'][number]): UnitState {
   const condition = resolveCondition(seed.condition);
   const subsystems = resolveSubsystems(seed.subsystems);
   const flightLevel = resolveFlightLevel(identity.type, seed.flightLevel);
+  const faction = resolveFaction({
+    faction: seed.faction,
+    side: seed.side,
+    class: identity.class,
+  });
   return normalizeUnit({
     id: seed.id,
     name: seed.name,
-    side: seed.side,
+    side: sideFromFaction(faction),
+    faction,
     classId: seed.classId,
     type: identity.type,
     class: identity.class,
@@ -106,6 +115,11 @@ function normalizeUnit(unit: UnitState): UnitState {
   const condition = resolveCondition(unit.condition);
   const subsystems = resolveSubsystems(unit.subsystems);
   const flightLevel = resolveFlightLevel(identity.type, unit.flightLevel);
+  const faction = resolveFaction({
+    faction: unit.faction,
+    side: unit.side,
+    class: identity.class,
+  });
   const position = normalizePositionForType(identity.type, { ...unit.position });
   let speed = unit.speed;
   let eot = unit.eot;
@@ -119,10 +133,17 @@ function normalizeUnit(unit: UnitState): UnitState {
     type: identity.type,
   });
   if (condition !== 'sunk' && subsystems.propulsion !== 'disabled') {
-    speed = clampSpeedToMax(speed, maxSpeed);
+    const ceiling = effectiveMaxSpeed({
+      type: identity.type,
+      maxSpeed,
+      depth: position.depth,
+    });
+    speed = clampSpeedToMax(speed, ceiling);
   }
   return {
     ...unit,
+    side: sideFromFaction(faction),
+    faction,
     type: identity.type,
     class: identity.class,
     position,
@@ -271,6 +292,37 @@ export class GameRuntime {
     save.updatedAt = new Date().toISOString();
     await store.writeSave(save);
     return save;
+  }
+
+  /** Unload an in-memory game: timers, sessions, SSE, map entry — no disk write. */
+  unloadGame(gameId: string): boolean {
+    if (!this.games.has(gameId)) return false;
+    this.clearTimer(gameId);
+    this.sessions.clearGame(gameId);
+    this.sse.dropGame(gameId);
+    this.games.delete(gameId);
+    return true;
+  }
+
+  /**
+   * Delete a save file and drop any in-memory copy / sessions (no orphans).
+   * Returns false if the file was already missing (still unloads memory if present).
+   */
+  async deleteSave(saveId: string): Promise<{ deletedFile: boolean; unloaded: boolean }> {
+    const unloaded = this.unloadGame(saveId);
+    const deletedFile = await store.deleteSaveFile(saveId);
+    if (!deletedFile && !unloaded) {
+      throw Object.assign(new Error('Save not found'), { statusCode: 404 });
+    }
+    return { deletedFile, unloaded };
+  }
+
+  /** Delete a scenario JSON file from disk. */
+  async deleteScenario(scenarioId: string): Promise<void> {
+    const ok = await store.deleteScenarioFile(scenarioId);
+    if (!ok) {
+      throw Object.assign(new Error('Scenario not found'), { statusCode: 404 });
+    }
   }
 
   private replace(gameId: string, next: GameSave): GameSave {
@@ -444,7 +496,19 @@ export class GameRuntime {
     return resolved;
   }
 
-  async rollback(gameId: string, turnNumber: number): Promise<GameSave> {
+  /**
+   * Rollback requires explicit confirmation (ARCH-SM-13):
+   * `confirm` must be `"ROLLBACK"` or the target turn number as a string.
+   */
+  async rollback(gameId: string, turnNumber: number, confirm: string): Promise<GameSave> {
+    const expectedTurn = String(turnNumber);
+    const normalized = confirm.trim().toUpperCase();
+    if (normalized !== 'ROLLBACK' && confirm.trim() !== expectedTurn) {
+      throw Object.assign(
+        new Error('Rollback requires confirm: "ROLLBACK" or the target turn number'),
+        { statusCode: 400 },
+      );
+    }
     this.clearTimer(gameId);
     const next = rollbackToTurn(this.requireGame(gameId), turnNumber);
     this.replace(gameId, next);
@@ -468,6 +532,7 @@ export class GameRuntime {
         | 'class'
         | 'flightLevel'
         | 'condition'
+        | 'faction'
       >
     > & {
       position?: Partial<UnitState['position']>;
@@ -506,6 +571,10 @@ export class GameRuntime {
           });
         }
       }
+      if (patch.faction !== undefined) {
+        unit.faction = resolveFaction({ faction: patch.faction, class: unit.class });
+        unit.side = sideFromFaction(unit.faction);
+      }
       if (patch.flightLevel !== undefined) {
         unit.flightLevel = patch.flightLevel;
       }
@@ -518,8 +587,15 @@ export class GameRuntime {
           ...patch.subsystems,
         });
       }
-      // Always clamp signed speed to ±maxSpeed (class table / library).
-      unit.speed = clampSpeedToMax(unit.speed, unit.maxSpeed);
+      // Clamp using effective ceiling (submerged subs → ~9 kn); normalizeUnit re-checks.
+      unit.speed = clampSpeedToMax(
+        unit.speed,
+        effectiveMaxSpeed({
+          type: unit.type,
+          maxSpeed: unit.maxSpeed,
+          depth: unit.position.depth,
+        }),
+      );
       // Re-normalize so type rules (surface depth, flight level, dead-in-water) stick.
       save.units[idx] = normalizeUnit(unit);
       return save;

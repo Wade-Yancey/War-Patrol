@@ -1,8 +1,17 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import type { AuthSession, EotSetting, FlightLevel, HullClass, SubsystemState, UnitCondition, VesselType } from '@war-patrol/shared';
+import type {
+  AuthSession,
+  EotSetting,
+  Faction,
+  FlightLevel,
+  HullClass,
+  SubsystemState,
+  UnitCondition,
+  VesselType,
+} from '@war-patrol/shared';
 import { nanoid } from 'nanoid';
 import * as store from '../store/fileStore.js';
-import { parseBearer } from '../game/sessions.js';
+import { parseBearer, parseSseToken } from '../game/sessions.js';
 import { runtime } from '../game/runtime.js';
 import { buildViewForSession } from '../game/views.js';
 import type { SseClient } from '../game/sse.js';
@@ -17,8 +26,7 @@ function httpError(err: unknown): { statusCode: number; message: string } {
   return { statusCode: 500, message: err instanceof Error ? err.message : 'Internal error' };
 }
 
-function requireSession(request: FastifyRequest, gameId?: string): AuthSession {
-  const token = parseBearer(request.headers.authorization);
+function sessionFromToken(token: string | undefined, gameId?: string): AuthSession {
   const session = runtime.sessions.get(token);
   if (!session) {
     throw Object.assign(new Error('Unauthorized'), { statusCode: 401 });
@@ -27,6 +35,21 @@ function requireSession(request: FastifyRequest, gameId?: string): AuthSession {
     throw Object.assign(new Error('Wrong game'), { statusCode: 403 });
   }
   return session;
+}
+
+function requireSession(request: FastifyRequest, gameId?: string): AuthSession {
+  return sessionFromToken(parseBearer(request.headers.authorization), gameId);
+}
+
+/** SSE-only: Bearer or `?token=` (browser EventSource cannot set Authorization). */
+function requireSseSession(
+  request: FastifyRequest<{ Querystring: { token?: string } }>,
+  gameId?: string,
+): AuthSession {
+  return sessionFromToken(
+    parseSseToken(request.headers.authorization, request.query?.token),
+    gameId,
+  );
 }
 
 function requireUmpire(request: FastifyRequest, gameId?: string): AuthSession {
@@ -54,6 +77,29 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/library', async () => store.listVesselClasses());
 
   app.get('/api/saves', async () => store.listSaves());
+
+  app.delete<{ Params: { saveId: string } }>('/api/saves/:saveId', async (request, reply) => {
+    try {
+      const result = await runtime.deleteSave(request.params.saveId);
+      return { ok: true, ...result };
+    } catch (err) {
+      const e = httpError(err);
+      return reply.code(e.statusCode).send({ error: e.message });
+    }
+  });
+
+  app.delete<{ Params: { scenarioId: string } }>(
+    '/api/scenarios/:scenarioId',
+    async (request, reply) => {
+      try {
+        await runtime.deleteScenario(request.params.scenarioId);
+        return { ok: true };
+      } catch (err) {
+        const e = httpError(err);
+        return reply.code(e.statusCode).send({ error: e.message });
+      }
+    },
+  );
 
   app.get('/api/games', async () => runtime.listActiveGames());
 
@@ -179,10 +225,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.get<{
     Params: { gameId: string };
-    Querystring: { lastVersion?: string };
+    Querystring: { lastVersion?: string; token?: string };
   }>('/api/games/:gameId/events', async (request, reply) => {
     try {
-      const session = requireSession(request, request.params.gameId);
+      const session = requireSseSession(request, request.params.gameId);
       const save = runtime.requireGame(session.gameId);
       const client: SseClient = {
         id: nanoid(16),
@@ -346,23 +392,29 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  app.post<{ Params: { gameId: string }; Body: { turnNumber: number } }>(
-    '/api/games/:gameId/rollback',
-    async (request, reply) => {
-      try {
-        requireUmpire(request, request.params.gameId);
-        const turnNumber = Number(request.body?.turnNumber);
-        if (!Number.isFinite(turnNumber)) {
-          return reply.code(400).send({ error: 'turnNumber required' });
-        }
-        const save = await runtime.rollback(request.params.gameId, turnNumber);
-        return { turn: save.turn, stateVersion: save.stateVersion };
-      } catch (err) {
-        const e = httpError(err);
-        return reply.code(e.statusCode).send({ error: e.message });
+  app.post<{
+    Params: { gameId: string };
+    Body: { turnNumber: number; confirm?: string };
+  }>('/api/games/:gameId/rollback', async (request, reply) => {
+    try {
+      requireUmpire(request, request.params.gameId);
+      const turnNumber = Number(request.body?.turnNumber);
+      if (!Number.isFinite(turnNumber)) {
+        return reply.code(400).send({ error: 'turnNumber required' });
       }
-    },
-  );
+      const confirm = request.body?.confirm;
+      if (typeof confirm !== 'string' || !confirm.trim()) {
+        return reply.code(400).send({
+          error: 'confirm required — type ROLLBACK or the target turn number (ARCH-SM-13)',
+        });
+      }
+      const save = await runtime.rollback(request.params.gameId, turnNumber, confirm);
+      return { turn: save.turn, stateVersion: save.stateVersion };
+    } catch (err) {
+      const e = httpError(err);
+      return reply.code(e.statusCode).send({ error: e.message });
+    }
+  });
 
   app.patch<{
     Params: { gameId: string; unitId: string };
@@ -374,6 +426,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       password?: string;
       type?: string;
       class?: string;
+      faction?: string;
       flightLevel?: string;
       condition?: string;
       subsystems?: { propulsion?: string; sensors?: string };
@@ -391,6 +444,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         password: body.password,
         type: body.type as VesselType | undefined,
         class: body.class as HullClass | undefined,
+        faction: body.faction as Faction | undefined,
         flightLevel: body.flightLevel as FlightLevel | undefined,
         condition: body.condition as UnitCondition | undefined,
         subsystems: body.subsystems

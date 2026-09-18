@@ -1,4 +1,5 @@
-import type { HullClass } from './types.js';
+import { RADAR_SURFACE_DEPTH_M } from './constants.js';
+import type { HullClass, VesselType } from './types.js';
 import { isHullClass, resolveVesselIdentity } from './vessel.js';
 
 /**
@@ -7,7 +8,7 @@ import { isHullClass, resolveVesselIdentity } from './vessel.js';
  * aircraft: prop-era TAS rounded into the same knot model the movement engine uses.
  *
  * Representative references (order-of-magnitude):
- * - Fleet Submarine ~ Gato surfaced ~20 kn (submerged much slower; not modeled yet)
+ * - Fleet Submarine ~ Gato surfaced ~20 kn; submerged ~9 kn
  * - Destroyer ~ Fletcher ~36 kn
  * - Cruiser ~ Cleveland / Baltimore ~32 kn
  * - Aircraft Carrier ~ Essex ~33 kn
@@ -28,6 +29,12 @@ export const CLASS_MAX_SPEED_KNOTS: Record<HullClass, number> = {
   Fighter: 320,
   Bomber: 250,
 };
+
+/**
+ * Fleet-submarine submerged max (knots). Same depth band as radar surface:
+ * depth > {@link RADAR_SURFACE_DEPTH_M} → submerged.
+ */
+export const SUBMERGED_MAX_SPEED_KNOTS = 9;
 
 /**
  * Fraction of maxSpeed the unit may change toward the EOT target **per resolve**.
@@ -61,7 +68,7 @@ export function defaultSpeedStepFraction(hullClass: HullClass): number {
 
 /**
  * Resolve maxSpeed: explicit positive override wins; else class enum default.
- * Accepts hull class or legacy type strings via identity resolve.
+ * This is the **surfaced / hull** max stored on the unit — see {@link effectiveMaxSpeed}.
  */
 export function resolveMaxSpeed(opts: {
   maxSpeed?: number;
@@ -90,21 +97,54 @@ export function resolveSpeedStepFraction(opts: {
   return defaultSpeedStepFraction(hullClass);
 }
 
+/** True when a submarine is deep enough that submerged performance applies. */
+export function isSubmergedForSpeed(
+  type: VesselType | string | undefined,
+  depth: number | undefined,
+): boolean {
+  if (type !== 'Submarine') return false;
+  return typeof depth === 'number' && depth > RADAR_SURFACE_DEPTH_M;
+}
+
+/**
+ * Runtime speed ceiling (knots): hull maxSpeed, or submerged cap (~9 kn) for
+ * submarines deeper than the radar surface band. Does not mutate unit.maxSpeed.
+ */
+export function effectiveMaxSpeed(opts: {
+  type?: VesselType | string;
+  maxSpeed: number;
+  depth?: number;
+}): number {
+  const hull = Math.abs(opts.maxSpeed);
+  if (!Number.isFinite(hull) || hull <= 0) return 0;
+  if (isSubmergedForSpeed(opts.type, opts.depth)) {
+    return Math.min(hull, SUBMERGED_MAX_SPEED_KNOTS);
+  }
+  return hull;
+}
+
 /**
  * Effective max speed for umpire edit / display.
  * Prefer the unit's stored maxSpeed when the draft class matches the unit;
- * otherwise use the historical class-table default (so changing class in the
- * form immediately re-caps the speed slider before Apply).
+ * otherwise use the historical class-table default.
+ * For submarines, draft depth > surface band further caps to submerged max.
  */
 export function editMaxSpeedForClass(opts: {
   draftClass: HullClass;
   unitClass: HullClass;
   unitMaxSpeed: number;
+  draftType?: VesselType;
+  draftDepth?: number;
 }): number {
-  if (opts.draftClass === opts.unitClass && opts.unitMaxSpeed > 0) {
-    return opts.unitMaxSpeed;
-  }
-  return defaultMaxSpeed(opts.draftClass);
+  const hull =
+    opts.draftClass === opts.unitClass && opts.unitMaxSpeed > 0
+      ? opts.unitMaxSpeed
+      : defaultMaxSpeed(opts.draftClass);
+  return effectiveMaxSpeed({
+    type: opts.draftType ?? (opts.draftClass === 'Fleet Submarine' ? 'Submarine' : undefined),
+    maxSpeed: hull,
+    depth: opts.draftDepth,
+  });
 }
 
 /** Clamp signed speed (knots) to ±maxSpeed. */

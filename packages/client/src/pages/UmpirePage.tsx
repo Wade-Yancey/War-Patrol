@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   DEFAULT_TURN_SECONDS,
+  FACTIONS,
   FLIGHT_LEVELS,
   HULL_CLASSES,
   SUBSYSTEM_STATES,
@@ -13,9 +14,11 @@ import {
   coerceVesselIdentity,
   conditionLabel,
   editMaxSpeedForClass,
+  formatGameClock,
   formatWallDuration,
   parseWallDuration,
   snapWallDuration,
+  type Faction,
   type FlightLevel,
   type HullClass,
   type SubsystemState,
@@ -24,11 +27,13 @@ import {
   type VesselType,
 } from '@war-patrol/shared';
 import { api } from '../api/client';
+import { getAuthToken, setAuthToken } from '../api/authStorage';
 import { useGameStream } from '../hooks/useGameStream';
 import { GroundTruthMap } from '../components/GroundTruthMap';
 import { TurnStatus } from '../components/TurnStatus';
 import { CrtShell } from '../components/CrtShell';
 import { TouchNumber } from '../components/TouchNumber';
+import { ConfirmAction } from '../components/ConfirmAction';
 
 function tokenKey(gameId: string) {
   return `wp-token:${gameId}:umpire`;
@@ -37,7 +42,7 @@ function tokenKey(gameId: string) {
 export function UmpirePage() {
   const { gameId = '' } = useParams();
   const [password, setPassword] = useState('umpire');
-  const [token, setToken] = useState(() => sessionStorage.getItem(tokenKey(gameId)));
+  const [token, setToken] = useState(() => getAuthToken(tokenKey(gameId)));
   const [authError, setAuthError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -46,6 +51,7 @@ export function UmpirePage() {
   const [editName, setEditName] = useState('');
   const [editType, setEditType] = useState<VesselType>('Ship');
   const [editClass, setEditClass] = useState<HullClass>('Destroyer');
+  const [editFaction, setEditFaction] = useState<Faction>('Blue');
   const [editHealth, setEditHealth] = useState(100);
   const [editDepth, setEditDepth] = useState(0);
   const [editFlightLevel, setEditFlightLevel] = useState<FlightLevel>('medium');
@@ -57,6 +63,7 @@ export function UmpirePage() {
   const [editPassword, setEditPassword] = useState('');
   const [dirty, setDirty] = useState(false);
   const [applyNote, setApplyNote] = useState<string | null>(null);
+  const [rollbackTarget, setRollbackTarget] = useState<number | null>(null);
 
   const { view, stateVersion, connected, error, refresh } = useGameStream({
     gameId,
@@ -76,7 +83,7 @@ export function UmpirePage() {
 
   const classOptions = useMemo(() => classesForType(editType), [editType]);
 
-  /** Speed slider cap: unit maxSpeed when class matches; else historical class table. */
+  /** Speed slider cap: unit/class max, further capped when draft sub is submerged. */
   const editSpeedCap = useMemo(() => {
     if (!selectedUnit) return 36;
     return Math.round(
@@ -84,15 +91,18 @@ export function UmpirePage() {
         draftClass: editClass,
         unitClass: selectedUnit.class,
         unitMaxSpeed: selectedUnit.maxSpeed,
+        draftType: editType,
+        draftDepth: editType === 'Submarine' ? editDepth : 0,
       }),
     );
-  }, [selectedUnit, editClass]);
+  }, [selectedUnit, editClass, editType, editDepth]);
 
   const loadDraftFromUnit = (u: NonNullable<typeof selectedUnit>) => {
     const identity = coerceVesselIdentity(u.type, u.class);
     setEditName(u.name);
     setEditType(identity.type);
     setEditClass(identity.class);
+    setEditFaction(u.faction ?? 'Blue');
     setEditHealth(u.health);
     setEditDepth(Math.round(u.position.depth));
     setEditFlightLevel(u.flightLevel ?? 'medium');
@@ -137,20 +147,25 @@ export function UmpirePage() {
     if (next === 'Aircraft' && !editFlightLevel) {
       setEditFlightLevel('medium');
     }
+    const nextDepth = next === 'Ship' ? 0 : editDepth;
     if (next === 'Ship') {
       setEditDepth(0);
     }
-    // Re-cap speed to the (possibly new) class max.
+    // Re-cap speed to the (possibly new) class / depth max.
     const cap = selectedUnit
       ? editMaxSpeedForClass({
           draftClass: nextClass,
           unitClass: selectedUnit.class,
           unitMaxSpeed: selectedUnit.maxSpeed,
+          draftType: next,
+          draftDepth: next === 'Submarine' ? nextDepth : 0,
         })
       : editMaxSpeedForClass({
           draftClass: nextClass,
           unitClass: nextClass,
           unitMaxSpeed: 0,
+          draftType: next,
+          draftDepth: next === 'Submarine' ? nextDepth : 0,
         });
     setEditSpeed((s) => Math.round(clampSpeedToMax(s, cap)));
   };
@@ -165,11 +180,15 @@ export function UmpirePage() {
           draftClass: identity.class,
           unitClass: selectedUnit.class,
           unitMaxSpeed: selectedUnit.maxSpeed,
+          draftType: identity.type,
+          draftDepth: identity.type === 'Submarine' ? editDepth : 0,
         })
       : editMaxSpeedForClass({
           draftClass: identity.class,
           unitClass: identity.class,
           unitMaxSpeed: 0,
+          draftType: identity.type,
+          draftDepth: identity.type === 'Submarine' ? editDepth : 0,
         });
     setEditSpeed((s) => Math.round(clampSpeedToMax(s, cap)));
   };
@@ -179,7 +198,7 @@ export function UmpirePage() {
     setAuthError(null);
     try {
       const auth = await api.authUmpire(gameId, password);
-      sessionStorage.setItem(tokenKey(gameId), auth.token);
+      setAuthToken(tokenKey(gameId), auth.token);
       setToken(auth.token);
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : 'Auth failed');
@@ -400,7 +419,7 @@ export function UmpirePage() {
                 {umpire.historyTurnNumbers.length > 0 && (
                   <div className="stack" style={{ gap: '0.4rem' }}>
                     <span className="muted" style={{ fontSize: '0.8rem' }}>
-                      Rollback to end of turn (dangerous):
+                      Rollback to end of turn (requires confirmation):
                     </span>
                     <div className="row">
                       {umpire.historyTurnNumbers.map((n) => (
@@ -408,8 +427,8 @@ export function UmpirePage() {
                           key={n}
                           type="button"
                           className="danger"
-                          disabled={busy}
-                          onClick={() => void run(() => api.rollback(gameId, token, n))}
+                          disabled={busy || rollbackTarget !== null}
+                          onClick={() => setRollbackTarget(n)}
                         >
                           T{n}
                         </button>
@@ -419,6 +438,40 @@ export function UmpirePage() {
                 )}
               </section>
             </div>
+
+            {rollbackTarget !== null && token && (
+              <div style={{ marginTop: '1rem' }}>
+                <ConfirmAction
+                  title={`Rollback to end of turn ${rollbackTarget}`}
+                  warning={
+                    <>
+                      <p>
+                        <strong>Destructive.</strong> Restores units to the snapshot after turn{' '}
+                        {rollbackTarget} resolved, clears in-progress orders, and discards every later
+                        turn.
+                      </p>
+                      <p>
+                        Current turn {umpire.turn.number} and in-game clock{' '}
+                        <span className="mono">{formatGameClock(umpire.turn.gameTimeSeconds)}</span>{' '}
+                        will be replaced by the restored clock. Later movement and history are gone.
+                      </p>
+                    </>
+                  }
+                  confirmTokens={['ROLLBACK', String(rollbackTarget)]}
+                  confirmHint={`Type ROLLBACK or ${rollbackTarget} to confirm`}
+                  placeholder="ROLLBACK"
+                  confirmLabel={`Execute rollback to T${rollbackTarget}`}
+                  busy={busy}
+                  onCancel={() => setRollbackTarget(null)}
+                  onConfirm={(matched) =>
+                    void run(async () => {
+                      await api.rollback(gameId, token, rollbackTarget, matched);
+                      setRollbackTarget(null);
+                    })
+                  }
+                />
+              </div>
+            )}
 
             <div className="grid-2" style={{ marginTop: '1rem' }}>
               <section className="panel">
@@ -453,6 +506,13 @@ export function UmpirePage() {
                           <tr key={v.unitId}>
                             <td>
                               <div>{v.name}</div>
+                              {unit && (
+                                <span
+                                  className={`side-badge side-badge--${unit.faction.toLowerCase()} vessel-faction-badge`}
+                                >
+                                  {unit.faction}
+                                </span>
+                              )}
                               <div className="mono muted" style={{ fontSize: '0.75rem' }}>
                                 {unit ? `${unit.type} · ${unit.class}` : '—'}
                               </div>
@@ -493,9 +553,27 @@ export function UmpirePage() {
                   </table>
                 </section>
 
-                <section className="panel stack unit-edit">
+                <section
+                  className={`panel stack unit-edit${selectedUnit ? ` unit-edit--${editFaction.toLowerCase()}` : ''}`}
+                >
+                  {selectedUnit && (
+                    <div
+                      className={`unit-edit-faction-stripe unit-edit-faction-stripe--${editFaction.toLowerCase()}`}
+                      aria-hidden="true"
+                    />
+                  )}
                   <div className="unit-edit-header">
-                    <h2>Unit edit</h2>
+                    <div className="unit-edit-title-row">
+                      <h2>Unit edit</h2>
+                      {selectedUnit && (
+                        <span
+                          className={`side-badge side-badge--${editFaction.toLowerCase()}`}
+                          title={`${editFaction} faction`}
+                        >
+                          {editFaction}
+                        </span>
+                      )}
+                    </div>
                     <span className={`mono muted unit-edit-status${dirty ? ' dirty' : ''}`}>
                       {dirty ? 'DRAFT' : 'LIVE'}
                     </span>
@@ -519,7 +597,7 @@ export function UmpirePage() {
                     >
                       {umpire.units.map((u) => (
                         <option key={u.id} value={u.id}>
-                          {u.name} · {u.side}
+                          {u.name} · {u.faction}
                         </option>
                       ))}
                     </select>
@@ -528,7 +606,15 @@ export function UmpirePage() {
                   {selectedUnit && (
                     <>
                       <div className="unit-edit-group">
-                        <h3>Identity</h3>
+                        <div className="unit-edit-identity-head">
+                          <h3>Identity</h3>
+                          <span
+                            className={`side-badge side-badge--${editFaction.toLowerCase()}`}
+                            title={`${editFaction} faction`}
+                          >
+                            {editFaction}
+                          </span>
+                        </div>
                         <label>
                           Name
                           <input
@@ -569,8 +655,47 @@ export function UmpirePage() {
                             </select>
                           </label>
                         </div>
+                        <label className="unit-edit-select">
+                          Faction
+                          <select
+                            value={editFaction}
+                            onChange={(e) => {
+                              markDirty();
+                              setEditFaction(e.target.value as Faction);
+                            }}
+                          >
+                            {FACTIONS.map((f) => (
+                              <option key={f} value={f}>
+                                {f}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <div
+                          className="unit-edit-faction-preview"
+                          role="group"
+                          aria-label="Faction accent"
+                        >
+                          {FACTIONS.map((f) => (
+                            <button
+                              key={f}
+                              type="button"
+                              className={`unit-edit-faction-chip${
+                                editFaction === f ? ' is-active' : ''
+                              } unit-edit-faction-chip--${f.toLowerCase()}`}
+                              disabled={busy}
+                              onClick={() => {
+                                markDirty();
+                                setEditFaction(f);
+                              }}
+                            >
+                              <span className="unit-edit-faction-chip-swatch" aria-hidden />
+                              {f}
+                            </button>
+                          ))}
+                        </div>
                         <p className="mono muted" style={{ margin: 0, fontSize: '0.75rem' }}>
-                          Side {selectedUnit.side.toUpperCase()} · library {selectedUnit.classId}
+                          Library {selectedUnit.classId}
                         </p>
                         <div className="control-actions">
                           <button
@@ -584,6 +709,7 @@ export function UmpirePage() {
                                     name: editName.trim() || selectedUnit.name,
                                     type: editType,
                                     class: editClass,
+                                    faction: editFaction,
                                     ...(editType === 'Aircraft'
                                       ? { flightLevel: editFlightLevel }
                                       : {}),
@@ -629,7 +755,8 @@ export function UmpirePage() {
                         />
                         <p className="mono muted" style={{ margin: 0, fontSize: '0.75rem' }}>
                           Cap ±{editSpeedCap} kn ({editClass}
-                          {selectedUnit.class !== editClass ? ' draft' : ''})
+                          {selectedUnit.class !== editClass ? ' draft' : ''}
+                          {editType === 'Submarine' && editDepth > 5 ? ' · submerged' : ''})
                         </p>
                         <div className="control-actions">
                           <button
@@ -661,6 +788,16 @@ export function UmpirePage() {
                             onChange={(v) => {
                               markDirty();
                               setEditDepth(v);
+                              if (selectedUnit) {
+                                const cap = editMaxSpeedForClass({
+                                  draftClass: editClass,
+                                  unitClass: selectedUnit.class,
+                                  unitMaxSpeed: selectedUnit.maxSpeed,
+                                  draftType: editType,
+                                  draftDepth: v,
+                                });
+                                setEditSpeed((s) => Math.round(clampSpeedToMax(s, cap)));
+                              }
                             }}
                             min={0}
                             max={300}

@@ -1,16 +1,24 @@
 import type { ReactNode } from 'react';
+import type { Faction } from '@war-patrol/shared';
+import { factionAccent } from '@war-patrol/shared';
 
-type Side = 'blue' | 'red' | 'neutral' | undefined;
+type Side = 'blue' | 'red' | 'civilian' | 'neutral' | undefined;
 
-/** CRT bezel + screen. Side is a small accent stripe only — phosphor stays green. */
+/** CRT bezel + screen. Faction/side is a small accent stripe only — phosphor stays green. */
 export function CrtShell({
   side = 'neutral',
+  faction,
   children,
 }: {
   side?: Side;
+  faction?: Faction;
   children: ReactNode;
 }) {
-  const stripe = side === 'blue' || side === 'red' ? side : undefined;
+  const stripe = faction
+    ? factionAccent(faction)
+    : side === 'blue' || side === 'red' || side === 'civilian'
+      ? side
+      : undefined;
 
   return (
     <div className="crt-bezel">
@@ -18,7 +26,7 @@ export function CrtShell({
         <div
           className={`side-stripe side-stripe--${stripe}`}
           aria-hidden="true"
-          title={`${stripe} side`}
+          title={faction ? `${faction} faction` : `${stripe} side`}
         />
       )}
       <div className="crt-screen">{children}</div>
