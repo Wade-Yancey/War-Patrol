@@ -329,7 +329,7 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
               No echoes in range.
             </p>
           ) : (
-            <ul>
+            <ul className="sensor-contact-scroll">
               {visibleContacts.map((c, i) => (
                 <li key={c.id} className="mono">
                   <span className="readout">Contact {i + 1}</span>

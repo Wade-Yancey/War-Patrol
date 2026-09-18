@@ -893,6 +893,12 @@ label {
   max-width: 100%;
 }
 
+.radar-contact-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .radar-scale-panel h3,
 .radar-contact-list h3 {
   margin: 0 0 0.35rem;
@@ -943,7 +949,8 @@ label {
   }
 }
 
-.radar-contact-list ul {
+.radar-contact-list ul,
+.sensor-contact-scroll {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -951,9 +958,13 @@ label {
   flex-direction: column;
   gap: 0.3rem;
   min-width: 0;
-  max-height: 9.5rem;
+  /* Convoy-safe: scroll when contacts exceed the panel budget. */
+  max-height: min(12rem, 38vh);
   overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
 }
 
 .radar-contact-list li {
@@ -1142,8 +1153,12 @@ label {
     min-height: 0;
   }
 
-  .radar-contact-list ul {
+  .radar-contact-list ul,
+  .sensor-contact-scroll {
+    /* Side panel is height-capped with the PPI; fill leftover and scroll. */
     max-height: none;
+    flex: 1 1 auto;
+    min-height: 0;
   }
 }
 
@@ -2123,30 +2138,29 @@ label {
   font-size: 0.9rem;
 }
 
-.periscope-silhouettes {
+.periscope-selected {
   position: absolute;
-  inset: 0;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  z-index: 1;
-}
-
-.periscope-contact {
-  position: absolute;
-  bottom: 28%;
+  left: 50%;
+  bottom: 22%;
   transform: translateX(-50%) scale(var(--peri-scale, 1));
   transform-origin: center bottom;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.55rem;
   transition: transform 280ms ease-out;
+  max-width: 92%;
 }
 
 .periscope-silhouette {
   display: block;
-  width: clamp(7rem, 28vw, 14rem);
+  width: clamp(9rem, 42vw, 18rem);
   height: auto;
-  max-height: 5.5rem;
+  max-height: 6.5rem;
   object-fit: contain;
   object-position: center bottom;
+  /* Transparent dark ink → phosphor green (white-bg JPG would flatten here). */
   filter: brightness(0) saturate(100%) invert(64%) sepia(72%) saturate(467%)
     hue-rotate(79deg) brightness(1.05) contrast(1.05);
   opacity: 0.92;
@@ -2165,38 +2179,72 @@ label {
   opacity: 0.7;
 }
 
+.periscope-readouts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.35rem 0.75rem;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.82rem;
+  background: color-mix(in srgb, var(--bg-crt) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--phosphor-dim) 40%, transparent);
+}
+
 .periscope-side-panel {
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
+  min-height: 0;
 }
 
-.periscope-contact-list {
+.periscope-side-panel .radar-contact-list {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
-  margin: 0;
+}
+
+.periscope-contact-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.15rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.35rem 0.45rem;
+  text-align: left;
+  touch-action: manipulation;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: var(--bezel-inset);
+  color: inherit;
+  font: inherit;
+}
+
+.periscope-contact-btn .radar-contact-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.55rem;
+  font-size: 0.75rem;
+  opacity: 0.9;
+}
+
+.periscope-contact-btn.primary {
+  border-color: color-mix(in srgb, var(--phosphor) 55%, var(--line));
+  background: color-mix(in srgb, var(--phosphor) 12%, var(--bezel-inset));
+}
+
+.periscope-side-panel .radar-contact-list li {
   padding: 0;
-  list-style: none;
-}
-
-.periscope-contact-list li {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 0.15rem 0.65rem;
-  font-size: 0.85rem;
-  padding-bottom: 0.35rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--phosphor-dim) 35%, transparent);
-}
-
-.periscope-contact-list li > :nth-child(n + 3) {
-  grid-column: 2;
+  border: none;
+  background: transparent;
 }
 
 .periscope-caption {
   margin: auto 0 0;
   font-size: 0.75rem;
   line-height: 1.35;
+  flex: 0 0 auto;
 }
 
 @media (max-width: 720px) {
