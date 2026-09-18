@@ -525,7 +525,7 @@ export interface PeriscopeContact {
   /** Approximate absolute speed in knots (coarsened). */
   speedKn: number;
   /**
-   * Hull class for silhouette mapping only (e.g. Destroyer → destroyer.jpg).
+   * Hull class for silhouette mapping only (e.g. Destroyer → destroyer.png).
    * Not a side/name; other classes may lack assets (CRT placeholder).
    */
   silhouetteClass: HullClass;

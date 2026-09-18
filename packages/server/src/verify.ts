@@ -15,6 +15,7 @@ import {
   formatWallDuration,
   parseWallDuration,
   resolveMaxSpeed,
+  silhouetteUrlForClass,
   snapWallDuration,
 } from '@war-patrol/shared';
 
@@ -404,6 +405,11 @@ async function main() {
       !('name' in periContacts[0]) &&
       !('faction' in periContacts[0]) &&
       !('position' in periContacts[0]),
+  );
+  check(
+    'destroyer silhouette asset path',
+    silhouetteUrlForClass('Destroyer') === '/silhouettes/destroyer.png' &&
+      silhouetteUrlForClass('Fleet Submarine') === null,
   );
   check(
     'controls has no periscope picture',

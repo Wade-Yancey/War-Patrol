@@ -86,7 +86,8 @@ export function periscopeSilhouetteScale(
 
 /**
  * Public asset path for a hull-class silhouette (side profile).
- * Destroyer → `/silhouettes/destroyer.jpg`. Other classes → null (placeholder).
+ * Destroyer → `/silhouettes/destroyer.png` (transparent side elevation derived
+ * from Wade’s recognition JPG). Other classes → null (placeholder).
  */
 export function silhouetteUrlForClass(
   hullClass: HullClass | string | undefined,
@@ -94,7 +95,7 @@ export function silhouetteUrlForClass(
   if (!hullClass) return null;
   switch (hullClass) {
     case 'Destroyer':
-      return '/silhouettes/destroyer.jpg';
+      return '/silhouettes/destroyer.png';
     default:
       return null;
   }

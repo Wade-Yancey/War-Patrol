@@ -367,7 +367,7 @@ function ActiveSonarScopeInner({
               No echoes in cone.
             </p>
           ) : (
-            <ul>
+            <ul className="sensor-contact-scroll">
               {visibleContacts.map((c, i) => (
                 <li key={c.id} className="mono">
                   <span className="readout">Contact {i + 1}</span>
