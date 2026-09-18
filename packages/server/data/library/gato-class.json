@@ -3,7 +3,7 @@
   "name": "Gato-class Submarine",
   "type": "submarine",
   "maxSpeed": 21,
-  "turnRate": 5,
+  "turnRate": 12,
   "radarSignature": "small",
   "sensors": [{ "kind": "radar", "maxRangeNm": 25 }],
   "defaultStations": [

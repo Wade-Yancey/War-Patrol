@@ -335,7 +335,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           turnNumber: h.turnNumber,
           resolvedAt: h.resolvedAt,
           stateVersion: h.stateVersion,
+          gameTimeSeconds: h.gameTimeSeconds ?? h.turn.gameTimeSeconds,
         })),
+        turnLengthSeconds: save.turnLengthSeconds,
+        gameTimeSeconds: save.turn.gameTimeSeconds,
       };
     } catch (err) {
       const e = httpError(err);

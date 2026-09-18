@@ -3,7 +3,7 @@
   "name": "Fletcher-class Destroyer",
   "type": "destroyer",
   "maxSpeed": 36,
-  "turnRate": 8,
+  "turnRate": 7,
   "radarSignature": "medium",
   "sensors": [{ "kind": "radar", "maxRangeNm": 25 }],
   "defaultStations": [

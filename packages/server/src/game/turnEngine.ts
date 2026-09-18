@@ -1,10 +1,10 @@
 import {
   KNOTS_TO_MPS,
-  TURN_DURATION_SECONDS,
   clamp,
   eotTargetSpeed,
   moveAlongHeading,
   normalizeHeading,
+  resolveTurnLengthSeconds,
   type EotSetting,
   type GameSave,
   type TurnSnapshot,
@@ -15,7 +15,18 @@ import {
 /** Apply simultaneous helm/EOT orders and advance unit kinematics (resolve stub). */
 export function resolveTurn(save: GameSave): GameSave {
   const now = new Date().toISOString();
-  const resolvedUnits = save.units.map((unit) => applyUnitOrders(unit));
+  const turnLength = resolveTurnLengthSeconds(save.turnLengthSeconds);
+  const gameTimeSeconds = (save.turn.gameTimeSeconds ?? 0) + turnLength;
+
+  const resolvedUnits = save.units.map((unit) => applyUnitOrders(unit, turnLength));
+
+  const nextTurnState = {
+    number: save.turn.number + 1,
+    phase: 'open' as const,
+    timerDeadline: null,
+    timerSeconds: save.turn.timerSeconds,
+    gameTimeSeconds,
+  };
 
   const snapshot: TurnSnapshot = {
     turnNumber: save.turn.number,
@@ -26,35 +37,40 @@ export function resolveTurn(save: GameSave): GameSave {
       ...save.turn,
       phase: 'awaiting_resolution',
       timerDeadline: null,
+      gameTimeSeconds,
     },
+    gameTimeSeconds,
   };
 
   const next: GameSave = {
     ...save,
     updatedAt: now,
     stateVersion: save.stateVersion + 1,
+    turnLengthSeconds: turnLength,
     units: resolvedUnits,
-    turn: {
-      number: save.turn.number + 1,
-      phase: 'open',
-      timerDeadline: null,
-      timerSeconds: save.turn.timerSeconds,
-    },
+    turn: nextTurnState,
     history: [...save.history, snapshot],
   };
 
   return next;
 }
 
-function applyUnitOrders(unit: UnitState): UnitState {
+function applyUnitOrders(unit: UnitState, turnLengthSeconds: number): UnitState {
   const orders = unit.orders;
+  let orderedCourse =
+    typeof unit.orderedCourse === 'number' ? unit.orderedCourse : unit.heading;
   let heading = unit.heading;
   let eot = unit.eot;
   let speed = unit.speed;
 
+  // Helm order updates the persistent steering course immediately for this resolve.
   if (orders.course !== undefined) {
-    heading = turnToward(heading, orders.course, unit.turnRate * (TURN_DURATION_SECONDS / 60));
+    orderedCourse = normalizeHeading(orders.course);
   }
+
+  // Turn toward ordered course (size-based turnRate deg/min × in-game minutes).
+  const maxDelta = unit.turnRate * (turnLengthSeconds / 60);
+  heading = turnToward(heading, orderedCourse, maxDelta);
 
   if (orders.eot !== undefined) {
     eot = orders.eot;
@@ -66,13 +82,14 @@ function applyUnitOrders(unit: UnitState): UnitState {
   if (speed < target) speed = Math.min(target, speed + step);
   else if (speed > target) speed = Math.max(target, speed - step);
 
-  const distance = Math.abs(speed) * KNOTS_TO_MPS * TURN_DURATION_SECONDS;
+  const distance = Math.abs(speed) * KNOTS_TO_MPS * turnLengthSeconds;
   const moveHeading = speed >= 0 ? heading : normalizeHeading(heading + 180);
   const position = distance > 0 ? moveAlongHeading(unit.position, moveHeading, distance) : unit.position;
 
   return {
     ...unit,
     heading: normalizeHeading(heading),
+    orderedCourse: normalizeHeading(orderedCourse),
     eot,
     speed,
     position,
@@ -120,6 +137,8 @@ export function rollbackToTurn(save: GameSave, turnNumber: number): GameSave {
   // Restore units from snapshot (state at end of that turn's resolve), reopen as next turn
   const units = clearInProgressOrders(structuredClone(snap.units));
   const history = save.history.filter((h) => h.turnNumber < turnNumber);
+  const gameTimeSeconds =
+    snap.gameTimeSeconds ?? snap.turn.gameTimeSeconds ?? save.turn.gameTimeSeconds ?? 0;
   return {
     ...save,
     updatedAt: new Date().toISOString(),
@@ -130,6 +149,7 @@ export function rollbackToTurn(save: GameSave, turnNumber: number): GameSave {
       phase: 'open',
       timerDeadline: null,
       timerSeconds: save.turn.timerSeconds,
+      gameTimeSeconds,
     },
     history,
   };

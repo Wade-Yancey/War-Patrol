@@ -37,7 +37,7 @@ export function StationPage() {
   useEffect(() => {
     if (!vessel || seeded) return;
     setSeeded(true);
-    setCourse(Math.round(vessel.unit.orders.course ?? vessel.unit.heading));
+    setCourse(Math.round(vessel.unit.orders.course ?? vessel.unit.orderedCourse ?? vessel.unit.heading));
     setEot(vessel.unit.orders.eot ?? vessel.unit.eot);
   }, [vessel, seeded]);
 
@@ -143,7 +143,7 @@ export function StationPage() {
           <>
             <section className="panel stack">
               <h2>Turn</h2>
-              <TurnStatus turn={vessel.turn} />
+              <TurnStatus turn={vessel.turn} turnLengthSeconds={vessel.turnLengthSeconds} />
               {!vessel.canSubmitOrders && (
                 <p className="muted" style={{ margin: 0 }}>
                   Ordering closed for this phase or this station cannot submit.
@@ -217,15 +217,25 @@ export function StationPage() {
                       <td className="readout">{vessel.unit.heading.toFixed(0)}°</td>
                     </tr>
                     <tr>
+                      <th>Ordered course</th>
+                      <td className="readout">{vessel.unit.orderedCourse.toFixed(0)}°</td>
+                    </tr>
+                    <tr>
                       <th>Speed</th>
                       <td className="readout">{vessel.unit.speed.toFixed(1)} kn</td>
+                    </tr>
+                    <tr>
+                      <th>Turn rate</th>
+                      <td className="readout">
+                        {vessel.unit.turnRate.toFixed(0)}°/min · {vessel.unit.radarSignature}
+                      </td>
                     </tr>
                     <tr>
                       <th>EOT</th>
                       <td className="readout">{EOT_LABELS[vessel.unit.eot]}</td>
                     </tr>
                     <tr>
-                      <th>Orders</th>
+                      <th>Pending</th>
                       <td className="readout">
                         {vessel.unit.orders.course !== undefined
                           ? `CRS ${vessel.unit.orders.course.toFixed(0)}°`
@@ -243,7 +253,7 @@ export function StationPage() {
                   <section className="panel stack">
                     <h2>Helm</h2>
                     <TouchNumber
-                      label="Desired course"
+                      label="Ordered / steering course"
                       value={course}
                       onChange={setCourse}
                       min={0}
@@ -254,6 +264,10 @@ export function StationPage() {
                       disabled={!vessel.canSubmitOrders}
                       format={(v) => `${String(v).padStart(3, '0')}°`}
                     />
+                    <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
+                      Current heading {vessel.unit.heading.toFixed(0)}° · ship turns toward ordered course
+                      each resolve ({vessel.unit.turnRate.toFixed(0)}°/min).
+                    </p>
                     <div className="control-actions">
                       <button
                         className="primary"

@@ -110,6 +110,12 @@ async function main() {
   const gato = (uv.units as Json[]).find((u) => u.id === 'ss-212')!;
   check('destroyer radarSignature medium', porter.radarSignature === 'medium');
   check('sub radarSignature small', gato.radarSignature === 'small');
+  check('destroyer turnRate medium size', porter.turnRate === 7);
+  check('sub turnRate small size', gato.turnRate === 12);
+  check('orderedCourse seeded to heading (porter)', porter.orderedCourse === porter.heading);
+  check('game clock starts 08:00', (uv.turn as Json).gameTimeSeconds === 28800);
+  check('turn length 5 min', uv.turnLengthSeconds === 300);
+  check('trails present', Array.isArray(uv.trails) && (uv.trails as unknown[]).length === 2);
   check(
     'destroyer has Radar station',
     Array.isArray(porter.stations) &&
@@ -243,7 +249,15 @@ async function main() {
   const blueAfter = after.units.find((u) => u.id === 'dd-101')!;
   check('orders cleared', Object.keys(blueAfter.orders).length === 0);
   check('heading changed or eot applied', blueAfter.eot === 'ahead_full' || blueAfter.heading !== blueBefore.heading);
+  check('ordered course persists', blueAfter.orderedCourse === 45);
+  check('heading turned toward ordered', blueAfter.heading !== blueBefore.heading || blueBefore.heading === 45);
+  check('game clock advanced 5 min', after.turn.gameTimeSeconds === 28800 + 300);
   check('history snapshot', after.history.length === 1);
+  check('history stores gameTime', after.history[0]!.gameTimeSeconds === 28800 + 300);
+  const umpireAfter = await api('GET', `/api/games/${gameId}/view`, undefined, umpireToken);
+  const trails = (umpireAfter.json.view as Json).trails as Array<{ unitId: string; points: unknown[] }>;
+  const porterTrail = trails.find((t) => t.unitId === 'dd-101');
+  check('trail has origin + post-resolve', Boolean(porterTrail && porterTrail.points.length >= 2));
 
   await Promise.race([
     ssePromise,

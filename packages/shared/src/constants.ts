@@ -4,14 +4,39 @@ export const SCHEMA_VERSION = 1 as const;
 /** Default wall-clock seconds for an ordering phase. */
 export const DEFAULT_TURN_SECONDS = 180;
 
+/**
+ * Default in-game seconds advanced per resolved turn (Wade: 5 min for we-go ASW).
+ * Scenario-configurable via `turnLengthSeconds`.
+ */
+export const DEFAULT_TURN_LENGTH_SECONDS = 300;
+
+/**
+ * Default scenario clock at turn 1 (seconds since midnight) — 08:00 local.
+ * Scenario-configurable via `startGameTimeSeconds`.
+ */
+export const DEFAULT_START_GAME_TIME_SECONDS = 8 * 3600;
+
 /** Approximate meters per degree latitude (equirectangular). */
 export const METERS_PER_DEG_LAT = 111_320;
 
 /** Knots → meters per second. */
 export const KNOTS_TO_MPS = 0.514444;
 
-/** Simulated seconds represented by one resolved turn (movement stub). */
-export const TURN_DURATION_SECONDS = 360;
+/**
+ * @deprecated Prefer scenario/save `turnLengthSeconds` (default {@link DEFAULT_TURN_LENGTH_SECONDS}).
+ * Kept as alias so older imports still compile during migration.
+ */
+export const TURN_DURATION_SECONDS = DEFAULT_TURN_LENGTH_SECONDS;
+
+/**
+ * Steady-turn rate (degrees per in-game minute) by radar signature / hull size.
+ * Larger ships turn slower. Used when unit/class omit an explicit turnRate.
+ */
+export const TURN_RATE_DEG_PER_MIN = {
+  small: 12,
+  medium: 7,
+  large: 4,
+} as const;
 
 /** Meters in one nautical mile. */
 export const METERS_PER_NM = 1852;
