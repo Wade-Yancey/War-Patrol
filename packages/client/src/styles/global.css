@@ -722,12 +722,48 @@ label {
   border: 1px solid var(--line);
   background: var(--map-water);
   position: relative;
+  overflow: hidden;
+}
+
+.map-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  padding: 0.4rem 0.45rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-panel);
+}
+
+.map-toolbar button {
+  min-height: 2.5rem;
+  min-width: 2.5rem;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.85rem;
+}
+
+.map-zoom-readout {
+  min-width: 2.75rem;
+  text-align: center;
+  font-size: 0.8rem;
+}
+
+.map-viewport {
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.map-viewport:active {
+  cursor: grabbing;
 }
 
 .map-frame svg {
   display: block;
   width: 100%;
   height: auto;
+  pointer-events: none;
 }
 
 .header-bar {
