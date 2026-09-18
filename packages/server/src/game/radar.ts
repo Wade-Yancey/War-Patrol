@@ -49,6 +49,7 @@ export function buildRadarContacts(own: UnitState, save: GameSave): {
       bearing: Math.round(bearing * 10) / 10,
       rangeNm: Math.round(rangeNm * 100) / 100,
       strength: Math.round(strength * 100) / 100,
+      signature,
     });
   }
 

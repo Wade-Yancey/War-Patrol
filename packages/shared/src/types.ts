@@ -238,6 +238,11 @@ export interface RadarContact {
   rangeNm: number;
   /** Relative echo strength 0–1 (stub). */
   strength: number;
+  /**
+   * Apparent echo size (raw sensor attribute).
+   * Not a class/side/name — operators see only small/medium/large.
+   */
+  signature: RadarSignature;
 }
 
 /** Filtered vessel/station view — never other units' ground truth. */

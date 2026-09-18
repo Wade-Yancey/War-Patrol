@@ -21,7 +21,12 @@ interface PersistedBlip extends RadarContact {
 }
 
 function contactsKey(contacts: RadarContact[]): string {
-  return contacts.map((c) => `${c.id}:${c.bearing.toFixed(1)}:${c.rangeNm.toFixed(2)}:${c.strength}`).join('|');
+  return contacts
+    .map(
+      (c) =>
+        `${c.id}:${c.bearing.toFixed(1)}:${c.rangeNm.toFixed(2)}:${c.strength}:${c.signature}`,
+    )
+    .join('|');
 }
 
 /**
@@ -250,6 +255,7 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
                 <span className="readout">Contact {i + 1}</span>
                 <span>{String(Math.round(c.bearing)).padStart(3, '0')}°</span>
                 <span>{c.rangeNm.toFixed(1)} nm</span>
+                <span className="muted">{c.signature}</span>
               </li>
             ))}
           </ul>

@@ -97,6 +97,14 @@ async function main() {
   check('radar sees surfaced contact', contacts.length >= 1, `got ${contacts.length}`);
   check('radar contact polar only', !('position' in contacts[0]) && typeof contacts[0].bearing === 'number');
   check('radar contact no identity fields', !('side' in contacts[0]) && !('name' in contacts[0]) && !('classId' in contacts[0]));
+  check(
+    'radar contact has signature size',
+    contacts[0].signature === 'small' ||
+      contacts[0].signature === 'medium' ||
+      contacts[0].signature === 'large',
+    `got ${String(contacts[0].signature)}`,
+  );
+  check('radar contact signature is small (surfaced sub)', contacts[0].signature === 'small');
   check('radar has max range', typeof rv.radarMaxRangeNm === 'number' && (rv.radarMaxRangeNm as number) > 0);
   const porter = (uv.units as Json[]).find((u) => u.id === 'dd-101')!;
   const gato = (uv.units as Json[]).find((u) => u.id === 'ss-212')!;
