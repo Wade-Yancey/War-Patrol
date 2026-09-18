@@ -1,4 +1,5 @@
 import type {
+  Faction,
   FlightLevel,
   HullClass,
   UnitCondition,
@@ -23,6 +24,8 @@ export const HULL_CLASSES: readonly HullClass[] = [
   'Bomber',
 ];
 
+export const FACTIONS: readonly Faction[] = ['Blue', 'Red', 'Civilian'];
+
 export const FLIGHT_LEVELS: readonly FlightLevel[] = ['low', 'medium', 'high'];
 
 export const UNIT_CONDITIONS: readonly UnitCondition[] = ['afloat', 'sunk'];
@@ -45,6 +48,7 @@ export const CLASS_TO_TYPE: Record<HullClass, VesselType> = {
 const HULL_CLASS_SET = new Set<string>(HULL_CLASSES);
 const VESSEL_TYPE_SET = new Set<string>(VESSEL_TYPES);
 const FLIGHT_LEVEL_SET = new Set<string>(FLIGHT_LEVELS);
+const FACTION_SET = new Set<string>(FACTIONS);
 
 /** Legacy Phase-1 `type` values before Submarine|Ship|Aircraft split. */
 const LEGACY_TYPE_MAP: Record<string, { type: VesselType; class: HullClass }> = {
@@ -65,6 +69,10 @@ export function isHullClass(value: unknown): value is HullClass {
 
 export function isFlightLevel(value: unknown): value is FlightLevel {
   return typeof value === 'string' && FLIGHT_LEVEL_SET.has(value);
+}
+
+export function isFaction(value: unknown): value is Faction {
+  return typeof value === 'string' && FACTION_SET.has(value);
 }
 
 /** Type required by a hull class (e.g. Fleet Submarine → Submarine). */
@@ -124,6 +132,50 @@ export function coerceVesselIdentity(
   hullClass: HullClass | undefined,
 ): { type: VesselType; class: HullClass } {
   return resolveVesselIdentity({ type, class: hullClass });
+}
+
+/**
+ * Resolve faction from explicit value, legacy `side`, hull class, or default Blue.
+ * Merchants/Oilers default Civilian when nothing else indicates allegiance.
+ */
+export function resolveFaction(input: {
+  faction?: unknown;
+  side?: unknown;
+  class?: HullClass | string;
+}): Faction {
+  if (isFaction(input.faction)) return input.faction;
+
+  const side = typeof input.side === 'string' ? input.side.trim().toLowerCase() : '';
+  if (side === 'blue' || side === 'blu') return 'Blue';
+  if (side === 'red') return 'Red';
+  if (side === 'civilian' || side === 'neutral' || side === 'white') return 'Civilian';
+
+  // Capitalized legacy side strings
+  if (typeof input.side === 'string') {
+    const titled = input.side.trim();
+    if (isFaction(titled)) return titled;
+  }
+
+  if (input.class === 'Merchant' || input.class === 'Oiler') return 'Civilian';
+
+  return 'Blue';
+}
+
+/** Keep legacy `side` lowercase id aligned with faction. */
+export function sideFromFaction(faction: Faction): string {
+  switch (faction) {
+    case 'Blue':
+      return 'blue';
+    case 'Red':
+      return 'red';
+    case 'Civilian':
+      return 'civilian';
+  }
+}
+
+/** CSS / map color key for a faction. */
+export function factionAccent(faction: Faction): 'blue' | 'red' | 'civilian' {
+  return sideFromFaction(faction) as 'blue' | 'red' | 'civilian';
 }
 
 export function defaultSubsystems(): UnitSubsystems {

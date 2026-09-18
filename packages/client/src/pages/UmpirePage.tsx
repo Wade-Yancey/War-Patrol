@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   DEFAULT_TURN_SECONDS,
+  FACTIONS,
   FLIGHT_LEVELS,
   HULL_CLASSES,
   SUBSYSTEM_STATES,
@@ -14,6 +15,7 @@ import {
   formatWallDuration,
   parseWallDuration,
   snapWallDuration,
+  type Faction,
   type FlightLevel,
   type HullClass,
   type SubsystemState,
@@ -44,6 +46,7 @@ export function UmpirePage() {
   const [editName, setEditName] = useState('');
   const [editType, setEditType] = useState<VesselType>('Ship');
   const [editClass, setEditClass] = useState<HullClass>('Destroyer');
+  const [editFaction, setEditFaction] = useState<Faction>('Blue');
   const [editHealth, setEditHealth] = useState(100);
   const [editDepth, setEditDepth] = useState(0);
   const [editFlightLevel, setEditFlightLevel] = useState<FlightLevel>('medium');
@@ -79,6 +82,7 @@ export function UmpirePage() {
     setEditName(u.name);
     setEditType(identity.type);
     setEditClass(identity.class);
+    setEditFaction(u.faction ?? 'Blue');
     setEditHealth(u.health);
     setEditDepth(Math.round(u.position.depth));
     setEditFlightLevel(u.flightLevel ?? 'medium');
@@ -413,7 +417,7 @@ export function UmpirePage() {
                             <td>
                               <div>{v.name}</div>
                               <div className="mono muted" style={{ fontSize: '0.75rem' }}>
-                                {unit ? `${unit.type} · ${unit.class}` : '—'}
+                                {unit ? `${unit.faction} · ${unit.type} · ${unit.class}` : '—'}
                               </div>
                               <div className="mono muted" style={{ fontSize: '0.75rem' }}>
                                 token {v.accessToken}
@@ -478,7 +482,7 @@ export function UmpirePage() {
                     >
                       {umpire.units.map((u) => (
                         <option key={u.id} value={u.id}>
-                          {u.name} · {u.side}
+                          {u.name} · {u.faction}
                         </option>
                       ))}
                     </select>
@@ -528,8 +532,25 @@ export function UmpirePage() {
                             </select>
                           </label>
                         </div>
+                        <label className="unit-edit-select">
+                          Faction
+                          <select
+                            value={editFaction}
+                            onChange={(e) => {
+                              markDirty();
+                              setEditFaction(e.target.value as Faction);
+                            }}
+                          >
+                            {FACTIONS.map((f) => (
+                              <option key={f} value={f}>
+                                {f}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <div className={`faction-stripe faction-stripe--${editFaction.toLowerCase()}`} aria-hidden />
                         <p className="mono muted" style={{ margin: 0, fontSize: '0.75rem' }}>
-                          Side {selectedUnit.side.toUpperCase()} · library {selectedUnit.classId}
+                          Library {selectedUnit.classId}
                         </p>
                         <div className="control-actions">
                           <button
@@ -543,6 +564,7 @@ export function UmpirePage() {
                                     name: editName.trim() || selectedUnit.name,
                                     type: editType,
                                     class: editClass,
+                                    faction: editFaction,
                                     ...(editType === 'Aircraft'
                                       ? { flightLevel: editFlightLevel }
                                       : {}),

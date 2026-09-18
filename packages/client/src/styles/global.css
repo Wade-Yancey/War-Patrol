@@ -21,6 +21,7 @@
   --bezel-inset: #060d08;
   --side-blue: #4a9fd4;
   --side-red: #d45a4a;
+  --side-civilian: #9b6fd4;
   --hit: 2.75rem;
   --font-display: 'Share Tech Mono', 'IBM Plex Mono', ui-monospace, monospace;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
@@ -897,6 +898,10 @@ label {
   background: var(--side-red);
 }
 
+.side-stripe--civilian {
+  background: var(--side-civilian);
+}
+
 .side-badge {
   display: inline-flex;
   align-items: center;
@@ -933,6 +938,34 @@ label {
 
 .side-badge--red::before {
   background: var(--side-red);
+}
+
+.side-badge--civilian {
+  border-color: var(--side-civilian);
+  color: #d2b8f0;
+}
+
+.side-badge--civilian::before {
+  background: var(--side-civilian);
+}
+
+.faction-stripe {
+  height: 4px;
+  width: 100%;
+  border-radius: 0;
+  opacity: 0.9;
+}
+
+.faction-stripe--blue {
+  background: var(--side-blue);
+}
+
+.faction-stripe--red {
+  background: var(--side-red);
+}
+
+.faction-stripe--civilian {
+  background: var(--side-civilian);
 }
 
 @media (max-width: 600px) {

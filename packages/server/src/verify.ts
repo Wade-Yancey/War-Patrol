@@ -83,6 +83,7 @@ async function main() {
   check('blue unit is Porter', (bv.unit as Json).name === 'USS Porter');
   check('blue own-ship type', (bv.unit as Json).type === 'Ship');
   check('blue own-ship class', (bv.unit as Json).class === 'Destroyer');
+  check('blue own-ship faction', (bv.unit as Json).faction === 'Blue');
   check('blue has no units array', !('units' in bv));
 
   const umpireView = await api('GET', `/api/games/${gameId}/view`, undefined, umpireToken);
@@ -105,7 +106,7 @@ async function main() {
   const contacts = rv.radarContacts as Array<Json>;
   check('radar sees surfaced contact', contacts.length >= 1, `got ${contacts.length}`);
   check('radar contact polar only', !('position' in contacts[0]) && typeof contacts[0].bearing === 'number');
-  check('radar contact no identity fields', !('side' in contacts[0]) && !('name' in contacts[0]) && !('classId' in contacts[0]) && !('class' in contacts[0]) && !('type' in contacts[0]));
+  check('radar contact no identity fields', !('side' in contacts[0]) && !('name' in contacts[0]) && !('classId' in contacts[0]) && !('class' in contacts[0]) && !('type' in contacts[0]) && !('faction' in contacts[0]));
   check(
     'radar contact has signature size',
     contacts[0].signature === 'small' ||
@@ -121,12 +122,14 @@ async function main() {
   check('sub radarSignature small', gato.radarSignature === 'small');
   check('porter type Ship', porter.type === 'Ship');
   check('porter class Destroyer', porter.class === 'Destroyer');
+  check('porter faction Blue', porter.faction === 'Blue');
   check('porter afloat', porter.condition === 'afloat');
   check('porter propulsion intact', (porter.subsystems as Json).propulsion === 'intact');
   check('porter sensors intact', (porter.subsystems as Json).sensors === 'intact');
   check('porter depth surface', (porter.position as Json).depth === 0);
   check('gato type Submarine', gato.type === 'Submarine');
   check('gato class Fleet Submarine', gato.class === 'Fleet Submarine');
+  check('gato faction Red', gato.faction === 'Red');
   check('gato afloat', gato.condition === 'afloat');
   check('destroyer turnRate medium size', porter.turnRate === 7);
   check('sub turnRate small size', gato.turnRate === 12);
@@ -307,10 +310,21 @@ async function main() {
   check('identity patch ok', idPatch.status === 200);
   const afterId = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
   check('class wins over mismatched type', afterId.class === 'Destroyer' && afterId.type === 'Ship');
+
+  // Faction patch + migrate-from-side behavior is covered by seed defaults;
+  // also verify Civilian can be set and side stays in sync.
   await api(
     'PATCH',
     `/api/games/${gameId}/units/dd-101`,
-    { type: 'Ship', class: 'Destroyer', name: 'USS Porter' },
+    { faction: 'Civilian' },
+    umpireToken,
+  );
+  const civ = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
+  check('faction Civilian', civ.faction === 'Civilian' && civ.side === 'civilian');
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { type: 'Ship', class: 'Destroyer', name: 'USS Porter', faction: 'Blue' },
     umpireToken,
   );
 
