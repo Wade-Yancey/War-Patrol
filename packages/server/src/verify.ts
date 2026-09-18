@@ -122,6 +122,7 @@ async function main() {
   check('orderedCourse seeded to heading (porter)', porter.orderedCourse === porter.heading);
   check('game clock starts 08:00', (uv.turn as Json).gameTimeSeconds === 28800);
   check('turn length 5 min', uv.turnLengthSeconds === 300);
+  check('order timer default 5 min', (uv.turn as Json).timerSeconds === 300);
   check('trails present', Array.isArray(uv.trails) && (uv.trails as unknown[]).length === 2);
   check(
     'destroyer has Radar station',

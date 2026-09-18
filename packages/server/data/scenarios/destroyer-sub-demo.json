@@ -11,7 +11,7 @@
     "maxLon": -119.0
   },
   "umpirePassword": "umpire",
-  "defaultTurnSeconds": 180,
+  "defaultTurnSeconds": 300,
   "turnLengthSeconds": 300,
   "startGameTimeSeconds": 28800,
   "units": [
