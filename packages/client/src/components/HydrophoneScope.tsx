@@ -270,16 +270,26 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
     }
   }, []);
 
+  // Propeller gain tracks listen bearing / contact list; never restart ping cadence here.
   useEffect(() => {
     if (!listening) {
       stopAllVoices();
+      return;
+    }
+    syncVoices();
+  }, [listening, contacts, listenBearing, syncVoices, stopAllVoices]);
+
+  // Active-sonar hear path: one emit cadence from the destroyer stub interval.
+  // Listen bearing / gain only modulate volume inside playPingBeeps (via refs) —
+  // sweeping the needle must not reset the timer or fire an immediate beep.
+  useEffect(() => {
+    if (!listening) {
       if (pingTimerRef.current != null) {
         window.clearInterval(pingTimerRef.current);
         pingTimerRef.current = null;
       }
       return;
     }
-    syncVoices();
     void playPingBeeps();
     pingTimerRef.current = window.setInterval(
       () => void playPingBeeps(),
@@ -291,7 +301,7 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
         pingTimerRef.current = null;
       }
     };
-  }, [listening, contacts, listenBearing, syncVoices, stopAllVoices, playPingBeeps]);
+  }, [listening, playPingBeeps]);
 
   const stopNudgeHold = useCallback(() => {
     if (nudgeHoldDelayRef.current != null) {
