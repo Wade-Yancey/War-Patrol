@@ -258,9 +258,6 @@ export function canUseSensors(
   return { ok: true };
 }
 
-import { SUBMARINE_MAX_DEPTH_M } from './constants.js';
-import type { VesselType } from './types.js';
-
 /**
  * Normalize position elevation rules by type:
  * - Ship → depth 0 (surface only)
