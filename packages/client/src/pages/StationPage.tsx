@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { EOT_LABELS, conditionLabel, type EotSetting, type VesselView } from '@war-patrol/shared';
 import { api } from '../api/client';
+import { getAuthToken, setAuthToken } from '../api/authStorage';
 import { useGameStream } from '../hooks/useGameStream';
 import { TurnStatus } from '../components/TurnStatus';
 import { CrtShell } from '../components/CrtShell';
@@ -17,7 +18,7 @@ export function StationPage() {
   const { gameId = '', accessToken = '', stationId = '' } = useParams();
   const [password, setPassword] = useState('');
   const [token, setToken] = useState(() =>
-    sessionStorage.getItem(tokenKey(gameId, accessToken, stationId)),
+    getAuthToken(tokenKey(gameId, accessToken, stationId)),
   );
   const [authError, setAuthError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -64,7 +65,7 @@ export function StationPage() {
         password: password || undefined,
         stationId,
       });
-      sessionStorage.setItem(tokenKey(gameId, accessToken, stationId), auth.token);
+      setAuthToken(tokenKey(gameId, accessToken, stationId), auth.token);
       setToken(auth.token);
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : 'Auth failed');

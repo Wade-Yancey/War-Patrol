@@ -24,6 +24,7 @@ import {
   type VesselType,
 } from '@war-patrol/shared';
 import { api } from '../api/client';
+import { getAuthToken, setAuthToken } from '../api/authStorage';
 import { useGameStream } from '../hooks/useGameStream';
 import { GroundTruthMap } from '../components/GroundTruthMap';
 import { TurnStatus } from '../components/TurnStatus';
@@ -37,7 +38,7 @@ function tokenKey(gameId: string) {
 export function UmpirePage() {
   const { gameId = '' } = useParams();
   const [password, setPassword] = useState('umpire');
-  const [token, setToken] = useState(() => sessionStorage.getItem(tokenKey(gameId)));
+  const [token, setToken] = useState(() => getAuthToken(tokenKey(gameId)));
   const [authError, setAuthError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -142,7 +143,7 @@ export function UmpirePage() {
     setAuthError(null);
     try {
       const auth = await api.authUmpire(gameId, password);
-      sessionStorage.setItem(tokenKey(gameId), auth.token);
+      setAuthToken(tokenKey(gameId), auth.token);
       setToken(auth.token);
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : 'Auth failed');
