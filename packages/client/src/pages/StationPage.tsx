@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { EOT_LABELS, conditionLabel, type EotSetting, type VesselView } from '@war-patrol/shared';
+import { EOT_LABELS, conditionLabel, effectiveMaxSpeed, type EotSetting, type VesselView } from '@war-patrol/shared';
 import { api } from '../api/client';
 import { getAuthToken, setAuthToken } from '../api/authStorage';
 import { useGameStream } from '../hooks/useGameStream';
@@ -34,6 +34,13 @@ export function StationPage() {
 
   const vessel = view?.role === 'vessel' ? (view as VesselView) : null;
   const faction = vessel?.unit.faction;
+  const speedCeiling = vessel
+    ? effectiveMaxSpeed({
+        type: vessel.unit.type,
+        maxSpeed: vessel.unit.maxSpeed,
+        depth: vessel.unit.position.depth,
+      })
+    : 0;
   const sideAccent =
     faction === 'Blue' || faction === 'Red' || faction === 'Civilian'
       ? faction.toLowerCase()
@@ -282,7 +289,15 @@ export function StationPage() {
                     </tr>
                     <tr>
                       <th>Speed</th>
-                      <td className="readout">{vessel.unit.speed.toFixed(1)} kn</td>
+                      <td className="readout">
+                        {vessel.unit.speed.toFixed(1)} kn
+                        <span className="muted" style={{ marginLeft: 8, fontSize: '0.8em' }}>
+                          max {speedCeiling.toFixed(0)} kn
+                          {vessel.unit.type === 'Submarine' && vessel.unit.position.depth > 5
+                            ? ' submerged'
+                            : ''}
+                        </span>
+                      </td>
                     </tr>
                     <tr>
                       <th>Turn rate</th>
