@@ -268,6 +268,10 @@ export function UmpirePage() {
               <div className="stack">
                 <section className="panel">
                   <h2>Vessel links &amp; passwords</h2>
+                  <p className="muted" style={{ marginTop: 0, fontSize: '0.8rem' }}>
+                    Destroyers include a dedicated <strong>Radar</strong> station plus an installed radar
+                    sensor. Submarines do not get Radar by default.
+                  </p>
                   <table className="table">
                     <thead>
                       <tr>

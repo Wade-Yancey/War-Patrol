@@ -77,8 +77,14 @@ export function buildVesselView(
 
   if (station.capabilities.includes('radar')) {
     const radar = buildRadarContacts(unit, save);
-    view.radarContacts = radar.contacts;
-    view.radarMaxRangeNm = radar.maxRangeNm;
+    if (radar) {
+      view.radarContacts = radar.contacts;
+      view.radarMaxRangeNm = radar.maxRangeNm;
+    } else {
+      // Station present but no radar set installed — empty picture, not other-unit truth.
+      view.radarContacts = [];
+      view.radarMaxRangeNm = 0;
+    }
   }
 
   return view;

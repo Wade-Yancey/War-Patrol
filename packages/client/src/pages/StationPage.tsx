@@ -165,6 +165,9 @@ export function StationPage() {
                   <h2>Radar · PPI</h2>
                   <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
                     Call contacts by true bearing on the rim. Raw sensor picture only — no friend/foe identity.
+                    {(vessel.radarMaxRangeNm ?? 0) > 0
+                      ? ` Surface search · ${vessel.radarMaxRangeNm} nm.`
+                      : ' No radar set installed on this vessel.'}
                   </p>
                 </div>
                 <RadarScope

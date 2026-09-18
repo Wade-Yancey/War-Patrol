@@ -28,6 +28,9 @@ pnpm dev
 
 Demo scenario passwords: umpire `umpire`, destroyer `blue`, submarine `red`.
 
+**Porter Radar:** after creating a game, open umpire → USS Porter → **Radar** link, or go to  
+`/g/<gameId>/v/porter-demo/s/radar` (password `blue`). Fletcher has a dedicated Radar station plus an installed radar sensor; Gato does not get Radar by default.
+
 ### Production-style (API serves built client)
 
 ```bash
