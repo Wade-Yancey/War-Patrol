@@ -49,7 +49,7 @@ export type SensorKind = 'radar' | 'hydrophone' | 'active_sonar' | 'lookout';
 /** Shipboard sensor installation (class/unit data). */
 export interface SensorDef {
   kind: SensorKind;
-  /** Max useful range in nm (radar stub). */
+  /** Max useful range in nm (radar / hydrophone stub). */
   maxRangeNm?: number;
 }
 
@@ -421,6 +421,30 @@ export interface VesselView {
   radarOperational?: boolean;
   /** Operator-facing reason when radarOperational is false. */
   radarUnavailableReason?: 'submerged' | 'no_sensor' | 'sunk' | 'sensors_disabled';
+  /**
+   * Passive hydrophone audio cues for stations with the `hydrophone` capability.
+   * Ground-truth bearing/range for underway contacts — audio only, never drawn as blips.
+   * Omitted for non-hydrophone stations.
+   */
+  hydrophoneContacts?: HydrophoneContact[];
+  /** Configured max hydrophone hearing range (nm). */
+  hydrophoneMaxRangeNm?: number;
+  /** False when hydrophone cannot listen (sunk / sensors disabled / no set). */
+  hydrophoneOperational?: boolean;
+  /** Operator-facing reason when hydrophoneOperational is false. */
+  hydrophoneUnavailableReason?: 'no_sensor' | 'sunk' | 'sensors_disabled';
+}
+
+/**
+ * Anonymous hydrophone contact — polar cue for audio mixing only.
+ * No side/class/name; not a visual PPI track.
+ */
+export interface HydrophoneContact {
+  id: string;
+  /** True bearing to contact, degrees (0–360). */
+  bearing: number;
+  /** Slant-plane range in nautical miles (equirectangular). */
+  rangeNm: number;
 }
 
 export type ClientView = UmpireView | VesselView;

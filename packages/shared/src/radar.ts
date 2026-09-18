@@ -1,4 +1,5 @@
 import { RADAR_MAX_RANGE_NM, RADAR_SURFACE_DEPTH_M } from './constants.js';
+import { defaultHydrophoneSensor } from './hydrophone.js';
 import type { HullClass, LatLonDepth, RadarSignature, SensorDef, UnitState } from './types.js';
 import { isHullClass, resolveVesselIdentity } from './vessel.js';
 
@@ -43,8 +44,12 @@ export function defaultSensors(hullClassOrType: HullClass | string | undefined):
     case 'Cruiser':
     case 'Battleship':
     case 'Aircraft Carrier':
-    case 'Fleet Submarine':
-      return [{ kind: 'radar', maxRangeNm: RADAR_MAX_RANGE_NM }];
+    case 'Fleet Submarine': {
+      const sensors: SensorDef[] = [{ kind: 'radar', maxRangeNm: RADAR_MAX_RANGE_NM }];
+      const hydro = defaultHydrophoneSensor(hullClass);
+      if (hydro) sensors.push(hydro);
+      return sensors;
+    }
     default:
       return [];
   }

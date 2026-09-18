@@ -32,7 +32,10 @@
       "health": 100,
       "maxSpeed": 36,
       "radarSignature": "medium",
-      "sensors": [{ "kind": "radar", "maxRangeNm": 25 }],
+      "sensors": [
+        { "kind": "radar", "maxRangeNm": 25 },
+        { "kind": "hydrophone", "maxRangeNm": 30 }
+      ],
       "stations": [
         { "id": "bridge", "name": "Bridge", "capabilities": ["helm", "lookout", "plot"] },
         { "id": "engineering", "name": "Engineering", "capabilities": ["engineering"] },
@@ -60,7 +63,10 @@
       "health": 100,
       "maxSpeed": 21,
       "radarSignature": "small",
-      "sensors": [{ "kind": "radar", "maxRangeNm": 25 }],
+      "sensors": [
+        { "kind": "radar", "maxRangeNm": 25 },
+        { "kind": "hydrophone", "maxRangeNm": 30 }
+      ],
       "stations": [
         { "id": "conn", "name": "Conn", "capabilities": ["helm", "plot"] },
         { "id": "engineering", "name": "Maneuvering", "capabilities": ["engineering"] },

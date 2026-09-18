@@ -69,3 +69,25 @@ export const RADAR_SIGNATURE_STRENGTH = {
   medium: 0.85,
   large: 1,
 } as const;
+
+/**
+ * Passive hydrophone max hearing range (nm).
+ * Slightly beyond stub radar so operators can hear contacts that are not yet painted.
+ */
+export const HYDROPHONE_MAX_RANGE_NM = 30;
+
+/**
+ * Range reference (nm) for hydrophone inverse-square-ish falloff:
+ * `rangeGain = 1 / (1 + (rangeNm / HYDROPHONE_RANGE_REF_NM)^2)`.
+ * At ref distance gain ≈ 0.5.
+ */
+export const HYDROPHONE_RANGE_REF_NM = 8;
+
+/**
+ * Beam lobe sharpness for listen bearing: `beamGain = max(0, cos(Δ))^power`.
+ * Higher = narrower peak toward the contact.
+ */
+export const HYDROPHONE_BEAM_POWER = 4;
+
+/** Absolute speed (kn) at/above which a hull is treated as underway (emits propeller noise). */
+export const HYDROPHONE_UNDERWAY_SPEED_KN = 0.1;
