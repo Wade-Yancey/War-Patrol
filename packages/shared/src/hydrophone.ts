@@ -75,6 +75,76 @@ export function hydrophoneContactGain(
   );
 }
 
+/**
+ * Coarse range band for operator CRT (no precise nm spoiler).
+ * Thresholds relative to {@link HYDROPHONE_RANGE_REF_NM} (8 nm ≈ half-gain):
+ * Near ≤ 5 nm, Medium ≤ 12 nm, else Far (still within hearing).
+ */
+export type HydrophoneRangeBand = 'near' | 'medium' | 'far' | 'none';
+
+export const HYDROPHONE_RANGE_BAND_NEAR_NM = 5;
+export const HYDROPHONE_RANGE_BAND_MEDIUM_NM = 12;
+
+/** Minimum beam gain before a range band is shown (needle must be roughly on target). */
+export const HYDROPHONE_RANGE_BAND_BEAM_MIN = 0.2;
+
+export function hydrophoneRangeBandFromRangeNm(rangeNm: number): HydrophoneRangeBand {
+  if (!Number.isFinite(rangeNm) || rangeNm < 0) return 'none';
+  if (rangeNm <= HYDROPHONE_RANGE_BAND_NEAR_NM) return 'near';
+  if (rangeNm <= HYDROPHONE_RANGE_BAND_MEDIUM_NM) return 'medium';
+  return 'far';
+}
+
+/**
+ * Peak contact on the listen bearing → intensity + coarse range band.
+ * Band uses true range of the loudest contact only when beam is aligned enough;
+ * otherwise band is `none` (sweep) so misalignment does not look like "far".
+ */
+export function hydrophoneListenCue(
+  contacts: ReadonlyArray<{ rangeNm: number; bearing: number }>,
+  listenBearingDeg: number,
+): { intensity: number; rangeBand: HydrophoneRangeBand; peakRangeNm: number | null } {
+  if (contacts.length === 0) {
+    return { intensity: 0, rangeBand: 'none', peakRangeNm: null };
+  }
+  let bestGain = 0;
+  let bestBeam = 0;
+  let bestRange: number | null = null;
+  for (const c of contacts) {
+    const beam = hydrophoneBeamGain(listenBearingDeg, c.bearing);
+    const gain = hydrophoneRangeGain(c.rangeNm) * beam;
+    if (gain > bestGain) {
+      bestGain = gain;
+      bestBeam = beam;
+      bestRange = c.rangeNm;
+    }
+  }
+  const rangeBand =
+    bestBeam >= HYDROPHONE_RANGE_BAND_BEAM_MIN && bestRange != null
+      ? hydrophoneRangeBandFromRangeNm(bestRange)
+      : 'none';
+  return { intensity: bestGain, rangeBand, peakRangeNm: bestRange };
+}
+
+/**
+ * Stable per-contact voice coloring so multiple propellers do not stack identically.
+ * Returns playbackRate (~0.92–1.08) and loop start fraction (0–1 of buffer length).
+ */
+export function hydrophoneContactVoiceOffset(contactId: string): {
+  playbackRate: number;
+  loopStartFraction: number;
+} {
+  let h = 2166136261;
+  for (let i = 0; i < contactId.length; i++) {
+    h ^= contactId.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  const u = h >>> 0;
+  const playbackRate = 0.92 + ((u % 17) / 16) * 0.16;
+  const loopStartFraction = (u % 1000) / 1000;
+  return { playbackRate, loopStartFraction };
+}
+
 /** Default hydrophone install for a hull class (alongside radar where applicable). */
 export function defaultHydrophoneSensor(
   hullClassOrType: HullClass | string | undefined,

@@ -128,7 +128,7 @@ function writeShowSensorRanges(on: boolean) {
 /**
  * Installed sensors that already carry a detection radius.
  * Radar falls back to the stub max; other kinds only if maxRangeNm is set
- * (do not invent hydrophone/sonar ranges).
+ * (do not invent hydrophone / active-sonar ranges).
  */
 function sensorRangesForUnit(unit: UnitState): { kind: SensorDef['kind']; rangeNm: number }[] {
   const sensors = unit.sensors;

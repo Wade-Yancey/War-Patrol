@@ -236,13 +236,25 @@ async function main() {
   const hydroAuth = await api('POST', `/api/games/${gameId}/auth/vessel`, {
     accessToken: 'porter-demo',
     password: 'blue',
-    stationId: 'sonar',
+    stationId: 'hydrophone',
   });
   check('hydrophone station auth', hydroAuth.status === 200);
   const hydroToken = hydroAuth.json.token as string;
   const hydroViewRes = await api('GET', `/api/games/${gameId}/view`, undefined, hydroToken);
   check('hydrophone view ok', hydroViewRes.status === 200);
   const hv = hydroViewRes.json.view as Json;
+  check(
+    'hydrophone station named Hydrophone not Sonar',
+    Array.isArray(porter.stations) &&
+      (porter.stations as Json[]).some(
+        (s) =>
+          s.id === 'hydrophone' &&
+          s.name === 'Hydrophone' &&
+          Array.isArray(s.capabilities) &&
+          (s.capabilities as string[]).includes('hydrophone'),
+      ) &&
+      !(porter.stations as Json[]).some((s) => s.id === 'sonar' || s.name === 'Sonar'),
+  );
   check('hydrophone operational', hv.hydrophoneOperational === true);
   check('hydrophone has contacts array', Array.isArray(hv.hydrophoneContacts));
   const hContacts = hv.hydrophoneContacts as Array<Json>;
@@ -315,7 +327,7 @@ async function main() {
   const subHydroAuth = await api('POST', `/api/games/${gameId}/auth/vessel`, {
     accessToken: 'gato-demo',
     password: 'red',
-    stationId: 'sonar',
+    stationId: 'hydrophone',
   });
   check('sub hydrophone station auth', subHydroAuth.status === 200);
   const subHydroToken = subHydroAuth.json.token as string;
