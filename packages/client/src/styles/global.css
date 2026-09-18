@@ -494,6 +494,65 @@ label {
   color: var(--accent-strong);
 }
 
+.unit-edit-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.unit-edit-header h2 {
+  margin: 0;
+}
+
+.unit-edit-status {
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+}
+
+.unit-edit-status.dirty {
+  color: var(--phosphor);
+}
+
+.unit-edit-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.75rem 0 0.35rem;
+  border-top: 1px solid color-mix(in srgb, var(--phosphor-dim) 55%, transparent);
+}
+
+.unit-edit-group h3 {
+  margin: 0;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-strong);
+}
+
+.unit-edit-pair {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 520px) {
+  .unit-edit-pair {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.unit-edit-select select {
+  min-height: 2.75rem;
+  font-size: 1rem;
+}
+
+.unit-edit-note {
+  margin: 0;
+  color: var(--phosphor);
+  font-size: 0.8rem;
+}
+
 .radar-station-panel {
   margin-top: 0.75rem;
   padding: 0.5rem 0.55rem 0.7rem;

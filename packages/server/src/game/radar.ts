@@ -79,7 +79,7 @@ export function buildRadarContacts(own: UnitState, save: GameSave): RadarPicture
 }
 
 function resolveSignature(unit: UnitState): RadarSignature {
-  return unit.radarSignature ?? defaultRadarSignature(unit.type);
+  return unit.radarSignature ?? defaultRadarSignature(unit.class ?? unit.type);
 }
 
 /** Stable opaque track id — not reversible to unit id without the own-ship salt. */

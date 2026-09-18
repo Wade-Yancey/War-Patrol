@@ -2,7 +2,23 @@ import { SCHEMA_VERSION } from './constants.js';
 
 export type SideId = string;
 
-export type VesselType = 'destroyer' | 'submarine' | 'cruiser' | 'merchant' | 'other';
+/** High-level platform category (Submarine | Ship | Aircraft). */
+export type VesselType = 'Submarine' | 'Ship' | 'Aircraft';
+
+/**
+ * Taxonomic hull / airframe class.
+ * Must stay consistent with {@link VesselType} (e.g. Fleet Submarine → Submarine).
+ */
+export type HullClass =
+  | 'Fleet Submarine'
+  | 'Destroyer'
+  | 'Cruiser'
+  | 'Aircraft Carrier'
+  | 'Merchant'
+  | 'Oiler'
+  | 'Battleship'
+  | 'Fighter'
+  | 'Bomber';
 
 /** Relative radar cross-section / echo size (detection stub). */
 export type RadarSignature = 'small' | 'medium' | 'large';
@@ -76,8 +92,12 @@ export interface UnitState {
   id: string;
   name: string;
   side: SideId;
+  /** Library definition id (e.g. fletcher-class). */
   classId: string;
+  /** Platform category: Submarine | Ship | Aircraft. */
   type: VesselType;
+  /** Hull / airframe class (Destroyer, Fleet Submarine, …). */
+  class: HullClass;
   position: LatLonDepth;
   /** Current heading degrees true (bow direction). */
   heading: number;
@@ -117,7 +137,10 @@ export interface ScenarioUnitSeed {
   name: string;
   side: SideId;
   classId: string;
-  type: VesselType;
+  /** Platform category; legacy destroyer|submarine|… values are migrated on load. */
+  type: VesselType | string;
+  /** Hull class; optional on older scenarios — filled by migration. */
+  class?: HullClass;
   position: LatLonDepth;
   heading: number;
   /** Initial ordered course; defaults to heading. */
@@ -220,7 +243,10 @@ export interface GameSave {
 export interface VesselClassStub {
   id: string;
   name: string;
+  /** Platform category: Submarine | Ship | Aircraft. */
   type: VesselType;
+  /** Hull / airframe class for this library entry. */
+  class: HullClass;
   maxSpeed: number;
   turnRate: number;
   /** Default radar echo size for ships of this class. */
@@ -308,6 +334,7 @@ export interface VesselView {
     | 'name'
     | 'side'
     | 'type'
+    | 'class'
     | 'position'
     | 'heading'
     | 'orderedCourse'

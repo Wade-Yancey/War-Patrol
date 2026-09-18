@@ -2,12 +2,18 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   DEFAULT_TURN_SECONDS,
+  HULL_CLASSES,
   TIMER_EXTEND_SECONDS,
   TIMER_STEP_SECONDS,
+  VESSEL_TYPES,
+  classesForType,
+  coerceVesselIdentity,
   formatWallDuration,
   parseWallDuration,
   snapWallDuration,
+  type HullClass,
   type UmpireView,
+  type VesselType,
 } from '@war-patrol/shared';
 import { api } from '../api/client';
 import { useGameStream } from '../hooks/useGameStream';
@@ -29,8 +35,16 @@ export function UmpirePage() {
   const [busy, setBusy] = useState(false);
   const [timerSeconds, setTimerSeconds] = useState(DEFAULT_TURN_SECONDS);
   const [editUnitId, setEditUnitId] = useState<string>('');
+  const [editName, setEditName] = useState('');
+  const [editType, setEditType] = useState<VesselType>('Ship');
+  const [editClass, setEditClass] = useState<HullClass>('Destroyer');
   const [editHealth, setEditHealth] = useState(100);
   const [editDepth, setEditDepth] = useState(0);
+  const [editHeading, setEditHeading] = useState(0);
+  const [editSpeed, setEditSpeed] = useState(0);
+  const [editPassword, setEditPassword] = useState('');
+  const [dirty, setDirty] = useState(false);
+  const [applyNote, setApplyNote] = useState<string | null>(null);
 
   const { view, stateVersion, connected, error, refresh } = useGameStream({
     gameId,
@@ -48,16 +62,56 @@ export function UmpirePage() {
     [umpire, editUnitId],
   );
 
+  const classOptions = useMemo(() => classesForType(editType), [editType]);
+
+  const loadDraftFromUnit = (u: NonNullable<typeof selectedUnit>) => {
+    const identity = coerceVesselIdentity(u.type, u.class);
+    setEditName(u.name);
+    setEditType(identity.type);
+    setEditClass(identity.class);
+    setEditHealth(u.health);
+    setEditDepth(Math.round(u.position.depth));
+    setEditHeading(Math.round(u.heading));
+    setEditSpeed(Math.round(u.speed));
+    setEditPassword(u.password ?? '');
+    setDirty(false);
+  };
+
   useEffect(() => {
     if (!umpire) return;
     setTimerSeconds(snapWallDuration(umpire.turn.timerSeconds, TIMER_STEP_SECONDS));
   }, [umpire]);
 
+  // Seed / refresh draft from SSE when unit changes, or when live push arrives and form is clean.
   useEffect(() => {
     if (!selectedUnit) return;
-    setEditHealth(selectedUnit.health);
-    setEditDepth(Math.round(selectedUnit.position.depth));
+    if (!editUnitId) setEditUnitId(selectedUnit.id);
+    if (dirty && selectedUnit.id === editUnitId) return;
+    loadDraftFromUnit(selectedUnit);
+    // Intentional: sync on unit/version when not dirty
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedUnit?.id, stateVersion]);
+
+  const markDirty = () => {
+    setDirty(true);
+    setApplyNote(null);
+  };
+
+  const onTypeChange = (next: VesselType) => {
+    markDirty();
+    setEditType(next);
+    const allowed = classesForType(next);
+    if (!allowed.includes(editClass)) {
+      setEditClass(allowed[0] ?? 'Destroyer');
+    }
+  };
+
+  const onClassChange = (next: HullClass) => {
+    markDirty();
+    const identity = coerceVesselIdentity(editType, next);
+    setEditClass(identity.class);
+    setEditType(identity.type);
+  };
 
   const login = async (e?: FormEvent) => {
     e?.preventDefault();
@@ -72,11 +126,13 @@ export function UmpirePage() {
   };
 
   /** Run umpire action; always refresh view so tablet UI stays in sync even if SSE hiccups. */
-  const run = async (fn: () => Promise<unknown>) => {
+  const run = async (fn: () => Promise<unknown>, note?: string) => {
     setActionError(null);
     setBusy(true);
     try {
       await fn();
+      setDirty(false);
+      if (note) setApplyNote(note);
       await refresh();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Action failed');
@@ -317,7 +373,7 @@ export function UmpirePage() {
                 <section className="panel">
                   <h2>Vessel links &amp; passwords</h2>
                   <p className="muted" style={{ marginTop: 0, fontSize: '0.8rem' }}>
-                    Destroyers and submarines include a dedicated <strong>Radar</strong> station plus an
+                    Destroyers and fleet submarines include a dedicated <strong>Radar</strong> station plus an
                     installed radar sensor. Sub radar (own PPI and as a contact) only when surfaced (depth ≤ 5
                     m).
                   </p>
@@ -330,138 +386,344 @@ export function UmpirePage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {umpire.vesselLinks.map((v) => (
-                        <tr key={v.unitId}>
-                          <td>
-                            <div>{v.name}</div>
-                            <div className="mono muted" style={{ fontSize: '0.75rem' }}>
-                              token {v.accessToken}
-                              {v.passwordProtected ? ' · password set' : ' · open'}
-                            </div>
-                          </td>
-                          <td>
-                            <div className="stack" style={{ gap: '0.25rem' }}>
-                              {v.stations.map((s) => (
-                                <div key={s.stationId}>
-                                  <Link to={s.path}>{s.name}</Link>
-                                  <span className="mono muted" style={{ marginLeft: 8, fontSize: '0.7rem' }}>
-                                    {s.path}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </td>
-                          <td>
-                            <button
-                              type="button"
-                              disabled={busy}
-                              onClick={() =>
-                                void run(async () => {
-                                  await api.rotateToken(gameId, token, v.unitId);
-                                })
-                              }
-                            >
-                              Rotate token
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {umpire.vesselLinks.map((v) => {
+                        const unit = umpire.units.find((u) => u.id === v.unitId);
+                        return (
+                          <tr key={v.unitId}>
+                            <td>
+                              <div>{v.name}</div>
+                              <div className="mono muted" style={{ fontSize: '0.75rem' }}>
+                                {unit ? `${unit.type} · ${unit.class}` : '—'}
+                              </div>
+                              <div className="mono muted" style={{ fontSize: '0.75rem' }}>
+                                token {v.accessToken}
+                                {v.passwordProtected ? ' · password set' : ' · open'}
+                              </div>
+                            </td>
+                            <td>
+                              <div className="stack" style={{ gap: '0.25rem' }}>
+                                {v.stations.map((s) => (
+                                  <div key={s.stationId}>
+                                    <Link to={s.path}>{s.name}</Link>
+                                    <span className="mono muted" style={{ marginLeft: 8, fontSize: '0.7rem' }}>
+                                      {s.path}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </td>
+                            <td>
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() =>
+                                  void run(async () => {
+                                    await api.rotateToken(gameId, token, v.unitId);
+                                  })
+                                }
+                              >
+                                Rotate token
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </section>
 
-                <section className="panel stack">
-                  <h2>Unit edit</h2>
-                  <label>
+                <section className="panel stack unit-edit">
+                  <div className="unit-edit-header">
+                    <h2>Unit edit</h2>
+                    <span className={`mono muted unit-edit-status${dirty ? ' dirty' : ''}`}>
+                      {dirty ? 'DRAFT' : 'LIVE'}
+                    </span>
+                  </div>
+                  <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
+                    Tablet controls — steppers and selectors. Live SSE keeps fields fresh until you edit;
+                    apply writes to the server.
+                  </p>
+
+                  <label className="unit-edit-select">
                     Unit
                     <select
                       value={selectedUnit?.id ?? ''}
                       onChange={(e) => {
                         setEditUnitId(e.target.value);
+                        setDirty(false);
+                        setApplyNote(null);
                         const u = umpire.units.find((x) => x.id === e.target.value);
-                        if (u) {
-                          setEditHealth(u.health);
-                          setEditDepth(Math.round(u.position.depth));
-                        }
+                        if (u) loadDraftFromUnit(u);
                       }}
                     >
                       {umpire.units.map((u) => (
                         <option key={u.id} value={u.id}>
-                          {u.name}
+                          {u.name} · {u.side}
                         </option>
                       ))}
                     </select>
                   </label>
-                  <TouchNumber
-                    label="Health (placeholder)"
-                    value={editHealth}
-                    onChange={setEditHealth}
-                    min={0}
-                    max={100}
-                    step={5}
-                    unit="%"
-                  />
-                  <TouchNumber
-                    label="Depth (radar: surface ≤5 m)"
-                    value={editDepth}
-                    onChange={setEditDepth}
-                    min={0}
-                    max={300}
-                    step={5}
-                    unit="m"
-                    showSlider
-                  />
-                  <div className="control-actions">
-                    <button
-                      type="button"
-                      disabled={!selectedUnit || busy}
-                      onClick={() =>
-                        void run(() =>
-                          api.updateUnit(gameId, token, selectedUnit!.id, { health: editHealth }),
-                        )
-                      }
-                    >
-                      Apply health
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!selectedUnit || busy}
-                      onClick={() =>
-                        void run(() =>
-                          api.updateUnit(gameId, token, selectedUnit!.id, {
-                            position: { depth: editDepth },
-                          }),
-                        )
-                      }
-                    >
-                      Apply depth
-                    </button>
-                  </div>
+
                   {selectedUnit && (
-                    <label>
-                      Vessel password
-                      <div className="row">
-                        <input
-                          id="vessel-pw"
-                          defaultValue={selectedUnit.password ?? ''}
-                          key={selectedUnit.id + String(stateVersion)}
-                        />
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => {
-                            const el = document.getElementById('vessel-pw') as HTMLInputElement;
-                            void run(() =>
-                              api.updateUnit(gameId, token, selectedUnit.id, {
-                                password: el.value,
-                              }),
-                            );
-                          }}
-                        >
-                          Set password
-                        </button>
+                    <>
+                      <div className="unit-edit-group">
+                        <h3>Identity</h3>
+                        <label>
+                          Name
+                          <input
+                            type="text"
+                            value={editName}
+                            onChange={(e) => {
+                              markDirty();
+                              setEditName(e.target.value);
+                            }}
+                            autoComplete="off"
+                          />
+                        </label>
+                        <div className="unit-edit-pair">
+                          <label className="unit-edit-select">
+                            Type
+                            <select
+                              value={editType}
+                              onChange={(e) => onTypeChange(e.target.value as VesselType)}
+                            >
+                              {VESSEL_TYPES.map((t) => (
+                                <option key={t} value={t}>
+                                  {t}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="unit-edit-select">
+                            Class
+                            <select
+                              value={editClass}
+                              onChange={(e) => onClassChange(e.target.value as HullClass)}
+                            >
+                              {(classOptions.length ? classOptions : [...HULL_CLASSES]).map((c) => (
+                                <option key={c} value={c}>
+                                  {c}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        <p className="mono muted" style={{ margin: 0, fontSize: '0.75rem' }}>
+                          Side {selectedUnit.side.toUpperCase()} · library {selectedUnit.classId}
+                        </p>
+                        <div className="control-actions">
+                          <button
+                            className="primary"
+                            type="button"
+                            disabled={busy}
+                            onClick={() =>
+                              void run(
+                                () =>
+                                  api.updateUnit(gameId, token, selectedUnit.id, {
+                                    name: editName.trim() || selectedUnit.name,
+                                    type: editType,
+                                    class: editClass,
+                                  }),
+                                'Identity applied',
+                              )
+                            }
+                          >
+                            Apply identity
+                          </button>
+                        </div>
                       </div>
-                    </label>
+
+                      <div className="unit-edit-group">
+                        <h3>Navigation</h3>
+                        <TouchNumber
+                          label="Heading"
+                          value={editHeading}
+                          onChange={(v) => {
+                            markDirty();
+                            setEditHeading(v);
+                          }}
+                          min={0}
+                          max={359}
+                          step={1}
+                          wrap
+                          unit="°"
+                          format={(v) => `${String(v).padStart(3, '0')}°`}
+                        />
+                        <TouchNumber
+                          label="Speed"
+                          value={editSpeed}
+                          onChange={(v) => {
+                            markDirty();
+                            setEditSpeed(v);
+                          }}
+                          min={-Math.round(selectedUnit.maxSpeed)}
+                          max={Math.round(selectedUnit.maxSpeed)}
+                          step={1}
+                          unit="kn"
+                          showSlider
+                        />
+                        <div className="control-actions">
+                          <button
+                            className="primary"
+                            type="button"
+                            disabled={busy}
+                            onClick={() =>
+                              void run(
+                                () =>
+                                  api.updateUnit(gameId, token, selectedUnit.id, {
+                                    heading: editHeading,
+                                    speed: editSpeed,
+                                  }),
+                                'Navigation applied',
+                              )
+                            }
+                          >
+                            Apply navigation
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="unit-edit-group">
+                        <h3>Depth</h3>
+                        <TouchNumber
+                          label="Depth (radar surface ≤5 m)"
+                          value={editDepth}
+                          onChange={(v) => {
+                            markDirty();
+                            setEditDepth(v);
+                          }}
+                          min={0}
+                          max={300}
+                          step={5}
+                          unit="m"
+                          showSlider
+                        />
+                        <div className="control-actions">
+                          <button
+                            type="button"
+                            disabled={busy || editDepth === 0}
+                            onClick={() => {
+                              markDirty();
+                              setEditDepth(0);
+                            }}
+                          >
+                            Surface
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => {
+                              markDirty();
+                              setEditDepth(40);
+                            }}
+                          >
+                            Dive 40 m
+                          </button>
+                          <button
+                            className="primary"
+                            type="button"
+                            disabled={busy}
+                            onClick={() =>
+                              void run(
+                                () =>
+                                  api.updateUnit(gameId, token, selectedUnit.id, {
+                                    position: { depth: editDepth },
+                                  }),
+                                'Depth applied',
+                              )
+                            }
+                          >
+                            Apply depth
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="unit-edit-group">
+                        <h3>Health</h3>
+                        <TouchNumber
+                          label="Hull integrity"
+                          value={editHealth}
+                          onChange={(v) => {
+                            markDirty();
+                            setEditHealth(v);
+                          }}
+                          min={0}
+                          max={100}
+                          step={5}
+                          unit="%"
+                          showSlider
+                        />
+                        <div className="control-actions">
+                          <button
+                            className="primary"
+                            type="button"
+                            disabled={busy}
+                            onClick={() =>
+                              void run(
+                                () =>
+                                  api.updateUnit(gameId, token, selectedUnit.id, {
+                                    health: editHealth,
+                                  }),
+                                'Health applied',
+                              )
+                            }
+                          >
+                            Apply health
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="unit-edit-group">
+                        <h3>Access</h3>
+                        <label>
+                          Vessel password
+                          <input
+                            type="text"
+                            value={editPassword}
+                            onChange={(e) => {
+                              markDirty();
+                              setEditPassword(e.target.value);
+                            }}
+                            autoComplete="off"
+                            placeholder="(empty = open)"
+                          />
+                        </label>
+                        <div className="control-actions">
+                          <button
+                            className="primary"
+                            type="button"
+                            disabled={busy}
+                            onClick={() =>
+                              void run(
+                                () =>
+                                  api.updateUnit(gameId, token, selectedUnit.id, {
+                                    password: editPassword,
+                                  }),
+                                'Password set',
+                              )
+                            }
+                          >
+                            Apply password
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy || !dirty}
+                            onClick={() => {
+                              loadDraftFromUnit(selectedUnit);
+                              setApplyNote('Draft discarded');
+                            }}
+                          >
+                            Discard draft
+                          </button>
+                        </div>
+                      </div>
+
+                      {applyNote && (
+                        <p className="mono unit-edit-note" role="status">
+                          {applyNote}
+                        </p>
+                      )}
+                    </>
                   )}
                 </section>
 

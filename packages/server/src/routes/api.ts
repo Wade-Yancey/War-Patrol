@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import type { AuthSession, EotSetting } from '@war-patrol/shared';
+import type { AuthSession, EotSetting, HullClass, VesselType } from '@war-patrol/shared';
 import { nanoid } from 'nanoid';
 import * as store from '../store/fileStore.js';
 import { parseBearer } from '../game/sessions.js';
@@ -372,16 +372,24 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       speed?: number;
       name?: string;
       password?: string;
+      type?: string;
+      class?: string;
       position?: { lat?: number; lon?: number; depth?: number };
     };
   }>('/api/games/:gameId/units/:unitId', async (request, reply) => {
     try {
       requireUmpire(request, request.params.gameId);
-      const save = runtime.updateUnit(
-        request.params.gameId,
-        request.params.unitId,
-        request.body ?? {},
-      );
+      const body = request.body ?? {};
+      const save = runtime.updateUnit(request.params.gameId, request.params.unitId, {
+        health: body.health,
+        heading: body.heading,
+        speed: body.speed,
+        name: body.name,
+        password: body.password,
+        type: body.type as VesselType | undefined,
+        class: body.class as HullClass | undefined,
+        position: body.position,
+      });
       return { ok: true, stateVersion: save.stateVersion };
     } catch (err) {
       const e = httpError(err);

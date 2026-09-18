@@ -96,6 +96,7 @@ export function buildVesselView(
       name: unit.name,
       side: unit.side,
       type: unit.type,
+      class: unit.class,
       position: unit.position,
       heading: unit.heading,
       orderedCourse: unit.orderedCourse,

@@ -201,6 +201,14 @@ export function StationPage() {
                 <table className="table mono">
                   <tbody>
                     <tr>
+                      <th>Type</th>
+                      <td className="readout">{vessel.unit.type}</td>
+                    </tr>
+                    <tr>
+                      <th>Class</th>
+                      <td className="readout">{vessel.unit.class}</td>
+                    </tr>
+                    <tr>
                       <th>Lat</th>
                       <td className="readout">{vessel.unit.position.lat.toFixed(4)}</td>
                     </tr>

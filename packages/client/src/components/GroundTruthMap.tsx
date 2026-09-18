@@ -34,7 +34,7 @@ function unitsSignature(units: UnitState[]): string {
   return units
     .map(
       (u) =>
-        `${u.id}:${u.position.lat.toFixed(5)},${u.position.lon.toFixed(5)},${u.heading.toFixed(1)},${normalizeHeading(u.orderedCourse ?? u.heading).toFixed(1)},${u.speed.toFixed(1)},${u.position.depth.toFixed(0)}`,
+        `${u.id}:${u.position.lat.toFixed(5)},${u.position.lon.toFixed(5)},${u.heading.toFixed(1)},${normalizeHeading(u.orderedCourse ?? u.heading).toFixed(1)},${u.speed.toFixed(1)},${u.position.depth.toFixed(0)},${u.type},${u.class},${u.name}`,
     )
     .join('|');
 }
@@ -255,6 +255,7 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
           courseX: x + Math.cos(oRad) * courseLen,
           courseY: y + Math.sin(oRad) * courseLen,
           showOrdered: courseDelta > 0.5,
+          identity: `${unit.class.toUpperCase()} · ${unit.type.toUpperCase()}`,
           label: `${unit.speed.toFixed(0)} KN · HDG ${heading.toFixed(0)}° · CRS ${ordered.toFixed(0)}°${
             unit.position.depth > 0 ? ` · ${unit.position.depth.toFixed(0)} M` : ''
           }`,
@@ -487,7 +488,16 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
                 </text>
                 <text
                   x={m.x + 12}
-                  y={m.y + 5}
+                  y={m.y + 4}
+                  fill="#5a9a68"
+                  fontSize={9}
+                  fontFamily="IBM Plex Mono, monospace"
+                >
+                  {m.identity}
+                </text>
+                <text
+                  x={m.x + 12}
+                  y={m.y + 16}
                   fill="#5a9a68"
                   fontSize={10}
                   fontFamily="IBM Plex Mono, monospace"
