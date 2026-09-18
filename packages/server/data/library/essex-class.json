@@ -1,0 +1,17 @@
+{
+  "id": "essex-class",
+  "name": "Essex-class Aircraft Carrier",
+  "type": "Ship",
+  "class": "Aircraft Carrier",
+  "maxSpeed": 33,
+  "turnRate": 4,
+  "radarSignature": "large",
+  "sensors": [{ "kind": "radar", "maxRangeNm": 25 }],
+  "defaultStations": [
+    { "id": "bridge", "name": "Bridge", "capabilities": ["helm", "lookout", "plot"] },
+    { "id": "engineering", "name": "Engineering", "capabilities": ["engineering"] },
+    { "id": "radar", "name": "Radar", "capabilities": ["radar"] },
+    { "id": "pri-fly", "name": "Pri-Fly", "capabilities": ["plot"] },
+    { "id": "radio", "name": "Radio", "capabilities": ["comms"] }
+  ]
+}

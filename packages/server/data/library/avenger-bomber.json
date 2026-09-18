@@ -1,0 +1,12 @@
+{
+  "id": "avenger-bomber",
+  "name": "TBF Avenger Bomber",
+  "type": "Aircraft",
+  "class": "Bomber",
+  "maxSpeed": 250,
+  "turnRate": 12,
+  "radarSignature": "small",
+  "defaultStations": [
+    { "id": "cockpit", "name": "Cockpit", "capabilities": ["helm", "lookout", "weapons"] }
+  ]
+}

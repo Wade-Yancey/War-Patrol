@@ -1,0 +1,17 @@
+{
+  "id": "cleveland-class",
+  "name": "Cleveland-class Cruiser",
+  "type": "Ship",
+  "class": "Cruiser",
+  "maxSpeed": 32,
+  "turnRate": 4,
+  "radarSignature": "large",
+  "sensors": [{ "kind": "radar", "maxRangeNm": 25 }],
+  "defaultStations": [
+    { "id": "bridge", "name": "Bridge", "capabilities": ["helm", "lookout", "plot"] },
+    { "id": "engineering", "name": "Engineering", "capabilities": ["engineering"] },
+    { "id": "radar", "name": "Radar", "capabilities": ["radar"] },
+    { "id": "guns", "name": "Gun Director", "capabilities": ["weapons"] },
+    { "id": "radio", "name": "Radio", "capabilities": ["comms"] }
+  ]
+}

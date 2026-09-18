@@ -2,12 +2,14 @@ import { nanoid } from 'nanoid';
 import {
   DEFAULT_TURN_SECONDS,
   SCHEMA_VERSION,
+  defaultMaxSpeed,
   defaultRadarSignature,
   defaultSensors,
   normalizeHeading,
   normalizePositionForType,
   resolveCondition,
   resolveFlightLevel,
+  resolveMaxSpeed,
   resolveStartGameTimeSeconds,
   resolveSubsystems,
   resolveTurnLengthSeconds,
@@ -61,7 +63,11 @@ function unitFromScenario(seed: Scenario['units'][number]): UnitState {
     stations: seed.stations.map((s) => ({ ...s, capabilities: [...s.capabilities] })),
     health: seed.health ?? 100,
     orders: {},
-    maxSpeed: seed.maxSpeed ?? 20,
+    maxSpeed: resolveMaxSpeed({
+      maxSpeed: seed.maxSpeed,
+      class: identity.class,
+      type: identity.type,
+    }),
     turnRate: resolveTurnRate({
       turnRate: seed.turnRate,
       radarSignature,
@@ -119,6 +125,11 @@ function normalizeUnit(unit: UnitState): UnitState {
     speed,
     eot,
     radarSignature,
+    maxSpeed: resolveMaxSpeed({
+      maxSpeed: unit.maxSpeed,
+      class: identity.class,
+      type: identity.type,
+    }),
     turnRate: resolveTurnRate({
       turnRate: unit.turnRate,
       radarSignature,
@@ -476,8 +487,19 @@ export class GameRuntime {
           class: patch.class ?? unit.class,
           classId: unit.classId,
         });
+        const classChanged = identity.class !== unit.class;
         unit.type = identity.type;
         unit.class = identity.class;
+        // Class change → refresh performance defaults (size / max speed / turn).
+        if (classChanged) {
+          unit.maxSpeed = defaultMaxSpeed(identity.class);
+          unit.radarSignature = defaultRadarSignature(identity.class);
+          unit.turnRate = resolveTurnRate({
+            radarSignature: unit.radarSignature,
+            class: identity.class,
+            type: identity.type,
+          });
+        }
       }
       if (patch.flightLevel !== undefined) {
         unit.flightLevel = patch.flightLevel;

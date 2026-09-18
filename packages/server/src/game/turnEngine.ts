@@ -5,6 +5,7 @@ import {
   eotTargetSpeed,
   moveAlongHeading,
   normalizeHeading,
+  resolveSpeedStepFraction,
   resolveTurnLengthSeconds,
   type EotSetting,
   type GameSave,
@@ -88,8 +89,10 @@ function applyUnitOrders(unit: UnitState, turnLengthSeconds: number): UnitState 
   }
 
   const target = eotTargetSpeed(eot, unit.maxSpeed);
-  // Speed steps toward target (acknowledgment → speed step)
-  const step = unit.maxSpeed * 0.35;
+  // Speed steps toward target (class-scaled fraction of maxSpeed per resolve).
+  const step =
+    unit.maxSpeed *
+    resolveSpeedStepFraction({ class: unit.class, type: unit.type });
   if (speed < target) speed = Math.min(target, speed + step);
   else if (speed > target) speed = Math.max(target, speed - step);
 

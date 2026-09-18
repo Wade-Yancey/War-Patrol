@@ -1,0 +1,12 @@
+{
+  "id": "hellcat-fighter",
+  "name": "F6F Hellcat Fighter",
+  "type": "Aircraft",
+  "class": "Fighter",
+  "maxSpeed": 320,
+  "turnRate": 12,
+  "radarSignature": "small",
+  "defaultStations": [
+    { "id": "cockpit", "name": "Cockpit", "capabilities": ["helm", "lookout", "weapons"] }
+  ]
+}
