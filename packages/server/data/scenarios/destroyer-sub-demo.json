@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "destroyer-sub-demo",
   "name": "Destroyer vs Submarine",
-  "description": "Phase 1 demo: one Fletcher destroyer and one Gato submarine in open water. PvP mode.",
+  "description": "Demo: Fletcher destroyer vs Gato submarine. Sub starts surfaced so destroyer Radar sees an echo; dive below ~5 m to drop the radar contact. PvP mode.",
   "mode": "pvp",
   "operatingArea": {
     "minLat": 34.0,
@@ -44,7 +44,7 @@
       "side": "red",
       "classId": "gato-class",
       "type": "submarine",
-      "position": { "lat": 34.55, "lon": -119.7, "depth": 40 },
+      "position": { "lat": 34.55, "lon": -119.7, "depth": 0 },
       "heading": 225,
       "speed": 6,
       "eot": "ahead_2",

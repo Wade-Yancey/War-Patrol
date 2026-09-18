@@ -12,3 +12,9 @@ export const KNOTS_TO_MPS = 0.514444;
 
 /** Simulated seconds represented by one resolved turn (movement stub). */
 export const TURN_DURATION_SECONDS = 360;
+
+/** Meters in one nautical mile. */
+export const METERS_PER_NM = 1852;
+
+/** Stub surface-search radar max range (nm) for destroyer-class demos. */
+export const RADAR_MAX_RANGE_NM = 25;

@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { UmpireView } from '@war-patrol/shared';
 import { api } from '../api/client';
@@ -18,17 +18,38 @@ export function UmpirePage() {
   const [token, setToken] = useState(() => sessionStorage.getItem(tokenKey(gameId)));
   const [authError, setAuthError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const [timerSeconds, setTimerSeconds] = useState(180);
   const [editUnitId, setEditUnitId] = useState<string>('');
   const [editHealth, setEditHealth] = useState(100);
+  const [editDepth, setEditDepth] = useState(0);
 
-  const { view, stateVersion, connected, error } = useGameStream({
+  const { view, stateVersion, connected, error, refresh } = useGameStream({
     gameId,
     token,
     enabled: Boolean(token),
   });
 
   const umpire = view?.role === 'umpire' ? (view as UmpireView) : null;
+  const phase = umpire?.turn.phase;
+  const isOpen = phase === 'open';
+  const isLocked = phase === 'locked' || phase === 'awaiting_resolution';
+
+  const selectedUnit = useMemo(
+    () => umpire?.units.find((u) => u.id === editUnitId) ?? umpire?.units[0],
+    [umpire, editUnitId],
+  );
+
+  useEffect(() => {
+    if (!umpire) return;
+    setTimerSeconds(umpire.turn.timerSeconds);
+  }, [umpire]);
+
+  useEffect(() => {
+    if (!selectedUnit) return;
+    setEditHealth(selectedUnit.health);
+    setEditDepth(Math.round(selectedUnit.position.depth));
+  }, [selectedUnit?.id, stateVersion]);
 
   const login = async (e?: FormEvent) => {
     e?.preventDefault();
@@ -42,19 +63,24 @@ export function UmpirePage() {
     }
   };
 
+  /** Run umpire action; always refresh view so tablet UI stays in sync even if SSE hiccups. */
   const run = async (fn: () => Promise<unknown>) => {
     setActionError(null);
+    setBusy(true);
     try {
       await fn();
+      await refresh();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Action failed');
+      try {
+        await refresh();
+      } catch {
+        /* ignore */
+      }
+    } finally {
+      setBusy(false);
     }
   };
-
-  const selectedUnit = useMemo(
-    () => umpire?.units.find((u) => u.id === editUnitId) ?? umpire?.units[0],
-    [umpire, editUnitId],
-  );
 
   if (!token) {
     return (
@@ -74,7 +100,7 @@ export function UmpirePage() {
                 autoFocus
               />
             </label>
-            <button className="primary" type="button" onClick={() => void login()}>
+            <button className="primary" type="submit">
               Enter umpire view
             </button>
             <Link to="/">← Home</Link>
@@ -100,8 +126,12 @@ export function UmpirePage() {
           <div className="stack" style={{ alignItems: 'flex-end', gap: '0.35rem' }}>
             <div className="row" style={{ alignItems: 'center' }}>
               <span className={`live-dot ${connected ? '' : 'off'}`} />
+              <span className="mono muted">{connected ? 'LIVE' : 'RECONNECTING'}</span>
               <span className="mono muted">v{stateVersion}</span>
             </div>
+            <button type="button" onClick={() => void refresh()} disabled={busy}>
+              Refresh
+            </button>
             <Link to="/">Home</Link>
           </div>
         </header>
@@ -111,61 +141,123 @@ export function UmpirePage() {
         {umpire && (
           <>
             <section className="panel stack">
-              <h2>Turn controls</h2>
+              <h2>Turn status</h2>
               <TurnStatus turn={umpire.turn} />
-              <TouchNumber
-                label="Timer (seconds)"
-                value={timerSeconds}
-                onChange={setTimerSeconds}
-                min={0}
-                max={3600}
-                step={15}
-                unit="s"
-                showSlider
-              />
-              <div className="row">
-                <button type="button" onClick={() => void run(() => api.turnTimer(gameId, token, timerSeconds))}>
-                  Set timer
-                </button>
-                <button type="button" onClick={() => void run(() => api.turnExtend(gameId, token, 60))}>
-                  +60s
-                </button>
-                <button type="button" onClick={() => void run(() => api.turnResetTimer(gameId, token))}>
-                  Reset timer
-                </button>
-                <button type="button" onClick={() => void run(() => api.turnLock(gameId, token))}>
-                  Lock
-                </button>
-                <button type="button" onClick={() => void run(() => api.turnReopen(gameId, token))}>
-                  Reopen
-                </button>
-                <button
-                  className="primary"
-                  type="button"
-                  onClick={() => void run(() => api.turnResolve(gameId, token))}
-                >
-                  Resolve
-                </button>
-                <button type="button" onClick={() => void run(() => api.saveGame(gameId, token))}>
-                  Save to disk
-                </button>
-              </div>
-              {umpire.historyTurnNumbers.length > 0 && (
-                <div className="row" style={{ alignItems: 'center' }}>
-                  <span className="muted">Rollback to end of turn:</span>
-                  {umpire.historyTurnNumbers.map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      className="danger"
-                      onClick={() => void run(() => api.rollback(gameId, token, n))}
-                    >
-                      T{n}
-                    </button>
-                  ))}
-                </div>
-              )}
+              <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+                Open = crews enter orders · Lock = freeze orders · Resolve = apply movement and open the next
+                turn.
+              </p>
             </section>
+
+            <div className="umpire-controls" style={{ marginTop: '1rem' }}>
+              <section className="panel stack umpire-control-group">
+                <h2>1 · Timer</h2>
+                <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
+                  Counts down while the turn is open. Expiry auto-locks orders.
+                </p>
+                <TouchNumber
+                  label="Duration (seconds)"
+                  value={timerSeconds}
+                  onChange={setTimerSeconds}
+                  min={0}
+                  max={3600}
+                  step={15}
+                  unit="s"
+                  showSlider
+                />
+                <div className="control-actions">
+                  <button
+                    type="button"
+                    disabled={busy || !isOpen}
+                    onClick={() => void run(() => api.turnTimer(gameId, token, timerSeconds))}
+                  >
+                    Start / set timer
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy || !isOpen}
+                    onClick={() => void run(() => api.turnExtend(gameId, token, 60))}
+                  >
+                    +60s
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy || !isOpen}
+                    onClick={() => void run(() => api.turnResetTimer(gameId, token))}
+                  >
+                    Restart timer
+                  </button>
+                </div>
+              </section>
+
+              <section className="panel stack umpire-control-group">
+                <h2>2 · Order lock</h2>
+                <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
+                  Lock closes ordering. Reopen returns to open without moving ships.
+                </p>
+                <div className="control-actions">
+                  <button
+                    type="button"
+                    disabled={busy || !isOpen}
+                    onClick={() => void run(() => api.turnLock(gameId, token))}
+                  >
+                    Lock orders
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy || !isLocked}
+                    onClick={() => void run(() => api.turnReopen(gameId, token))}
+                  >
+                    Reopen orders
+                  </button>
+                </div>
+              </section>
+
+              <section className="panel stack umpire-control-group">
+                <h2>3 · Resolve turn</h2>
+                <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
+                  Applies all vessel orders, advances the plot, then opens the next turn. Works from open or
+                  locked.
+                </p>
+                <div className="control-actions">
+                  <button
+                    className="primary"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void run(() => api.turnResolve(gameId, token))}
+                  >
+                    Resolve &amp; advance
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void run(() => api.saveGame(gameId, token))}
+                  >
+                    Save to disk
+                  </button>
+                </div>
+                {umpire.historyTurnNumbers.length > 0 && (
+                  <div className="stack" style={{ gap: '0.4rem' }}>
+                    <span className="muted" style={{ fontSize: '0.8rem' }}>
+                      Rollback to end of turn (dangerous):
+                    </span>
+                    <div className="row">
+                      {umpire.historyTurnNumbers.map((n) => (
+                        <button
+                          key={n}
+                          type="button"
+                          className="danger"
+                          disabled={busy}
+                          onClick={() => void run(() => api.rollback(gameId, token, n))}
+                        >
+                          T{n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </section>
+            </div>
 
             <div className="grid-2" style={{ marginTop: '1rem' }}>
               <section className="panel">
@@ -175,7 +267,7 @@ export function UmpirePage() {
 
               <div className="stack">
                 <section className="panel">
-                  <h2>Vessel links & passwords</h2>
+                  <h2>Vessel links &amp; passwords</h2>
                   <table className="table">
                     <thead>
                       <tr>
@@ -209,6 +301,7 @@ export function UmpirePage() {
                           <td>
                             <button
                               type="button"
+                              disabled={busy}
                               onClick={() =>
                                 void run(async () => {
                                   await api.rotateToken(gameId, token, v.unitId);
@@ -233,7 +326,10 @@ export function UmpirePage() {
                       onChange={(e) => {
                         setEditUnitId(e.target.value);
                         const u = umpire.units.find((x) => x.id === e.target.value);
-                        if (u) setEditHealth(u.health);
+                        if (u) {
+                          setEditHealth(u.health);
+                          setEditDepth(Math.round(u.position.depth));
+                        }
                       }}
                     >
                       {umpire.units.map((u) => (
@@ -252,17 +348,42 @@ export function UmpirePage() {
                     step={5}
                     unit="%"
                   />
-                  <button
-                    type="button"
-                    disabled={!selectedUnit}
-                    onClick={() =>
-                      void run(() =>
-                        api.updateUnit(gameId, token, selectedUnit!.id, { health: editHealth }),
-                      )
-                    }
-                  >
-                    Apply health
-                  </button>
+                  <TouchNumber
+                    label="Depth (radar: surface ≤5 m)"
+                    value={editDepth}
+                    onChange={setEditDepth}
+                    min={0}
+                    max={300}
+                    step={5}
+                    unit="m"
+                    showSlider
+                  />
+                  <div className="control-actions">
+                    <button
+                      type="button"
+                      disabled={!selectedUnit || busy}
+                      onClick={() =>
+                        void run(() =>
+                          api.updateUnit(gameId, token, selectedUnit!.id, { health: editHealth }),
+                        )
+                      }
+                    >
+                      Apply health
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!selectedUnit || busy}
+                      onClick={() =>
+                        void run(() =>
+                          api.updateUnit(gameId, token, selectedUnit!.id, {
+                            position: { depth: editDepth },
+                          }),
+                        )
+                      }
+                    >
+                      Apply depth
+                    </button>
+                  </div>
                   {selectedUnit && (
                     <label>
                       Vessel password
@@ -274,6 +395,7 @@ export function UmpirePage() {
                         />
                         <button
                           type="button"
+                          disabled={busy}
                           onClick={() => {
                             const el = document.getElementById('vessel-pw') as HTMLInputElement;
                             void run(() =>

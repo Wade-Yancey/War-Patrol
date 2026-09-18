@@ -206,12 +206,17 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         runtime.sse.sendFull(client, save.stateVersion, view);
       }
 
-      // Keep the request open; Fastify should not send a normal response.
+      // Keep the request open after hijack; resolve when the client disconnects.
       await new Promise<void>((resolve) => {
-        request.raw.on('close', () => {
+        let settled = false;
+        const done = () => {
+          if (settled) return;
+          settled = true;
           runtime.sse.remove(client.id);
           resolve();
-        });
+        };
+        request.raw.on('close', done);
+        reply.raw.on('close', done);
       });
     } catch (err) {
       const e = httpError(err);

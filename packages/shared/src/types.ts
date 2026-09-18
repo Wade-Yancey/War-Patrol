@@ -202,6 +202,21 @@ export interface UmpireView {
   }>;
 }
 
+/**
+ * Server-filtered radar contact (ARCH-SP-05 / ARCH-DET).
+ * Polar only — never other units' absolute lat/lon or identity.
+ */
+export interface RadarContact {
+  /** Opaque track id (stable while held). */
+  id: string;
+  /** True bearing degrees (0–360). */
+  bearing: number;
+  /** Slant/surface range in nautical miles. */
+  rangeNm: number;
+  /** Relative echo strength 0–1 (stub). */
+  strength: number;
+}
+
 /** Filtered vessel/station view — never other units' ground truth. */
 export interface VesselView {
   role: 'vessel';
@@ -229,6 +244,13 @@ export interface VesselView {
   /** Other stations on own vessel with connection counts (multi-connect indicator). */
   stationConnections: Array<{ stationId: string; count: number }>;
   canSubmitOrders: boolean;
+  /**
+   * Radar picture for stations with the `radar` capability.
+   * Omitted (or empty) for non-radar stations — never full unit list.
+   */
+  radarContacts?: RadarContact[];
+  /** Configured max radar range for the scope rings (nm). */
+  radarMaxRangeNm?: number;
 }
 
 export type ClientView = UmpireView | VesselView;

@@ -20,6 +20,8 @@ type ViewBuilder = (client: SseClient) => ClientView | null;
 export class SseHub {
   private clients = new Map<string, SseClient>();
   private viewBuilder: ViewBuilder | null = null;
+  /** Optional hook so runtime can rebroadcast connection counts (umpire live panel). */
+  onConnectionsChanged: ((gameId: string) => void) | null = null;
 
   setViewBuilder(builder: ViewBuilder): void {
     this.viewBuilder = builder;
@@ -28,23 +30,35 @@ export class SseHub {
   add(client: SseClient): void {
     this.clients.set(client.id, client);
     const reply = client.reply;
-    reply.raw.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
-      'X-Accel-Buffering': 'no',
-    });
+    // Hijack so Fastify does not finalize/buffer the long-lived stream.
+    try {
+      reply.hijack();
+    } catch {
+      /* already hijacked */
+    }
+    if (!reply.raw.headersSent) {
+      reply.raw.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      });
+    }
     reply.raw.write(`: connected\n\n`);
 
     const onClose = () => {
-      this.clients.delete(client.id);
+      if (!this.clients.delete(client.id)) return;
+      this.onConnectionsChanged?.(client.gameId);
     };
     reply.raw.on('close', onClose);
     reply.raw.on('error', onClose);
+    this.onConnectionsChanged?.(client.gameId);
   }
 
   remove(id: string): void {
-    this.clients.delete(id);
+    const existing = this.clients.get(id);
+    if (!this.clients.delete(id) || !existing) return;
+    this.onConnectionsChanged?.(existing.gameId);
   }
 
   /** Connection counts for multi-connect indicator (ARCH-AC-09–12). */

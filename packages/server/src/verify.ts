@@ -81,6 +81,41 @@ async function main() {
   const uv = umpireView.json.view as Json;
   check('umpire sees both units', Array.isArray(uv.units) && (uv.units as unknown[]).length === 2);
 
+  // 3b. Radar station: filtered polar contacts, no other-unit ground truth
+  const radarAuth = await api('POST', `/api/games/${gameId}/auth/vessel`, {
+    accessToken: 'porter-demo',
+    password: 'blue',
+    stationId: 'radar',
+  });
+  check('radar station auth', radarAuth.status === 200);
+  const radarToken = radarAuth.json.token as string;
+  const radarViewRes = await api('GET', `/api/games/${gameId}/view`, undefined, radarToken);
+  check('radar view ok', radarViewRes.status === 200);
+  const rv = radarViewRes.json.view as Json;
+  check('radar has contacts array', Array.isArray(rv.radarContacts));
+  const contacts = rv.radarContacts as Array<Json>;
+  check('radar sees surfaced contact', contacts.length >= 1, `got ${contacts.length}`);
+  check('radar contact polar only', !('position' in contacts[0]) && typeof contacts[0].bearing === 'number');
+  check('radar has max range', typeof rv.radarMaxRangeNm === 'number');
+  check('bridge has no radar picture', !('radarContacts' in bv) || bv.radarContacts === undefined);
+
+  // Dive sub → radar contact clears
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { position: { depth: 40 } },
+    umpireToken,
+  );
+  const radarAfterDive = await api('GET', `/api/games/${gameId}/view`, undefined, radarToken);
+  const contactsDived = (radarAfterDive.json.view as Json).radarContacts as unknown[];
+  check('radar clears when submerged', contactsDived.length === 0, `got ${contactsDived.length}`);
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { position: { depth: 0 } },
+    umpireToken,
+  );
+
   // 4. SSE: wait for resolve push
   let sseVersions: number[] = [];
   const sseAbort = new AbortController();
