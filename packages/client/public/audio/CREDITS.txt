@@ -2,3 +2,9 @@ Source: Echo Propeller.wav by iccleste (Freesound #260813)
 License: CC0 / public domain
 Original: https://freesound.org/people/iccleste/sounds/260813/
 Local copy: echo-propeller.wav
+
+Source: Sonar.wav by KIZILSUNGUR (Freesound #70299)
+License: CC0 / public domain
+Original: https://freesound.org/people/KIZILSUNGUR/sounds/70299/
+Local copy: sonar-ping.wav
+Original filename: 70299__kizilsungur__sonar.wav

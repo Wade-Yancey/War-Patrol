@@ -3,13 +3,18 @@ import {
   ACTIVE_SONAR_PING_INTERVAL_SEC,
   type RadarContact,
 } from '@war-patrol/shared';
+import {
+  loadSonarPingBuffer,
+  playSonarPingSample,
+  SONAR_PING_OWN_GAIN,
+} from '../audio/sonarPing';
 
 interface Props {
   contacts: RadarContact[];
   maxRangeNm: number;
   halfAngleDeg: number;
   ownHeading: number;
-  /** When true, emit placeholder ping oscillator locally. */
+  /** When true, emit active-search ping sample locally. */
   pinging: boolean;
 }
 
@@ -64,6 +69,7 @@ function ActiveSonarScopeInner({
   const key = contactsKey(contacts);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const pingBufferRef = useRef<AudioBuffer | null>(null);
   const pingTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -95,7 +101,7 @@ function ActiveSonarScopeInner({
     return () => window.clearInterval(id);
   }, []);
 
-  // Placeholder ping oscillator while search sonar is ON (Wade will supply a sample later).
+  // Active-search ping sample while sonar is ON (same WAV hydrophones hear).
   useEffect(() => {
     if (!pinging) {
       if (pingTimerRef.current != null) {
@@ -108,23 +114,17 @@ function ActiveSonarScopeInner({
     const playPing = async () => {
       try {
         if (!audioCtxRef.current) {
-          audioCtxRef.current = new AudioContext();
+          const Ctx =
+            window.AudioContext ||
+            (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+          audioCtxRef.current = new Ctx();
         }
         const ctx = audioCtxRef.current;
         if (ctx.state === 'suspended') await ctx.resume();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = 780;
-        gain.gain.value = 0.0001;
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        const t0 = ctx.currentTime;
-        gain.gain.setValueAtTime(0.0001, t0);
-        gain.gain.exponentialRampToValueAtTime(0.22, t0 + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18);
-        osc.start(t0);
-        osc.stop(t0 + 0.2);
+        if (!pingBufferRef.current) {
+          pingBufferRef.current = await loadSonarPingBuffer(ctx);
+        }
+        playSonarPingSample(ctx, pingBufferRef.current, ctx.destination, SONAR_PING_OWN_GAIN);
       } catch {
         /* autoplay / audio restrictions — ignore */
       }
@@ -147,6 +147,7 @@ function ActiveSonarScopeInner({
     return () => {
       void audioCtxRef.current?.close();
       audioCtxRef.current = null;
+      pingBufferRef.current = null;
     };
   }, []);
 

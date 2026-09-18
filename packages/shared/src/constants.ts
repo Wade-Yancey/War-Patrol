@@ -104,7 +104,7 @@ export const ACTIVE_SONAR_MAX_RANGE_NM = 8;
  */
 export const ACTIVE_SONAR_HALF_ANGLE_DEG = 30;
 
-/** Wall-clock seconds between placeholder active-sonar pings (own set + hydrophone hear). */
+/** Wall-clock seconds between active-sonar pings (own set + hydrophone hear). */
 export const ACTIVE_SONAR_PING_INTERVAL_SEC = 2;
 
 /**

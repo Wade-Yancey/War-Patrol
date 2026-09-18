@@ -8,6 +8,11 @@ import {
   type HydrophoneContact,
   type HydrophoneRangeBand,
 } from '@war-patrol/shared';
+import {
+  hydrophonePingPeakGain,
+  loadSonarPingBuffer,
+  playSonarPingSample,
+} from '../audio/sonarPing';
 
 const PROP_SAMPLE_URL = '/audio/echo-propeller.wav';
 /** Fine-adjust nudge step for ◀ / ▶ flanking the bearing slider (degrees). */
@@ -68,7 +73,7 @@ type ContactVoice = {
  * CRT hydrophone bearing dial — audio-first (passive listen ≠ own active sonar PPI).
  * Operator trains a listen needle; Web Audio mixes looping propeller samples
  * with per-contact gain from range × beam alignment. Active-sonar ping contacts
- * play as attenuated oscillator beeps. No visual contacts.
+ * play the shared ping WAV attenuated by the same range×beam model. No visual contacts.
  */
 function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
   const [listenBearing, setListenBearing] = useState(0);
@@ -80,6 +85,7 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const bufferRef = useRef<AudioBuffer | null>(null);
+  const pingBufferRef = useRef<AudioBuffer | null>(null);
   const masterGainRef = useRef<GainNode | null>(null);
   const voicesRef = useRef<Map<string, ContactVoice>>(new Map());
   const listenRef = useRef(listenBearing);
@@ -162,6 +168,9 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
         const raw = await res.arrayBuffer();
         bufferRef.current = await audioCtxRef.current.decodeAudioData(raw.slice(0));
       }
+      if (!pingBufferRef.current) {
+        pingBufferRef.current = await loadSonarPingBuffer(audioCtxRef.current);
+      }
       setAudioReady(true);
       setAudioError(null);
       return true;
@@ -195,7 +204,7 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
     const master = masterGainRef.current;
     if (!ctx || !buffer || !master || ctx.state !== 'running') return;
 
-    // Propeller loops only — active-sonar pings use a separate oscillator path.
+    // Propeller loops only — active-sonar pings use the shared ping sample path.
     const list = contactsRef.current.filter((c) => c.kind !== 'active_sonar_ping');
     const bearing = listenRef.current;
     const keep = new Set(list.map((c) => c.id));
@@ -244,29 +253,17 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
     }
   }, []);
 
-  const playPingBeeps = useCallback(async () => {
+  const playPingSamples = useCallback(async () => {
     const ctx = audioCtxRef.current;
     const master = masterGainRef.current;
-    if (!ctx || !master || ctx.state !== 'running') return;
+    const pingBuffer = pingBufferRef.current;
+    if (!ctx || !master || !pingBuffer || ctx.state !== 'running') return;
     const bearing = listenRef.current;
     const pings = contactsRef.current.filter((c) => c.kind === 'active_sonar_ping');
     for (const c of pings) {
       const gainAmt = hydrophoneContactGain(c.rangeNm, bearing, c.bearing);
       if (gainAmt < 0.02) continue;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = 720;
-      gain.gain.value = 0.0001;
-      osc.connect(gain);
-      gain.connect(master);
-      const t0 = ctx.currentTime;
-      const peak = Math.min(0.28, 0.08 + gainAmt * 0.35);
-      gain.gain.setValueAtTime(0.0001, t0);
-      gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.16);
-      osc.start(t0);
-      osc.stop(t0 + 0.18);
+      playSonarPingSample(ctx, pingBuffer, master, hydrophonePingPeakGain(gainAmt));
     }
   }, []);
 
@@ -280,8 +277,8 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
   }, [listening, contacts, listenBearing, syncVoices, stopAllVoices]);
 
   // Active-sonar hear path: one emit cadence from the destroyer stub interval.
-  // Listen bearing / gain only modulate volume inside playPingBeeps (via refs) —
-  // sweeping the needle must not reset the timer or fire an immediate beep.
+  // Listen bearing / gain only modulate volume inside playPingSamples (via refs) —
+  // sweeping the needle must not reset the timer or fire an immediate beep (#40).
   useEffect(() => {
     if (!listening) {
       if (pingTimerRef.current != null) {
@@ -290,9 +287,9 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
       }
       return;
     }
-    void playPingBeeps();
+    void playPingSamples();
     pingTimerRef.current = window.setInterval(
-      () => void playPingBeeps(),
+      () => void playPingSamples(),
       ACTIVE_SONAR_PING_INTERVAL_SEC * 1000,
     );
     return () => {
@@ -301,7 +298,7 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
         pingTimerRef.current = null;
       }
     };
-  }, [listening, playPingBeeps]);
+  }, [listening, playPingSamples]);
 
   const stopNudgeHold = useCallback(() => {
     if (nudgeHoldDelayRef.current != null) {
@@ -323,6 +320,7 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
       }
       void audioCtxRef.current?.close();
       audioCtxRef.current = null;
+      pingBufferRef.current = null;
     };
   }, [stopAllVoices, stopNudgeHold]);
 
