@@ -168,3 +168,32 @@ export function clampSpeedToMax(speed: number, maxSpeed: number): number {
   if (speed < -cap) return -cap;
   return speed;
 }
+
+/**
+ * Step signed speed toward an EOT target by at most `step` knots.
+ *
+ * **Momentum / no instantaneous reverse (ships & subs):** speed may not cross
+ * through zero in a single resolve. If the step would flip from ahead to astern
+ * (or vice versa), the unit stops at 0 this turn and may gather way in the new
+ * direction on a later resolve. Aligns with class {@link CLASS_SPEED_STEP_FRACTION}.
+ */
+export function stepSpeedTowardTarget(
+  current: number,
+  target: number,
+  step: number,
+): number {
+  if (!Number.isFinite(current)) return 0;
+  if (!Number.isFinite(target)) return current;
+  const maxStep = Math.abs(step);
+  if (!Number.isFinite(maxStep) || maxStep <= 0) return current;
+
+  let next: number;
+  if (current < target) next = Math.min(target, current + maxStep);
+  else if (current > target) next = Math.max(target, current - maxStep);
+  else return current;
+
+  // Cannot reverse through zero in one turn — decelerate to stop first.
+  if (current > 0 && next < 0) return 0;
+  if (current < 0 && next > 0) return 0;
+  return next;
+}

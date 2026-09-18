@@ -339,6 +339,11 @@ export interface UmpireView {
     name: string;
     accessToken: string;
     passwordProtected: boolean;
+    /**
+     * True when this hull is a v1 player vessel (Destroyer / Fleet Submarine).
+     * Non-player units may appear for umpire/NPC but have empty station join lists.
+     */
+    playerVessel: boolean;
     stations: Array<{ stationId: string; name: string; path: string }>;
   }>;
   connections: Array<{

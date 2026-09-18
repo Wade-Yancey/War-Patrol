@@ -146,6 +146,15 @@ async function main() {
   check('umpire ground truth', umpireView.status === 200);
   const uv = umpireView.json.view as Json;
   check('umpire sees both units', Array.isArray(uv.units) && (uv.units as unknown[]).length === 2);
+  const links = uv.vesselLinks as Array<{
+    unitId: string;
+    playerVessel?: boolean;
+    stations: unknown[];
+  }>;
+  check(
+    'demo player vessel links',
+    links.every((l) => l.playerVessel === true && Array.isArray(l.stations) && l.stations.length > 0),
+  );
 
   // 3b. Radar station: filtered polar contacts, no other-unit ground truth
   const radarAuth = await api('POST', `/api/games/${gameId}/auth/vessel`, {
@@ -700,6 +709,83 @@ async function main() {
     'PATCH',
     `/api/games/${gameId}/units/dd-101`,
     { subsystems: { propulsion: 'intact', sensors: 'intact' }, speed: 12, eot: 'ahead_standard' },
+    umpireToken,
+  );
+
+  // Momentum: ahead → reverse cannot cross zero in one resolve
+  const ddFresh = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
+  ddFresh.speed = 8;
+  ddFresh.eot = 'ahead_1';
+  ddFresh.orders = {};
+  await api('POST', `/api/games/${gameId}/orders`, { eot: 'back_full' }, blueToken);
+  await api('POST', `/api/games/${gameId}/turn/lock`, {}, umpireToken);
+  await api('POST', `/api/games/${gameId}/turn/resolve`, {}, umpireToken);
+  const afterReverseAttempt = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
+  check(
+    'momentum: reverse lands at stop (no zero-cross)',
+    afterReverseAttempt.speed === 0 && afterReverseAttempt.eot === 'back_full',
+  );
+  // Next resolve gathers sternway
+  await api('POST', `/api/games/${gameId}/turn/lock`, {}, umpireToken);
+  await api('POST', `/api/games/${gameId}/turn/resolve`, {}, umpireToken);
+  const afterSternway = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
+  check('momentum: next turn gathers sternway', afterSternway.speed < 0);
+
+  // Aircraft: loiter/cruise/full bands, never reverse; no player station auth
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    {
+      type: 'Aircraft',
+      class: 'Fighter',
+      name: 'NPC Hellcat',
+      speed: 100,
+      eot: 'stop',
+      maxSpeed: 320,
+    },
+    umpireToken,
+  );
+  const asFighter = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
+  check('aircraft class Fighter', asFighter.type === 'Aircraft' && asFighter.class === 'Fighter');
+  const fighterLinks = (
+    (await api('GET', `/api/games/${gameId}/view`, undefined, umpireToken)).json.view as Json
+  ).vesselLinks as Array<{ unitId: string; playerVessel?: boolean; stations: unknown[] }>;
+  const fighterLink = fighterLinks.find((v) => v.unitId === 'dd-101');
+  check('aircraft not player vessel', fighterLink?.playerVessel === false);
+  check('aircraft has no station join links', Array.isArray(fighterLink?.stations) && fighterLink!.stations.length === 0);
+  const npcAuth = await api('POST', `/api/games/${gameId}/auth/vessel`, {
+    accessToken: 'porter-demo',
+    password: 'blue',
+    stationId: 'bridge',
+  });
+  check('rejects non-player vessel station auth', npcAuth.status === 403);
+
+  // Ring reverse on aircraft → loiter band (non-negative); step toward loiter
+  asFighter.speed = 320;
+  asFighter.eot = 'ahead_flank';
+  asFighter.orders = { eot: 'back_full' };
+  await api('POST', `/api/games/${gameId}/turn/lock`, {}, umpireToken);
+  await api('POST', `/api/games/${gameId}/turn/resolve`, {}, umpireToken);
+  const afterAcReverse = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
+  check('aircraft speed stays non-negative', afterAcReverse.speed >= 0);
+  check(
+    'aircraft reverse maps toward loiter',
+    afterAcReverse.speed < 320 && afterAcReverse.eot === 'back_full',
+  );
+
+  // Restore destroyer for remaining checks
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    {
+      type: 'Ship',
+      class: 'Destroyer',
+      name: 'USS Porter',
+      faction: 'Blue',
+      speed: 12,
+      eot: 'ahead_standard',
+      maxSpeed: 36,
+    },
     umpireToken,
   );
 

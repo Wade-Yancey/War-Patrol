@@ -19,6 +19,7 @@ import {
   resolveTurnRate,
   resolveVesselIdentity,
   sideFromFaction,
+  isV1PlayerUnit,
   type EotSetting,
   type GameSave,
   type HullClass,
@@ -358,6 +359,13 @@ export class GameRuntime {
     const unit = save.units.find((u) => u.accessToken === accessToken);
     if (!unit) {
       throw Object.assign(new Error('Unknown vessel token'), { statusCode: 404 });
+    }
+    // v1: only Destroyer + Fleet Submarine have player station flows.
+    if (!isV1PlayerUnit(unit)) {
+      throw Object.assign(
+        new Error('Station join is limited to Destroyer and Fleet Submarine in v1'),
+        { statusCode: 403 },
+      );
     }
     if (unit.password && unit.password !== (password ?? '')) {
       throw Object.assign(new Error('Invalid vessel password'), { statusCode: 401 });

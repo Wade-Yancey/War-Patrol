@@ -11,10 +11,11 @@ import {
   clamp,
   clampSpeedToMax,
   effectiveMaxSpeed,
-  eotTargetSpeed,
   moveAlongHeading,
   normalizeHeading,
   resolveSpeedStepFraction,
+  stepSpeedTowardTarget,
+  targetSpeedForUnit,
   type EotSetting,
   type HullClass,
   type LatLonDepth,
@@ -71,11 +72,11 @@ function expectApply(
     maxSpeed: unit.maxSpeed,
     depth: unit.position.depth,
   });
-  const target = eotTargetSpeed(eot, speedCeiling);
+  const target = targetSpeedForUnit(unit.type, eot, speedCeiling);
   const step =
     speedCeiling * resolveSpeedStepFraction({ class: unit.class, type: unit.type });
-  if (speed < target) speed = Math.min(target, speed + step);
-  else if (speed > target) speed = Math.max(target, speed - step);
+  speed = stepSpeedTowardTarget(speed, target, step);
+  if (unit.type === 'Aircraft') speed = Math.max(0, speed);
   speed = clampSpeedToMax(speed, speedCeiling);
 
   const distance = Math.abs(speed) * KNOTS_TO_MPS * turnLengthSeconds;

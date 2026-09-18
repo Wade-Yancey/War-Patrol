@@ -4,11 +4,12 @@ import {
   clamp,
   clampSpeedToMax,
   effectiveMaxSpeed,
-  eotTargetSpeed,
   moveAlongHeading,
   normalizeHeading,
   resolveSpeedStepFraction,
   resolveTurnLengthSeconds,
+  stepSpeedTowardTarget,
+  targetSpeedForUnit,
   type EotSetting,
   type GameSave,
   type TurnSnapshot,
@@ -96,12 +97,17 @@ function applyUnitOrders(unit: UnitState, turnLengthSeconds: number): UnitState 
     maxSpeed: unit.maxSpeed,
     depth: unit.position.depth,
   });
-  const target = eotTargetSpeed(eot, speedCeiling);
+  // Ships/subs: signed EOT target. Aircraft: loiter/cruise/full (never reverse).
+  const target = targetSpeedForUnit(unit.type, eot, speedCeiling);
   // Speed steps toward target (class-scaled fraction of effective max per resolve).
+  // Momentum: cannot cross through zero in one resolve (ships/subs reverse via stop).
   const step =
     speedCeiling * resolveSpeedStepFraction({ class: unit.class, type: unit.type });
-  if (speed < target) speed = Math.min(target, speed + step);
-  else if (speed > target) speed = Math.max(target, speed - step);
+  speed = stepSpeedTowardTarget(speed, target, step);
+  if (unit.type === 'Aircraft') {
+    // Aircraft never make sternway; clamp any legacy negative speed to ≥ 0.
+    speed = Math.max(0, speed);
+  }
   speed = clampSpeedToMax(speed, speedCeiling);
 
   const distance = Math.abs(speed) * KNOTS_TO_MPS * turnLengthSeconds;

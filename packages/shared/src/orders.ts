@@ -1,5 +1,6 @@
 import { EOT_LABELS } from './eot.js';
 import type { UnitOrders, UnitState } from './types.js';
+import { isV1PlayerUnit } from './vessel.js';
 
 /** True when the unit has filed helm and/or EOT for the current turn. */
 export function hasPendingOrders(orders: UnitOrders | undefined | null): boolean {
@@ -39,19 +40,25 @@ export type PendingOrderRow = {
   currentEot: UnitState['eot'];
 };
 
-/** Build umpire roster rows: gaps (not submitted) first, then by name. */
+/**
+ * Build umpire roster rows for **v1 player vessels** only (Destroyer + Fleet Submarine).
+ * NPC / non-player hulls are omitted — they have no station order flows in v1.
+ * Gaps (not submitted) first, then by name.
+ */
 export function pendingOrderRows(units: UnitState[]): PendingOrderRow[] {
-  const rows: PendingOrderRow[] = units.map((u) => ({
-    unitId: u.id,
-    name: u.name,
-    faction: u.faction,
-    submitted: hasPendingOrders(u.orders),
-    summary: formatPendingOrdersSummary(u.orders),
-    updatedByStationId: u.orders.updatedByStationId,
-    updatedAt: u.orders.updatedAt,
-    orderedCourse: u.orderedCourse,
-    currentEot: u.eot,
-  }));
+  const rows: PendingOrderRow[] = units
+    .filter((u) => isV1PlayerUnit(u))
+    .map((u) => ({
+      unitId: u.id,
+      name: u.name,
+      faction: u.faction,
+      submitted: hasPendingOrders(u.orders),
+      summary: formatPendingOrdersSummary(u.orders),
+      updatedByStationId: u.orders.updatedByStationId,
+      updatedAt: u.orders.updatedAt,
+      orderedCourse: u.orderedCourse,
+      currentEot: u.eot,
+    }));
   rows.sort((a, b) => {
     if (a.submitted !== b.submitted) return a.submitted ? 1 : -1;
     return a.name.localeCompare(b.name);

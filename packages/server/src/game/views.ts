@@ -7,6 +7,7 @@ import type {
   UmpireView,
   VesselView,
 } from '@war-patrol/shared';
+import { isV1PlayerUnit } from '@war-patrol/shared';
 import type { SseHub } from './sse.js';
 import { buildRadarContacts } from './radar.js';
 
@@ -41,6 +42,25 @@ export function buildUnitTrails(save: GameSave): UnitTrail[] {
   });
 }
 
+function vesselLinkForUnit(save: GameSave, u: UnitState) {
+  const playerVessel = isV1PlayerUnit(u);
+  return {
+    unitId: u.id,
+    name: u.name,
+    accessToken: u.accessToken,
+    passwordProtected: Boolean(u.password),
+    playerVessel,
+    // v1: station join URLs only for Destroyer + Fleet Submarine.
+    stations: playerVessel
+      ? u.stations.map((s) => ({
+          stationId: s.id,
+          name: s.name,
+          path: `/g/${save.id}/v/${u.accessToken}/s/${s.id}`,
+        }))
+      : [],
+  };
+}
+
 export function buildUmpireView(save: GameSave, sse: SseHub): UmpireView {
   return {
     role: 'umpire',
@@ -56,17 +76,7 @@ export function buildUmpireView(save: GameSave, sse: SseHub): UmpireView {
     units: save.units,
     trails: buildUnitTrails(save),
     historyTurnNumbers: save.history.map((h) => h.turnNumber),
-    vesselLinks: save.units.map((u) => ({
-      unitId: u.id,
-      name: u.name,
-      accessToken: u.accessToken,
-      passwordProtected: Boolean(u.password),
-      stations: u.stations.map((s) => ({
-        stationId: s.id,
-        name: s.name,
-        path: `/g/${save.id}/v/${u.accessToken}/s/${s.id}`,
-      })),
-    })),
+    vesselLinks: save.units.map((u) => vesselLinkForUnit(save, u)),
     connections: sse.connectionSummary(save.id),
   };
 }
