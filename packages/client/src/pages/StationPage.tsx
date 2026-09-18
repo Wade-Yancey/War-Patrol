@@ -131,7 +131,7 @@ export function StationPage() {
 
   return (
     <CrtShell side={sideAccent as 'blue' | 'red' | 'civilian' | 'neutral'} faction={faction}>
-      <div className="app-shell">
+      <div className={`app-shell${vessel && canRadar ? ' app-shell--radar-focus' : ''}`}>
         <header className="header-bar">
           <div>
             <span className="brand-mark">Station console</span>
@@ -166,43 +166,11 @@ export function StationPage() {
 
         {vessel && (
           <>
-            <section className="panel stack">
-              <h2>Turn</h2>
-              <TurnStatus turn={vessel.turn} turnLengthSeconds={vessel.turnLengthSeconds} />
-              {hasPendingOrders(vessel.unit.orders) ? (
-                <div className="orders-of-record" role="status">
-                  <span className="status-pill open">Of record</span>
-                  <span className="mono readout">{formatPendingOrdersSummary(vessel.unit.orders)}</span>
-                  {vessel.unit.orders.updatedByStationId && (
-                    <span className="mono muted">via {vessel.unit.orders.updatedByStationId}</span>
-                  )}
-                </div>
-              ) : (
-                <p className="muted mono" style={{ margin: 0, fontSize: '0.85rem' }}>
-                  No pending orders filed for this turn.
-                </p>
-              )}
-              {!vessel.canSubmitOrders && (
-                <p className="muted" style={{ margin: 0 }}>
-                  Ordering closed for this phase or this station cannot submit.
-                </p>
-              )}
-              {vessel.stationConnections.some((c) => c.count > 1) && (
-                <p className="mono" style={{ margin: 0, color: 'var(--accent-strong)' }}>
-                  Multi-connection: last write wins —{' '}
-                  {vessel.stationConnections
-                    .filter((c) => c.count > 0)
-                    .map((c) => `${c.stationId}×${c.count}`)
-                    .join(', ')}
-                </p>
-              )}
-            </section>
-
             {canRadar && (
               <section className="panel stack radar-station-panel">
                 <div className="radar-station-head">
                   <h2>Radar · PPI</h2>
-                  <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+                  <p className="muted radar-station-blurb">
                     Call contacts by true bearing on the rim. Raw sensor picture only — no friend/foe identity.
                     {vessel.radarUnavailableReason === 'submerged'
                       ? ''
@@ -249,6 +217,38 @@ export function StationPage() {
                 )}
               </section>
             )}
+
+            <section className={`panel stack${canRadar ? ' station-turn-panel' : ''}`}>
+              <h2>Turn</h2>
+              <TurnStatus turn={vessel.turn} turnLengthSeconds={vessel.turnLengthSeconds} />
+              {hasPendingOrders(vessel.unit.orders) ? (
+                <div className="orders-of-record" role="status">
+                  <span className="status-pill open">Of record</span>
+                  <span className="mono readout">{formatPendingOrdersSummary(vessel.unit.orders)}</span>
+                  {vessel.unit.orders.updatedByStationId && (
+                    <span className="mono muted">via {vessel.unit.orders.updatedByStationId}</span>
+                  )}
+                </div>
+              ) : (
+                <p className="muted mono" style={{ margin: 0, fontSize: '0.85rem' }}>
+                  No pending orders filed for this turn.
+                </p>
+              )}
+              {!vessel.canSubmitOrders && (
+                <p className="muted" style={{ margin: 0 }}>
+                  Ordering closed for this phase or this station cannot submit.
+                </p>
+              )}
+              {vessel.stationConnections.some((c) => c.count > 1) && (
+                <p className="mono" style={{ margin: 0, color: 'var(--accent-strong)' }}>
+                  Multi-connection: last write wins —{' '}
+                  {vessel.stationConnections
+                    .filter((c) => c.count > 0)
+                    .map((c) => `${c.stationId}×${c.count}`)
+                    .join(', ')}
+                </p>
+              )}
+            </section>
 
             <div className="grid-2" style={{ marginTop: '1rem' }}>
               <section className="panel">
