@@ -269,8 +269,9 @@ export function UmpirePage() {
                 <section className="panel">
                   <h2>Vessel links &amp; passwords</h2>
                   <p className="muted" style={{ marginTop: 0, fontSize: '0.8rem' }}>
-                    Destroyers include a dedicated <strong>Radar</strong> station plus an installed radar
-                    sensor. Submarines do not get Radar by default.
+                    Destroyers and submarines include a dedicated <strong>Radar</strong> station plus an
+                    installed radar sensor. Sub radar (own PPI and as a contact) only when surfaced (depth ≤ 5
+                    m).
                   </p>
                   <table className="table">
                     <thead>

@@ -123,18 +123,36 @@ async function main() {
       (porter.sensors as Json[]).some((s) => s.kind === 'radar'),
   );
   check(
-    'sub has no Radar station',
+    'sub has Radar station',
     Array.isArray(gato.stations) &&
-      !(gato.stations as Json[]).some((s) => Array.isArray(s.capabilities) && (s.capabilities as string[]).includes('radar')),
+      (gato.stations as Json[]).some(
+        (s) => s.id === 'radar' && Array.isArray(s.capabilities) && (s.capabilities as string[]).includes('radar'),
+      ),
   );
   check(
-    'sub has no radar sensor',
-    !Array.isArray(gato.sensors) ||
-      !(gato.sensors as Json[]).some((s) => s.kind === 'radar'),
+    'sub has radar sensor',
+    Array.isArray(gato.sensors) && (gato.sensors as Json[]).some((s) => s.kind === 'radar'),
   );
+  check('porter radar operational', rv.radarOperational === true);
   check('bridge has no radar picture', !('radarContacts' in bv) || bv.radarContacts === undefined);
 
-  // Dive sub → radar contact clears
+  // Sub radar while surfaced can see destroyer
+  const subRadarAuth = await api('POST', `/api/games/${gameId}/auth/vessel`, {
+    accessToken: 'gato-demo',
+    password: 'red',
+    stationId: 'radar',
+  });
+  check('sub radar station auth', subRadarAuth.status === 200);
+  const subRadarToken = subRadarAuth.json.token as string;
+  const subRadarSurf = await api('GET', `/api/games/${gameId}/view`, undefined, subRadarToken);
+  const srv = subRadarSurf.json.view as Json;
+  check('sub radar operational on surface', srv.radarOperational === true);
+  check(
+    'sub radar sees destroyer',
+    Array.isArray(srv.radarContacts) && (srv.radarContacts as unknown[]).length >= 1,
+  );
+
+  // Dive sub → clears as target on Porter + own PPI unavailable
   await api(
     'PATCH',
     `/api/games/${gameId}/units/ss-212`,
@@ -144,6 +162,14 @@ async function main() {
   const radarAfterDive = await api('GET', `/api/games/${gameId}/view`, undefined, radarToken);
   const contactsDived = (radarAfterDive.json.view as Json).radarContacts as unknown[];
   check('radar clears when submerged', contactsDived.length === 0, `got ${contactsDived.length}`);
+  const subRadarDive = await api('GET', `/api/games/${gameId}/view`, undefined, subRadarToken);
+  const srd = subRadarDive.json.view as Json;
+  check('sub radar unavailable submerged', srd.radarOperational === false);
+  check('sub radar reason submerged', srd.radarUnavailableReason === 'submerged');
+  check(
+    'sub radar no contacts while submerged',
+    Array.isArray(srd.radarContacts) && (srd.radarContacts as unknown[]).length === 0,
+  );
   await api(
     'PATCH',
     `/api/games/${gameId}/units/ss-212`,

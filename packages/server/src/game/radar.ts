@@ -5,33 +5,53 @@ import {
   bearingRangeNm,
   defaultRadarSignature,
   findRadarSensor,
+  isRadarSurfaced,
   type GameSave,
   type RadarContact,
   type RadarSignature,
   type UnitState,
 } from '@war-patrol/shared';
 
-/** Depth (m) at/above which a contact is treated as surface-visible to radar. */
-const SURFACE_DEPTH_M = 5;
+export type RadarPicture = {
+  contacts: RadarContact[];
+  maxRangeNm: number;
+  operational: boolean;
+  unavailableReason?: 'submerged' | 'no_sensor';
+};
 
 /**
  * Minimal server-authoritative radar picture (ARCH-DET / ARCH-SP-05).
- * Requires an installed radar sensor on own ship. Other units are reduced to
- * opaque polar blips — no absolute positions, names, sides, or class leak.
+ * Requires an installed radar sensor. Own-ship PPI only when surfaced.
+ * Targets only paint when they are surfaced — no absolute positions/names/sides.
  */
-export function buildRadarContacts(own: UnitState, save: GameSave): {
-  contacts: RadarContact[];
-  maxRangeNm: number;
-} | null {
+export function buildRadarContacts(own: UnitState, save: GameSave): RadarPicture {
   const sensor = findRadarSensor(own);
-  if (!sensor) return null;
+  if (!sensor) {
+    return {
+      contacts: [],
+      maxRangeNm: 0,
+      operational: false,
+      unavailableReason: 'no_sensor',
+    };
+  }
 
   const maxRangeNm = sensor.maxRangeNm ?? RADAR_MAX_RANGE_NM;
+
+  if (!isRadarSurfaced(own.position)) {
+    return {
+      contacts: [],
+      maxRangeNm,
+      operational: false,
+      unavailableReason: 'submerged',
+    };
+  }
+
   const contacts: RadarContact[] = [];
 
   for (const other of save.units) {
     if (other.id === own.id) continue;
-    if (other.position.depth > SURFACE_DEPTH_M) continue;
+    // Submerged targets do not return a radar echo.
+    if (!isRadarSurfaced(other.position)) continue;
 
     const signature = resolveSignature(other);
     const detectRange = maxRangeNm * RADAR_SIGNATURE_RANGE_FACTOR[signature];
@@ -55,7 +75,7 @@ export function buildRadarContacts(own: UnitState, save: GameSave): {
 
   // Bearing order — operator reads Contact 1…N as raw sensor indices.
   contacts.sort((a, b) => a.bearing - b.bearing || a.rangeNm - b.rangeNm);
-  return { contacts, maxRangeNm };
+  return { contacts, maxRangeNm, operational: true };
 }
 
 function resolveSignature(unit: UnitState): RadarSignature {

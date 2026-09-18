@@ -100,7 +100,7 @@ export interface UnitState {
   turnRate: number;
   /** Radar echo size for detection (class/unit). */
   radarSignature: RadarSignature;
-  /** Installed sensors (destroyers include radar per ARCH-STA-03; subs typically do not). */
+  /** Installed sensors (destroyers and subs include radar for play). */
   sensors: SensorDef[];
 }
 
@@ -274,11 +274,15 @@ export interface VesselView {
   canSubmitOrders: boolean;
   /**
    * Radar picture for stations with the `radar` capability.
-   * Omitted (or empty) for non-radar stations — never full unit list.
+   * Omitted for non-radar stations — never full unit list.
    */
   radarContacts?: RadarContact[];
   /** Configured max radar range for the scope rings (nm). */
   radarMaxRangeNm?: number;
+  /** False when radar set cannot emit (e.g. submarine submerged). */
+  radarOperational?: boolean;
+  /** Operator-facing reason when radarOperational is false. */
+  radarUnavailableReason?: 'submerged' | 'no_sensor';
 }
 
 export type ClientView = UmpireView | VesselView;
