@@ -3,10 +3,15 @@ import type { RadarContact } from '@war-patrol/shared';
 
 interface Props {
   contacts: RadarContact[];
+  /** Server sensor max range (nm) — used to pick a sensible default scale. */
   maxRangeNm: number;
   /** Own-ship heading (degrees true) — drawn as a short lubber line. */
   ownHeading: number;
 }
+
+/** Operator-selectable PPI display scales (nm). Server still sends true ranges. */
+export const RADAR_RANGE_PRESETS_NM = [5, 10, 25, 50] as const;
+export type RadarRangePresetNm = (typeof RADAR_RANGE_PRESETS_NM)[number];
 
 /** Large square canvas; CSS scales to dominate the viewport. */
 const SIZE = 900;
@@ -29,14 +34,26 @@ function contactsKey(contacts: RadarContact[]): string {
     .join('|');
 }
 
+function defaultScaleNm(sensorMaxNm: number): RadarRangePresetNm {
+  const max = sensorMaxNm > 0 ? sensorMaxNm : 25;
+  // Prefer largest preset that does not exceed the installed sensor, else 25.
+  const fit = [...RADAR_RANGE_PRESETS_NM].reverse().find((p) => p <= max);
+  return fit ?? 25;
+}
+
 /**
  * Traditional round PPI radar scope — own ship center, true bearings on the rim.
  * Sweep + short blip persistence; kept to SVG/CSS for tablet snappiness (ARCH-DET spirit).
  */
 function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
   const [now, setNow] = useState(() => Date.now());
+  const [scaleNm, setScaleNm] = useState<RadarRangePresetNm>(() => defaultScaleNm(maxRangeNm));
   const persistRef = useRef<Map<string, PersistedBlip>>(new Map());
   const key = contactsKey(contacts);
+
+  useEffect(() => {
+    setScaleNm(defaultScaleNm(maxRangeNm));
+  }, [maxRangeNm]);
 
   useEffect(() => {
     const map = persistRef.current;
@@ -67,9 +84,13 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
     const steps = 5;
     return Array.from({ length: steps }, (_, i) => {
       const frac = (i + 1) / steps;
-      return { r: SCOPE_R * frac, label: `${(maxRangeNm * frac).toFixed(0)}` };
+      const nm = scaleNm * frac;
+      return {
+        r: SCOPE_R * frac,
+        label: Number.isInteger(nm) ? `${nm}` : nm.toFixed(1),
+      };
     });
-  }, [maxRangeNm]);
+  }, [scaleNm]);
 
   /** Dense compass: 5° ticks, labels every 10°. */
   const bearings = useMemo(() => {
@@ -106,43 +127,54 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
 
   const headingRad = ((ownHeading - 90) * Math.PI) / 180;
 
-  /** Same anonymous indices as the contact table (bearing order). */
+  /** Contacts inside the selected display scale, same order as the table. */
+  const visibleContacts = useMemo(
+    () => contacts.filter((c) => c.rangeNm <= scaleNm),
+    [contacts, scaleNm],
+  );
+
   const contactIndexById = useMemo(() => {
     const map = new Map<string, number>();
-    contacts.forEach((c, i) => map.set(c.id, i + 1));
+    visibleContacts.forEach((c, i) => map.set(c.id, i + 1));
     return map;
-  }, [contacts]);
+  }, [visibleContacts]);
 
-  const blips = [...persistRef.current.values()].map((b) => {
-    const age = now - b.lastSeenAt;
-    const fade = Math.max(0, 1 - age / 7000);
-    const frac = Math.min(1, b.rangeNm / Math.max(maxRangeNm, 0.001));
-    const rad = ((b.bearing - 90) * Math.PI) / 180;
-    const r = frac * SCOPE_R;
-    const x = CX + Math.cos(rad) * r;
-    const y = CY + Math.sin(rad) * r;
-    const blipR = 4 + 5 * b.strength;
-    const labelN = contactIndexById.get(b.id);
-    const live = labelN != null;
-    // High-contrast solid phosphor — no blur/glow filters (tablet perf).
-    const opacity = live ? Math.max(0.92, 0.85 + 0.15 * b.strength) : Math.max(0.25, fade * 0.55);
-    const labelOnLeft = x > CX + SCOPE_R * 0.35;
-    return {
-      ...b,
-      x,
-      y,
-      opacity,
-      r: blipR,
-      labelN,
-      labelOpacity: live ? 1 : Math.max(0.35, fade * 0.7),
-      labelX: labelOnLeft ? x - blipR - 10 : x + blipR + 10,
-      labelAnchor: labelOnLeft ? ('end' as const) : ('start' as const),
-    };
-  });
+  const blips = [...persistRef.current.values()]
+    .filter((b) => b.rangeNm <= scaleNm || contactIndexById.has(b.id))
+    .map((b) => {
+      const age = now - b.lastSeenAt;
+      const fade = Math.max(0, 1 - age / 7000);
+      const frac = Math.min(1, b.rangeNm / Math.max(scaleNm, 0.001));
+      const rad = ((b.bearing - 90) * Math.PI) / 180;
+      const r = frac * SCOPE_R;
+      const x = CX + Math.cos(rad) * r;
+      const y = CY + Math.sin(rad) * r;
+      const blipR = 4 + 5 * b.strength;
+      const labelN = contactIndexById.get(b.id);
+      const live = labelN != null && b.rangeNm <= scaleNm;
+      const opacity = live ? Math.max(0.92, 0.85 + 0.15 * b.strength) : Math.max(0.25, fade * 0.55);
+      const labelOnLeft = x > CX + SCOPE_R * 0.35;
+      return {
+        ...b,
+        x,
+        y,
+        opacity,
+        r: blipR,
+        labelN: live ? labelN : undefined,
+        labelOpacity: live ? 1 : Math.max(0.35, fade * 0.7),
+        labelX: labelOnLeft ? x - blipR - 10 : x + blipR + 10,
+        labelAnchor: labelOnLeft ? ('end' as const) : ('start' as const),
+      };
+    });
 
   return (
-    <div className="radar-scope" role="img" aria-label="Radar plan position indicator">
-      <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="radar-scope-svg">
+    <div className="radar-scope">
+      <svg
+        viewBox={`0 0 ${SIZE} ${SIZE}`}
+        className="radar-scope-svg"
+        role="img"
+        aria-label={`Radar PPI, ${scaleNm} nautical mile scale`}
+      >
         <defs>
           <radialGradient id="radar-glow" cx="50%" cy="50%" r="50%">
             <stop offset="0%" stopColor="#0a2a14" />
@@ -259,37 +291,53 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
             )}
           </g>
         ))}
-
-        <text
-          x={CX}
-          y={SIZE - 18}
-          textAnchor="middle"
-          fill="#5a9a68"
-          fontSize={14}
-          fontFamily="IBM Plex Mono, monospace"
-        >
-          PPI · TRUE · {maxRangeNm.toFixed(0)} NM
-        </text>
       </svg>
 
-      <div className="radar-contact-list">
-        <h3>Contacts</h3>
-        {contacts.length === 0 ? (
-          <p className="muted" style={{ margin: 0 }}>
-            No echoes in range.
+      <div className="radar-side-panel">
+        <div className="radar-scale-panel">
+          <h3>Range scale</h3>
+          <p className="mono readout radar-scale-readout">
+            PPI · TRUE · {scaleNm} NM
           </p>
-        ) : (
-          <ul>
-            {contacts.map((c, i) => (
-              <li key={c.id} className="mono">
-                <span className="readout">Contact {i + 1}</span>
-                <span>{String(Math.round(c.bearing)).padStart(3, '0')}°</span>
-                <span>{c.rangeNm.toFixed(1)} nm</span>
-                <span className="muted">{c.signature}</span>
-              </li>
+          <div className="radar-scale-buttons" role="group" aria-label="Radar range scale">
+            {RADAR_RANGE_PRESETS_NM.map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                className={preset === scaleNm ? 'primary' : undefined}
+                aria-pressed={preset === scaleNm}
+                onClick={() => setScaleNm(preset)}
+              >
+                {preset} nm
+              </button>
             ))}
-          </ul>
-        )}
+          </div>
+          {maxRangeNm > 0 && scaleNm > maxRangeNm && (
+            <p className="muted" style={{ margin: 0, fontSize: '0.75rem' }}>
+              Sensor max {maxRangeNm} nm — outer rings empty beyond detection.
+            </p>
+          )}
+        </div>
+
+        <div className="radar-contact-list">
+          <h3>Contacts</h3>
+          {visibleContacts.length === 0 ? (
+            <p className="muted" style={{ margin: 0 }}>
+              No echoes in range.
+            </p>
+          ) : (
+            <ul>
+              {visibleContacts.map((c, i) => (
+                <li key={c.id} className="mono">
+                  <span className="readout">Contact {i + 1}</span>
+                  <span>{String(Math.round(c.bearing)).padStart(3, '0')}°</span>
+                  <span>{c.rangeNm.toFixed(1)} nm</span>
+                  <span className="muted">{c.signature}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
     </div>
   );

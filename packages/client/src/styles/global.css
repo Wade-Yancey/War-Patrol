@@ -528,6 +528,40 @@ label {
   user-select: none;
 }
 
+.radar-side-panel {
+  width: min(100%, 36rem);
+  justify-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.radar-scale-panel h3,
+.radar-contact-list h3 {
+  margin: 0 0 0.65rem;
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--phosphor);
+}
+
+.radar-scale-readout {
+  margin: 0 0 0.65rem;
+  font-size: 1rem;
+}
+
+.radar-scale-buttons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.radar-scale-buttons button {
+  min-height: 3rem;
+  width: 100%;
+}
+
 .radar-sweep {
   animation-name: radar-sweep-spin;
   animation-timing-function: linear;
@@ -547,20 +581,6 @@ label {
   .radar-sweep {
     animation: none;
   }
-}
-
-.radar-contact-list {
-  width: min(100%, 36rem);
-  justify-self: stretch;
-}
-
-.radar-contact-list h3 {
-  margin: 0 0 0.65rem;
-  font-family: var(--font-display);
-  font-size: 0.8rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--phosphor);
 }
 
 .radar-contact-list ul {
@@ -597,9 +617,13 @@ label {
     justify-self: stretch;
   }
 
-  .radar-contact-list {
+  .radar-side-panel {
     width: 100%;
     padding-top: 0.5rem;
+  }
+
+  .radar-scale-buttons {
+    grid-template-columns: 1fr;
   }
 }
 
