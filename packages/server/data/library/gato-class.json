@@ -8,10 +8,11 @@
   "radarSignature": "small",
   "sensors": [
     { "kind": "radar", "maxRangeNm": 25 },
-    { "kind": "hydrophone", "maxRangeNm": 30 }
+    { "kind": "hydrophone", "maxRangeNm": 30 },
+    { "kind": "lookout", "maxRangeNm": 6 }
   ],
   "defaultStations": [
     { "id": "controls", "name": "Controls", "capabilities": ["helm", "engineering", "plot"] },
-    { "id": "sensors", "name": "Sensors", "capabilities": ["radar", "hydrophone"] }
+    { "id": "sensors", "name": "Sensors", "capabilities": ["radar", "hydrophone", "lookout"] }
   ]
 }

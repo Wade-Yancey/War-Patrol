@@ -40,7 +40,8 @@ export function defaultTwoScreenStations(
         {
           id: STATION_ID_SENSORS,
           name: 'Sensors',
-          capabilities: ['radar', 'hydrophone'],
+          // lookout = periscope optics on the Sensors CRT
+          capabilities: ['radar', 'hydrophone', 'lookout'],
         },
       ];
     case 'Cruiser':

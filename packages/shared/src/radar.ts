@@ -1,6 +1,7 @@
 import { RADAR_MAX_RANGE_NM, RADAR_SURFACE_DEPTH_M } from './constants.js';
 import { defaultActiveSonarSensor } from './activeSonar.js';
 import { defaultHydrophoneSensor } from './hydrophone.js';
+import { defaultLookoutSensor } from './periscope.js';
 import type { HullClass, LatLonDepth, RadarSignature, SensorDef, UnitState } from './types.js';
 import { isHullClass, resolveVesselIdentity } from './vessel.js';
 
@@ -33,7 +34,7 @@ export function defaultRadarSignature(
 /**
  * Default installed sensors by hull class.
  * - Destroyer: radar + active search sonar (no hydrophone)
- * - Fleet Submarine: radar + hydrophone
+ * - Fleet Submarine: radar + hydrophone + lookout (periscope)
  * - Other warships: radar only
  */
 export function defaultSensors(hullClassOrType: HullClass | string | undefined): SensorDef[] {
@@ -52,6 +53,8 @@ export function defaultSensors(hullClassOrType: HullClass | string | undefined):
       const sensors: SensorDef[] = [{ kind: 'radar', maxRangeNm: RADAR_MAX_RANGE_NM }];
       const hydro = defaultHydrophoneSensor(hullClass);
       if (hydro) sensors.push(hydro);
+      const lookout = defaultLookoutSensor(hullClass);
+      if (lookout) sensors.push(lookout);
       return sensors;
     }
     case 'Cruiser':
