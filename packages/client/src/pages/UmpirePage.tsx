@@ -10,8 +10,10 @@ import {
   TIMER_STEP_SECONDS,
   VESSEL_TYPES,
   classesForType,
+  clampSpeedToMax,
   coerceVesselIdentity,
   conditionLabel,
+  defaultMaxSpeedForClass,
   formatWallDuration,
   parseWallDuration,
   snapWallDuration,
@@ -78,6 +80,17 @@ export function UmpirePage() {
 
   const classOptions = useMemo(() => classesForType(editType), [editType]);
 
+  /**
+   * Speed bound for the draft class: use live unit max when class unchanged
+   * (library override), else taxonomic class default.
+   */
+  const editMaxSpeed = useMemo(() => {
+    if (selectedUnit && selectedUnit.class === editClass && selectedUnit.maxSpeed > 0) {
+      return Math.round(selectedUnit.maxSpeed);
+    }
+    return Math.round(defaultMaxSpeedForClass(editClass));
+  }, [selectedUnit, editClass]);
+
   const loadDraftFromUnit = (u: NonNullable<typeof selectedUnit>) => {
     const identity = coerceVesselIdentity(u.type, u.class);
     setEditName(u.name);
@@ -120,9 +133,13 @@ export function UmpirePage() {
     markDirty();
     setEditType(next);
     const allowed = classesForType(next);
+    let nextClass = editClass;
     if (!allowed.includes(editClass)) {
-      setEditClass(allowed[0] ?? 'Destroyer');
+      nextClass = allowed[0] ?? 'Destroyer';
+      setEditClass(nextClass);
     }
+    const max = defaultMaxSpeedForClass(nextClass);
+    setEditSpeed((s) => Math.round(clampSpeedToMax(s, max)));
     if (next === 'Aircraft' && !editFlightLevel) {
       setEditFlightLevel('medium');
     }
@@ -136,6 +153,8 @@ export function UmpirePage() {
     const identity = coerceVesselIdentity(editType, next);
     setEditClass(identity.class);
     setEditType(identity.type);
+    const max = defaultMaxSpeedForClass(identity.class);
+    setEditSpeed((s) => Math.round(clampSpeedToMax(s, max)));
   };
 
   const login = async (e?: FormEvent) => {
@@ -651,18 +670,19 @@ export function UmpirePage() {
                           format={(v) => `${String(v).padStart(3, '0')}°`}
                         />
                         <TouchNumber
-                          label="Speed"
+                          label={`Speed (max ${editMaxSpeed} kn)`}
                           value={editSpeed}
                           onChange={(v) => {
                             markDirty();
-                            setEditSpeed(v);
+                            setEditSpeed(Math.round(clampSpeedToMax(v, editMaxSpeed)));
                           }}
-                          min={-Math.round(selectedUnit.maxSpeed)}
-                          max={Math.round(selectedUnit.maxSpeed)}
+                          min={-editMaxSpeed}
+                          max={editMaxSpeed}
                           step={1}
                           unit="kn"
                           showSlider
                           disabled={editCondition === 'sunk' || editPropulsion === 'disabled'}
+                          hint={`Class cap ±${editMaxSpeed} kn · tap readout to type`}
                         />
                         <div className="control-actions">
                           <button
@@ -674,7 +694,7 @@ export function UmpirePage() {
                                 () =>
                                   api.updateUnit(gameId, token, selectedUnit.id, {
                                     heading: editHeading,
-                                    speed: editSpeed,
+                                    speed: clampSpeedToMax(editSpeed, editMaxSpeed),
                                   }),
                                 'Navigation applied',
                               )

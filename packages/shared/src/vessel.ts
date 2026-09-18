@@ -178,6 +178,40 @@ export function factionAccent(faction: Faction): 'blue' | 'red' | 'civilian' {
   return sideFromFaction(faction) as 'blue' | 'red' | 'civilian';
 }
 
+/**
+ * Default max speed (knots) by hull class — WWII / early Cold War approximations.
+ * Matches docs/simulation-physics.md. Concrete library hulls may differ
+ * (e.g. Gato-class stub **21** vs Fleet Submarine enum default **20**).
+ */
+export const CLASS_MAX_SPEED_KNOTS: Record<HullClass, number> = {
+  'Fleet Submarine': 20,
+  Destroyer: 36,
+  Cruiser: 32,
+  'Aircraft Carrier': 33,
+  Merchant: 11,
+  Oiler: 18,
+  Battleship: 33,
+  Fighter: 320,
+  Bomber: 250,
+};
+
+/** @deprecated Prefer {@link CLASS_MAX_SPEED_KNOTS}. */
+export const CLASS_DEFAULT_MAX_SPEED = CLASS_MAX_SPEED_KNOTS;
+
+export function defaultMaxSpeedForClass(hullClass: HullClass | string | undefined): number {
+  if (hullClass && hullClass in CLASS_MAX_SPEED_KNOTS) {
+    return CLASS_MAX_SPEED_KNOTS[hullClass as HullClass];
+  }
+  return 20;
+}
+
+/** Clamp signed speed to ±class max (knots). */
+export function clampSpeedToMax(speed: number, maxSpeed: number): number {
+  const absMax = Math.abs(maxSpeed);
+  if (!(absMax > 0) || !Number.isFinite(speed)) return 0;
+  return Math.min(absMax, Math.max(-absMax, speed));
+}
+
 export function defaultSubsystems(): UnitSubsystems {
   return { propulsion: 'intact', sensors: 'intact' };
 }
