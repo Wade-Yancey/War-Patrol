@@ -1,8 +1,14 @@
 /** Schema version for Scenario and Save documents (ARCH-SM-03/08). */
 export const SCHEMA_VERSION = 1 as const;
 
-/** Default wall-clock seconds for an ordering phase. */
+/** Default wall-clock seconds for an ordering phase (3 min). */
 export const DEFAULT_TURN_SECONDS = 180;
+
+/** Umpire order-timer touch step (30 seconds). */
+export const TIMER_STEP_SECONDS = 30;
+
+/** Default umpire “extend timer” amount (1 minute). */
+export const TIMER_EXTEND_SECONDS = 60;
 
 /**
  * Default in-game seconds advanced per resolved turn (Wade: 5 min for we-go ASW).

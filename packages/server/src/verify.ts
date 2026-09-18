@@ -5,6 +5,7 @@
  */
 import { buildApp } from './app.js';
 import { runtime } from './game/runtime.js';
+import { formatWallDuration, parseWallDuration, snapWallDuration } from '@war-patrol/shared';
 
 type Json = Record<string, unknown>;
 
@@ -20,6 +21,12 @@ async function main() {
     results.push(`${ok ? 'PASS' : 'FAIL'}: ${name}${detail ? ` — ${detail}` : ''}`);
     if (!ok) throw new Error(`FAILED: ${name}${detail ? ` — ${detail}` : ''}`);
   };
+
+  check('formatWallDuration minutes-first', formatWallDuration(180) === '3m');
+  check('formatWallDuration with seconds', formatWallDuration(210) === '3m 30s');
+  check('parseWallDuration bare minutes', parseWallDuration('3') === 180);
+  check('parseWallDuration mm:ss', parseWallDuration('3:30') === 210);
+  check('snapWallDuration 30s', snapWallDuration(200, 30) === 210);
 
   const api = async (
     method: string,
