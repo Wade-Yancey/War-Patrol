@@ -496,7 +496,10 @@ label {
 
 .radar-station-panel {
   margin-top: 1rem;
-  padding: 0.75rem 0.85rem 1rem;
+  padding: 0.65rem 0.7rem 0.85rem;
+  overflow-x: hidden;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .radar-station-head {
@@ -513,53 +516,71 @@ label {
 
 .radar-scope {
   display: grid;
-  gap: 0.85rem;
+  gap: 0.75rem;
   grid-template-columns: 1fr;
   align-items: stretch;
   justify-items: center;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 .radar-scope-svg {
   display: block;
-  width: min(100%, 92vw, 88vh);
+  width: min(100%, 92vw, 72vh);
   height: auto;
-  max-height: min(88vh, 920px);
+  max-height: min(72vh, 720px);
   touch-action: manipulation;
   user-select: none;
+  min-width: 0;
 }
 
 .radar-side-panel {
-  width: min(100%, 36rem);
+  width: 100%;
+  max-width: min(100%, 28rem);
   justify-self: stretch;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.75rem;
+  min-width: 0;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+.radar-scale-panel,
+.radar-contact-list {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .radar-scale-panel h3,
 .radar-contact-list h3 {
-  margin: 0 0 0.65rem;
+  margin: 0 0 0.45rem;
   font-family: var(--font-display);
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--phosphor);
 }
 
 .radar-scale-readout {
-  margin: 0 0 0.65rem;
-  font-size: 1rem;
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
 }
 
 .radar-scale-buttons {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.5rem;
+  gap: 0.4rem;
 }
 
 .radar-scale-buttons button {
-  min-height: 3rem;
+  min-height: 2.75rem;
   width: 100%;
+  padding: 0.45rem 0.5rem;
+  font-size: 0.8rem;
 }
 
 .radar-sweep {
@@ -589,41 +610,86 @@ label {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: 0.35rem;
+  min-width: 0;
 }
 
 .radar-contact-list li {
-  display: grid;
-  grid-template-columns: 7.5rem 4.5rem 5rem 1fr;
-  gap: 0.5rem;
-  align-items: center;
-  min-height: 2.75rem;
-  padding: 0.4rem 0.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  align-items: stretch;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.35rem 0.45rem;
   border: 1px solid var(--line);
   background: var(--bezel-inset);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-size: 0.85rem;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
-@media (min-width: 1100px) {
+.radar-contact-list .readout {
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.radar-contact-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.55rem;
+  align-items: baseline;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  min-width: 0;
+}
+
+.radar-contact-meta span {
+  white-space: nowrap;
+}
+
+@media (min-width: 900px) {
   .radar-scope {
-    grid-template-columns: minmax(0, 1fr) 16rem;
+    grid-template-columns: minmax(0, 1fr) minmax(11.5rem, 15rem);
     align-items: start;
+    gap: 0.65rem;
   }
 
   .radar-scope-svg {
-    width: min(100%, 88vh);
+    width: min(100%, 68vh);
+    max-height: min(68vh, 680px);
     justify-self: stretch;
   }
 
   .radar-side-panel {
     width: 100%;
-    padding-top: 0.5rem;
+    max-width: none;
+    padding-top: 0.25rem;
   }
 
   .radar-scale-buttons {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .radar-scale-buttons button {
+    min-height: 2.5rem;
+    font-size: 0.75rem;
+    padding: 0.35rem 0.4rem;
+  }
+}
+
+@media (min-width: 1100px) {
+  .radar-scope {
+    grid-template-columns: minmax(0, 1fr) minmax(13rem, 16rem);
+  }
+
+  .radar-scope-svg {
+    width: min(100%, 72vh);
+    max-height: min(72vh, 720px);
   }
 }
 

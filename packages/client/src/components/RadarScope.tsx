@@ -330,9 +330,11 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
               {visibleContacts.map((c, i) => (
                 <li key={c.id} className="mono">
                   <span className="readout">Contact {i + 1}</span>
-                  <span>{String(Math.round(c.bearing)).padStart(3, '0')}°</span>
-                  <span>{c.rangeNm.toFixed(1)} nm</span>
-                  <span className="muted">{c.signature}</span>
+                  <div className="radar-contact-meta">
+                    <span>{String(Math.round(c.bearing)).padStart(3, '0')}°</span>
+                    <span>{c.rangeNm.toFixed(1)} nm</span>
+                    <span>{c.signature}</span>
+                  </div>
                 </li>
               ))}
             </ul>
