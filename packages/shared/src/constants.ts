@@ -19,6 +19,12 @@ export const METERS_PER_NM = 1852;
 /** Stub surface-search radar max range (nm) for destroyer-class demos. */
 export const RADAR_MAX_RANGE_NM = 25;
 
+/**
+ * Depth (m) at/above which a unit is treated as surfaced for radar:
+ * own-ship PPI usable, and target returns an echo.
+ */
+export const RADAR_SURFACE_DEPTH_M = 5;
+
 /** Detection range multiplier by radar signature size. */
 export const RADAR_SIGNATURE_RANGE_FACTOR = {
   small: 0.7,

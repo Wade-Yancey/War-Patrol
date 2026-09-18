@@ -502,6 +502,16 @@ label {
   box-sizing: border-box;
 }
 
+.radar-unavailable {
+  border: 1px solid var(--line);
+  background: var(--bezel-inset);
+  padding: 1.25rem 1rem;
+  min-height: 8rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
 .radar-station-head {
   display: flex;
   flex-wrap: wrap;

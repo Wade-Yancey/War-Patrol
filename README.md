@@ -28,8 +28,11 @@ pnpm dev
 
 Demo scenario passwords: umpire `umpire`, destroyer `blue`, submarine `red`.
 
-**Porter Radar:** after creating a game, open umpire → USS Porter → **Radar** link, or go to  
-`/g/<gameId>/v/porter-demo/s/radar` (password `blue`). Fletcher has a dedicated Radar station plus an installed radar sensor; Gato does not get Radar by default.
+**Porter Radar:** after creating a game, open umpire → USS Porter → **Radar**, or  
+`/g/<gameId>/v/porter-demo/s/radar` (password `blue`).
+
+**Gato Radar:** umpire → USS Gato → **Radar**, or `/g/<gameId>/v/gato-demo/s/radar` (password `red`).  
+Sub PPI only when surfaced (depth ≤ 5 m); umpire **Apply depth** 40 m shows “Radar unavailable — submerged” and clears the sub as a contact on Porter’s scope.
 
 ### Production-style (API serves built client)
 

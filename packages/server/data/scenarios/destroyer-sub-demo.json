@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "destroyer-sub-demo",
   "name": "Destroyer vs Submarine",
-  "description": "Demo: Fletcher destroyer vs Gato submarine. Sub starts surfaced so destroyer Radar sees an echo; dive below ~5 m to drop the radar contact. PvP mode.",
+  "description": "Demo: Fletcher destroyer vs Gato submarine. Both have Radar. Sub starts surfaced (visible + own PPI live); dive below ~5 m to clear the echo and disable sub radar. PvP mode.",
   "mode": "pvp",
   "operatingArea": {
     "minLat": 34.0,
@@ -56,11 +56,12 @@
       "maxSpeed": 21,
       "turnRate": 5,
       "radarSignature": "small",
-      "sensors": [],
+      "sensors": [{ "kind": "radar", "maxRangeNm": 25 }],
       "stations": [
         { "id": "conn", "name": "Conn", "capabilities": ["helm", "plot"] },
         { "id": "engineering", "name": "Maneuvering", "capabilities": ["engineering"] },
         { "id": "sonar", "name": "Sonar", "capabilities": ["hydrophone"] },
+        { "id": "radar", "name": "Radar", "capabilities": ["radar"] },
         { "id": "periscope", "name": "Periscope", "capabilities": ["lookout"] },
         { "id": "torpedo-fwd", "name": "Forward Torpedo", "capabilities": ["torpedo"] },
         { "id": "radio", "name": "Radio", "capabilities": ["comms"] }

@@ -43,13 +43,14 @@ function unitFromScenario(seed: Scenario['units'][number]): UnitState {
   });
 }
 
-/** Fill missing sensor / signature fields for older saves; keep destroyer Radar station. */
+/** Fill missing sensor / signature fields for older saves; ensure Radar station when radar is installed. */
 function normalizeUnit(unit: UnitState): UnitState {
   const sensors = unit.sensors ?? defaultSensors(unit.type);
   const stations = unit.stations.map((s) => ({ ...s, capabilities: [...s.capabilities] }));
-  // ARCH-STA-03: destroyers should expose a dedicated Radar station.
+  const hasRadarSensor = sensors.some((s) => s.kind === 'radar');
+  // Destroyers, cruisers, and (Wade) submarines with radar get a dedicated Radar station.
   if (
-    (unit.type === 'destroyer' || unit.type === 'cruiser') &&
+    hasRadarSensor &&
     !stations.some((s) => s.capabilities.includes('radar'))
   ) {
     stations.push({ id: 'radar', name: 'Radar', capabilities: ['radar'] });

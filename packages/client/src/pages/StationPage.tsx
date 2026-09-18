@@ -165,16 +165,32 @@ export function StationPage() {
                   <h2>Radar · PPI</h2>
                   <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
                     Call contacts by true bearing on the rim. Raw sensor picture only — no friend/foe identity.
-                    {(vessel.radarMaxRangeNm ?? 0) > 0
-                      ? ` Surface search · ${vessel.radarMaxRangeNm} nm.`
-                      : ' No radar set installed on this vessel.'}
+                    {vessel.radarUnavailableReason === 'submerged'
+                      ? ''
+                      : vessel.radarOperational
+                        ? ` Surface search · ${vessel.radarMaxRangeNm ?? 25} nm.`
+                        : vessel.radarUnavailableReason === 'no_sensor'
+                          ? ' No radar set installed on this vessel.'
+                          : ''}
                   </p>
                 </div>
-                <RadarScope
-                  contacts={vessel.radarContacts ?? []}
-                  maxRangeNm={vessel.radarMaxRangeNm ?? 25}
-                  ownHeading={vessel.unit.heading}
-                />
+                {vessel.radarOperational === false && vessel.radarUnavailableReason === 'submerged' ? (
+                  <div className="radar-unavailable" role="status">
+                    <p className="readout" style={{ margin: 0 }}>
+                      Radar unavailable — submerged
+                    </p>
+                    <p className="muted" style={{ margin: '0.5rem 0 0', fontSize: '0.85rem' }}>
+                      Surface (depth ≤ 5 m) to energize the set and paint contacts. Submerged hulls also do not
+                      return echoes to other radars.
+                    </p>
+                  </div>
+                ) : (
+                  <RadarScope
+                    contacts={vessel.radarContacts ?? []}
+                    maxRangeNm={vessel.radarMaxRangeNm ?? 25}
+                    ownHeading={vessel.unit.heading}
+                  />
+                )}
               </section>
             )}
 
