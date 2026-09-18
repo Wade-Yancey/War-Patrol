@@ -52,6 +52,12 @@ export class GameRuntime {
       if (!save) return null;
       return buildViewForSession(save, this.sse, client.role, client.unitId, client.stationId);
     });
+    // Connection join/leave should refresh umpire (and station multi-connect) without a turn bump.
+    this.sse.onConnectionsChanged = (gameId) => {
+      const save = this.games.get(gameId);
+      if (!save) return;
+      this.sse.broadcast(gameId, save.stateVersion);
+    };
   }
 
   getGame(gameId: string): GameSave | undefined {

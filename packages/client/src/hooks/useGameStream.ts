@@ -17,12 +17,14 @@ export function useGameStream({ gameId, token, enabled = true }: Options) {
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lastVersionRef = useRef(0);
+  const refreshRef = useRef<() => Promise<void>>(async () => undefined);
 
   useEffect(() => {
     if (!enabled || !token || !gameId) return;
 
     let cancelled = false;
     let reconnectTimer: number | undefined;
+    let abort: AbortController | undefined;
 
     const fullRefresh = async () => {
       try {
@@ -36,18 +38,20 @@ export function useGameStream({ gameId, token, enabled = true }: Options) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Refresh failed');
       }
     };
+    refreshRef.current = fullRefresh;
 
     const connect = () => {
-      // EventSource cannot set Authorization headers; use fetch-stream polyfill via query is avoided —
-      // instead open SSE with a cookie-less bearer through a tiny wrapper using fetch ReadableStream.
       void openSse();
     };
 
     const openSse = async () => {
+      abort?.abort();
+      abort = new AbortController();
       try {
         await fullRefresh();
         const res = await fetch(`/api/games/${gameId}/events`, {
           headers: { Authorization: `Bearer ${token}` },
+          signal: abort.signal,
         });
         if (!res.ok || !res.body) {
           throw new Error(`SSE failed (${res.status})`);
@@ -78,8 +82,12 @@ export function useGameStream({ gameId, token, enabled = true }: Options) {
               };
               if (payload.type !== 'state') continue;
               const prev = lastVersionRef.current;
+              // Same version is OK (connection-count refresh without turn bump).
+              if (prev > 0 && payload.stateVersion < prev) {
+                await fullRefresh();
+                continue;
+              }
               if (prev > 0 && payload.stateVersion > prev + 1) {
-                // Version gap → full refresh
                 await fullRefresh();
                 continue;
               }
@@ -92,7 +100,7 @@ export function useGameStream({ gameId, token, enabled = true }: Options) {
           }
         }
       } catch (err) {
-        if (cancelled) return;
+        if (cancelled || (err instanceof DOMException && err.name === 'AbortError')) return;
         setConnected(false);
         setError(err instanceof Error ? err.message : 'SSE disconnected');
       } finally {
@@ -107,9 +115,12 @@ export function useGameStream({ gameId, token, enabled = true }: Options) {
 
     return () => {
       cancelled = true;
+      abort?.abort();
       if (reconnectTimer) window.clearTimeout(reconnectTimer);
     };
   }, [gameId, token, enabled]);
 
-  return { view, stateVersion, connected, error, setView };
+  const refresh = () => refreshRef.current();
+
+  return { view, stateVersion, connected, error, setView, refresh };
 }

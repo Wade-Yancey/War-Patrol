@@ -1,4 +1,4 @@
-import { METERS_PER_DEG_LAT } from './constants.js';
+import { METERS_PER_DEG_LAT, METERS_PER_NM } from './constants.js';
 import type { BoundingBox, LatLonDepth } from './types.js';
 
 /** Equirectangular meters-per-degree longitude at a given latitude. */
@@ -52,4 +52,25 @@ export function projectToUv(
 
 export function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
+}
+
+/** East/north meters from `from` to `to` on the equirectangular plane (ARCH-SP). */
+export function eastNorthMeters(
+  from: Pick<LatLonDepth, 'lat' | 'lon'>,
+  to: Pick<LatLonDepth, 'lat' | 'lon'>,
+): { east: number; north: number } {
+  const north = (to.lat - from.lat) * METERS_PER_DEG_LAT;
+  const east = (to.lon - from.lon) * metersPerDegLon(from.lat);
+  return { east, north };
+}
+
+/** True bearing (degrees) and range (nm) from `from` to `to`. */
+export function bearingRangeNm(
+  from: Pick<LatLonDepth, 'lat' | 'lon'>,
+  to: Pick<LatLonDepth, 'lat' | 'lon'>,
+): { bearing: number; rangeNm: number } {
+  const { east, north } = eastNorthMeters(from, to);
+  const bearing = normalizeHeading((Math.atan2(east, north) * 180) / Math.PI);
+  const rangeNm = Math.hypot(east, north) / METERS_PER_NM;
+  return { bearing, rangeNm };
 }

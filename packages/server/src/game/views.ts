@@ -6,6 +6,7 @@ import type {
   VesselView,
 } from '@war-patrol/shared';
 import type { SseHub } from './sse.js';
+import { buildRadarContacts } from './radar.js';
 
 export function buildUmpireView(save: GameSave, sse: SseHub): UmpireView {
   return {
@@ -48,7 +49,7 @@ export function buildVesselView(
     save.turn.phase === 'open' &&
     (station.capabilities.includes('helm') || station.capabilities.includes('engineering'));
 
-  return {
+  const view: VesselView = {
     role: 'vessel',
     gameId: save.id,
     name: save.name,
@@ -73,6 +74,14 @@ export function buildVesselView(
     stationConnections: sse.stationConnectionCounts(save.id, unit.id),
     canSubmitOrders: canOrder,
   };
+
+  if (station.capabilities.includes('radar')) {
+    const radar = buildRadarContacts(unit, save);
+    view.radarContacts = radar.contacts;
+    view.radarMaxRangeNm = radar.maxRangeNm;
+  }
+
+  return view;
 }
 
 export function buildViewForSession(

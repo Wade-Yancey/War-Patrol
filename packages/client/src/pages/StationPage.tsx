@@ -7,6 +7,7 @@ import { TurnStatus } from '../components/TurnStatus';
 import { CrtShell } from '../components/CrtShell';
 import { TouchNumber } from '../components/TouchNumber';
 import { EotTelegraph } from '../components/EotTelegraph';
+import { RadarScope } from '../components/RadarScope';
 
 function tokenKey(gameId: string, accessToken: string, stationId: string) {
   return `wp-token:${gameId}:${accessToken}:${stationId}`;
@@ -43,7 +44,10 @@ export function StationPage() {
   const caps = useMemo(() => new Set(vessel?.station.capabilities ?? []), [vessel]);
   const canHelm = caps.has('helm');
   const canEot = caps.has('engineering') || caps.has('helm');
-  const stubCaps = [...caps].filter((c) => c !== 'helm' && c !== 'engineering');
+  const canRadar = caps.has('radar');
+  const stubCaps = [...caps].filter(
+    (c) => c !== 'helm' && c !== 'engineering' && c !== 'radar',
+  );
 
   const login = async (e?: FormEvent) => {
     e?.preventDefault();
@@ -92,7 +96,7 @@ export function StationPage() {
                 autoFocus
               />
             </label>
-            <button className="primary" type="button" onClick={() => void login()}>
+            <button className="primary" type="submit">
               Enter station
             </button>
             <Link to="/">← Home</Link>
@@ -154,6 +158,21 @@ export function StationPage() {
                 </p>
               )}
             </section>
+
+            {canRadar && (
+              <section className="panel stack" style={{ marginTop: '1rem' }}>
+                <h2>Radar · PPI</h2>
+                <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+                  Call contacts by true bearing on the rim. Picture is server-filtered — no other ship ground
+                  truth.
+                </p>
+                <RadarScope
+                  contacts={vessel.radarContacts ?? []}
+                  maxRangeNm={vessel.radarMaxRangeNm ?? 25}
+                  ownHeading={vessel.unit.heading}
+                />
+              </section>
+            )}
 
             <div className="grid-2" style={{ marginTop: '1rem' }}>
               <section className="panel">
@@ -252,7 +271,7 @@ export function StationPage() {
                   <section className="panel">
                     <h2>Other stations (stub)</h2>
                     <p className="muted" style={{ marginTop: 0 }}>
-                      Capability panels deferred past Phase 1:
+                      Capability panels deferred:
                     </p>
                     <div className="row">
                       {stubCaps.map((c) => (
