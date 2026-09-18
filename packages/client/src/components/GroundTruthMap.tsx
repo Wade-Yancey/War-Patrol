@@ -366,14 +366,26 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
         // Skip if entirely off-plot (cheap cull)
         const anyOn = pts.some((p) => p.u >= -0.08 && p.u <= 1.08 && p.v >= -0.08 && p.v <= 1.08);
         if (!anyOn) return null;
+        const last = pts[pts.length - 1]!;
+        const prev = pts[pts.length - 2]!;
         return {
           id: unit.id,
           color,
           points: pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '),
+          /** Last inbound screen delta — keep unit labels off the trail. */
+          inboundDx: last.x - prev.x,
         };
       })
-      .filter((x): x is { id: string; color: string; points: string } => Boolean(x));
+      .filter(
+        (x): x is { id: string; color: string; points: string; inboundDx: number } => Boolean(x),
+      );
   }, [units, trailByUnit, view]);
+
+  const trailInboundDx = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const t of trailPolylines) map.set(t.id, t.inboundDx);
+    return map;
+  }, [trailPolylines]);
 
   const markers = useMemo(
     () =>
@@ -389,6 +401,9 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
         const tipLen = clamp(14 + zoom * 2, 14, 22);
         const courseLen = tipLen + 10;
         const courseDelta = Math.abs(((ordered - heading + 540) % 360) - 180);
+        // Default labels to the right; flip left when the trail approaches from the right.
+        const inboundDx = trailInboundDx.get(unit.id);
+        const flipLeft = inboundDx != null && inboundDx < -0.5;
         return {
           id: unit.id,
           name: unit.name.toUpperCase(),
@@ -400,6 +415,8 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
           courseX: x + Math.cos(oRad) * courseLen,
           courseY: y + Math.sin(oRad) * courseLen,
           showOrdered: courseDelta > 0.5,
+          labelDx: flipLeft ? -12 : 12,
+          labelAnchor: flipLeft ? ('end' as const) : ('start' as const),
           identity: `${unit.faction.toUpperCase()} · ${unit.class.toUpperCase()} · ${unit.type.toUpperCase()}${
             unit.condition === 'sunk'
               ? unit.type === 'Aircraft'
@@ -418,24 +435,37 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
           onPlot: u >= -0.05 && u <= 1.05 && v >= -0.05 && v <= 1.05,
         };
       }),
-    [units, view, zoom],
+    [units, view, zoom, trailInboundDx],
   );
 
-  /** Optional sensor detection radii — memoized; skipped when overlay is off. */
-  const rangeBands = useMemo(() => {
-    if (!showSensorRanges) return [];
-    const bands: {
+  /**
+   * Sensor detection radii — rings under trails; one stacked label block per unit
+   * so radar + hydrophone readouts do not share the same glyph box.
+   */
+  const { rangeRings, rangeLabelGroups } = useMemo(() => {
+    if (!showSensorRanges) return { rangeRings: [], rangeLabelGroups: [] };
+    const rings: {
       key: string;
       x: number;
       y: number;
       rx: number;
       ry: number;
       color: string;
-      label: string;
-      labelX: number;
-      labelY: number;
       fillOpacity: number;
     }[] = [];
+    const labelGroups: {
+      key: string;
+      x: number;
+      y: number;
+      color: string;
+      lines: string[];
+    }[] = [];
+    const kindOrder: Record<string, number> = {
+      radar: 0,
+      hydrophone: 1,
+      active_sonar: 2,
+      lookout: 3,
+    };
     for (const unit of units) {
       const ranges = sensorRangesForUnit(unit);
       if (!ranges.length) continue;
@@ -445,29 +475,55 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
       const x = u * W;
       const y = v * H;
       const color = unitAccent(unit);
+      let maxRy = 0;
+      let anyRing = false;
+      let anyOversized = false;
+      let anyEdgeOnPlot = false;
+      const lines: { kind: string; text: string; order: number }[] = [];
       for (const r of ranges) {
         const { rx, ry } = rangeBandRadiiPx(unit.position.lat, r.rangeNm, view);
         // Cull rings that cannot intersect the plot (cheap).
         if (x + rx < -8 || x - rx > W + 8 || y + ry < -8 || y - ry > H + 8) continue;
+        anyRing = true;
+        maxRy = Math.max(maxRy, ry);
         const edgeOnPlot =
           x - rx > 8 && x + rx < W - 8 && y - ry > 8 && y + ry < H - 8;
-        // When the ring dwarfs the view, lean on fill + near-unit label.
+        if (edgeOnPlot) anyEdgeOnPlot = true;
         const oversized = rx > W * 0.55 || ry > H * 0.55;
-        bands.push({
+        if (oversized) anyOversized = true;
+        rings.push({
           key: `${unit.id}-${r.kind}-${r.rangeNm}`,
           x,
           y,
           rx,
           ry,
           color,
-          label: `${r.kind.toUpperCase()} ${r.rangeNm} NM`,
-          labelX: x,
-          labelY: edgeOnPlot ? y + ry + 11 : clamp(y + 26, 18, H - 10),
           fillOpacity: oversized ? 0.1 : 0.05,
         });
+        lines.push({
+          kind: r.kind,
+          text: `${r.kind.toUpperCase()} ${r.rangeNm} NM`,
+          order: kindOrder[r.kind] ?? 9,
+        });
       }
+      if (!anyRing || !lines.length) continue;
+      lines.sort((a, b) => a.order - b.order || a.kind.localeCompare(b.kind));
+      const lineH = 11;
+      const stackH = lines.length * lineH;
+      // Prefer outer-ring south when the largest ring fits; else stack below the
+      // unit name/identity/speed block (clears ~y+16) so kinds stay readable.
+      const rawY =
+        anyEdgeOnPlot && !anyOversized ? y + maxRy + 12 : y + 42;
+      const yClamped = clamp(rawY, 14, H - 4 - stackH);
+      labelGroups.push({
+        key: `${unit.id}-sensor-labels`,
+        x: clamp(x, 48, W - 48),
+        y: yClamped,
+        color,
+        lines: lines.map((l) => l.text),
+      });
     }
-    return bands;
+    return { rangeRings: rings, rangeLabelGroups: labelGroups };
   }, [units, view, showSensorRanges]);
 
   /** Operating-area outline in the same world projection (when it intersects the view). */
@@ -659,38 +715,26 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
             {showSensorRanges ? ' · RANGES' : ''}
           </text>
 
-          {/* Sensor detection radii — under trails/units; only when toggle is on */}
+          {/* Sensor rings only — under trails; labels painted after trails */}
           <g clipPath="url(#gt-plot-clip)" pointerEvents="none">
-            {rangeBands.map((b) => (
-              <g key={b.key}>
-                <ellipse
-                  cx={b.x}
-                  cy={b.y}
-                  rx={b.rx}
-                  ry={b.ry}
-                  fill={b.color}
-                  fillOpacity={b.fillOpacity}
-                  stroke={b.color}
-                  strokeWidth={1.5}
-                  strokeOpacity={0.65}
-                  strokeDasharray="6 4"
-                />
-                <text
-                  x={b.labelX}
-                  y={b.labelY}
-                  textAnchor="middle"
-                  fill={b.color}
-                  fillOpacity={0.9}
-                  fontSize={9}
-                  fontFamily="IBM Plex Mono, monospace"
-                >
-                  {b.label}
-                </text>
-              </g>
+            {rangeRings.map((b) => (
+              <ellipse
+                key={b.key}
+                cx={b.x}
+                cy={b.y}
+                rx={b.rx}
+                ry={b.ry}
+                fill={b.color}
+                fillOpacity={b.fillOpacity}
+                stroke={b.color}
+                strokeWidth={1.5}
+                strokeOpacity={0.65}
+                strokeDasharray="6 4"
+              />
             ))}
           </g>
 
-          {/* Trails under units — simple polylines (CRT-friendly, cheap) */}
+          {/* Trails under labels/units — simple polylines (CRT-friendly, cheap) */}
           {trailPolylines.map((t) => (
             <polyline
               key={`trail-${t.id}`}
@@ -703,6 +747,29 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
               strokeLinecap="round"
             />
           ))}
+
+          {/* Combined per-unit sensor readout — above trails so rings stay labeled */}
+          <g className="map-sensor-labels" pointerEvents="none">
+            {rangeLabelGroups.map((g) => (
+              <g key={g.key}>
+                {g.lines.map((line, i) => (
+                  <text
+                    key={`${g.key}-${i}`}
+                    className="map-plot-label"
+                    x={g.x}
+                    y={g.y + i * 11}
+                    textAnchor="middle"
+                    fill={g.color}
+                    fillOpacity={0.92}
+                    fontSize={9}
+                    fontFamily="IBM Plex Mono, monospace"
+                  >
+                    {line}
+                  </text>
+                ))}
+              </g>
+            ))}
+          </g>
 
           {markers
             .filter((m) => m.onPlot)
@@ -741,8 +808,10 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
                   strokeLinecap="square"
                 />
                 <text
-                  x={m.x + 12}
+                  className="map-plot-label"
+                  x={m.x + m.labelDx}
                   y={m.y - 10}
+                  textAnchor={m.labelAnchor}
                   fill="#7dff9a"
                   fontSize={11}
                   fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
@@ -750,8 +819,10 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
                   {m.name}
                 </text>
                 <text
-                  x={m.x + 12}
+                  className="map-plot-label"
+                  x={m.x + m.labelDx}
                   y={m.y + 4}
+                  textAnchor={m.labelAnchor}
                   fill="#5a9a68"
                   fontSize={9}
                   fontFamily="IBM Plex Mono, monospace"
@@ -759,8 +830,10 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
                   {m.identity}
                 </text>
                 <text
-                  x={m.x + 12}
+                  className="map-plot-label"
+                  x={m.x + m.labelDx}
                   y={m.y + 16}
+                  textAnchor={m.labelAnchor}
                   fill="#5a9a68"
                   fontSize={10}
                   fontFamily="IBM Plex Mono, monospace"

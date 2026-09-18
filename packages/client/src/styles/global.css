@@ -1182,6 +1182,15 @@ label {
   width: 100%;
 }
 
+/* Dark CRT halo so unit/sensor labels stay readable over trails & rings */
+.umpire-gt-map .map-plot-label {
+  stroke: #061a0e;
+  stroke-width: 3.5px;
+  stroke-linejoin: round;
+  paint-order: stroke fill;
+  stroke-opacity: 0.92;
+}
+
 .umpire-modules {
   width: 100%;
 }
