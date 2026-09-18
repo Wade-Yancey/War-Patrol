@@ -36,11 +36,11 @@ const H = 540;
 const ASPECT = W / H;
 
 /**
- * Compact north-up bearing rose inset (top-right).
- * Screen Y grows down; 0° = north = up (same convention as unit heading ticks).
+ * Compact north-up bearing rose inset (bottom-left).
+ * Keeps the plot center and unit labels clear; screen Y grows down; 0° = north = up.
  */
-const COMPASS_CX = W - 78;
-const COMPASS_CY = 78;
+const COMPASS_CX = 72;
+const COMPASS_CY = H - 72;
 const COMPASS_R = 54;
 
 type CompassTick = {
@@ -432,12 +432,16 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
       ry: number;
       color: string;
       label: string;
+      labelX: number;
       labelY: number;
+      fillOpacity: number;
     }[] = [];
     for (const unit of units) {
       const ranges = sensorRangesForUnit(unit);
       if (!ranges.length) continue;
       const { u, v } = projectToUv(unit.position.lat, unit.position.lon, view);
+      // Skip sensors whose host is far off-plot (ring may still clip in).
+      if (u < -0.6 || u > 1.6 || v < -0.6 || v > 1.6) continue;
       const x = u * W;
       const y = v * H;
       const color = unitAccent(unit);
@@ -445,6 +449,10 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
         const { rx, ry } = rangeBandRadiiPx(unit.position.lat, r.rangeNm, view);
         // Cull rings that cannot intersect the plot (cheap).
         if (x + rx < -8 || x - rx > W + 8 || y + ry < -8 || y - ry > H + 8) continue;
+        const edgeOnPlot =
+          x - rx > 8 && x + rx < W - 8 && y - ry > 8 && y + ry < H - 8;
+        // When the ring dwarfs the view, lean on fill + near-unit label.
+        const oversized = rx > W * 0.55 || ry > H * 0.55;
         bands.push({
           key: `${unit.id}-${r.kind}-${r.rangeNm}`,
           x,
@@ -453,7 +461,9 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
           ry,
           color,
           label: `${r.kind.toUpperCase()} ${r.rangeNm} NM`,
-          labelY: y + ry + 11,
+          labelX: x,
+          labelY: edgeOnPlot ? y + ry + 11 : clamp(y + 26, 18, H - 10),
+          fillOpacity: oversized ? 0.1 : 0.05,
         });
       }
     }
@@ -582,6 +592,11 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
           aria-label="Ground truth lat/lon map with true north compass — drag to pan"
         >
           <rect width={W} height={H} fill="#061a0e" />
+          <defs>
+            <clipPath id="gt-plot-clip">
+              <rect x={0} y={0} width={W} height={H} />
+            </clipPath>
+          </defs>
 
           {/* Parallels (constant latitude) — world space, fixed ° step */}
           {graticule.parallels.map((p) => (
@@ -641,33 +656,35 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
           </text>
 
           {/* Sensor detection radii — under trails/units; only when toggle is on */}
-          {rangeBands.map((b) => (
-            <g key={b.key} pointerEvents="none">
-              <ellipse
-                cx={b.x}
-                cy={b.y}
-                rx={b.rx}
-                ry={b.ry}
-                fill={b.color}
-                fillOpacity={0.04}
-                stroke={b.color}
-                strokeWidth={1.25}
-                strokeOpacity={0.55}
-                strokeDasharray="5 4"
-              />
-              <text
-                x={b.x}
-                y={clamp(b.labelY, 12, H - 4)}
-                textAnchor="middle"
-                fill={b.color}
-                fillOpacity={0.75}
-                fontSize={9}
-                fontFamily="IBM Plex Mono, monospace"
-              >
-                {b.label}
-              </text>
-            </g>
-          ))}
+          <g clipPath="url(#gt-plot-clip)" pointerEvents="none">
+            {rangeBands.map((b) => (
+              <g key={b.key}>
+                <ellipse
+                  cx={b.x}
+                  cy={b.y}
+                  rx={b.rx}
+                  ry={b.ry}
+                  fill={b.color}
+                  fillOpacity={b.fillOpacity}
+                  stroke={b.color}
+                  strokeWidth={1.5}
+                  strokeOpacity={0.65}
+                  strokeDasharray="6 4"
+                />
+                <text
+                  x={b.labelX}
+                  y={b.labelY}
+                  textAnchor="middle"
+                  fill={b.color}
+                  fillOpacity={0.9}
+                  fontSize={9}
+                  fontFamily="IBM Plex Mono, monospace"
+                >
+                  {b.label}
+                </text>
+              </g>
+            ))}
+          </g>
 
           {/* Trails under units — simple polylines (CRT-friendly, cheap) */}
           {trailPolylines.map((t) => (

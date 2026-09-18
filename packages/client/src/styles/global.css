@@ -1043,6 +1043,9 @@ label {
   padding: 0.4rem 0.45rem;
   border-bottom: 1px solid var(--line);
   background: var(--bg-panel);
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
 }
 
 .map-toolbar button {
