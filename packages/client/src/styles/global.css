@@ -497,9 +497,13 @@ label {
 .radar-station-panel {
   margin-top: 0.75rem;
   padding: 0.5rem 0.55rem 0.7rem;
-  overflow-x: hidden;
   max-width: 100%;
   box-sizing: border-box;
+}
+
+.radar-station-panel.stack {
+  /* Override generic .stack full-bleed feel so the PPI row can hug. */
+  align-items: stretch;
 }
 
 .radar-unavailable {
@@ -525,40 +529,52 @@ label {
 }
 
 .radar-scope {
-  display: grid;
-  gap: 0.4rem;
-  grid-template-columns: 1fr;
-  align-items: start;
-  justify-items: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  align-items: stretch;
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  overflow-x: hidden;
   box-sizing: border-box;
+}
+
+/* Remaining space after the side panel; keeps the PPI circular and centered. */
+.radar-scope-plot {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
 }
 
 .radar-scope-svg {
   display: block;
-  width: min(100%, 92vw, 72vh);
+  /* Square box only — never stretch into a non-circular flex item. */
+  width: min(100%, 92vw, 70vh);
   height: auto;
-  max-height: min(72vh, 720px);
+  aspect-ratio: 1 / 1;
+  max-height: min(70vh, 720px);
+  max-width: 100%;
   touch-action: manipulation;
   user-select: none;
-  min-width: 0;
-  margin: 0 auto;
+  flex: none;
 }
 
 .radar-side-panel {
+  flex: 0 0 auto;
   width: 100%;
-  max-width: min(100%, 28rem);
+  max-width: 18rem;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
+  gap: 0.5rem;
   min-width: 0;
-  overflow-x: hidden;
   box-sizing: border-box;
-  padding-top: 0;
+  /* Hug contact/scale content — no dead band past the table. */
+  align-self: center;
 }
 
 .radar-scale-panel,
@@ -629,14 +645,13 @@ label {
 .radar-contact-list li {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.12rem;
   align-items: stretch;
+  width: 100%;
   min-width: 0;
-  max-width: 100%;
-  padding: 0.35rem 0.45rem;
+  padding: 0.3rem 0.4rem;
   border: 1px solid var(--line);
   background: var(--bezel-inset);
-  overflow: hidden;
   box-sizing: border-box;
 }
 
@@ -644,14 +659,12 @@ label {
   font-size: 0.8rem;
   letter-spacing: 0.04em;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .radar-contact-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.2rem 0.55rem;
+  gap: 0.15rem 0.5rem;
   align-items: baseline;
   font-size: 0.7rem;
   letter-spacing: 0.04em;
@@ -666,28 +679,33 @@ label {
 
 @media (min-width: 900px) {
   .radar-scope {
-    display: flex;
     flex-direction: row;
     flex-wrap: nowrap;
-    align-items: flex-start;
+    align-items: stretch;
     justify-content: flex-start;
-    gap: 0.35rem;
+    gap: 0.5rem;
+  }
+
+  .radar-scope-plot {
+    flex: 1 1 0;
+    width: auto;
+    align-self: stretch;
   }
 
   .radar-scope-svg {
-    flex: 1 1 auto;
-    width: auto;
-    max-width: min(calc(100% - 13.5rem), 68vh);
-    max-height: min(68vh, 680px);
-    margin: 0;
+    /* Fill the plot area up to a square capped by height — stay circular. */
+    width: min(100%, 70vh, 720px);
+    max-width: 100%;
+    max-height: min(70vh, 720px);
   }
 
   .radar-side-panel {
-    flex: 0 0 13rem;
-    width: 13rem;
-    max-width: 13rem;
+    flex: 0 0 auto;
+    width: max-content;
+    max-width: 13.5rem;
+    min-width: 11.25rem;
     margin: 0;
-    padding-top: 0;
+    align-self: flex-start;
   }
 
   .radar-scale-buttons {
@@ -703,18 +721,17 @@ label {
 
 @media (min-width: 1100px) {
   .radar-scope {
-    gap: 0.4rem;
+    gap: 0.55rem;
   }
 
   .radar-scope-svg {
-    max-width: min(calc(100% - 14.5rem), 72vh);
-    max-height: min(72vh, 720px);
+    width: min(100%, 74vh, 760px);
+    max-height: min(74vh, 760px);
   }
 
   .radar-side-panel {
-    flex-basis: 14rem;
-    width: 14rem;
     max-width: 14rem;
+    min-width: 11.5rem;
   }
 }
 
@@ -748,9 +765,16 @@ label {
   font-size: 0.8rem;
 }
 
+.map-cursor-readout {
+  margin-left: auto;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
 .map-viewport {
   touch-action: none;
-  cursor: grab;
+  cursor: crosshair;
   user-select: none;
   -webkit-user-select: none;
 }

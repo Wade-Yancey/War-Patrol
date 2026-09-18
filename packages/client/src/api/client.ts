@@ -54,8 +54,11 @@ export const api = {
       `/api/games/${gameId}/auth/vessel`,
       { method: 'POST', body: JSON.stringify(body) },
     ),
-  view: (gameId: string, token: string) =>
-    request<{ stateVersion: number; view: ClientView }>(`/api/games/${gameId}/view`, { token }),
+  view: (gameId: string, token: string, init?: { signal?: AbortSignal }) =>
+    request<{ stateVersion: number; view: ClientView }>(`/api/games/${gameId}/view`, {
+      token,
+      signal: init?.signal,
+    }),
   saveGame: (gameId: string, token: string) =>
     request<{ ok: boolean }>(`/api/games/${gameId}/save`, { method: 'POST', token }),
   orders: (gameId: string, token: string, body: { course?: number; eot?: EotSetting }) =>
