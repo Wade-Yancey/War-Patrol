@@ -21,7 +21,7 @@ export function CrtShell({
           title={`${stripe} side`}
         />
       )}
-      <div className="crt-screen fade-in">{children}</div>
+      <div className="crt-screen">{children}</div>
     </div>
   );
 }
