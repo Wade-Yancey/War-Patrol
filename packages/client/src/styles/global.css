@@ -1188,6 +1188,126 @@ label {
   margin-top: 0.2rem;
 }
 
+/* Helmsman gyro compass — one instrument, phosphor CRT language */
+.helm-compass {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  max-width: 22rem;
+  margin: 0 auto;
+}
+
+.helm-compass-svg {
+  display: block;
+  width: min(100%, 18rem);
+  height: auto;
+  aspect-ratio: 1 / 1;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+.helm-compass-needle {
+  transition: transform 0.45s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .helm-compass-needle {
+    transition: none;
+  }
+}
+
+.helm-compass-readouts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.65rem 1.1rem;
+  width: 100%;
+}
+
+.helm-compass-readout {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.helm-compass-key {
+  font-family: var(--font-display);
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--phosphor-dim);
+}
+
+.helm-compass-val {
+  font-size: 1.35rem;
+  letter-spacing: 0.04em;
+}
+
+.helm-compass-ok {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  color: var(--phosphor);
+  border: 1px solid color-mix(in srgb, var(--phosphor) 45%, transparent);
+  padding: 0.1rem 0.35rem;
+}
+
+.helm-compass-readout--draft .helm-compass-val {
+  opacity: 0.75;
+}
+
+.helm-compass-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.55rem 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--ink-muted);
+}
+
+.helm-compass-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.helm-compass-swatch {
+  display: inline-block;
+  width: 0.85rem;
+  height: 0.85rem;
+  flex: none;
+}
+
+.helm-compass-swatch--hdg {
+  background: #7dff9a;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.helm-compass-swatch--crs {
+  width: 0;
+  height: 0;
+  border-left: 0.4rem solid transparent;
+  border-right: 0.4rem solid transparent;
+  border-bottom: 0.7rem solid #3dff6a;
+  background: none;
+}
+
+.helm-compass-swatch--set {
+  border: 1.5px solid #7dff9a;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.helm-compass-caption {
+  margin: 0;
+  font-size: 0.75rem;
+  text-align: center;
+  line-height: 1.35;
+}
+
 @media (max-width: 600px) {
   .app-shell {
     padding: 0.85rem 0.75rem 1.5rem;

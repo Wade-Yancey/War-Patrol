@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   EOT_LABELS,
+  conditionLabel,
+  effectiveMaxSpeed,
   formatPendingOrdersSummary,
   hasPendingOrders,
-  conditionLabel,
   type EotSetting,
   type VesselView,
 } from '@war-patrol/shared';
@@ -15,6 +16,7 @@ import { TurnStatus } from '../components/TurnStatus';
 import { CrtShell } from '../components/CrtShell';
 import { TouchNumber } from '../components/TouchNumber';
 import { EotTelegraph } from '../components/EotTelegraph';
+import { HelmCompass } from '../components/HelmCompass';
 import { RadarScope } from '../components/RadarScope';
 
 function tokenKey(gameId: string, accessToken: string, stationId: string) {
@@ -41,6 +43,13 @@ export function StationPage() {
 
   const vessel = view?.role === 'vessel' ? (view as VesselView) : null;
   const faction = vessel?.unit.faction;
+  const speedCeiling = vessel
+    ? effectiveMaxSpeed({
+        type: vessel.unit.type,
+        maxSpeed: vessel.unit.maxSpeed,
+        depth: vessel.unit.position.depth,
+      })
+    : 0;
   const sideAccent =
     faction === 'Blue' || faction === 'Red' || faction === 'Civilian'
       ? faction.toLowerCase()
@@ -302,7 +311,15 @@ export function StationPage() {
                     </tr>
                     <tr>
                       <th>Speed</th>
-                      <td className="readout">{vessel.unit.speed.toFixed(1)} kn</td>
+                      <td className="readout">
+                        {vessel.unit.speed.toFixed(1)} kn
+                        <span className="muted" style={{ marginLeft: 8, fontSize: '0.8em' }}>
+                          max {speedCeiling.toFixed(0)} kn
+                          {vessel.unit.type === 'Submarine' && vessel.unit.position.depth > 5
+                            ? ' submerged'
+                            : ''}
+                        </span>
+                      </td>
                     </tr>
                     <tr>
                       <th>Turn rate</th>
@@ -328,6 +345,12 @@ export function StationPage() {
                 {canHelm && (
                   <section className="panel stack">
                     <h2>Helm</h2>
+                    <HelmCompass
+                      heading={vessel.unit.heading}
+                      orderedCourse={vessel.unit.orderedCourse}
+                      draftCourse={course}
+                      turnRate={vessel.unit.turnRate}
+                    />
                     <TouchNumber
                       label="Ordered / steering course"
                       value={course}
@@ -340,10 +363,6 @@ export function StationPage() {
                       disabled={!vessel.canSubmitOrders}
                       format={(v) => `${String(v).padStart(3, '0')}°`}
                     />
-                    <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-                      Current heading {vessel.unit.heading.toFixed(0)}° · ship turns toward ordered course
-                      each resolve ({vessel.unit.turnRate.toFixed(0)}°/min).
-                    </p>
                     <div className="control-actions">
                       <button
                         className="primary"
