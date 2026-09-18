@@ -6,11 +6,26 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { registerRoutes } from './routes/api.js';
 import { runtime } from './game/runtime.js';
+import { redactTokenQuery } from './game/sessions.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export async function buildApp() {
-  const app = Fastify({ logger: true });
+  const app = Fastify({
+    logger: {
+      serializers: {
+        req(request) {
+          return {
+            method: request.method,
+            url: redactTokenQuery(request.url),
+            hostname: request.hostname,
+            remoteAddress: request.ip,
+            remotePort: request.socket?.remotePort,
+          };
+        },
+      },
+    },
+  });
 
   await app.register(cors, {
     origin: true,
