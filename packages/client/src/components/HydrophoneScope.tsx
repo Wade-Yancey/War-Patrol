@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import {
+  ACTIVE_SONAR_PING_INTERVAL_SEC,
   hydrophoneContactGain,
   hydrophoneContactVoiceOffset,
   hydrophoneListenCue,
@@ -64,9 +65,10 @@ type ContactVoice = {
 };
 
 /**
- * CRT hydrophone bearing dial — audio-first (passive listen ≠ active sonar).
+ * CRT hydrophone bearing dial — audio-first (passive listen ≠ own active sonar PPI).
  * Operator trains a listen needle; Web Audio mixes looping propeller samples
- * with per-contact gain from range × beam alignment. No visual contacts.
+ * with per-contact gain from range × beam alignment. Active-sonar ping contacts
+ * play as attenuated oscillator beeps. No visual contacts.
  */
 function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
   const [listenBearing, setListenBearing] = useState(0);
@@ -84,6 +86,7 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
   const contactsRef = useRef(contacts);
   const nudgeHoldDelayRef = useRef<number | null>(null);
   const nudgeHoldIntervalRef = useRef<number | null>(null);
+  const pingTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     listenRef.current = listenBearing;
@@ -192,7 +195,8 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
     const master = masterGainRef.current;
     if (!ctx || !buffer || !master || ctx.state !== 'running') return;
 
-    const list = contactsRef.current;
+    // Propeller loops only — active-sonar pings use a separate oscillator path.
+    const list = contactsRef.current.filter((c) => c.kind !== 'active_sonar_ping');
     const bearing = listenRef.current;
     const keep = new Set(list.map((c) => c.id));
 
@@ -240,13 +244,54 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
     }
   }, []);
 
+  const playPingBeeps = useCallback(async () => {
+    const ctx = audioCtxRef.current;
+    const master = masterGainRef.current;
+    if (!ctx || !master || ctx.state !== 'running') return;
+    const bearing = listenRef.current;
+    const pings = contactsRef.current.filter((c) => c.kind === 'active_sonar_ping');
+    for (const c of pings) {
+      const gainAmt = hydrophoneContactGain(c.rangeNm, bearing, c.bearing);
+      if (gainAmt < 0.02) continue;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 720;
+      gain.gain.value = 0.0001;
+      osc.connect(gain);
+      gain.connect(master);
+      const t0 = ctx.currentTime;
+      const peak = Math.min(0.28, 0.08 + gainAmt * 0.35);
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.16);
+      osc.start(t0);
+      osc.stop(t0 + 0.18);
+    }
+  }, []);
+
   useEffect(() => {
     if (!listening) {
       stopAllVoices();
+      if (pingTimerRef.current != null) {
+        window.clearInterval(pingTimerRef.current);
+        pingTimerRef.current = null;
+      }
       return;
     }
     syncVoices();
-  }, [listening, contacts, listenBearing, syncVoices, stopAllVoices]);
+    void playPingBeeps();
+    pingTimerRef.current = window.setInterval(
+      () => void playPingBeeps(),
+      ACTIVE_SONAR_PING_INTERVAL_SEC * 1000,
+    );
+    return () => {
+      if (pingTimerRef.current != null) {
+        window.clearInterval(pingTimerRef.current);
+        pingTimerRef.current = null;
+      }
+    };
+  }, [listening, contacts, listenBearing, syncVoices, stopAllVoices, playPingBeeps]);
 
   const stopNudgeHold = useCallback(() => {
     if (nudgeHoldDelayRef.current != null) {
@@ -263,6 +308,9 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
     return () => {
       stopNudgeHold();
       stopAllVoices();
+      if (pingTimerRef.current != null) {
+        window.clearInterval(pingTimerRef.current);
+      }
       void audioCtxRef.current?.close();
       audioCtxRef.current = null;
     };
@@ -553,8 +601,8 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
           RNG ≈ invert range falloff (R0=8 nm) when needle is on contact · ~nm coarsened · max{' '}
           {maxRangeNm} nm ·{' '}
           {contacts.length === 0
-            ? 'no underway contacts in range'
-            : `${contacts.length} acoustic contact${contacts.length === 1 ? '' : 's'} (audio only)`}
+            ? 'no acoustic contacts in range'
+            : `${contacts.filter((c) => c.kind !== 'active_sonar_ping').length} prop · ${contacts.filter((c) => c.kind === 'active_sonar_ping').length} ping (audio only)`}
           {listening && audioReady ? ' · LIVE' : ''}
         </p>
         {audioError && <p className="error">{audioError}</p>}

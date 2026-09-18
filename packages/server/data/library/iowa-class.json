@@ -8,10 +8,7 @@
   "radarSignature": "large",
   "sensors": [{ "kind": "radar", "maxRangeNm": 25 }],
   "defaultStations": [
-    { "id": "bridge", "name": "Bridge", "capabilities": ["helm", "lookout", "plot"] },
-    { "id": "engineering", "name": "Engineering", "capabilities": ["engineering"] },
-    { "id": "radar", "name": "Radar", "capabilities": ["radar"] },
-    { "id": "guns", "name": "Main Battery", "capabilities": ["weapons"] },
-    { "id": "radio", "name": "Radio", "capabilities": ["comms"] }
+    { "id": "controls", "name": "Controls", "capabilities": ["helm", "engineering", "plot"] },
+    { "id": "sensors", "name": "Sensors", "capabilities": ["radar"] }
   ]
 }

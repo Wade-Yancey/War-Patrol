@@ -6,7 +6,10 @@ import {
   defaultMaxSpeed,
   defaultRadarSignature,
   defaultSensors,
+  defaultTwoScreenStations,
   effectiveMaxSpeed,
+  hasActiveSonarSensor,
+  isTwoScreenStationLayout,
   normalizeHeading,
   normalizePositionForType,
   resolveCondition,
@@ -87,6 +90,7 @@ function unitFromScenario(seed: Scenario['units'][number]): UnitState {
     }),
     radarSignature,
     sensors: seed.sensors ? seed.sensors.map((s) => ({ ...s })) : defaultSensors(identity.class),
+    activeSonarEnabled: Boolean(seed.activeSonarEnabled),
   });
 }
 
@@ -98,34 +102,34 @@ function normalizeUnit(unit: UnitState): UnitState {
     classId: unit.classId,
   });
   let sensors = unit.sensors ?? defaultSensors(identity.class);
-  const stations = unit.stations.map((s) => ({ ...s, capabilities: [...s.capabilities] }));
-  const hasRadarSensor = sensors.some((s) => s.kind === 'radar');
-  // Destroyers, cruisers, and (Wade) submarines with radar get a dedicated Radar station.
-  if (
-    hasRadarSensor &&
-    !stations.some((s) => s.capabilities.includes('radar'))
-  ) {
-    stations.push({ id: 'radar', name: 'Radar', capabilities: ['radar'] });
-  }
-  // Legacy "Sonar" station id/name → Hydrophone (passive listen ≠ active sonar).
-  for (const s of stations) {
-    if (
-      s.capabilities.includes('hydrophone') &&
-      (s.id === 'sonar' || s.name === 'Sonar')
-    ) {
-      s.id = 'hydrophone';
-      s.name = 'Hydrophone';
+  // Migrate multi-station layouts → Controls + Sensors; reconcile equipment by class.
+  let stations = unit.stations.map((s) => ({ ...s, capabilities: [...s.capabilities] }));
+  if (!isTwoScreenStationLayout(stations)) {
+    const defaults = defaultTwoScreenStations(identity.class);
+    if (defaults.length > 0) {
+      stations = defaults.map((s) => ({ ...s, capabilities: [...s.capabilities] }));
+    }
+  } else {
+    // Keep only controls/sensors; refresh capabilities from class defaults when present.
+    const defaults = defaultTwoScreenStations(identity.class);
+    if (defaults.length > 0) {
+      stations = defaults.map((s) => ({ ...s, capabilities: [...s.capabilities] }));
     }
   }
-  // Hydrophone station present but legacy save omitted hydrophone sensor — install default set.
-  if (
-    stations.some((s) => s.capabilities.includes('hydrophone')) &&
-    !sensors.some((s) => s.kind === 'hydrophone')
-  ) {
-    const defaults = defaultSensors(identity.class);
-    const hydro = defaults.find((s) => s.kind === 'hydrophone');
-    if (hydro) sensors = [...sensors, { ...hydro }];
+
+  // Reconcile installed sensors to class defaults for player hulls (DD: no hydrophone;
+  // sub: no active sonar; ensure required sets exist).
+  const classDefaults = defaultSensors(identity.class);
+  if (classDefaults.length > 0) {
+    const byKind = new Map(sensors.map((s) => [s.kind, s]));
+    for (const d of classDefaults) {
+      if (!byKind.has(d.kind)) byKind.set(d.kind, { ...d });
+    }
+    // Drop sensors that are no longer on this class (e.g. destroyer hydrophone).
+    const allowed = new Set(classDefaults.map((s) => s.kind));
+    sensors = [...byKind.values()].filter((s) => allowed.has(s.kind));
   }
+
   const radarSignature = unit.radarSignature ?? defaultRadarSignature(identity.class);
   const heading = normalizeHeading(unit.heading);
   const orderedCourse =
@@ -183,6 +187,9 @@ function normalizeUnit(unit: UnitState): UnitState {
     }),
     sensors,
     stations,
+    activeSonarEnabled: hasActiveSonarSensor({ sensors })
+      ? Boolean(unit.activeSonarEnabled)
+      : false,
   };
 }
 
@@ -420,7 +427,7 @@ export class GameRuntime {
         throw Object.assign(new Error('Station cannot set course'), { statusCode: 403 });
       }
       if (patch.eot !== undefined && !station.capabilities.includes('engineering') && !station.capabilities.includes('helm')) {
-        // Allow helm OR engineering to set EOT for Phase 1 usability on bridge/conn
+        // Allow helm OR engineering to set EOT for Phase 1 usability on controls
         throw Object.assign(new Error('Station cannot set EOT'), { statusCode: 403 });
       }
 
@@ -429,6 +436,32 @@ export class GameRuntime {
       if (patch.course !== undefined) {
         unit.orderedCourse = normalizeHeading(patch.course);
       }
+      return save;
+    });
+  }
+
+  /**
+   * Immediate operator toggle for destroyer active search sonar (Sensors station).
+   * Not a turn order — applies now and persists until toggled off.
+   */
+  setActiveSonar(
+    gameId: string,
+    unitId: string,
+    stationId: string,
+    enabled: boolean,
+  ): GameSave {
+    return this.touch(gameId, (save) => {
+      const unit = save.units.find((u) => u.id === unitId);
+      if (!unit) throw Object.assign(new Error('Unit not found'), { statusCode: 404 });
+      const station = unit.stations.find((s) => s.id === stationId);
+      if (!station) throw Object.assign(new Error('Station not found'), { statusCode: 404 });
+      if (!station.capabilities.includes('active_sonar')) {
+        throw Object.assign(new Error('Station cannot control active sonar'), { statusCode: 403 });
+      }
+      if (!hasActiveSonarSensor(unit)) {
+        throw Object.assign(new Error('No active sonar set installed'), { statusCode: 400 });
+      }
+      unit.activeSonarEnabled = Boolean(enabled);
       return save;
     });
   }

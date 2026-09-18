@@ -1779,3 +1779,29 @@ label {
     min-height: 3rem;
   }
 }
+
+.sensor-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.75rem 0 0.25rem;
+}
+
+.sensor-tabs button {
+  min-height: 2.75rem;
+  min-width: 6.5rem;
+  touch-action: manipulation;
+}
+
+.sonar-toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.35rem 0 0.75rem;
+}
+
+.sonar-toggle-row button {
+  min-height: 2.75rem;
+  touch-action: manipulation;
+}

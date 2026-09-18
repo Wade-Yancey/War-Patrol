@@ -8,15 +8,10 @@
   "radarSignature": "medium",
   "sensors": [
     { "kind": "radar", "maxRangeNm": 25 },
-    { "kind": "hydrophone", "maxRangeNm": 30 }
+    { "kind": "active_sonar", "maxRangeNm": 8 }
   ],
   "defaultStations": [
-    { "id": "bridge", "name": "Bridge", "capabilities": ["helm", "lookout", "plot"] },
-    { "id": "engineering", "name": "Engineering", "capabilities": ["engineering"] },
-    { "id": "hydrophone", "name": "Hydrophone", "capabilities": ["hydrophone"] },
-    { "id": "radar", "name": "Radar", "capabilities": ["radar"] },
-    { "id": "guns", "name": "Gun Director", "capabilities": ["weapons"] },
-    { "id": "torpedo", "name": "Torpedo Mount", "capabilities": ["torpedo"] },
-    { "id": "radio", "name": "Radio", "capabilities": ["comms"] }
+    { "id": "controls", "name": "Controls", "capabilities": ["helm", "engineering", "plot"] },
+    { "id": "sensors", "name": "Sensors", "capabilities": ["radar", "active_sonar"] }
   ]
 }

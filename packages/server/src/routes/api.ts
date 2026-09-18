@@ -301,6 +301,34 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  app.post<{
+    Params: { gameId: string };
+    Body: { enabled: boolean };
+  }>('/api/games/:gameId/active-sonar', async (request, reply) => {
+    try {
+      const session = requireSession(request, request.params.gameId);
+      if (session.role !== 'vessel' || !session.unitId || !session.stationId) {
+        return reply.code(403).send({ error: 'Vessel station session required' });
+      }
+      const enabled = Boolean(request.body?.enabled);
+      const save = runtime.setActiveSonar(
+        session.gameId,
+        session.unitId,
+        session.stationId,
+        enabled,
+      );
+      const unit = save.units.find((u) => u.id === session.unitId);
+      return {
+        ok: true,
+        stateVersion: save.stateVersion,
+        activeSonarEnabled: Boolean(unit?.activeSonarEnabled),
+      };
+    } catch (err) {
+      const e = httpError(err);
+      return reply.code(e.statusCode).send({ error: e.message });
+    }
+  });
+
   // --- Umpire turn controls ---
   app.post<{ Params: { gameId: string }; Body: { seconds: number } }>(
     '/api/games/:gameId/turn/timer',

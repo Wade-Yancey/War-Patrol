@@ -11,12 +11,7 @@
     { "kind": "hydrophone", "maxRangeNm": 30 }
   ],
   "defaultStations": [
-    { "id": "conn", "name": "Conn", "capabilities": ["helm", "plot"] },
-    { "id": "engineering", "name": "Maneuvering", "capabilities": ["engineering"] },
-    { "id": "hydrophone", "name": "Hydrophone", "capabilities": ["hydrophone"] },
-    { "id": "radar", "name": "Radar", "capabilities": ["radar"] },
-    { "id": "periscope", "name": "Periscope", "capabilities": ["lookout"] },
-    { "id": "torpedo-fwd", "name": "Forward Torpedo", "capabilities": ["torpedo"] },
-    { "id": "radio", "name": "Radio", "capabilities": ["comms"] }
+    { "id": "controls", "name": "Controls", "capabilities": ["helm", "engineering", "plot"] },
+    { "id": "sensors", "name": "Sensors", "capabilities": ["radar", "hydrophone"] }
   ]
 }

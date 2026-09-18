@@ -118,7 +118,7 @@ async function main() {
   const blueAuth = await api('POST', `/api/games/${gameId}/auth/vessel`, {
     accessToken: 'porter-demo',
     password: 'blue',
-    stationId: 'bridge',
+    stationId: 'controls',
   });
   check('blue vessel auth', blueAuth.status === 200);
   const blueToken = blueAuth.json.token as string;
@@ -126,7 +126,7 @@ async function main() {
   const redAuth = await api('POST', `/api/games/${gameId}/auth/vessel`, {
     accessToken: 'gato-demo',
     password: 'red',
-    stationId: 'conn',
+    stationId: 'controls',
   });
   check('red vessel auth', redAuth.status === 200);
   const redToken = redAuth.json.token as string;
@@ -160,7 +160,7 @@ async function main() {
   const radarAuth = await api('POST', `/api/games/${gameId}/auth/vessel`, {
     accessToken: 'porter-demo',
     password: 'blue',
-    stationId: 'radar',
+    stationId: 'sensors',
   });
   check('radar station auth', radarAuth.status === 200);
   const radarToken = radarAuth.json.token as string;
@@ -207,10 +207,16 @@ async function main() {
   check('order timer default 5 min', (uv.turn as Json).timerSeconds === 300);
   check('trails present', Array.isArray(uv.trails) && (uv.trails as unknown[]).length === 2);
   check(
-    'destroyer has Radar station',
+    'destroyer two-screen stations only',
     Array.isArray(porter.stations) &&
+      (porter.stations as Json[]).length === 2 &&
+      (porter.stations as Json[]).every((s) => s.id === 'controls' || s.id === 'sensors') &&
       (porter.stations as Json[]).some(
-        (s) => s.id === 'radar' && Array.isArray(s.capabilities) && (s.capabilities as string[]).includes('radar'),
+        (s) =>
+          s.id === 'sensors' &&
+          Array.isArray(s.capabilities) &&
+          (s.capabilities as string[]).includes('radar') &&
+          (s.capabilities as string[]).includes('active_sonar'),
       ),
   );
   check(
@@ -219,51 +225,165 @@ async function main() {
       (porter.sensors as Json[]).some((s) => s.kind === 'radar'),
   );
   check(
-    'sub has Radar station',
+    'destroyer has active_sonar sensor',
+    Array.isArray(porter.sensors) &&
+      (porter.sensors as Json[]).some((s) => s.kind === 'active_sonar'),
+  );
+  check(
+    'destroyer has no hydrophone sensor',
+    Array.isArray(porter.sensors) &&
+      !(porter.sensors as Json[]).some((s) => s.kind === 'hydrophone'),
+  );
+  check(
+    'sub two-screen stations only',
     Array.isArray(gato.stations) &&
+      (gato.stations as Json[]).length === 2 &&
+      (gato.stations as Json[]).every((s) => s.id === 'controls' || s.id === 'sensors') &&
       (gato.stations as Json[]).some(
-        (s) => s.id === 'radar' && Array.isArray(s.capabilities) && (s.capabilities as string[]).includes('radar'),
+        (s) =>
+          s.id === 'sensors' &&
+          Array.isArray(s.capabilities) &&
+          (s.capabilities as string[]).includes('radar') &&
+          (s.capabilities as string[]).includes('hydrophone'),
       ),
   );
   check(
     'sub has radar sensor',
     Array.isArray(gato.sensors) && (gato.sensors as Json[]).some((s) => s.kind === 'radar'),
   );
+  check(
+    'sub has hydrophone sensor',
+    Array.isArray(gato.sensors) &&
+      (gato.sensors as Json[]).some((s) => s.kind === 'hydrophone'),
+  );
   check('porter radar operational', rv.radarOperational === true);
-  check('bridge has no radar picture', !('radarContacts' in bv) || bv.radarContacts === undefined);
-
-  // 3c. Hydrophone station: polar audio cues, works submerged, no visual identity
-  const hydroAuth = await api('POST', `/api/games/${gameId}/auth/vessel`, {
+  check('controls has no radar picture', !('radarContacts' in bv) || bv.radarContacts === undefined);
+  check(
+    'umpire vessel links are two screens',
+    links.every(
+      (l) =>
+        Array.isArray(l.stations) &&
+        (l.stations as Json[]).length === 2 &&
+        (l.stations as Json[]).every((s) => s.stationId === 'controls' || s.stationId === 'sensors'),
+    ),
+  );
+  const legacyBridge = await api('POST', `/api/games/${gameId}/auth/vessel`, {
     accessToken: 'porter-demo',
     password: 'blue',
-    stationId: 'hydrophone',
+    stationId: 'bridge',
   });
-  check('hydrophone station auth', hydroAuth.status === 200);
-  const hydroToken = hydroAuth.json.token as string;
-  const hydroViewRes = await api('GET', `/api/games/${gameId}/view`, undefined, hydroToken);
-  check('hydrophone view ok', hydroViewRes.status === 200);
-  const hv = hydroViewRes.json.view as Json;
+  check('legacy bridge station rejected', legacyBridge.status === 404);
+
+  // 3c. Destroyer Sensors: active sonar toggle + forward cone (no hydrophone)
+  check('destroyer sensors has sonar fields', typeof rv.sonarOperational === 'boolean');
+  check('sonar off by default', rv.sonarOperational === false);
+  check('sonar off reason', rv.sonarUnavailableReason === 'sonar_off');
+  check('sonar half-angle stub', rv.sonarHalfAngleDeg === 30);
   check(
-    'hydrophone station named Hydrophone not Sonar',
-    Array.isArray(porter.stations) &&
-      (porter.stations as Json[]).some(
-        (s) =>
-          s.id === 'hydrophone' &&
-          s.name === 'Hydrophone' &&
-          Array.isArray(s.capabilities) &&
-          (s.capabilities as string[]).includes('hydrophone'),
-      ) &&
-      !(porter.stations as Json[]).some((s) => s.id === 'sonar' || s.name === 'Sonar'),
+    'sonar max range stub',
+    typeof rv.sonarMaxRangeNm === 'number' && (rv.sonarMaxRangeNm as number) === 8,
   );
-  check('hydrophone operational', hv.hydrophoneOperational === true);
-  check('hydrophone has contacts array', Array.isArray(hv.hydrophoneContacts));
-  const hContacts = hv.hydrophoneContacts as Array<Json>;
-  check('hydrophone hears underway contact', hContacts.length >= 1, `got ${hContacts.length}`);
+  check('destroyer sensors has no hydrophone picture', !('hydrophoneContacts' in rv));
+
+  const sonarOn = await api(
+    'POST',
+    `/api/games/${gameId}/active-sonar`,
+    { enabled: true },
+    radarToken,
+  );
+  check('active sonar toggle on', sonarOn.status === 200);
+  const sonarViewOn = await api('GET', `/api/games/${gameId}/view`, undefined, radarToken);
+  const svo = sonarViewOn.json.view as Json;
+  check('sonar operational when on', svo.sonarOperational === true);
+  check('sonar contacts array when on', Array.isArray(svo.sonarContacts));
+  // Gato is roughly NE of Porter heading 090 — may or may not be in ±30° cone depending on geometry.
+  // Place Gato dead ahead for a deterministic cone hit, then restore.
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    // Dead ahead of Porter (hdg 090) and inside active-sonar stub range (8 nm × small 0.7).
+    { position: { lat: 34.35, lon: -120.05, depth: 40 } },
+    umpireToken,
+  );
+  const sonarCone = await api('GET', `/api/games/${gameId}/view`, undefined, radarToken);
+  const scv = sonarCone.json.view as Json;
+  const sonarContacts = scv.sonarContacts as Array<Json>;
+  check('sonar paints submerged contact in forward cone', sonarContacts.length >= 1, `got ${sonarContacts.length}`);
+  check(
+    'sonar contact polar only',
+    !('position' in sonarContacts[0]) &&
+      typeof sonarContacts[0].bearing === 'number' &&
+      typeof sonarContacts[0].rangeNm === 'number',
+  );
+  check(
+    'sonar contact no identity fields',
+    !('side' in sonarContacts[0]) &&
+      !('name' in sonarContacts[0]) &&
+      !('faction' in sonarContacts[0]),
+  );
+  check(
+    'sonar contact has signature',
+    sonarContacts[0].signature === 'small' ||
+      sonarContacts[0].signature === 'medium' ||
+      sonarContacts[0].signature === 'large',
+  );
+  await api(
+    'POST',
+    `/api/games/${gameId}/active-sonar`,
+    { enabled: false },
+    radarToken,
+  );
+  const sonarOffAgain = await api('GET', `/api/games/${gameId}/view`, undefined, radarToken);
+  check(
+    'sonar no contacts when off',
+    ((sonarOffAgain.json.view as Json).sonarOperational === false) &&
+      Array.isArray((sonarOffAgain.json.view as Json).sonarContacts) &&
+      (((sonarOffAgain.json.view as Json).sonarContacts as unknown[])?.length ?? 0) === 0,
+  );
+
+  // Restore Gato near original, then exercise sub hydrophone Sensors
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { position: { lat: 34.42, lon: -119.95, depth: 0 }, speed: 6, eot: 'ahead_2' },
+    umpireToken,
+  );
+
+  // 3d. Sub Sensors hydrophone: submerged only; hears propellers + active-sonar pings
+  const subSensorsAuth = await api('POST', `/api/games/${gameId}/auth/vessel`, {
+    accessToken: 'gato-demo',
+    password: 'red',
+    stationId: 'sensors',
+  });
+  check('sub sensors station auth', subSensorsAuth.status === 200);
+  const subSensorsToken = subSensorsAuth.json.token as string;
+  const subSurfSensors = await api('GET', `/api/games/${gameId}/view`, undefined, subSensorsToken);
+  const sss = subSurfSensors.json.view as Json;
+  check('sub hydrophone unavailable on surface', sss.hydrophoneOperational === false);
+  check('sub hydrophone reason surfaced', sss.hydrophoneUnavailableReason === 'surfaced');
+  check('sub radar live on surface (sensors)', sss.radarOperational === true);
+
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { position: { depth: 40 } },
+    umpireToken,
+  );
+  const subDiveSensors = await api('GET', `/api/games/${gameId}/view`, undefined, subSensorsToken);
+  const sds = subDiveSensors.json.view as Json;
+  check('sub hydrophone operational submerged', sds.hydrophoneOperational === true);
+  check('sub hydrophone has contacts array', Array.isArray(sds.hydrophoneContacts));
+  const hContacts = sds.hydrophoneContacts as Array<Json>;
+  check('sub hydrophone hears underway destroyer', hContacts.length >= 1, `got ${hContacts.length}`);
   check(
     'hydrophone contact polar only',
     !('position' in hContacts[0]) &&
       typeof hContacts[0].bearing === 'number' &&
       typeof hContacts[0].rangeNm === 'number',
+  );
+  check(
+    'hydrophone contact has kind',
+    hContacts[0].kind === 'propeller' || hContacts[0].kind === 'active_sonar_ping',
   );
   check(
     'hydrophone contact no identity fields',
@@ -277,83 +397,42 @@ async function main() {
   );
   check(
     'hydrophone has max range',
-    typeof hv.hydrophoneMaxRangeNm === 'number' && (hv.hydrophoneMaxRangeNm as number) > 0,
+    typeof sds.hydrophoneMaxRangeNm === 'number' && (sds.hydrophoneMaxRangeNm as number) > 0,
   );
-  check(
-    'hydrophone max beyond radar stub',
-    (hv.hydrophoneMaxRangeNm as number) >= (rv.radarMaxRangeNm as number),
-  );
-  check(
-    'destroyer has hydrophone sensor',
-    Array.isArray(porter.sensors) &&
-      (porter.sensors as Json[]).some((s) => s.kind === 'hydrophone'),
-  );
-  check(
-    'sub has hydrophone sensor',
-    Array.isArray(gato.sensors) &&
-      (gato.sensors as Json[]).some((s) => s.kind === 'hydrophone'),
-  );
-  check('bridge has no hydrophone picture', !('hydrophoneContacts' in bv) || bv.hydrophoneContacts === undefined);
-  check('radar station has no hydrophone picture', !('hydrophoneContacts' in rv) || rv.hydrophoneContacts === undefined);
+  check('controls has no hydrophone picture', !('hydrophoneContacts' in bv) || bv.hydrophoneContacts === undefined);
 
-  // Stop Gato → no propeller emission
-  await api('PATCH', `/api/games/${gameId}/units/ss-212`, { speed: 0, eot: 'stop' }, umpireToken);
-  const hydroStopped = await api('GET', `/api/games/${gameId}/view`, undefined, hydroToken);
+  // Active sonar ON on Porter → sub hydrophone hears ping contact
+  await api('POST', `/api/games/${gameId}/active-sonar`, { enabled: true }, radarToken);
+  const subHearsPing = await api('GET', `/api/games/${gameId}/view`, undefined, subSensorsToken);
+  const pingContacts = ((subHearsPing.json.view as Json).hydrophoneContacts as Array<Json>).filter(
+    (c) => c.kind === 'active_sonar_ping',
+  );
+  check('sub hydrophone hears active sonar pings', pingContacts.length >= 1, `got ${pingContacts.length}`);
+  await api('POST', `/api/games/${gameId}/active-sonar`, { enabled: false }, radarToken);
+
+  // Stop Porter → propeller silent but (when sonar off) no ping either
+  await api('PATCH', `/api/games/${gameId}/units/dd-101`, { speed: 0, eot: 'stop' }, umpireToken);
+  const hydroStopped = await api('GET', `/api/games/${gameId}/view`, undefined, subSensorsToken);
   check(
-    'hydrophone silent when contact stopped',
+    'hydrophone silent when destroyer stopped and sonar off',
     Array.isArray((hydroStopped.json.view as Json).hydrophoneContacts) &&
       ((hydroStopped.json.view as Json).hydrophoneContacts as unknown[]).length === 0,
   );
   await api(
     'PATCH',
-    `/api/games/${gameId}/units/ss-212`,
-    { speed: 6, eot: 'ahead_2' },
+    `/api/games/${gameId}/units/dd-101`,
+    { speed: 12, eot: 'ahead_standard' },
     umpireToken,
   );
 
-  // Dive sub → hydrophone still hears (unlike radar); sub own hydrophone still works
-  await api(
-    'PATCH',
-    `/api/games/${gameId}/units/ss-212`,
-    { position: { depth: 40 } },
-    umpireToken,
-  );
-  const hydroAfterDive = await api('GET', `/api/games/${gameId}/view`, undefined, hydroToken);
-  check(
-    'hydrophone still hears submerged underway target',
-    Array.isArray((hydroAfterDive.json.view as Json).hydrophoneContacts) &&
-      ((hydroAfterDive.json.view as Json).hydrophoneContacts as unknown[]).length >= 1,
-  );
-  const subHydroAuth = await api('POST', `/api/games/${gameId}/auth/vessel`, {
-    accessToken: 'gato-demo',
-    password: 'red',
-    stationId: 'hydrophone',
-  });
-  check('sub hydrophone station auth', subHydroAuth.status === 200);
-  const subHydroToken = subHydroAuth.json.token as string;
-  const subHydroDive = await api('GET', `/api/games/${gameId}/view`, undefined, subHydroToken);
-  const shd = subHydroDive.json.view as Json;
-  check('sub hydrophone operational submerged', shd.hydrophoneOperational === true);
-  check(
-    'sub hydrophone hears destroyer while submerged',
-    Array.isArray(shd.hydrophoneContacts) && (shd.hydrophoneContacts as unknown[]).length >= 1,
-  );
+  // Sub radar while surfaced can see destroyer
   await api(
     'PATCH',
     `/api/games/${gameId}/units/ss-212`,
     { position: { depth: 0 } },
     umpireToken,
   );
-
-  // Sub radar while surfaced can see destroyer
-  const subRadarAuth = await api('POST', `/api/games/${gameId}/auth/vessel`, {
-    accessToken: 'gato-demo',
-    password: 'red',
-    stationId: 'radar',
-  });
-  check('sub radar station auth', subRadarAuth.status === 200);
-  const subRadarToken = subRadarAuth.json.token as string;
-  const subRadarSurf = await api('GET', `/api/games/${gameId}/view`, undefined, subRadarToken);
+  const subRadarSurf = await api('GET', `/api/games/${gameId}/view`, undefined, subSensorsToken);
   const srv = subRadarSurf.json.view as Json;
   check('sub radar operational on surface', srv.radarOperational === true);
   check(
@@ -361,7 +440,7 @@ async function main() {
     Array.isArray(srv.radarContacts) && (srv.radarContacts as unknown[]).length >= 1,
   );
 
-  // Dive sub → clears as target on Porter + own PPI unavailable
+  // Dive sub → clears as target on Porter + own PPI unavailable + hydrophone up
   await api(
     'PATCH',
     `/api/games/${gameId}/units/ss-212`,
@@ -371,7 +450,7 @@ async function main() {
   const radarAfterDive = await api('GET', `/api/games/${gameId}/view`, undefined, radarToken);
   const contactsDived = (radarAfterDive.json.view as Json).radarContacts as unknown[];
   check('radar clears when submerged', contactsDived.length === 0, `got ${contactsDived.length}`);
-  const subRadarDive = await api('GET', `/api/games/${gameId}/view`, undefined, subRadarToken);
+  const subRadarDive = await api('GET', `/api/games/${gameId}/view`, undefined, subSensorsToken);
   const srd = subRadarDive.json.view as Json;
   check('sub radar unavailable submerged', srd.radarOperational === false);
   check('sub radar reason submerged', srd.radarUnavailableReason === 'submerged');
@@ -379,6 +458,7 @@ async function main() {
     'sub radar no contacts while submerged',
     Array.isArray(srd.radarContacts) && (srd.radarContacts as unknown[]).length === 0,
   );
+  check('sub hydrophone up while submerged', srd.hydrophoneOperational === true);
   await api(
     'PATCH',
     `/api/games/${gameId}/units/ss-212`,
@@ -390,13 +470,13 @@ async function main() {
   const blueAuthAgain = await api('POST', `/api/games/${gameId}/auth/vessel`, {
     accessToken: 'porter-demo',
     password: 'blue',
-    stationId: 'bridge',
+    stationId: 'controls',
   });
-  check('re-auth bridge creates new session', blueAuthAgain.status === 200);
+  check('re-auth controls creates new session', blueAuthAgain.status === 200);
   const blueToken2 = blueAuthAgain.json.token as string;
   check('re-auth issues distinct token', blueToken2 !== blueToken);
   const oldStillValid = await api('GET', `/api/games/${gameId}/view`, undefined, blueToken);
-  check('prior bridge session still valid after re-auth', oldStillValid.status === 200);
+  check('prior controls session still valid after re-auth', oldStillValid.status === 200);
 
   // Concurrent SSE: umpire + Porter Bridge + Porter Radar + Gato Conn (multi-tab).
   const openSseClient = async (label: string, token: string, signal: AbortSignal) => {
@@ -430,10 +510,10 @@ async function main() {
   const multiAbort = new AbortController();
   const multiClients = await Promise.all([
     openSseClient('umpire', umpireToken, multiAbort.signal),
-    openSseClient('porter-bridge', blueToken, multiAbort.signal),
-    openSseClient('porter-radar', radarToken, multiAbort.signal),
-    openSseClient('gato-conn', redToken, multiAbort.signal),
-    openSseClient('porter-bridge-tab2', blueToken2, multiAbort.signal),
+    openSseClient('porter-controls', blueToken, multiAbort.signal),
+    openSseClient('porter-sensors', radarToken, multiAbort.signal),
+    openSseClient('gato-controls', redToken, multiAbort.signal),
+    openSseClient('porter-controls-tab2', blueToken2, multiAbort.signal),
   ]);
   const umpireLive = await api('GET', `/api/games/${gameId}/view`, undefined, umpireToken);
   const connections = (umpireLive.json.view as Json).connections as Array<Json>;
@@ -869,7 +949,7 @@ async function main() {
   const npcAuth = await api('POST', `/api/games/${gameId}/auth/vessel`, {
     accessToken: 'porter-demo',
     password: 'blue',
-    stationId: 'bridge',
+    stationId: 'controls',
   });
   check('rejects non-player vessel station auth', npcAuth.status === 403);
 
@@ -906,7 +986,7 @@ async function main() {
   const bad = await api('POST', `/api/games/${gameId}/auth/vessel`, {
     accessToken: 'porter-demo',
     password: 'wrong',
-    stationId: 'bridge',
+    stationId: 'controls',
   });
   check('rejects bad password', bad.status === 401);
 

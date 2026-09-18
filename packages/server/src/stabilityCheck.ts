@@ -171,19 +171,19 @@ export async function runStabilityCheck(baseUrl?: string): Promise<string[]> {
     const blueAuth = await api('POST', `/api/games/${gameId}/auth/vessel`, {
       accessToken: 'porter-demo',
       password: 'blue',
-      stationId: 'bridge',
+      stationId: 'controls',
     });
     const blueToken = blueAuth.json.token as string;
     const redAuth = await api('POST', `/api/games/${gameId}/auth/vessel`, {
       accessToken: 'gato-demo',
       password: 'red',
-      stationId: 'conn',
+      stationId: 'controls',
     });
     const redToken = redAuth.json.token as string;
     const radarAuth = await api('POST', `/api/games/${gameId}/auth/vessel`, {
       accessToken: 'porter-demo',
       password: 'blue',
-      stationId: 'radar',
+      stationId: 'sensors',
     });
     const radarToken = radarAuth.json.token as string;
 
@@ -316,7 +316,7 @@ export async function runStabilityCheck(baseUrl?: string): Promise<string[]> {
     const subRadarAuth = await api('POST', `/api/games/${gameId}/auth/vessel`, {
       accessToken: 'gato-demo',
       password: 'red',
-      stationId: 'radar',
+      stationId: 'sensors',
     });
     const subRadar = await api(
       'GET',

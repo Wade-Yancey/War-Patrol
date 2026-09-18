@@ -1,4 +1,5 @@
 import { RADAR_MAX_RANGE_NM, RADAR_SURFACE_DEPTH_M } from './constants.js';
+import { defaultActiveSonarSensor } from './activeSonar.js';
 import { defaultHydrophoneSensor } from './hydrophone.js';
 import type { HullClass, LatLonDepth, RadarSignature, SensorDef, UnitState } from './types.js';
 import { isHullClass, resolveVesselIdentity } from './vessel.js';
@@ -31,8 +32,9 @@ export function defaultRadarSignature(
 
 /**
  * Default installed sensors by hull class.
- * Wade (2026-09-18): destroyers and submarines both get radar for play
- * (overrides earlier ARCH-STA-04 “subs have no radar” default).
+ * - Destroyer: radar + active search sonar (no hydrophone)
+ * - Fleet Submarine: radar + hydrophone
+ * - Other warships: radar only
  */
 export function defaultSensors(hullClassOrType: HullClass | string | undefined): SensorDef[] {
   const { class: hullClass } = resolveVesselIdentity({
@@ -40,16 +42,22 @@ export function defaultSensors(hullClassOrType: HullClass | string | undefined):
     class: isHullClass(hullClassOrType) ? hullClassOrType : undefined,
   });
   switch (hullClass) {
-    case 'Destroyer':
-    case 'Cruiser':
-    case 'Battleship':
-    case 'Aircraft Carrier':
+    case 'Destroyer': {
+      const sensors: SensorDef[] = [{ kind: 'radar', maxRangeNm: RADAR_MAX_RANGE_NM }];
+      const sonar = defaultActiveSonarSensor(hullClass);
+      if (sonar) sensors.push(sonar);
+      return sensors;
+    }
     case 'Fleet Submarine': {
       const sensors: SensorDef[] = [{ kind: 'radar', maxRangeNm: RADAR_MAX_RANGE_NM }];
       const hydro = defaultHydrophoneSensor(hullClass);
       if (hydro) sensors.push(hydro);
       return sensors;
     }
+    case 'Cruiser':
+    case 'Battleship':
+    case 'Aircraft Carrier':
+      return [{ kind: 'radar', maxRangeNm: RADAR_MAX_RANGE_NM }];
     default:
       return [];
   }

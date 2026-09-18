@@ -5,6 +5,8 @@ export * from './eot.js';
 export * from './orders.js';
 export * from './radar.js';
 export * from './hydrophone.js';
+export * from './activeSonar.js';
+export * from './stations.js';
 export * from './turning.js';
 export * from './time.js';
 export * from './vessel.js';

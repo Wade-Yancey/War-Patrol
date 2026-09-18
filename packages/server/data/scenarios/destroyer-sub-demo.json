@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "destroyer-sub-demo",
   "name": "Destroyer vs Submarine",
-  "description": "v1 demo: Fletcher destroyer vs Gato submarine (player vessels only). Both have Radar. Sub starts surfaced (visible + own PPI live); dive below ~5 m to clear the echo and disable sub radar. Other hulls/aircraft are NPC/umpire-only in v1. PvP mode. In-game clock advances 5 min per turn.",
+  "description": "v1 demo: Fletcher destroyer vs Gato submarine. Each vessel has Controls + Sensors screens only. DD Sensors: radar + forward-cone active search sonar (toggle). Sub Sensors: radar (surfaced ≤5 m) / hydrophone (submerged >5 m) tabs. PvP. In-game clock advances 5 min per turn.",
   "mode": "pvp",
   "operatingArea": {
     "minLat": 34.0,
@@ -32,18 +32,14 @@
       "health": 100,
       "maxSpeed": 36,
       "radarSignature": "medium",
+      "activeSonarEnabled": false,
       "sensors": [
         { "kind": "radar", "maxRangeNm": 25 },
-        { "kind": "hydrophone", "maxRangeNm": 30 }
+        { "kind": "active_sonar", "maxRangeNm": 8 }
       ],
       "stations": [
-        { "id": "bridge", "name": "Bridge", "capabilities": ["helm", "lookout", "plot"] },
-        { "id": "engineering", "name": "Engineering", "capabilities": ["engineering"] },
-        { "id": "hydrophone", "name": "Hydrophone", "capabilities": ["hydrophone"] },
-        { "id": "radar", "name": "Radar", "capabilities": ["radar"] },
-        { "id": "guns", "name": "Gun Director", "capabilities": ["weapons"] },
-        { "id": "torpedo", "name": "Torpedo Mount", "capabilities": ["torpedo"] },
-        { "id": "radio", "name": "Radio", "capabilities": ["comms"] }
+        { "id": "controls", "name": "Controls", "capabilities": ["helm", "engineering", "plot"] },
+        { "id": "sensors", "name": "Sensors", "capabilities": ["radar", "active_sonar"] }
       ]
     },
     {
@@ -68,13 +64,8 @@
         { "kind": "hydrophone", "maxRangeNm": 30 }
       ],
       "stations": [
-        { "id": "conn", "name": "Conn", "capabilities": ["helm", "plot"] },
-        { "id": "engineering", "name": "Maneuvering", "capabilities": ["engineering"] },
-        { "id": "hydrophone", "name": "Hydrophone", "capabilities": ["hydrophone"] },
-        { "id": "radar", "name": "Radar", "capabilities": ["radar"] },
-        { "id": "periscope", "name": "Periscope", "capabilities": ["lookout"] },
-        { "id": "torpedo-fwd", "name": "Forward Torpedo", "capabilities": ["torpedo"] },
-        { "id": "radio", "name": "Radio", "capabilities": ["comms"] }
+        { "id": "controls", "name": "Controls", "capabilities": ["helm", "engineering", "plot"] },
+        { "id": "sensors", "name": "Sensors", "capabilities": ["radar", "hydrophone"] }
       ]
     }
   ]
