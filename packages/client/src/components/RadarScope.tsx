@@ -168,7 +168,7 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
     });
 
   return (
-    <div className="radar-scope">
+    <div className="radar-scope radar-console">
       <div className="radar-scope-plot">
         <svg
           viewBox={`0 0 ${SIZE} ${SIZE}`}

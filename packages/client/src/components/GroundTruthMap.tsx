@@ -17,13 +17,16 @@ const W = 640;
 const H = 420;
 const ASPECT = W / H;
 
-/** Discrete zoom multipliers (higher = closer). */
-const ZOOM_STEPS = [1, 1.5, 2.25, 3.5, 5] as const;
+/** Discrete zoom multipliers (higher = closer). Includes zoom-out below ×1. */
+const ZOOM_STEPS = [0.35, 0.5, 0.7, 1, 1.5, 2.25, 3.5, 5] as const;
+/** Default framing = fit units (×1). */
+const DEFAULT_ZOOM_IDX = ZOOM_STEPS.indexOf(1);
 
-/** Nice degree steps for lat/lon graticule (equirectangular / ARCH-SP-02). */
-const GRID_STEPS_DEG = [
-  0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10, 15, 30,
-] as const;
+/**
+ * Fixed geographic graticule step (degrees). World-anchored with units; does not
+ * retarget when the operator zooms (Wade). 0.1° ≈ 6′ — sensible for ~1° OAs.
+ */
+const GRID_STEP_DEG = 0.1;
 
 function unitsSignature(units: UnitState[]): string {
   return units
@@ -91,23 +94,14 @@ function scaleViewAroundCenter(base: BoundingBox, zoom: number, panLat: number, 
   };
 }
 
-function niceGridStep(spanDeg: number, targetLines = 6): number {
-  const raw = Math.max(spanDeg, 1e-9) / targetLines;
-  for (const step of GRID_STEPS_DEG) {
-    if (step >= raw) return step;
-  }
-  return GRID_STEPS_DEG[GRID_STEPS_DEG.length - 1]!;
-}
-
 /** Geographic tick values covering [min, max] at a fixed degree step. */
 function geoTicks(min: number, max: number, step: number): number[] {
   if (!(step > 0) || !(max > min)) return [];
   const start = Math.ceil((min - 1e-12) / step) * step;
   const out: number[] = [];
-  const decimals = step < 0.01 ? 4 : step < 0.1 ? 3 : step < 1 ? 2 : 1;
   for (let v = start; v <= max + step * 1e-9; v += step) {
-    out.push(Number(v.toFixed(decimals + 2)));
-    if (out.length > 48) break;
+    out.push(Number(v.toFixed(6)));
+    if (out.length > 96) break;
   }
   return out;
 }
@@ -130,12 +124,20 @@ function formatCursor(lat: number, lon: number): string {
   return `${formatLat(lat, 0.001)}  ${formatLon(lon, 0.001)}`;
 }
 
+/** Label every line, or every major (0.5°) when the view is dense. */
+function shouldLabelGridValue(value: number, step: number, tickCount: number): boolean {
+  if (tickCount <= 14) return true;
+  const major = Math.max(step, 0.5);
+  const q = value / major;
+  return Math.abs(q - Math.round(q)) < 1e-6;
+}
+
 function GroundTruthMapInner({ area, units }: Props) {
   const unitIds = useMemo(() => [...units.map((u) => u.id)].sort().join(','), [units]);
   const areaKey = useMemo(() => areaSignature(area), [area]);
   const baseView = useMemo(() => fitUnitsView(units, area), [units, area]);
 
-  const [zoomIdx, setZoomIdx] = useState(0);
+  const [zoomIdx, setZoomIdx] = useState(DEFAULT_ZOOM_IDX);
   const [panLat, setPanLat] = useState(0);
   const [panLon, setPanLon] = useState(0);
   const [cursor, setCursor] = useState<{ lat: number; lon: number } | null>(null);
@@ -148,7 +150,7 @@ function GroundTruthMapInner({ area, units }: Props) {
 
   // Reset camera when the unit set or operating area changes (not on every move).
   useEffect(() => {
-    setZoomIdx(0);
+    setZoomIdx(DEFAULT_ZOOM_IDX);
     setPanLat(0);
     setPanLon(0);
     setCursor(null);
@@ -163,20 +165,31 @@ function GroundTruthMapInner({ area, units }: Props) {
   const spanLat = view.maxLat - view.minLat;
   const spanLon = view.maxLon - view.minLon;
 
-  /** World-anchored graticule — same projection as units (pan/zoom lock). */
+  /** Fixed-step world graticule — same projection as units; step never changes with zoom. */
   const graticule = useMemo(() => {
-    const latStep = niceGridStep(spanLat);
-    const lonStep = niceGridStep(spanLon);
-    const parallels = geoTicks(view.minLat, view.maxLat, latStep).map((lat) => {
+    const step = GRID_STEP_DEG;
+    const latTicks = geoTicks(view.minLat, view.maxLat, step);
+    const lonTicks = geoTicks(view.minLon, view.maxLon, step);
+    const parallels = latTicks.map((lat) => {
       const { v } = projectToUv(lat, view.minLon, view);
-      return { lat, y: v * H, label: formatLat(lat, latStep) };
+      return {
+        lat,
+        y: v * H,
+        label: formatLat(lat, step),
+        showLabel: shouldLabelGridValue(lat, step, latTicks.length),
+      };
     });
-    const meridians = geoTicks(view.minLon, view.maxLon, lonStep).map((lon) => {
+    const meridians = lonTicks.map((lon) => {
       const { u } = projectToUv(view.minLat, lon, view);
-      return { lon, x: u * W, label: formatLon(lon, lonStep) };
+      return {
+        lon,
+        x: u * W,
+        label: formatLon(lon, step),
+        showLabel: shouldLabelGridValue(lon, step, lonTicks.length),
+      };
     });
-    return { parallels, meridians, latStep, lonStep };
-  }, [view, spanLat, spanLon]);
+    return { parallels, meridians, step };
+  }, [view]);
 
   const markers = useMemo(
     () =>
@@ -218,7 +231,7 @@ function GroundTruthMapInner({ area, units }: Props) {
   const zoomIn = () => setZoomIdx((i) => Math.min(ZOOM_STEPS.length - 1, i + 1));
   const zoomOut = () => setZoomIdx((i) => Math.max(0, i - 1));
   const recenter = () => {
-    setZoomIdx(0);
+    setZoomIdx(DEFAULT_ZOOM_IDX);
     setPanLat(0);
     setPanLon(0);
   };
@@ -318,35 +331,39 @@ function GroundTruthMapInner({ area, units }: Props) {
         >
           <rect width={W} height={H} fill="#061a0e" />
 
-          {/* Parallels (constant latitude) — world space */}
+          {/* Parallels (constant latitude) — world space, fixed ° step */}
           {graticule.parallels.map((p) => (
             <g key={`lat-${p.lat}`}>
               <line x1={0} y1={p.y} x2={W} y2={p.y} stroke="#1a4a28" strokeWidth={1} />
-              <text
-                x={8}
-                y={clamp(p.y - 4, 12, H - 6)}
-                fill="#5a9a68"
-                fontSize={10}
-                fontFamily="IBM Plex Mono, monospace"
-              >
-                {p.label}
-              </text>
+              {p.showLabel && (
+                <text
+                  x={8}
+                  y={clamp(p.y - 4, 12, H - 6)}
+                  fill="#5a9a68"
+                  fontSize={10}
+                  fontFamily="IBM Plex Mono, monospace"
+                >
+                  {p.label}
+                </text>
+              )}
             </g>
           ))}
 
-          {/* Meridians (constant longitude) — world space */}
+          {/* Meridians (constant longitude) — world space, fixed ° step */}
           {graticule.meridians.map((m) => (
             <g key={`lon-${m.lon}`}>
               <line x1={m.x} y1={0} x2={m.x} y2={H} stroke="#1a4a28" strokeWidth={1} />
-              <text
-                x={clamp(m.x + 4, 4, W - 56)}
-                y={H - 8}
-                fill="#5a9a68"
-                fontSize={10}
-                fontFamily="IBM Plex Mono, monospace"
-              >
-                {m.label}
-              </text>
+              {m.showLabel && (
+                <text
+                  x={clamp(m.x + 4, 4, W - 56)}
+                  y={H - 8}
+                  fill="#5a9a68"
+                  fontSize={10}
+                  fontFamily="IBM Plex Mono, monospace"
+                >
+                  {m.label}
+                </text>
+              )}
             </g>
           ))}
 
@@ -367,7 +384,7 @@ function GroundTruthMapInner({ area, units }: Props) {
           </g>
 
           <text x={12} y={18} fill="#5a9a68" fontSize={10} fontFamily="IBM Plex Mono, monospace">
-            GROUND TRUTH · LAT/LON GRID
+            GROUND TRUTH · LAT/LON · {GRID_STEP_DEG}° GRID
           </text>
 
           {markers
