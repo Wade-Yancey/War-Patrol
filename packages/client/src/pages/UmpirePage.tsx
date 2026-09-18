@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import type { UmpireView } from '@war-patrol/shared';
+import {
+  DEFAULT_TURN_SECONDS,
+  TIMER_EXTEND_SECONDS,
+  TIMER_STEP_SECONDS,
+  formatWallDuration,
+  parseWallDuration,
+  snapWallDuration,
+  type UmpireView,
+} from '@war-patrol/shared';
 import { api } from '../api/client';
 import { useGameStream } from '../hooks/useGameStream';
 import { GroundTruthMap } from '../components/GroundTruthMap';
@@ -19,7 +27,7 @@ export function UmpirePage() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [timerSeconds, setTimerSeconds] = useState(180);
+  const [timerSeconds, setTimerSeconds] = useState(DEFAULT_TURN_SECONDS);
   const [editUnitId, setEditUnitId] = useState<string>('');
   const [editHealth, setEditHealth] = useState(100);
   const [editDepth, setEditDepth] = useState(0);
@@ -42,7 +50,7 @@ export function UmpirePage() {
 
   useEffect(() => {
     if (!umpire) return;
-    setTimerSeconds(umpire.turn.timerSeconds);
+    setTimerSeconds(snapWallDuration(umpire.turn.timerSeconds, TIMER_STEP_SECONDS));
   }, [umpire]);
 
   useEffect(() => {
@@ -153,19 +161,44 @@ export function UmpirePage() {
               <section className="panel stack umpire-control-group">
                 <h2>1 · Timer</h2>
                 <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-                  Counts down while the turn is open. Expiry auto-locks orders.
+                  Counts down while the turn is open. Expiry auto-locks orders. Adjust in 30s or
+                  1‑minute steps.
                 </p>
                 <TouchNumber
-                  label="Duration (seconds)"
+                  label="Order timer"
                   value={timerSeconds}
                   onChange={setTimerSeconds}
                   min={0}
                   max={3600}
-                  step={15}
-                  unit="s"
+                  step={TIMER_STEP_SECONDS}
                   showSlider
+                  format={formatWallDuration}
+                  parse={parseWallDuration}
+                  hint="±30s · tap to type minutes (3 or 3:30) · 0–60m"
                 />
                 <div className="control-actions">
+                  <button
+                    type="button"
+                    disabled={busy || timerSeconds < 60}
+                    onClick={() =>
+                      setTimerSeconds((s) =>
+                        snapWallDuration(Math.max(0, s - 60), TIMER_STEP_SECONDS),
+                      )
+                    }
+                  >
+                    −1 min
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy || timerSeconds >= 3600}
+                    onClick={() =>
+                      setTimerSeconds((s) =>
+                        snapWallDuration(Math.min(3600, s + 60), TIMER_STEP_SECONDS),
+                      )
+                    }
+                  >
+                    +1 min
+                  </button>
                   <button
                     type="button"
                     disabled={busy || !isOpen}
@@ -176,9 +209,20 @@ export function UmpirePage() {
                   <button
                     type="button"
                     disabled={busy || !isOpen}
-                    onClick={() => void run(() => api.turnExtend(gameId, token, 60))}
+                    onClick={() =>
+                      void run(() => api.turnExtend(gameId, token, TIMER_STEP_SECONDS))
+                    }
                   >
-                    +60s
+                    Extend +30s
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy || !isOpen}
+                    onClick={() =>
+                      void run(() => api.turnExtend(gameId, token, TIMER_EXTEND_SECONDS))
+                    }
+                  >
+                    Extend +1 min
                   </button>
                   <button
                     type="button"

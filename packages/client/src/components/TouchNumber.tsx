@@ -14,6 +14,10 @@ export interface TouchNumberProps {
   /** Show range slider under steppers. Default true when span is useful. */
   showSlider?: boolean;
   format?: (value: number) => string;
+  /** Parse typed readout text; when set, draft uses `format` (or String) instead of raw number. */
+  parse?: (raw: string) => number | null;
+  /** Override the default “Tap readout…” hint. */
+  hint?: string;
 }
 
 function clampOrWrap(n: number, min: number, max: number, wrap: boolean): number {
@@ -38,24 +42,27 @@ export function TouchNumber({
   disabled = false,
   showSlider = true,
   format,
+  parse,
+  hint,
 }: TouchNumberProps) {
   const id = useId();
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(String(value));
+  const draftText = (n: number) => (format && parse ? format(n) : String(n));
+  const [draft, setDraft] = useState(() => draftText(value));
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!editing) setDraft(String(value));
-  }, [value, editing]);
+    if (!editing) setDraft(draftText(value));
+  }, [value, editing, format, parse]);
 
   useEffect(() => {
     if (editing) inputRef.current?.focus();
   }, [editing]);
 
   const commit = (raw: string) => {
-    const n = Number(raw);
-    if (!Number.isFinite(n)) {
-      setDraft(String(value));
+    const n = parse ? parse(raw) : Number(raw);
+    if (n == null || !Number.isFinite(n)) {
+      setDraft(draftText(value));
       setEditing(false);
       return;
     }
@@ -69,6 +76,7 @@ export function TouchNumber({
   };
 
   const display = format ? format(value) : `${value}${unit ? ` ${unit}` : ''}`;
+  const defaultHint = `Tap readout to type · ${min}–${max}${unit ? ` ${unit}` : ''}`;
 
   return (
     <div className="touch-num">
@@ -115,7 +123,7 @@ export function TouchNumber({
                   commit(draft);
                 }
                 if (e.key === 'Escape') {
-                  setDraft(String(value));
+                  setDraft(draftText(value));
                   setEditing(false);
                 }
               }}
@@ -147,7 +155,7 @@ export function TouchNumber({
           onChange={(e) => onChange(Number(e.target.value))}
         />
       )}
-      <p className="touch-num-hint">Tap readout to type · {min}–{max}{unit ? ` ${unit}` : ''}</p>
+      <p className="touch-num-hint">{hint ?? defaultHint}</p>
     </div>
   );
 }
