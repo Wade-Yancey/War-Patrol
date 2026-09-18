@@ -2,7 +2,43 @@ import { SCHEMA_VERSION } from './constants.js';
 
 export type SideId = string;
 
-export type VesselType = 'destroyer' | 'submarine' | 'cruiser' | 'merchant' | 'other';
+/** Allegiance / force identity (umpire + own-ship; not leaked via FoW sensors). */
+export type Faction = 'Red' | 'Blue' | 'Civilian';
+
+/** High-level platform category (Submarine | Ship | Aircraft). */
+export type VesselType = 'Submarine' | 'Ship' | 'Aircraft';
+
+/**
+ * Taxonomic hull / airframe class.
+ * Must stay consistent with {@link VesselType} (e.g. Fleet Submarine → Submarine).
+ */
+export type HullClass =
+  | 'Fleet Submarine'
+  | 'Destroyer'
+  | 'Cruiser'
+  | 'Aircraft Carrier'
+  | 'Merchant'
+  | 'Oiler'
+  | 'Battleship'
+  | 'Fighter'
+  | 'Bomber';
+
+/** Aircraft elevation band (no free altitude number). */
+export type FlightLevel = 'low' | 'medium' | 'high';
+
+/**
+ * Hull / airframe condition.
+ * `sunk` = sunk for ships/subs, destroyed for aircraft — unit stops contributing.
+ */
+export type UnitCondition = 'afloat' | 'sunk';
+
+/** Major subsystem health (umpire-editable). */
+export type SubsystemState = 'intact' | 'disabled';
+
+export interface UnitSubsystems {
+  propulsion: SubsystemState;
+  sensors: SubsystemState;
+}
 
 /** Relative radar cross-section / echo size (detection stub). */
 export type RadarSignature = 'small' | 'medium' | 'large';
@@ -75,10 +111,29 @@ export interface UnitOrders {
 export interface UnitState {
   id: string;
   name: string;
+  /**
+   * Legacy side id (lowercase blue/red/civilian). Kept in sync with {@link faction}
+   * for older clients and stripe CSS hooks.
+   */
   side: SideId;
+  /** Force allegiance: Red | Blue | Civilian. */
+  faction: Faction;
+  /** Library definition id (e.g. fletcher-class). */
   classId: string;
+  /** Platform category: Submarine | Ship | Aircraft. */
   type: VesselType;
+  /** Hull / airframe class (Destroyer, Fleet Submarine, …). */
+  class: HullClass;
   position: LatLonDepth;
+  /**
+   * Aircraft elevation band only (Ship/Submarine ignore).
+   * Defaults to `medium` for Aircraft; omitted or ignored otherwise.
+   */
+  flightLevel?: FlightLevel;
+  /** Afloat vs sunk/destroyed. Defaults afloat. */
+  condition: UnitCondition;
+  /** Propulsion + sensors integrity. Defaults intact. */
+  subsystems: UnitSubsystems;
   /** Current heading degrees true (bow direction). */
   heading: number;
   /**
@@ -115,10 +170,20 @@ export interface UnitState {
 export interface ScenarioUnitSeed {
   id: string;
   name: string;
+  /** Legacy side id; used to migrate faction when faction omitted. */
   side: SideId;
+  /** Force allegiance; optional on older scenarios — migrated from side. */
+  faction?: Faction;
   classId: string;
-  type: VesselType;
+  /** Platform category; legacy destroyer|submarine|… values are migrated on load. */
+  type: VesselType | string;
+  /** Hull class; optional on older scenarios — filled by migration. */
+  class?: HullClass;
   position: LatLonDepth;
+  /** Aircraft only — low | medium | high. */
+  flightLevel?: FlightLevel;
+  condition?: UnitCondition;
+  subsystems?: Partial<UnitSubsystems>;
   heading: number;
   /** Initial ordered course; defaults to heading. */
   orderedCourse?: number;
@@ -220,7 +285,15 @@ export interface GameSave {
 export interface VesselClassStub {
   id: string;
   name: string;
+  /** Platform category: Submarine | Ship | Aircraft. */
   type: VesselType;
+  /** Hull / airframe class for this library entry. */
+  class: HullClass;
+  /**
+   * Optional default faction for new units of this class
+   * (e.g. Merchant/Oiler → Civilian).
+   */
+  defaultFaction?: Faction;
   maxSpeed: number;
   turnRate: number;
   /** Default radar echo size for ships of this class. */
@@ -307,8 +380,13 @@ export interface VesselView {
     | 'id'
     | 'name'
     | 'side'
+    | 'faction'
     | 'type'
+    | 'class'
     | 'position'
+    | 'flightLevel'
+    | 'condition'
+    | 'subsystems'
     | 'heading'
     | 'orderedCourse'
     | 'speed'
@@ -335,7 +413,7 @@ export interface VesselView {
   /** False when radar set cannot emit (e.g. submarine submerged). */
   radarOperational?: boolean;
   /** Operator-facing reason when radarOperational is false. */
-  radarUnavailableReason?: 'submerged' | 'no_sensor';
+  radarUnavailableReason?: 'submerged' | 'no_sensor' | 'sunk' | 'sensors_disabled';
 }
 
 export type ClientView = UmpireView | VesselView;

@@ -3,9 +3,11 @@ import {
   RADAR_SIGNATURE_RANGE_FACTOR,
   RADAR_SIGNATURE_STRENGTH,
   bearingRangeNm,
+  canUseSensors,
   defaultRadarSignature,
   findRadarSensor,
   isRadarSurfaced,
+  isRadarTargetable,
   type GameSave,
   type RadarContact,
   type RadarSignature,
@@ -16,13 +18,13 @@ export type RadarPicture = {
   contacts: RadarContact[];
   maxRangeNm: number;
   operational: boolean;
-  unavailableReason?: 'submerged' | 'no_sensor';
+  unavailableReason?: 'submerged' | 'no_sensor' | 'sunk' | 'sensors_disabled';
 };
 
 /**
  * Minimal server-authoritative radar picture (ARCH-DET / ARCH-SP-05).
- * Requires an installed radar sensor. Own-ship PPI only when surfaced.
- * Targets only paint when they are surfaced — no absolute positions/names/sides.
+ * Requires an installed radar sensor. Own-ship PPI only when surfaced / sensors OK.
+ * Targets only paint when afloat and surfaced — no absolute positions/names/sides.
  */
 export function buildRadarContacts(own: UnitState, save: GameSave): RadarPicture {
   const sensor = findRadarSensor(own);
@@ -37,6 +39,16 @@ export function buildRadarContacts(own: UnitState, save: GameSave): RadarPicture
 
   const maxRangeNm = sensor.maxRangeNm ?? RADAR_MAX_RANGE_NM;
 
+  const sensorOk = canUseSensors(own);
+  if (!sensorOk.ok) {
+    return {
+      contacts: [],
+      maxRangeNm,
+      operational: false,
+      unavailableReason: sensorOk.reason,
+    };
+  }
+
   if (!isRadarSurfaced(own.position)) {
     return {
       contacts: [],
@@ -50,6 +62,8 @@ export function buildRadarContacts(own: UnitState, save: GameSave): RadarPicture
 
   for (const other of save.units) {
     if (other.id === own.id) continue;
+    // Sunk / destroyed units do not return an echo.
+    if (!isRadarTargetable(other)) continue;
     // Submerged targets do not return a radar echo.
     if (!isRadarSurfaced(other.position)) continue;
 
@@ -79,7 +93,7 @@ export function buildRadarContacts(own: UnitState, save: GameSave): RadarPicture
 }
 
 function resolveSignature(unit: UnitState): RadarSignature {
-  return unit.radarSignature ?? defaultRadarSignature(unit.type);
+  return unit.radarSignature ?? defaultRadarSignature(unit.class ?? unit.type);
 }
 
 /** Stable opaque track id — not reversible to unit id without the own-ship salt. */

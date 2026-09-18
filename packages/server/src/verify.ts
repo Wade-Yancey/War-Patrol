@@ -81,6 +81,9 @@ async function main() {
   const bv = blueView.json.view as Json;
   check('blue role vessel', bv.role === 'vessel');
   check('blue unit is Porter', (bv.unit as Json).name === 'USS Porter');
+  check('blue own-ship type', (bv.unit as Json).type === 'Ship');
+  check('blue own-ship class', (bv.unit as Json).class === 'Destroyer');
+  check('blue own-ship faction', (bv.unit as Json).faction === 'Blue');
   check('blue has no units array', !('units' in bv));
 
   const umpireView = await api('GET', `/api/games/${gameId}/view`, undefined, umpireToken);
@@ -103,7 +106,7 @@ async function main() {
   const contacts = rv.radarContacts as Array<Json>;
   check('radar sees surfaced contact', contacts.length >= 1, `got ${contacts.length}`);
   check('radar contact polar only', !('position' in contacts[0]) && typeof contacts[0].bearing === 'number');
-  check('radar contact no identity fields', !('side' in contacts[0]) && !('name' in contacts[0]) && !('classId' in contacts[0]));
+  check('radar contact no identity fields', !('side' in contacts[0]) && !('name' in contacts[0]) && !('classId' in contacts[0]) && !('class' in contacts[0]) && !('type' in contacts[0]) && !('faction' in contacts[0]));
   check(
     'radar contact has signature size',
     contacts[0].signature === 'small' ||
@@ -117,11 +120,23 @@ async function main() {
   const gato = (uv.units as Json[]).find((u) => u.id === 'ss-212')!;
   check('destroyer radarSignature medium', porter.radarSignature === 'medium');
   check('sub radarSignature small', gato.radarSignature === 'small');
+  check('porter type Ship', porter.type === 'Ship');
+  check('porter class Destroyer', porter.class === 'Destroyer');
+  check('porter faction Blue', porter.faction === 'Blue');
+  check('porter afloat', porter.condition === 'afloat');
+  check('porter propulsion intact', (porter.subsystems as Json).propulsion === 'intact');
+  check('porter sensors intact', (porter.subsystems as Json).sensors === 'intact');
+  check('porter depth surface', (porter.position as Json).depth === 0);
+  check('gato type Submarine', gato.type === 'Submarine');
+  check('gato class Fleet Submarine', gato.class === 'Fleet Submarine');
+  check('gato faction Red', gato.faction === 'Red');
+  check('gato afloat', gato.condition === 'afloat');
   check('destroyer turnRate medium size', porter.turnRate === 7);
   check('sub turnRate small size', gato.turnRate === 12);
   check('orderedCourse seeded to heading (porter)', porter.orderedCourse === porter.heading);
   check('game clock starts 08:00', (uv.turn as Json).gameTimeSeconds === 28800);
   check('turn length 5 min', uv.turnLengthSeconds === 300);
+  check('order timer default 5 min', (uv.turn as Json).timerSeconds === 300);
   check('trails present', Array.isArray(uv.trails) && (uv.trails as unknown[]).length === 2);
   check(
     'destroyer has Radar station',
@@ -320,6 +335,94 @@ async function main() {
   );
   check('rollback via turn number confirm', rolled2.status === 200);
   check('rollback to T2 opens turn 3', runtime.requireGame(gameId).turn.number === 3);
+
+  // Patch identity + migrate-style coerce
+  const idPatch = await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { type: 'Aircraft', class: 'Destroyer' },
+    umpireToken,
+  );
+  check('identity patch ok', idPatch.status === 200);
+  const afterId = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
+  check('class wins over mismatched type', afterId.class === 'Destroyer' && afterId.type === 'Ship');
+
+  // Faction patch + migrate-from-side behavior is covered by seed defaults;
+  // also verify Civilian can be set and side stays in sync.
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { faction: 'Civilian' },
+    umpireToken,
+  );
+  const civ = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
+  check('faction Civilian', civ.faction === 'Civilian' && civ.side === 'civilian');
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { type: 'Ship', class: 'Destroyer', name: 'USS Porter', faction: 'Blue' },
+    umpireToken,
+  );
+
+  // Ship depth forced to surface
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { position: { depth: 40 } },
+    umpireToken,
+  );
+  check(
+    'ship depth forced to 0',
+    runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!.position.depth === 0,
+  );
+
+  // Sensors disabled → no radar picture
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { subsystems: { sensors: 'disabled' } },
+    umpireToken,
+  );
+  const radarSensorsOff = await api('GET', `/api/games/${gameId}/view`, undefined, radarToken);
+  const rso = radarSensorsOff.json.view as Json;
+  check('sensors disabled radar off', rso.radarOperational === false);
+  check('sensors disabled reason', rso.radarUnavailableReason === 'sensors_disabled');
+
+  // Propulsion disabled → stop
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { subsystems: { propulsion: 'disabled', sensors: 'intact' }, speed: 12 },
+    umpireToken,
+  );
+  const deadInWater = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
+  check('propulsion disabled forces stop', deadInWater.speed === 0 && deadInWater.eot === 'stop');
+
+  // Sunk clears as radar target
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { condition: 'sunk' },
+    umpireToken,
+  );
+  const radarAfterSink = await api('GET', `/api/games/${gameId}/view`, undefined, radarToken);
+  check(
+    'sunk target not on radar',
+    Array.isArray((radarAfterSink.json.view as Json).radarContacts) &&
+      ((radarAfterSink.json.view as Json).radarContacts as unknown[]).length === 0,
+  );
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { condition: 'afloat' },
+    umpireToken,
+  );
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { subsystems: { propulsion: 'intact', sensors: 'intact' }, speed: 12, eot: 'ahead_standard' },
+    umpireToken,
+  );
 
   // Bad password (game still in memory)
   const bad = await api('POST', `/api/games/${gameId}/auth/vessel`, {

@@ -12,8 +12,14 @@ interface Props {
 const SIDE_COLORS: Record<string, string> = {
   blue: '#6ec8ff',
   red: '#ff8a6a',
+  civilian: '#c49bff',
   neutral: '#b8ffc8',
 };
+
+function unitAccent(unit: UnitState): string {
+  const key = (unit.faction ?? unit.side ?? 'neutral').toString().toLowerCase();
+  return SIDE_COLORS[key] ?? SIDE_COLORS.neutral!;
+}
 
 const W = 640;
 const H = 420;
@@ -34,7 +40,7 @@ function unitsSignature(units: UnitState[]): string {
   return units
     .map(
       (u) =>
-        `${u.id}:${u.position.lat.toFixed(5)},${u.position.lon.toFixed(5)},${u.heading.toFixed(1)},${normalizeHeading(u.orderedCourse ?? u.heading).toFixed(1)},${u.speed.toFixed(1)},${u.position.depth.toFixed(0)}`,
+        `${u.id}:${u.position.lat.toFixed(5)},${u.position.lon.toFixed(5)},${u.heading.toFixed(1)},${normalizeHeading(u.orderedCourse ?? u.heading).toFixed(1)},${u.speed.toFixed(1)},${u.position.depth.toFixed(0)},${u.type},${u.class},${u.name},${u.faction},${u.condition},${u.subsystems?.propulsion},${u.subsystems?.sensors},${u.flightLevel ?? ''}`,
     )
     .join('|');
 }
@@ -213,7 +219,7 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
       .map((unit) => {
         const trail = trailByUnit.get(unit.id);
         if (!trail || trail.points.length < 2) return null;
-        const color = SIDE_COLORS[unit.side] ?? '#c8ffd4';
+        const color = unitAccent(unit);
         const pts = trail.points.map((p) => {
           const { u, v } = projectToUv(p.lat, p.lon, view);
           return { x: u * W, y: v * H, u, v };
@@ -236,7 +242,7 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
         const { u, v } = projectToUv(unit.position.lat, unit.position.lon, view);
         const x = u * W;
         const y = v * H;
-        const color = SIDE_COLORS[unit.side] ?? '#c8ffd4';
+        const color = unitAccent(unit);
         const heading = normalizeHeading(unit.heading);
         const ordered = normalizeHeading(unit.orderedCourse ?? unit.heading);
         const hRad = ((heading - 90) * Math.PI) / 180;
@@ -255,8 +261,20 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
           courseX: x + Math.cos(oRad) * courseLen,
           courseY: y + Math.sin(oRad) * courseLen,
           showOrdered: courseDelta > 0.5,
+          identity: `${unit.faction.toUpperCase()} · ${unit.class.toUpperCase()} · ${unit.type.toUpperCase()}${
+            unit.condition === 'sunk'
+              ? unit.type === 'Aircraft'
+                ? ' · DESTROYED'
+                : ' · SUNK'
+              : ''
+          }`,
+          sunk: unit.condition === 'sunk',
           label: `${unit.speed.toFixed(0)} KN · HDG ${heading.toFixed(0)}° · CRS ${ordered.toFixed(0)}°${
-            unit.position.depth > 0 ? ` · ${unit.position.depth.toFixed(0)} M` : ''
+            unit.type === 'Submarine' && unit.position.depth > 0
+              ? ` · ${unit.position.depth.toFixed(0)} M`
+              : unit.type === 'Aircraft'
+                ? ` · FL ${(unit.flightLevel ?? 'medium').toUpperCase()}`
+                : ''
           }`,
           onPlot: u >= -0.05 && u <= 1.05 && v >= -0.05 && v <= 1.05,
         };
@@ -452,8 +470,16 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
             .filter((m) => m.onPlot)
             .map((m) => (
               <g key={m.id}>
-                <circle cx={m.x} cy={m.y} r={8} fill="none" stroke={m.color} strokeWidth={1.5} />
-                <circle cx={m.x} cy={m.y} r={3} fill={m.color} />
+                <circle
+                  cx={m.x}
+                  cy={m.y}
+                  r={8}
+                  fill="none"
+                  stroke={m.color}
+                  strokeWidth={1.5}
+                  strokeOpacity={m.sunk ? 0.35 : 1}
+                />
+                <circle cx={m.x} cy={m.y} r={3} fill={m.color} opacity={m.sunk ? 0.35 : 1} />
                 {m.showOrdered && (
                   <line
                     x1={m.x}
@@ -487,7 +513,16 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
                 </text>
                 <text
                   x={m.x + 12}
-                  y={m.y + 5}
+                  y={m.y + 4}
+                  fill="#5a9a68"
+                  fontSize={9}
+                  fontFamily="IBM Plex Mono, monospace"
+                >
+                  {m.identity}
+                </text>
+                <text
+                  x={m.x + 12}
+                  y={m.y + 16}
                   fill="#5a9a68"
                   fontSize={10}
                   fontFamily="IBM Plex Mono, monospace"

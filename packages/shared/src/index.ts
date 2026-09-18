@@ -5,3 +5,4 @@ export * from './eot.js';
 export * from './radar.js';
 export * from './turning.js';
 export * from './time.js';
+export * from './vessel.js';

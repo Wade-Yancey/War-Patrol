@@ -1,7 +1,8 @@
 {
   "id": "gato-class",
   "name": "Gato-class Submarine",
-  "type": "submarine",
+  "type": "Submarine",
+  "class": "Fleet Submarine",
   "maxSpeed": 21,
   "turnRate": 12,
   "radarSignature": "small",
