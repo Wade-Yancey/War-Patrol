@@ -1,5 +1,14 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import type { AuthSession, EotSetting, FlightLevel, HullClass, SubsystemState, UnitCondition, VesselType } from '@war-patrol/shared';
+import type {
+  AuthSession,
+  EotSetting,
+  Faction,
+  FlightLevel,
+  HullClass,
+  SubsystemState,
+  UnitCondition,
+  VesselType,
+} from '@war-patrol/shared';
 import { nanoid } from 'nanoid';
 import * as store from '../store/fileStore.js';
 import { parseBearer } from '../game/sessions.js';
@@ -374,6 +383,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       password?: string;
       type?: string;
       class?: string;
+      faction?: string;
       flightLevel?: string;
       condition?: string;
       subsystems?: { propulsion?: string; sensors?: string };
@@ -391,6 +401,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         password: body.password,
         type: body.type as VesselType | undefined,
         class: body.class as HullClass | undefined,
+        faction: body.faction as Faction | undefined,
         flightLevel: body.flightLevel as FlightLevel | undefined,
         condition: body.condition as UnitCondition | undefined,
         subsystems: body.subsystems

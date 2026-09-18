@@ -7,12 +7,14 @@ import {
   normalizeHeading,
   normalizePositionForType,
   resolveCondition,
+  resolveFaction,
   resolveFlightLevel,
   resolveStartGameTimeSeconds,
   resolveSubsystems,
   resolveTurnLengthSeconds,
   resolveTurnRate,
   resolveVesselIdentity,
+  sideFromFaction,
   type EotSetting,
   type GameSave,
   type HullClass,
@@ -41,10 +43,16 @@ function unitFromScenario(seed: Scenario['units'][number]): UnitState {
   const condition = resolveCondition(seed.condition);
   const subsystems = resolveSubsystems(seed.subsystems);
   const flightLevel = resolveFlightLevel(identity.type, seed.flightLevel);
+  const faction = resolveFaction({
+    faction: seed.faction,
+    side: seed.side,
+    class: identity.class,
+  });
   return normalizeUnit({
     id: seed.id,
     name: seed.name,
-    side: seed.side,
+    side: sideFromFaction(faction),
+    faction,
     classId: seed.classId,
     type: identity.type,
     class: identity.class,
@@ -99,6 +107,11 @@ function normalizeUnit(unit: UnitState): UnitState {
   const condition = resolveCondition(unit.condition);
   const subsystems = resolveSubsystems(unit.subsystems);
   const flightLevel = resolveFlightLevel(identity.type, unit.flightLevel);
+  const faction = resolveFaction({
+    faction: unit.faction,
+    side: unit.side,
+    class: identity.class,
+  });
   const position = normalizePositionForType(identity.type, { ...unit.position });
   let speed = unit.speed;
   let eot = unit.eot;
@@ -108,6 +121,8 @@ function normalizeUnit(unit: UnitState): UnitState {
   }
   return {
     ...unit,
+    side: sideFromFaction(faction),
+    faction,
     type: identity.type,
     class: identity.class,
     position,
@@ -452,6 +467,7 @@ export class GameRuntime {
         | 'class'
         | 'flightLevel'
         | 'condition'
+        | 'faction'
       >
     > & {
       position?: Partial<UnitState['position']>;
@@ -478,6 +494,10 @@ export class GameRuntime {
         });
         unit.type = identity.type;
         unit.class = identity.class;
+      }
+      if (patch.faction !== undefined) {
+        unit.faction = resolveFaction({ faction: patch.faction, class: unit.class });
+        unit.side = sideFromFaction(unit.faction);
       }
       if (patch.flightLevel !== undefined) {
         unit.flightLevel = patch.flightLevel;

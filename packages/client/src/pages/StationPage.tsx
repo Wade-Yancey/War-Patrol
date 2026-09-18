@@ -32,7 +32,13 @@ export function StationPage() {
   });
 
   const vessel = view?.role === 'vessel' ? (view as VesselView) : null;
-  const side = vessel?.unit.side === 'blue' || vessel?.unit.side === 'red' ? vessel.unit.side : 'neutral';
+  const faction = vessel?.unit.faction;
+  const sideAccent =
+    faction === 'Blue' || faction === 'Red' || faction === 'Civilian'
+      ? faction.toLowerCase()
+      : vessel?.unit.side === 'blue' || vessel?.unit.side === 'red'
+        ? vessel.unit.side
+        : 'neutral';
 
   useEffect(() => {
     if (!vessel || seeded) return;
@@ -107,7 +113,7 @@ export function StationPage() {
   }
 
   return (
-    <CrtShell side={side}>
+    <CrtShell side={sideAccent as 'blue' | 'red' | 'civilian' | 'neutral'} faction={faction}>
       <div className="app-shell">
         <header className="header-bar">
           <div>
@@ -125,7 +131,9 @@ export function StationPage() {
               )}
             </p>
             {vessel && (
-              <span className={`side-badge side-badge--${side}`}>{vessel.unit.side} side</span>
+              <span className={`side-badge side-badge--${sideAccent}`}>
+                {faction ?? vessel.unit.side}
+              </span>
             )}
           </div>
           <div className="stack" style={{ alignItems: 'flex-end', gap: '0.35rem' }}>
@@ -217,6 +225,10 @@ export function StationPage() {
                 <h2>Own ship readouts</h2>
                 <table className="table mono">
                   <tbody>
+                    <tr>
+                      <th>Faction</th>
+                      <td className="readout">{vessel.unit.faction}</td>
+                    </tr>
                     <tr>
                       <th>Type</th>
                       <td className="readout">{vessel.unit.type}</td>
