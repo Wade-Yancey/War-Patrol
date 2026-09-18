@@ -401,9 +401,23 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
         const tipLen = clamp(14 + zoom * 2, 14, 22);
         const courseLen = tipLen + 10;
         const courseDelta = Math.abs(((ordered - heading + 540) % 360) - 180);
-        // Default labels to the right; flip left when the trail approaches from the right.
+        const showOrdered = courseDelta > 0.5;
+        /**
+         * Keep unit name/stats clear of the icon (r=8) + CRT label halo and the
+         * heading/course pip: prefer the side opposite the steer tip; when the tip
+         * is nearly N/S, fall back to the prior trail-inbound flip.
+         */
+        const steerRad = showOrdered ? oRad : hRad;
+        const pipDx = Math.cos(steerRad);
         const inboundDx = trailInboundDx.get(unit.id);
-        const flipLeft = inboundDx != null && inboundDx < -0.5;
+        let flipLeft = false;
+        if (Math.abs(pipDx) >= 0.3) {
+          flipLeft = pipDx > 0;
+        } else if (inboundDx != null && inboundDx < -0.5) {
+          flipLeft = true;
+        }
+        /** Outer ring 8 + halo ~4 + gap; clears tip when labels sit beside. */
+        const labelClear = 22;
         return {
           id: unit.id,
           name: unit.name.toUpperCase(),
@@ -414,9 +428,13 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
           tipY: y + Math.sin(hRad) * tipLen,
           courseX: x + Math.cos(oRad) * courseLen,
           courseY: y + Math.sin(oRad) * courseLen,
-          showOrdered: courseDelta > 0.5,
-          labelDx: flipLeft ? -12 : 12,
+          showOrdered,
+          labelDx: flipLeft ? -labelClear : labelClear,
           labelAnchor: flipLeft ? ('end' as const) : ('start' as const),
+          /** Side block — not parked on the icon crown so the pip stays readable. */
+          labelNameDy: -4,
+          labelIdentityDy: 10,
+          labelStatsDy: 22,
           identity: `${unit.faction.toUpperCase()} · ${unit.class.toUpperCase()} · ${unit.type.toUpperCase()}${
             unit.condition === 'sunk'
               ? unit.type === 'Aircraft'
@@ -511,9 +529,9 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
       const lineH = 11;
       const stackH = lines.length * lineH;
       // Prefer outer-ring south when the largest ring fits; else stack below the
-      // unit name/identity/speed block (clears ~y+16) so kinds stay readable.
+      // unit name/identity/speed block (clears ~y+22) so kinds stay readable.
       const rawY =
-        anyEdgeOnPlot && !anyOversized ? y + maxRy + 12 : y + 42;
+        anyEdgeOnPlot && !anyOversized ? y + maxRy + 12 : y + 48;
       const yClamped = clamp(rawY, 14, H - 4 - stackH);
       labelGroups.push({
         key: `${unit.id}-sensor-labels`,
@@ -810,7 +828,7 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
                 <text
                   className="map-plot-label"
                   x={m.x + m.labelDx}
-                  y={m.y - 10}
+                  y={m.y + m.labelNameDy}
                   textAnchor={m.labelAnchor}
                   fill="#7dff9a"
                   fontSize={11}
@@ -821,7 +839,7 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
                 <text
                   className="map-plot-label"
                   x={m.x + m.labelDx}
-                  y={m.y + 4}
+                  y={m.y + m.labelIdentityDy}
                   textAnchor={m.labelAnchor}
                   fill="#5a9a68"
                   fontSize={9}
@@ -832,7 +850,7 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
                 <text
                   className="map-plot-label"
                   x={m.x + m.labelDx}
-                  y={m.y + 16}
+                  y={m.y + m.labelStatsDy}
                   textAnchor={m.labelAnchor}
                   fill="#5a9a68"
                   fontSize={10}
