@@ -7,6 +7,16 @@ export type VesselType = 'destroyer' | 'submarine' | 'cruiser' | 'merchant' | 'o
 /** Relative radar cross-section / echo size (detection stub). */
 export type RadarSignature = 'small' | 'medium' | 'large';
 
+/** Installed sensor kinds (equipment — distinct from station capability tags). */
+export type SensorKind = 'radar' | 'hydrophone' | 'active_sonar' | 'lookout';
+
+/** Shipboard sensor installation (class/unit data). */
+export interface SensorDef {
+  kind: SensorKind;
+  /** Max useful range in nm (radar stub). */
+  maxRangeNm?: number;
+}
+
 export type StationCapability =
   | 'helm'
   | 'engineering'
@@ -90,6 +100,8 @@ export interface UnitState {
   turnRate: number;
   /** Radar echo size for detection (class/unit). */
   radarSignature: RadarSignature;
+  /** Installed sensors (destroyers include radar per ARCH-STA-03; subs typically do not). */
+  sensors: SensorDef[];
 }
 
 export interface ScenarioUnitSeed {
@@ -109,6 +121,7 @@ export interface ScenarioUnitSeed {
   maxSpeed?: number;
   turnRate?: number;
   radarSignature?: RadarSignature;
+  sensors?: SensorDef[];
 }
 
 export interface Scenario {
@@ -166,6 +179,8 @@ export interface VesselClassStub {
   turnRate: number;
   /** Default radar echo size for ships of this class. */
   radarSignature: RadarSignature;
+  /** Default installed sensors for the class. */
+  sensors?: SensorDef[];
   defaultStations: StationDef[];
 }
 

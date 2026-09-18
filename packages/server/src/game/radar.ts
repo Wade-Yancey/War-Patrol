@@ -4,6 +4,7 @@ import {
   RADAR_SIGNATURE_STRENGTH,
   bearingRangeNm,
   defaultRadarSignature,
+  findRadarSensor,
   type GameSave,
   type RadarContact,
   type RadarSignature,
@@ -15,14 +16,17 @@ const SURFACE_DEPTH_M = 5;
 
 /**
  * Minimal server-authoritative radar picture (ARCH-DET / ARCH-SP-05).
- * Own ship never appears. Other units are reduced to opaque polar blips —
- * no absolute positions, names, sides, or class leak to the client.
+ * Requires an installed radar sensor on own ship. Other units are reduced to
+ * opaque polar blips — no absolute positions, names, sides, or class leak.
  */
 export function buildRadarContacts(own: UnitState, save: GameSave): {
   contacts: RadarContact[];
   maxRangeNm: number;
-} {
-  const maxRangeNm = RADAR_MAX_RANGE_NM;
+} | null {
+  const sensor = findRadarSensor(own);
+  if (!sensor) return null;
+
+  const maxRangeNm = sensor.maxRangeNm ?? RADAR_MAX_RANGE_NM;
   const contacts: RadarContact[] = [];
 
   for (const other of save.units) {

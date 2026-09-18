@@ -3,6 +3,7 @@ import {
   DEFAULT_TURN_SECONDS,
   SCHEMA_VERSION,
   defaultRadarSignature,
+  defaultSensors,
   type EotSetting,
   type GameSave,
   type Scenario,
@@ -20,7 +21,7 @@ import {
 import { buildViewForSession } from './views.js';
 
 function unitFromScenario(seed: Scenario['units'][number]): UnitState {
-  return {
+  return normalizeUnit({
     id: seed.id,
     name: seed.name,
     side: seed.side,
@@ -38,6 +39,33 @@ function unitFromScenario(seed: Scenario['units'][number]): UnitState {
     maxSpeed: seed.maxSpeed ?? 20,
     turnRate: seed.turnRate ?? 5,
     radarSignature: seed.radarSignature ?? defaultRadarSignature(seed.type),
+    sensors: seed.sensors ? seed.sensors.map((s) => ({ ...s })) : defaultSensors(seed.type),
+  });
+}
+
+/** Fill missing sensor / signature fields for older saves; keep destroyer Radar station. */
+function normalizeUnit(unit: UnitState): UnitState {
+  const sensors = unit.sensors ?? defaultSensors(unit.type);
+  const stations = unit.stations.map((s) => ({ ...s, capabilities: [...s.capabilities] }));
+  // ARCH-STA-03: destroyers should expose a dedicated Radar station.
+  if (
+    (unit.type === 'destroyer' || unit.type === 'cruiser') &&
+    !stations.some((s) => s.capabilities.includes('radar'))
+  ) {
+    stations.push({ id: 'radar', name: 'Radar', capabilities: ['radar'] });
+  }
+  return {
+    ...unit,
+    radarSignature: unit.radarSignature ?? defaultRadarSignature(unit.type),
+    sensors,
+    stations,
+  };
+}
+
+function normalizeSave(save: GameSave): GameSave {
+  return {
+    ...save,
+    units: save.units.map((u) => normalizeUnit(structuredClone(u))),
   };
 }
 
@@ -110,7 +138,7 @@ export class GameRuntime {
   }
 
   async loadSaveIntoMemory(saveId: string): Promise<GameSave> {
-    const save = await store.loadSave(saveId);
+    const save = normalizeSave(await store.loadSave(saveId));
     this.sessions.clearGame(save.id);
     this.clearTimer(save.id);
     this.games.set(save.id, save);

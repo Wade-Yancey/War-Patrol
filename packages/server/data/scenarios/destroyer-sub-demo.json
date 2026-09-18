@@ -29,6 +29,7 @@
       "maxSpeed": 36,
       "turnRate": 8,
       "radarSignature": "medium",
+      "sensors": [{ "kind": "radar", "maxRangeNm": 25 }],
       "stations": [
         { "id": "bridge", "name": "Bridge", "capabilities": ["helm", "lookout", "plot"] },
         { "id": "engineering", "name": "Engineering", "capabilities": ["engineering"] },
@@ -55,6 +56,7 @@
       "maxSpeed": 21,
       "turnRate": 5,
       "radarSignature": "small",
+      "sensors": [],
       "stations": [
         { "id": "conn", "name": "Conn", "capabilities": ["helm", "plot"] },
         { "id": "engineering", "name": "Maneuvering", "capabilities": ["engineering"] },

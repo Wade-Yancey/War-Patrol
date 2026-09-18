@@ -5,6 +5,7 @@
   "maxSpeed": 36,
   "turnRate": 8,
   "radarSignature": "medium",
+  "sensors": [{ "kind": "radar", "maxRangeNm": 25 }],
   "defaultStations": [
     { "id": "bridge", "name": "Bridge", "capabilities": ["helm", "lookout", "plot"] },
     { "id": "engineering", "name": "Engineering", "capabilities": ["engineering"] },
