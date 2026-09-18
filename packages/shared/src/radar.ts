@@ -1,16 +1,27 @@
 import { RADAR_MAX_RANGE_NM, RADAR_SURFACE_DEPTH_M } from './constants.js';
-import type { LatLonDepth, RadarSignature, SensorDef, UnitState, VesselType } from './types.js';
+import type { HullClass, LatLonDepth, RadarSignature, SensorDef, UnitState } from './types.js';
+import { isHullClass, resolveVesselIdentity } from './vessel.js';
 
 /** Sensible class defaults when scenario/library omit radarSignature. */
-export function defaultRadarSignature(type: VesselType): RadarSignature {
-  switch (type) {
-    case 'submarine':
+export function defaultRadarSignature(
+  hullClassOrType: HullClass | string | undefined,
+): RadarSignature {
+  const { class: hullClass } = resolveVesselIdentity({
+    type: hullClassOrType,
+    class: isHullClass(hullClassOrType) ? hullClassOrType : undefined,
+  });
+  switch (hullClass) {
+    case 'Fleet Submarine':
+    case 'Fighter':
+    case 'Bomber':
       return 'small';
-    case 'destroyer':
-    case 'other':
+    case 'Destroyer':
+    case 'Merchant':
+    case 'Oiler':
       return 'medium';
-    case 'cruiser':
-    case 'merchant':
+    case 'Cruiser':
+    case 'Aircraft Carrier':
+    case 'Battleship':
       return 'large';
     default:
       return 'medium';
@@ -18,18 +29,22 @@ export function defaultRadarSignature(type: VesselType): RadarSignature {
 }
 
 /**
- * Default installed sensors by vessel type.
+ * Default installed sensors by hull class.
  * Wade (2026-09-18): destroyers and submarines both get radar for play
  * (overrides earlier ARCH-STA-04 “subs have no radar” default).
  */
-export function defaultSensors(type: VesselType): SensorDef[] {
-  switch (type) {
-    case 'destroyer':
-    case 'cruiser':
-    case 'submarine':
+export function defaultSensors(hullClassOrType: HullClass | string | undefined): SensorDef[] {
+  const { class: hullClass } = resolveVesselIdentity({
+    type: hullClassOrType,
+    class: isHullClass(hullClassOrType) ? hullClassOrType : undefined,
+  });
+  switch (hullClass) {
+    case 'Destroyer':
+    case 'Cruiser':
+    case 'Battleship':
+    case 'Aircraft Carrier':
+    case 'Fleet Submarine':
       return [{ kind: 'radar', maxRangeNm: RADAR_MAX_RANGE_NM }];
-    case 'merchant':
-    case 'other':
     default:
       return [];
   }

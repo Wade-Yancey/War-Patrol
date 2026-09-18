@@ -1,7 +1,8 @@
 {
   "id": "fletcher-class",
   "name": "Fletcher-class Destroyer",
-  "type": "destroyer",
+  "type": "Ship",
+  "class": "Destroyer",
   "maxSpeed": 36,
   "turnRate": 7,
   "radarSignature": "medium",

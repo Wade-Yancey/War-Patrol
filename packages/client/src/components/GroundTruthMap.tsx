@@ -34,7 +34,7 @@ function unitsSignature(units: UnitState[]): string {
   return units
     .map(
       (u) =>
-        `${u.id}:${u.position.lat.toFixed(5)},${u.position.lon.toFixed(5)},${u.heading.toFixed(1)},${normalizeHeading(u.orderedCourse ?? u.heading).toFixed(1)},${u.speed.toFixed(1)},${u.position.depth.toFixed(0)}`,
+        `${u.id}:${u.position.lat.toFixed(5)},${u.position.lon.toFixed(5)},${u.heading.toFixed(1)},${normalizeHeading(u.orderedCourse ?? u.heading).toFixed(1)},${u.speed.toFixed(1)},${u.position.depth.toFixed(0)},${u.type},${u.class},${u.name},${u.condition},${u.subsystems?.propulsion},${u.subsystems?.sensors},${u.flightLevel ?? ''}`,
     )
     .join('|');
 }
@@ -255,8 +255,20 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
           courseX: x + Math.cos(oRad) * courseLen,
           courseY: y + Math.sin(oRad) * courseLen,
           showOrdered: courseDelta > 0.5,
+          identity: `${unit.class.toUpperCase()} · ${unit.type.toUpperCase()}${
+            unit.condition === 'sunk'
+              ? unit.type === 'Aircraft'
+                ? ' · DESTROYED'
+                : ' · SUNK'
+              : ''
+          }`,
+          sunk: unit.condition === 'sunk',
           label: `${unit.speed.toFixed(0)} KN · HDG ${heading.toFixed(0)}° · CRS ${ordered.toFixed(0)}°${
-            unit.position.depth > 0 ? ` · ${unit.position.depth.toFixed(0)} M` : ''
+            unit.type === 'Submarine' && unit.position.depth > 0
+              ? ` · ${unit.position.depth.toFixed(0)} M`
+              : unit.type === 'Aircraft'
+                ? ` · FL ${(unit.flightLevel ?? 'medium').toUpperCase()}`
+                : ''
           }`,
           onPlot: u >= -0.05 && u <= 1.05 && v >= -0.05 && v <= 1.05,
         };
@@ -452,8 +464,16 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
             .filter((m) => m.onPlot)
             .map((m) => (
               <g key={m.id}>
-                <circle cx={m.x} cy={m.y} r={8} fill="none" stroke={m.color} strokeWidth={1.5} />
-                <circle cx={m.x} cy={m.y} r={3} fill={m.color} />
+                <circle
+                  cx={m.x}
+                  cy={m.y}
+                  r={8}
+                  fill="none"
+                  stroke={m.color}
+                  strokeWidth={1.5}
+                  strokeOpacity={m.sunk ? 0.35 : 1}
+                />
+                <circle cx={m.x} cy={m.y} r={3} fill={m.color} opacity={m.sunk ? 0.35 : 1} />
                 {m.showOrdered && (
                   <line
                     x1={m.x}
@@ -487,7 +507,16 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
                 </text>
                 <text
                   x={m.x + 12}
-                  y={m.y + 5}
+                  y={m.y + 4}
+                  fill="#5a9a68"
+                  fontSize={9}
+                  fontFamily="IBM Plex Mono, monospace"
+                >
+                  {m.identity}
+                </text>
+                <text
+                  x={m.x + 12}
+                  y={m.y + 16}
                   fill="#5a9a68"
                   fontSize={10}
                   fontFamily="IBM Plex Mono, monospace"

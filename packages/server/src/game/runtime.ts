@@ -5,11 +5,17 @@ import {
   defaultRadarSignature,
   defaultSensors,
   normalizeHeading,
+  normalizePositionForType,
+  resolveCondition,
+  resolveFlightLevel,
   resolveStartGameTimeSeconds,
+  resolveSubsystems,
   resolveTurnLengthSeconds,
   resolveTurnRate,
+  resolveVesselIdentity,
   type EotSetting,
   type GameSave,
+  type HullClass,
   type Scenario,
   type UnitState,
 } from '@war-patrol/shared';
@@ -25,15 +31,27 @@ import {
 import { buildViewForSession } from './views.js';
 
 function unitFromScenario(seed: Scenario['units'][number]): UnitState {
-  const radarSignature = seed.radarSignature ?? defaultRadarSignature(seed.type);
+  const identity = resolveVesselIdentity({
+    type: seed.type,
+    class: seed.class,
+    classId: seed.classId,
+  });
+  const radarSignature = seed.radarSignature ?? defaultRadarSignature(identity.class);
   const heading = normalizeHeading(seed.heading);
+  const condition = resolveCondition(seed.condition);
+  const subsystems = resolveSubsystems(seed.subsystems);
+  const flightLevel = resolveFlightLevel(identity.type, seed.flightLevel);
   return normalizeUnit({
     id: seed.id,
     name: seed.name,
     side: seed.side,
     classId: seed.classId,
-    type: seed.type,
-    position: { ...seed.position },
+    type: identity.type,
+    class: identity.class,
+    position: normalizePositionForType(identity.type, { ...seed.position }),
+    flightLevel,
+    condition,
+    subsystems,
     heading,
     orderedCourse: normalizeHeading(seed.orderedCourse ?? seed.heading),
     speed: seed.speed,
@@ -47,16 +65,22 @@ function unitFromScenario(seed: Scenario['units'][number]): UnitState {
     turnRate: resolveTurnRate({
       turnRate: seed.turnRate,
       radarSignature,
-      type: seed.type,
+      class: identity.class,
+      type: identity.type,
     }),
     radarSignature,
-    sensors: seed.sensors ? seed.sensors.map((s) => ({ ...s })) : defaultSensors(seed.type),
+    sensors: seed.sensors ? seed.sensors.map((s) => ({ ...s })) : defaultSensors(identity.class),
   });
 }
 
-/** Fill missing sensor / signature / course fields for older saves. */
+/** Fill missing sensor / signature / course / identity / damage fields for older saves. */
 function normalizeUnit(unit: UnitState): UnitState {
-  const sensors = unit.sensors ?? defaultSensors(unit.type);
+  const identity = resolveVesselIdentity({
+    type: unit.type,
+    class: (unit as UnitState & { class?: HullClass }).class,
+    classId: unit.classId,
+  });
+  const sensors = unit.sensors ?? defaultSensors(identity.class);
   const stations = unit.stations.map((s) => ({ ...s, capabilities: [...s.capabilities] }));
   const hasRadarSensor = sensors.some((s) => s.kind === 'radar');
   // Destroyers, cruisers, and (Wade) submarines with radar get a dedicated Radar station.
@@ -66,21 +90,40 @@ function normalizeUnit(unit: UnitState): UnitState {
   ) {
     stations.push({ id: 'radar', name: 'Radar', capabilities: ['radar'] });
   }
-  const radarSignature = unit.radarSignature ?? defaultRadarSignature(unit.type);
+  const radarSignature = unit.radarSignature ?? defaultRadarSignature(identity.class);
   const heading = normalizeHeading(unit.heading);
   const orderedCourse =
     typeof unit.orderedCourse === 'number'
       ? normalizeHeading(unit.orderedCourse)
       : heading;
+  const condition = resolveCondition(unit.condition);
+  const subsystems = resolveSubsystems(unit.subsystems);
+  const flightLevel = resolveFlightLevel(identity.type, unit.flightLevel);
+  const position = normalizePositionForType(identity.type, { ...unit.position });
+  let speed = unit.speed;
+  let eot = unit.eot;
+  if (condition === 'sunk' || subsystems.propulsion === 'disabled') {
+    speed = 0;
+    eot = 'stop';
+  }
   return {
     ...unit,
+    type: identity.type,
+    class: identity.class,
+    position,
+    flightLevel,
+    condition,
+    subsystems,
     heading,
     orderedCourse,
+    speed,
+    eot,
     radarSignature,
     turnRate: resolveTurnRate({
       turnRate: unit.turnRate,
       radarSignature,
-      type: unit.type,
+      class: identity.class,
+      type: identity.type,
     }),
     sensors,
     stations,
@@ -397,13 +440,28 @@ export class GameRuntime {
   updateUnit(
     gameId: string,
     unitId: string,
-    patch: Partial<Pick<UnitState, 'health' | 'heading' | 'speed' | 'name' | 'password'>> & {
+    patch: Partial<
+      Pick<
+        UnitState,
+        | 'health'
+        | 'heading'
+        | 'speed'
+        | 'name'
+        | 'password'
+        | 'type'
+        | 'class'
+        | 'flightLevel'
+        | 'condition'
+      >
+    > & {
       position?: Partial<UnitState['position']>;
+      subsystems?: Partial<UnitState['subsystems']>;
     },
   ): GameSave {
     return this.touch(gameId, (save) => {
-      const unit = save.units.find((u) => u.id === unitId);
-      if (!unit) throw Object.assign(new Error('Unit not found'), { statusCode: 404 });
+      const idx = save.units.findIndex((u) => u.id === unitId);
+      if (idx < 0) throw Object.assign(new Error('Unit not found'), { statusCode: 404 });
+      const unit = save.units[idx]!;
       if (patch.health !== undefined) unit.health = patch.health;
       if (patch.heading !== undefined) unit.heading = patch.heading;
       if (patch.speed !== undefined) unit.speed = patch.speed;
@@ -412,6 +470,29 @@ export class GameRuntime {
       if (patch.position) {
         unit.position = { ...unit.position, ...patch.position };
       }
+      if (patch.type !== undefined || patch.class !== undefined) {
+        const identity = resolveVesselIdentity({
+          type: patch.type ?? unit.type,
+          class: patch.class ?? unit.class,
+          classId: unit.classId,
+        });
+        unit.type = identity.type;
+        unit.class = identity.class;
+      }
+      if (patch.flightLevel !== undefined) {
+        unit.flightLevel = patch.flightLevel;
+      }
+      if (patch.condition !== undefined) {
+        unit.condition = resolveCondition(patch.condition);
+      }
+      if (patch.subsystems) {
+        unit.subsystems = resolveSubsystems({
+          ...unit.subsystems,
+          ...patch.subsystems,
+        });
+      }
+      // Re-normalize so type rules (surface depth, flight level, dead-in-water) stick.
+      save.units[idx] = normalizeUnit(unit);
       return save;
     });
   }
