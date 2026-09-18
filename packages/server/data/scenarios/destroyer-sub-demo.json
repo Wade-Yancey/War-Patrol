@@ -28,6 +28,7 @@
       "health": 100,
       "maxSpeed": 36,
       "turnRate": 8,
+      "radarSignature": "medium",
       "stations": [
         { "id": "bridge", "name": "Bridge", "capabilities": ["helm", "lookout", "plot"] },
         { "id": "engineering", "name": "Engineering", "capabilities": ["engineering"] },
@@ -44,7 +45,7 @@
       "side": "red",
       "classId": "gato-class",
       "type": "submarine",
-      "position": { "lat": 34.55, "lon": -119.7, "depth": 0 },
+      "position": { "lat": 34.42, "lon": -119.95, "depth": 0 },
       "heading": 225,
       "speed": 6,
       "eot": "ahead_2",
@@ -53,6 +54,7 @@
       "health": 100,
       "maxSpeed": 21,
       "turnRate": 5,
+      "radarSignature": "small",
       "stations": [
         { "id": "conn", "name": "Conn", "capabilities": ["helm", "plot"] },
         { "id": "engineering", "name": "Maneuvering", "capabilities": ["engineering"] },

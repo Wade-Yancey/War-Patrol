@@ -2,6 +2,7 @@ import { nanoid } from 'nanoid';
 import {
   DEFAULT_TURN_SECONDS,
   SCHEMA_VERSION,
+  defaultRadarSignature,
   type EotSetting,
   type GameSave,
   type Scenario,
@@ -36,6 +37,7 @@ function unitFromScenario(seed: Scenario['units'][number]): UnitState {
     orders: {},
     maxSpeed: seed.maxSpeed ?? 20,
     turnRate: seed.turnRate ?? 5,
+    radarSignature: seed.radarSignature ?? defaultRadarSignature(seed.type),
   };
 }
 

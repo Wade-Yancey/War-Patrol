@@ -494,24 +494,36 @@ label {
   color: var(--accent-strong);
 }
 
-.radar-scope {
-  display: grid;
-  gap: 1rem;
-  grid-template-columns: 1fr;
-  align-items: start;
+.radar-station-panel {
+  margin-top: 1rem;
+  padding: 0.75rem 0.85rem 1rem;
 }
 
-@media (min-width: 720px) {
-  .radar-scope {
-    grid-template-columns: minmax(0, 1.4fr) minmax(12rem, 0.7fr);
-  }
+.radar-station-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  align-items: baseline;
+  margin-bottom: 0.5rem;
+}
+
+.radar-station-head h2 {
+  margin: 0;
+}
+
+.radar-scope {
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: 1fr;
+  align-items: stretch;
+  justify-items: center;
 }
 
 .radar-scope-svg {
   display: block;
-  width: 100%;
-  max-width: 36rem;
+  width: min(100%, 92vw, 88vh);
   height: auto;
+  max-height: min(88vh, 920px);
   touch-action: manipulation;
   user-select: none;
 }
@@ -537,6 +549,11 @@ label {
   }
 }
 
+.radar-contact-list {
+  width: min(100%, 36rem);
+  justify-self: stretch;
+}
+
 .radar-contact-list h3 {
   margin: 0 0 0.65rem;
   font-family: var(--font-display);
@@ -557,13 +574,30 @@ label {
 
 .radar-contact-list li {
   display: grid;
-  grid-template-columns: 4.5rem 5rem 1fr;
+  grid-template-columns: 7.5rem 4.5rem 1fr;
   gap: 0.5rem;
   align-items: center;
-  min-height: 2.5rem;
-  padding: 0.35rem 0.5rem;
+  min-height: 2.75rem;
+  padding: 0.4rem 0.65rem;
   border: 1px solid var(--line);
   background: var(--bezel-inset);
+}
+
+@media (min-width: 1100px) {
+  .radar-scope {
+    grid-template-columns: minmax(0, 1fr) 16rem;
+    align-items: start;
+  }
+
+  .radar-scope-svg {
+    width: min(100%, 88vh);
+    justify-self: stretch;
+  }
+
+  .radar-contact-list {
+    width: 100%;
+    padding-top: 0.5rem;
+  }
 }
 
 .map-frame {

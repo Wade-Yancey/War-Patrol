@@ -8,10 +8,11 @@ interface Props {
   ownHeading: number;
 }
 
-const SIZE = 520;
+/** Large square canvas; CSS scales to dominate the viewport. */
+const SIZE = 900;
 const CX = SIZE / 2;
 const CY = SIZE / 2;
-const SCOPE_R = 220;
+const SCOPE_R = 390;
 const SWEEP_MS = 4200;
 
 interface PersistedBlip extends RadarContact {
@@ -20,7 +21,7 @@ interface PersistedBlip extends RadarContact {
 }
 
 function contactsKey(contacts: RadarContact[]): string {
-  return contacts.map((c) => `${c.id}:${c.bearing.toFixed(1)}:${c.rangeNm.toFixed(2)}`).join('|');
+  return contacts.map((c) => `${c.id}:${c.bearing.toFixed(1)}:${c.rangeNm.toFixed(2)}:${c.strength}`).join('|');
 }
 
 /**
@@ -58,30 +59,45 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
   }, []);
 
   const rings = useMemo(() => {
-    const steps = 4;
+    const steps = 5;
     return Array.from({ length: steps }, (_, i) => {
       const frac = (i + 1) / steps;
       return { r: SCOPE_R * frac, label: `${(maxRangeNm * frac).toFixed(0)}` };
     });
   }, [maxRangeNm]);
 
-  const bearings = useMemo(
-    () =>
-      Array.from({ length: 12 }, (_, i) => {
-        const deg = i * 30;
-        const rad = ((deg - 90) * Math.PI) / 180;
-        return {
-          deg,
-          x1: CX + Math.cos(rad) * (SCOPE_R - 10),
-          y1: CY + Math.sin(rad) * (SCOPE_R - 10),
-          x2: CX + Math.cos(rad) * SCOPE_R,
-          y2: CY + Math.sin(rad) * SCOPE_R,
-          tx: CX + Math.cos(rad) * (SCOPE_R + 18),
-          ty: CY + Math.sin(rad) * (SCOPE_R + 18),
-        };
-      }),
-    [],
-  );
+  /** Dense compass: 5° ticks, labels every 10°. */
+  const bearings = useMemo(() => {
+    const marks: Array<{
+      deg: number;
+      major: boolean;
+      label: boolean;
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+      tx: number;
+      ty: number;
+    }> = [];
+    for (let deg = 0; deg < 360; deg += 5) {
+      const major = deg % 30 === 0;
+      const label = deg % 10 === 0;
+      const tick = major ? 18 : label ? 12 : 7;
+      const rad = ((deg - 90) * Math.PI) / 180;
+      marks.push({
+        deg,
+        major,
+        label,
+        x1: CX + Math.cos(rad) * (SCOPE_R - tick),
+        y1: CY + Math.sin(rad) * (SCOPE_R - tick),
+        x2: CX + Math.cos(rad) * SCOPE_R,
+        y2: CY + Math.sin(rad) * SCOPE_R,
+        tx: CX + Math.cos(rad) * (SCOPE_R + 22),
+        ty: CY + Math.sin(rad) * (SCOPE_R + 22),
+      });
+    }
+    return marks;
+  }, []);
 
   const headingRad = ((ownHeading - 90) * Math.PI) / 180;
   const blips = [...persistRef.current.values()].map((b) => {
@@ -94,14 +110,15 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
       ...b,
       x: CX + Math.cos(rad) * r,
       y: CY + Math.sin(rad) * r,
-      opacity: 0.25 + 0.75 * fade * (0.4 + 0.6 * b.strength),
-      r: 3 + 3 * b.strength,
+      opacity: 0.25 + 0.75 * fade * (0.35 + 0.65 * b.strength),
+      // Strength (incl. signature) drives blip size on the scope.
+      r: 2.5 + 6 * b.strength,
     };
   });
 
   return (
     <div className="radar-scope" role="img" aria-label="Radar plan position indicator">
-      <svg viewBox={`0 0 ${SIZE} ${SIZE}`} width="100%" className="radar-scope-svg">
+      <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="radar-scope-svg">
         <defs>
           <radialGradient id="radar-glow" cx="50%" cy="50%" r="50%">
             <stop offset="0%" stopColor="#0a2a14" />
@@ -110,8 +127,8 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
           </radialGradient>
         </defs>
 
-        <circle cx={CX} cy={CY} r={SCOPE_R + 28} fill="#0a120c" stroke="#2a3830" strokeWidth={8} />
-        <circle cx={CX} cy={CY} r={SCOPE_R} fill="url(#radar-glow)" stroke="#1a8f3c" strokeWidth={1.5} />
+        <circle cx={CX} cy={CY} r={SCOPE_R + 36} fill="#0a120c" stroke="#2a3830" strokeWidth={10} />
+        <circle cx={CX} cy={CY} r={SCOPE_R} fill="url(#radar-glow)" stroke="#1a8f3c" strokeWidth={2} />
 
         {rings.map((ring) => (
           <g key={ring.r}>
@@ -124,10 +141,10 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
               strokeWidth={1}
             />
             <text
-              x={CX + 6}
-              y={CY - ring.r + 12}
+              x={CX + 8}
+              y={CY - ring.r + 14}
               fill="#5a9a68"
-              fontSize={10}
+              fontSize={14}
               fontFamily="IBM Plex Mono, monospace"
             >
               {ring.label}
@@ -137,38 +154,47 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
 
         {bearings.map((b) => (
           <g key={b.deg}>
-            <line x1={b.x1} y1={b.y1} x2={b.x2} y2={b.y2} stroke="#3dff6a" strokeWidth={1.5} />
-            <text
-              x={b.tx}
-              y={b.ty}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fill="#7dff9a"
-              fontSize={12}
-              fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
-            >
-              {String(b.deg).padStart(3, '0')}
-            </text>
+            <line
+              x1={b.x1}
+              y1={b.y1}
+              x2={b.x2}
+              y2={b.y2}
+              stroke={b.major ? '#3dff6a' : 'rgba(61,255,106,0.45)'}
+              strokeWidth={b.major ? 2 : 1}
+            />
+            {b.label && (
+              <text
+                x={b.tx}
+                y={b.ty}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill={b.major ? '#7dff9a' : '#5a9a68'}
+                fontSize={b.major ? 16 : 11}
+                fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
+              >
+                {String(b.deg).padStart(3, '0')}
+              </text>
+            )}
           </g>
         ))}
 
-        {/* Cardinal hairlines */}
         <line x1={CX} y1={CY - SCOPE_R} x2={CX} y2={CY + SCOPE_R} stroke="rgba(61,255,106,0.18)" />
         <line x1={CX - SCOPE_R} y1={CY} x2={CX + SCOPE_R} y2={CY} stroke="rgba(61,255,106,0.18)" />
 
-        {/* Own-ship heading tick */}
         <line
           x1={CX}
           y1={CY}
-          x2={CX + Math.cos(headingRad) * 28}
-          y2={CY + Math.sin(headingRad) * 28}
+          x2={CX + Math.cos(headingRad) * 36}
+          y2={CY + Math.sin(headingRad) * 36}
           stroke="#7dff9a"
-          strokeWidth={2}
+          strokeWidth={3}
         />
-        <circle cx={CX} cy={CY} r={4} fill="#3dff6a" />
+        <circle cx={CX} cy={CY} r={5} fill="#3dff6a" />
 
-        {/* Sweep wedge (CSS-rotated group) */}
-        <g className="radar-sweep" style={{ transformOrigin: `${CX}px ${CY}px`, animationDuration: `${SWEEP_MS}ms` }}>
+        <g
+          className="radar-sweep"
+          style={{ transformOrigin: `${CX}px ${CY}px`, animationDuration: `${SWEEP_MS}ms` }}
+        >
           <path
             d={`M ${CX} ${CY} L ${CX} ${CY - SCOPE_R} A ${SCOPE_R} ${SCOPE_R} 0 0 1 ${CX + SCOPE_R * 0.35} ${CY - SCOPE_R * 0.94} Z`}
             fill="rgba(61,255,106,0.14)"
@@ -179,7 +205,7 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
             x2={CX}
             y2={CY - SCOPE_R}
             stroke="#3dff6a"
-            strokeWidth={2}
+            strokeWidth={2.5}
             opacity={0.85}
           />
         </g>
@@ -187,16 +213,24 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
         {blips.map((b) => (
           <g key={b.id} opacity={b.opacity}>
             <circle cx={b.x} cy={b.y} r={b.r} fill="#3dff6a" />
-            <circle cx={b.x} cy={b.y} r={b.r + 3} fill="none" stroke="#7dff9a" strokeWidth={0.8} opacity={0.5} />
+            <circle
+              cx={b.x}
+              cy={b.y}
+              r={b.r + 3}
+              fill="none"
+              stroke="#7dff9a"
+              strokeWidth={0.8}
+              opacity={0.5}
+            />
           </g>
         ))}
 
         <text
           x={CX}
-          y={SIZE - 14}
+          y={SIZE - 18}
           textAnchor="middle"
           fill="#5a9a68"
-          fontSize={11}
+          fontSize={14}
           fontFamily="IBM Plex Mono, monospace"
         >
           PPI · TRUE · {maxRangeNm.toFixed(0)} NM
@@ -211,11 +245,11 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
           </p>
         ) : (
           <ul>
-            {contacts.map((c) => (
+            {contacts.map((c, i) => (
               <li key={c.id} className="mono">
-                <span className="readout">{String(Math.round(c.bearing)).padStart(3, '0')}°</span>
+                <span className="readout">Contact {i + 1}</span>
+                <span>{String(Math.round(c.bearing)).padStart(3, '0')}°</span>
                 <span>{c.rangeNm.toFixed(1)} nm</span>
-                <span className="muted">{c.id}</span>
               </li>
             ))}
           </ul>

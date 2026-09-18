@@ -4,6 +4,9 @@ export type SideId = string;
 
 export type VesselType = 'destroyer' | 'submarine' | 'cruiser' | 'merchant' | 'other';
 
+/** Relative radar cross-section / echo size (detection stub). */
+export type RadarSignature = 'small' | 'medium' | 'large';
+
 export type StationCapability =
   | 'helm'
   | 'engineering'
@@ -85,6 +88,8 @@ export interface UnitState {
   maxSpeed: number;
   /** Turn rate deg/min stub. */
   turnRate: number;
+  /** Radar echo size for detection (class/unit). */
+  radarSignature: RadarSignature;
 }
 
 export interface ScenarioUnitSeed {
@@ -103,6 +108,7 @@ export interface ScenarioUnitSeed {
   health?: number;
   maxSpeed?: number;
   turnRate?: number;
+  radarSignature?: RadarSignature;
 }
 
 export interface Scenario {
@@ -158,6 +164,8 @@ export interface VesselClassStub {
   type: VesselType;
   maxSpeed: number;
   turnRate: number;
+  /** Default radar echo size for ships of this class. */
+  radarSignature: RadarSignature;
   defaultStations: StationDef[];
 }
 

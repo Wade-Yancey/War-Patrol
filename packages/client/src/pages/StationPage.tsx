@@ -160,12 +160,13 @@ export function StationPage() {
             </section>
 
             {canRadar && (
-              <section className="panel stack" style={{ marginTop: '1rem' }}>
-                <h2>Radar · PPI</h2>
-                <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-                  Call contacts by true bearing on the rim. Picture is server-filtered — no other ship ground
-                  truth.
-                </p>
+              <section className="panel stack radar-station-panel">
+                <div className="radar-station-head">
+                  <h2>Radar · PPI</h2>
+                  <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+                    Call contacts by true bearing on the rim. Raw sensor picture only — no friend/foe identity.
+                  </p>
+                </div>
                 <RadarScope
                   contacts={vessel.radarContacts ?? []}
                   maxRangeNm={vessel.radarMaxRangeNm ?? 25}

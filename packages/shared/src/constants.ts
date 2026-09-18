@@ -18,3 +18,17 @@ export const METERS_PER_NM = 1852;
 
 /** Stub surface-search radar max range (nm) for destroyer-class demos. */
 export const RADAR_MAX_RANGE_NM = 25;
+
+/** Detection range multiplier by radar signature size. */
+export const RADAR_SIGNATURE_RANGE_FACTOR = {
+  small: 0.7,
+  medium: 1,
+  large: 1.15,
+} as const;
+
+/** Echo strength bias by radar signature (added into range falloff). */
+export const RADAR_SIGNATURE_STRENGTH = {
+  small: 0.55,
+  medium: 0.85,
+  large: 1,
+} as const;
