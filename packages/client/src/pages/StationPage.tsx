@@ -225,7 +225,7 @@ export function StationPage() {
             )}
 
             {canHydrophone && (
-              <section className="panel stack hydrophone-station-panel">
+              <section className="panel stack radar-station-panel">
                 <div className="radar-station-head">
                   <h2>Hydrophone · Bearing listen</h2>
                   <p className="muted radar-station-blurb">

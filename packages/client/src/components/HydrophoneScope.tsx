@@ -292,23 +292,20 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
       : `approximate range ${bandLabel}`;
 
   return (
-    <div className="hydrophone-scope">
-      <div className="hydrophone-scope-plot">
-        <div
-          className="hydrophone-dial"
+    <div className="radar-scope radar-console">
+      <div className="radar-scope-plot">
+        <svg
+          ref={svgRef}
+          className="radar-scope-svg hydrophone-svg"
+          viewBox={`0 0 ${SIZE} ${SIZE}`}
           role="img"
           aria-label={`Hydrophone listen bearing ${listenLabel} degrees. Intensity ${levelPct} percent. ${ariaRange}. No visual contacts — audio only.`}
+          preserveAspectRatio="xMidYMid meet"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
         >
-          <svg
-            ref={svgRef}
-            className="hydrophone-svg"
-            viewBox={`0 0 ${SIZE} ${SIZE}`}
-            preserveAspectRatio="xMidYMid meet"
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={onPointerUp}
-          >
             <circle
               cx={CX}
               cy={CY}
@@ -403,10 +400,9 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
               <circle cx={CX} cy={CY} r={7} fill="#041208" stroke="#3dff6a" strokeWidth={2} />
             </g>
           </svg>
-        </div>
       </div>
 
-      <div className="hydrophone-aux">
+      <div className="radar-side-panel hydrophone-aux">
         <div className="hydrophone-readouts">
           <div className="hydrophone-readout">
             <span className="hydrophone-key">LSTN</span>
