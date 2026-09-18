@@ -480,18 +480,21 @@ export function UmpirePage() {
               </div>
             )}
 
-            <div className="grid-2" style={{ marginTop: '1rem' }}>
-              <section className="panel">
-                <h2>Ground truth</h2>
-                <GroundTruthMap
-                  area={umpire.operatingArea}
-                  units={umpire.units}
-                  trails={umpire.trails}
-                />
-              </section>
+            <section className="panel umpire-gt-map" style={{ marginTop: '1rem' }}>
+              <h2>Ground truth</h2>
+              <p className="muted" style={{ marginTop: 0, fontSize: '0.8rem' }}>
+                Full operating picture — zoom/pan, trails, true-north compass, optional sensor range bands
+                (Ranges).
+              </p>
+              <GroundTruthMap
+                area={umpire.operatingArea}
+                units={umpire.units}
+                trails={umpire.trails}
+              />
+            </section>
 
-              <div className="stack">
-                <section className="panel">
+            <div className="grid-2 umpire-modules" style={{ marginTop: '1rem' }}>
+              <section className="panel">
                   <h2>Vessel links &amp; passwords</h2>
                   <p className="muted" style={{ marginTop: 0, fontSize: '0.8rem' }}>
                     Destroyers and fleet submarines include a dedicated <strong>Radar</strong> station plus an
@@ -1073,25 +1076,24 @@ export function UmpirePage() {
                     </>
                   )}
                 </section>
-
-                <section className="panel">
-                  <h2>Connections</h2>
-                  {umpire.connections.length === 0 ? (
-                    <p className="muted">No live SSE clients.</p>
-                  ) : (
-                    <ul className="mono" style={{ margin: 0, paddingLeft: '1.1rem' }}>
-                      {umpire.connections.map((c, i) => (
-                        <li key={i}>
-                          {c.role}
-                          {c.unitId ? ` · ${c.unitId}` : ''}
-                          {c.stationId ? ` / ${c.stationId}` : ''} ×{c.count}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </section>
-              </div>
             </div>
+
+            <section className="panel" style={{ marginTop: '1rem' }}>
+              <h2>Connections</h2>
+              {umpire.connections.length === 0 ? (
+                <p className="muted">No live SSE clients.</p>
+              ) : (
+                <ul className="mono" style={{ margin: 0, paddingLeft: '1.1rem' }}>
+                  {umpire.connections.map((c, i) => (
+                    <li key={i}>
+                      {c.role}
+                      {c.unitId ? ` · ${c.unitId}` : ''}
+                      {c.stationId ? ` / ${c.stationId}` : ''} ×{c.count}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
           </>
         )}
       </div>
