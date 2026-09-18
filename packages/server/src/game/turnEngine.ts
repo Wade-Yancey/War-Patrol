@@ -3,9 +3,12 @@ import {
   canMakeWay,
   clamp,
   clampSpeedToMax,
+  clampSubmarineDepth,
   effectiveMaxSpeed,
   moveAlongHeading,
   normalizeHeading,
+  normalizePositionForType,
+  resolveOrderedDepth,
   resolveSpeedStepFraction,
   resolveTurnLengthSeconds,
   stepSpeedTowardTarget,
@@ -17,7 +20,7 @@ import {
   type UnitState,
 } from '@war-patrol/shared';
 
-/** Apply simultaneous helm/EOT orders and advance unit kinematics (resolve stub). */
+/** Apply simultaneous helm/EOT/depth orders and advance unit kinematics (resolve stub). */
 export function resolveTurn(save: GameSave): GameSave {
   const now = new Date().toISOString();
   const turnLength = resolveTurnLengthSeconds(save.turnLengthSeconds);
@@ -74,13 +77,26 @@ function applyUnitOrders(unit: UnitState, turnLengthSeconds: number): UnitState 
   const orders = unit.orders;
   let orderedCourse =
     typeof unit.orderedCourse === 'number' ? unit.orderedCourse : unit.heading;
+  let orderedDepth = resolveOrderedDepth(unit.type, unit.position.depth, unit.orderedDepth);
   let heading = unit.heading;
   let eot = unit.eot;
   let speed = unit.speed;
+  let position = { ...unit.position };
 
   // Helm order updates the persistent steering course immediately for this resolve.
   if (orders.course !== undefined) {
     orderedCourse = normalizeHeading(orders.course);
+  }
+
+  // Depth order updates the standing set-point; actual depth snaps this resolve (v1 stub).
+  if (orders.depth !== undefined && unit.type === 'Submarine') {
+    orderedDepth = clampSubmarineDepth(orders.depth);
+  }
+  if (unit.type === 'Submarine') {
+    position = { ...position, depth: orderedDepth };
+  } else {
+    orderedDepth = 0;
+    position = normalizePositionForType(unit.type, position);
   }
 
   // Turn toward ordered course (size-based turnRate deg/min × in-game minutes).
@@ -92,10 +108,11 @@ function applyUnitOrders(unit: UnitState, turnLengthSeconds: number): UnitState 
   }
 
   // Submarines deeper than surface band use submerged max (~9 kn), not hull maxSpeed.
+  // Use post-dive depth so a dive+move in the same resolve uses submerged ceiling.
   const speedCeiling = effectiveMaxSpeed({
     type: unit.type,
     maxSpeed: unit.maxSpeed,
-    depth: unit.position.depth,
+    depth: position.depth,
   });
   // Ships/subs: signed EOT target. Aircraft: loiter/cruise/full (never reverse).
   const target = targetSpeedForUnit(unit.type, eot, speedCeiling);
@@ -112,12 +129,13 @@ function applyUnitOrders(unit: UnitState, turnLengthSeconds: number): UnitState 
 
   const distance = Math.abs(speed) * KNOTS_TO_MPS * turnLengthSeconds;
   const moveHeading = speed >= 0 ? heading : normalizeHeading(heading + 180);
-  const position = distance > 0 ? moveAlongHeading(unit.position, moveHeading, distance) : unit.position;
+  position = distance > 0 ? moveAlongHeading(position, moveHeading, distance) : position;
 
   return {
     ...unit,
     heading: normalizeHeading(heading),
     orderedCourse: normalizeHeading(orderedCourse),
+    orderedDepth,
     eot,
     speed,
     position,
@@ -141,13 +159,14 @@ export function clearInProgressOrders(units: UnitState[]): UnitState[] {
 
 export function mergeOrders(
   existing: UnitOrders,
-  patch: { course?: number; eot?: EotSetting },
+  patch: { course?: number; eot?: EotSetting; depth?: number },
   stationId: string,
 ): UnitOrders {
   return {
     ...existing,
     ...(patch.course !== undefined ? { course: normalizeHeading(patch.course) } : {}),
     ...(patch.eot !== undefined ? { eot: patch.eot } : {}),
+    ...(patch.depth !== undefined ? { depth: clampSubmarineDepth(patch.depth) } : {}),
     updatedAt: new Date().toISOString(),
     updatedByStationId: stationId,
   };

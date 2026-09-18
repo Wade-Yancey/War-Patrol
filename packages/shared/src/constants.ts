@@ -106,3 +106,9 @@ export const ACTIVE_SONAR_HALF_ANGLE_DEG = 30;
 
 /** Wall-clock seconds between placeholder active-sonar pings (own set + hydrophone hear). */
 export const ACTIVE_SONAR_PING_INTERVAL_SEC = 2;
+
+/**
+ * Max ordered / actual depth (m) for fleet submarines in v1.
+ * Slightly past Gato test depth (~300 ft / 91 m); crush depth is not modeled.
+ */
+export const SUBMARINE_MAX_DEPTH_M = 100;

@@ -1,3 +1,4 @@
+import { SUBMARINE_MAX_DEPTH_M } from './constants.js';
 import type {
   Faction,
   FlightLevel,
@@ -257,11 +258,14 @@ export function canUseSensors(
   return { ok: true };
 }
 
+import { SUBMARINE_MAX_DEPTH_M } from './constants.js';
+import type { VesselType } from './types.js';
+
 /**
  * Normalize position elevation rules by type:
  * - Ship → depth 0 (surface only)
  * - Aircraft → depth 0 (flight level is separate)
- * - Submarine → keep depth
+ * - Submarine → keep depth (clamped by caller when ordering)
  */
 export function normalizePositionForType(
   type: VesselType,
@@ -270,7 +274,24 @@ export function normalizePositionForType(
   if (type === 'Ship' || type === 'Aircraft') {
     return { ...position, depth: 0 };
   }
-  return { ...position };
+  return {
+    ...position,
+    depth: Math.max(0, Math.min(SUBMARINE_MAX_DEPTH_M, Math.round(position.depth))),
+  };
+}
+
+/** Standing ordered depth: ships/aircraft 0; subs default to current depth. */
+export function resolveOrderedDepth(
+  type: VesselType,
+  positionDepth: number,
+  orderedDepth?: number,
+): number {
+  if (type === 'Ship' || type === 'Aircraft') return 0;
+  const raw =
+    typeof orderedDepth === 'number' && Number.isFinite(orderedDepth)
+      ? orderedDepth
+      : positionDepth;
+  return Math.max(0, Math.min(SUBMARINE_MAX_DEPTH_M, Math.round(raw)));
 }
 
 /** Operator label for sunk/destroyed by type. */

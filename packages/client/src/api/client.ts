@@ -67,7 +67,7 @@ export const api = {
     }),
   deleteScenario: (scenarioId: string) =>
     request<{ ok: boolean }>(`/api/scenarios/${scenarioId}`, { method: 'DELETE' }),
-  orders: (gameId: string, token: string, body: { course?: number; eot?: EotSetting }) =>
+  orders: (gameId: string, token: string, body: { course?: number; eot?: EotSetting; depth?: number }) =>
     request<{ ok: boolean; stateVersion: number }>(`/api/games/${gameId}/orders`, {
       method: 'POST',
       token,

@@ -105,6 +105,11 @@ export interface UnitOrders {
   course?: number;
   /** Desired EOT setting. */
   eot?: EotSetting;
+  /**
+   * Desired depth in meters (positive down). Submarines only.
+   * Applied to {@link UnitState.position}.depth on turn resolve.
+   */
+  depth?: number;
   updatedAt?: string;
   updatedByStationId?: string;
 }
@@ -142,6 +147,13 @@ export interface UnitState {
    * Ship turns toward this over resolves; persists across turns.
    */
   orderedCourse: number;
+  /**
+   * Ordered depth meters (positive down) — submarine standing set-point.
+   * Ringed up immediately on Controls submit; actual {@link position}.depth
+   * snaps to this on turn resolve (v1 stub — no gradual dive rate yet).
+   * Ships/aircraft always 0.
+   */
+  orderedDepth: number;
   /** Speed in knots (signed: negative = reverse). */
   speed: number;
   /** Current acknowledged EOT setting. */
@@ -193,6 +205,8 @@ export interface ScenarioUnitSeed {
   heading: number;
   /** Initial ordered course; defaults to heading. */
   orderedCourse?: number;
+  /** Initial ordered depth (m); defaults to position.depth for submarines. */
+  orderedDepth?: number;
   speed: number;
   eot?: EotSetting;
   accessToken: string;
@@ -404,6 +418,7 @@ export interface VesselView {
     | 'subsystems'
     | 'heading'
     | 'orderedCourse'
+    | 'orderedDepth'
     | 'speed'
     | 'eot'
     | 'orders'

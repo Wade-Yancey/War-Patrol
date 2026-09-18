@@ -2,10 +2,12 @@ import { EOT_LABELS } from './eot.js';
 import type { UnitOrders, UnitState } from './types.js';
 import { isV1PlayerUnit } from './vessel.js';
 
-/** True when the unit has filed helm and/or EOT for the current turn. */
+/** True when the unit has filed helm, EOT, and/or depth for the current turn. */
 export function hasPendingOrders(orders: UnitOrders | undefined | null): boolean {
   if (!orders) return false;
-  return orders.course !== undefined || orders.eot !== undefined;
+  return (
+    orders.course !== undefined || orders.eot !== undefined || orders.depth !== undefined
+  );
 }
 
 /** Format course degrees true as a compact CRT readout (e.g. `045°`). */
@@ -14,16 +16,24 @@ export function formatCourseDegrees(course: number): string {
   return `${String(n).padStart(3, '0')}°`;
 }
 
+/** Format depth meters as a compact CRT readout (e.g. `050 m`). */
+export function formatDepthMeters(depthM: number): string {
+  return `${String(Math.round(depthM)).padStart(3, '0')} m`;
+}
+
 /**
  * Compact of-record summary for a unit's in-progress orders.
  * Missing halves show as `—` so the umpire sees partial submissions.
  */
 export function formatPendingOrdersSummary(orders: UnitOrders | undefined | null): string {
   if (!hasPendingOrders(orders)) return '—';
-  const crs =
-    orders!.course !== undefined ? `CRS ${formatCourseDegrees(orders!.course)}` : 'CRS —';
-  const eot = orders!.eot ? EOT_LABELS[orders!.eot] : 'EOT —';
-  return `${crs} · ${eot}`;
+  const parts: string[] = [];
+  parts.push(orders!.course !== undefined ? `CRS ${formatCourseDegrees(orders!.course)}` : 'CRS —');
+  parts.push(orders!.eot ? EOT_LABELS[orders!.eot] : 'EOT —');
+  if (orders!.depth !== undefined) {
+    parts.push(`DPT ${formatDepthMeters(orders!.depth)}`);
+  }
+  return parts.join(' · ');
 }
 
 export type PendingOrderRow = {
@@ -36,6 +46,8 @@ export type PendingOrderRow = {
   updatedAt?: string;
   /** Standing helm set-point (may already match pending CRS). */
   orderedCourse: number;
+  /** Standing depth set-point (subs; may already match pending DPT). */
+  orderedDepth: number;
   /** Acknowledged EOT (pending EOT waits until resolve). */
   currentEot: UnitState['eot'];
 };
@@ -57,6 +69,7 @@ export function pendingOrderRows(units: UnitState[]): PendingOrderRow[] {
       updatedByStationId: u.orders.updatedByStationId,
       updatedAt: u.orders.updatedAt,
       orderedCourse: u.orderedCourse,
+      orderedDepth: u.orderedDepth ?? u.position.depth,
       currentEot: u.eot,
     }));
   rows.sort((a, b) => {

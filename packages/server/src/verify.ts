@@ -202,6 +202,11 @@ async function main() {
   check('destroyer turnRate medium size', porter.turnRate === 7);
   check('sub turnRate small size', gato.turnRate === 12);
   check('orderedCourse seeded to heading (porter)', porter.orderedCourse === porter.heading);
+  check(
+    'orderedDepth seeded to position (gato)',
+    gato.orderedDepth === (gato.position as Json).depth,
+  );
+  check('orderedDepth ship is 0', porter.orderedDepth === 0);
   check('game clock starts 08:00', (uv.turn as Json).gameTimeSeconds === 28800);
   check('turn length 5 min', uv.turnLengthSeconds === 300);
   check('order timer default 5 min', (uv.turn as Json).timerSeconds === 300);
@@ -596,7 +601,7 @@ async function main() {
   const redOrders = await api(
     'POST',
     `/api/games/${gameId}/orders`,
-    { course: 180, eot: 'ahead_1' },
+    { course: 180, eot: 'ahead_1', depth: 50 },
     redToken,
   );
   check('red orders', redOrders.status === 200);
@@ -605,7 +610,9 @@ async function main() {
   const pendingUnits = ((umpirePending.json.view as Json).units as Array<{
     id: string;
     name: string;
-    orders: { course?: number; eot?: string; updatedByStationId?: string };
+    orderedDepth?: number;
+    position?: { depth?: number };
+    orders: { course?: number; eot?: string; depth?: number; updatedByStationId?: string };
   }>);
   const bluePending = pendingUnits.find((u) => u.id === 'dd-101');
   const redPending = pendingUnits.find((u) => u.id === 'ss-212');
@@ -615,7 +622,14 @@ async function main() {
   );
   check(
     'umpire sees red pending orders',
-    redPending?.orders.course === 180 && redPending?.orders.eot === 'ahead_1',
+    redPending?.orders.course === 180 &&
+      redPending?.orders.eot === 'ahead_1' &&
+      redPending?.orders.depth === 50,
+  );
+  check('sub orderedDepth rings up immediately', redPending?.orderedDepth === 50);
+  check(
+    'sub keel depth unchanged until resolve',
+    redPending?.position?.depth === (gato.position as Json).depth,
   );
   check('umpire pending has station writer', Boolean(bluePending?.orders.updatedByStationId));
   check(
@@ -640,6 +654,9 @@ async function main() {
   check('heading changed or eot applied', blueAfter.eot === 'ahead_full' || blueAfter.heading !== blueBefore.heading);
   check('ordered course persists', blueAfter.orderedCourse === 45);
   check('heading turned toward ordered', blueAfter.heading !== blueBefore.heading || blueBefore.heading === 45);
+  const redAfter = after.units.find((u) => u.id === 'ss-212')!;
+  check('sub depth applied on resolve', redAfter.position.depth === 50);
+  check('sub orderedDepth persists after resolve', redAfter.orderedDepth === 50);
   check('game clock advanced 5 min', after.turn.gameTimeSeconds === 28800 + 300);
   check('history snapshot', after.history.length === 1);
   check('history stores gameTime', after.history[0]!.gameTimeSeconds === 28800 + 300);
@@ -817,6 +834,55 @@ async function main() {
     `/api/games/${gameId}/units/ss-212`,
     { position: { depth: 0 }, speed: 6 },
     umpireToken,
+  );
+
+  // Dive orders: presets + ship rejection + clamp
+  const diveOrder = await api(
+    'POST',
+    `/api/games/${gameId}/orders`,
+    { depth: 18 },
+    redToken,
+  );
+  check('sub periscope depth order', diveOrder.status === 200);
+  check(
+    'periscope orderedDepth live',
+    runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!.orderedDepth === 18,
+  );
+  check(
+    'periscope keel still surface until resolve',
+    runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!.position.depth === 0,
+  );
+  const shipDepthReject = await api(
+    'POST',
+    `/api/games/${gameId}/orders`,
+    { depth: 40 },
+    blueToken,
+  );
+  check('ship depth order rejected', shipDepthReject.status === 400);
+  const deepClamp = await api(
+    'POST',
+    `/api/games/${gameId}/orders`,
+    { depth: 250 },
+    redToken,
+  );
+  check('depth order clamps to max', deepClamp.status === 200);
+  check(
+    'orderedDepth clamped to 100',
+    runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!.orderedDepth === 100,
+  );
+  await api('POST', `/api/games/${gameId}/turn/lock`, {}, umpireToken);
+  await api('POST', `/api/games/${gameId}/turn/resolve`, {}, umpireToken);
+  check(
+    'clamped depth applied on resolve',
+    runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!.position.depth === 100,
+  );
+  // Emergency blow → surface
+  await api('POST', `/api/games/${gameId}/orders`, { depth: 0 }, redToken);
+  await api('POST', `/api/games/${gameId}/turn/lock`, {}, umpireToken);
+  await api('POST', `/api/games/${gameId}/turn/resolve`, {}, umpireToken);
+  check(
+    'emergency blow / surface applied',
+    runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!.position.depth === 0,
   );
 
   // Speed clamped to class max

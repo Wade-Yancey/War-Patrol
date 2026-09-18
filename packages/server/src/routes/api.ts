@@ -281,7 +281,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.post<{
     Params: { gameId: string };
-    Body: { course?: number; eot?: EotSetting };
+    Body: { course?: number; eot?: EotSetting; depth?: number };
   }>('/api/games/:gameId/orders', async (request, reply) => {
     try {
       const session = requireSession(request, request.params.gameId);
