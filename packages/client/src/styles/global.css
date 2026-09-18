@@ -2057,12 +2057,23 @@ label {
 }
 
 .periscope-viewport {
+  /* Sky/sea plane — mid blues so the solid black silhouette reads clearly. */
+  --peri-sky-top: #9ec4e0;
+  --peri-sky-horizon: #b7d4ea;
+  --peri-sea-top: #4f87ae;
+  --peri-sea-deep: #2f6288;
+  --peri-horizon-line: color-mix(in srgb, #e8f2fa 70%, transparent);
+
   position: relative;
   min-height: min(52vw, 22rem);
   border: 1px solid color-mix(in srgb, var(--phosphor-dim) 55%, var(--line));
-  background:
-    radial-gradient(ellipse at 50% 42%, #0a1a10 0%, var(--bg-crt) 72%),
-    var(--bg-crt);
+  background: linear-gradient(
+    180deg,
+    var(--peri-sky-top) 0%,
+    var(--peri-sky-horizon) 42%,
+    var(--peri-sea-top) 42.2%,
+    var(--peri-sea-deep) 100%
+  );
   overflow: hidden;
   touch-action: manipulation;
 }
@@ -2073,8 +2084,8 @@ label {
   right: 0;
   top: 42%;
   height: 1px;
-  background: color-mix(in srgb, var(--phosphor) 35%, transparent);
-  opacity: 0.55;
+  background: var(--peri-horizon-line);
+  opacity: 0.9;
 }
 
 .periscope-sea {
@@ -2085,8 +2096,8 @@ label {
   bottom: 0;
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--phosphor-deep) 40%, transparent) 0%,
-    transparent 55%
+    color-mix(in srgb, #1a3a55 18%, transparent) 0%,
+    transparent 50%
   );
   pointer-events: none;
 }
@@ -2100,7 +2111,8 @@ label {
 
 .periscope-cross {
   position: absolute;
-  background: color-mix(in srgb, var(--phosphor) 28%, transparent);
+  /* Dark reticule on blue sky/sea (phosphor green washes out on mid blue). */
+  background: color-mix(in srgb, #0a1620 45%, transparent);
 }
 
 .periscope-cross--h {
@@ -2125,7 +2137,8 @@ label {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 0.65rem;
   letter-spacing: 0.12em;
-  color: color-mix(in srgb, var(--phosphor) 55%, transparent);
+  color: color-mix(in srgb, #0a1620 70%, transparent);
+  text-shadow: 0 0 1px rgba(255, 255, 255, 0.35);
 }
 
 .periscope-empty {
@@ -2136,6 +2149,8 @@ label {
   margin: 0;
   z-index: 1;
   font-size: 0.9rem;
+  color: #0a1620;
+  text-shadow: 0 0 1px rgba(255, 255, 255, 0.4);
 }
 
 .periscope-selected {
@@ -2155,15 +2170,19 @@ label {
 
 .periscope-silhouette {
   display: block;
-  width: clamp(9rem, 42vw, 18rem);
+  width: clamp(11rem, 48vw, 22rem);
   height: auto;
-  max-height: 6.5rem;
+  max-height: 8.5rem;
   object-fit: contain;
   object-position: center bottom;
-  /* Transparent dark ink → phosphor green (white-bg JPG would flatten here). */
-  filter: brightness(0) saturate(100%) invert(64%) sepia(72%) saturate(467%)
-    hue-rotate(79deg) brightness(1.05) contrast(1.05);
-  opacity: 0.92;
+  /*
+   * Asset is solid opaque black on transparent (not stippled gray).
+   * Do NOT use brightness(0)→invert phosphor here — that was for ink-on-transparent
+   * CRT green and fights the blue sky/sea plane. Edge halo keeps hull readable on sea.
+   */
+  filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.75))
+    drop-shadow(0 1px 2px rgba(10, 22, 32, 0.45));
+  opacity: 1;
   user-select: none;
   -webkit-user-drag: none;
 }
@@ -2173,10 +2192,11 @@ label {
   height: 2.5rem;
   display: grid;
   place-items: center;
-  border: 1px dashed color-mix(in srgb, var(--phosphor) 45%, transparent);
-  color: var(--phosphor-dim);
+  border: 1px dashed color-mix(in srgb, #0a1620 45%, transparent);
+  color: #0a1620;
   filter: none;
-  opacity: 0.7;
+  opacity: 0.75;
+  background: color-mix(in srgb, #e8f2fa 35%, transparent);
 }
 
 .periscope-readouts {
@@ -2186,7 +2206,8 @@ label {
   gap: 0.35rem 0.75rem;
   padding: 0.35rem 0.65rem;
   font-size: 0.82rem;
-  background: color-mix(in srgb, var(--bg-crt) 72%, transparent);
+  color: var(--phosphor);
+  background: color-mix(in srgb, var(--bg-crt) 82%, transparent);
   border: 1px solid color-mix(in srgb, var(--phosphor-dim) 40%, transparent);
 }
 
