@@ -2,9 +2,12 @@ import {
   KNOTS_TO_MPS,
   canMakeWay,
   clamp,
+  clampSpeedToMax,
+  effectiveMaxSpeed,
   eotTargetSpeed,
   moveAlongHeading,
   normalizeHeading,
+  resolveSpeedStepFraction,
   resolveTurnLengthSeconds,
   type EotSetting,
   type GameSave,
@@ -87,11 +90,19 @@ function applyUnitOrders(unit: UnitState, turnLengthSeconds: number): UnitState 
     eot = orders.eot;
   }
 
-  const target = eotTargetSpeed(eot, unit.maxSpeed);
-  // Speed steps toward target (acknowledgment → speed step)
-  const step = unit.maxSpeed * 0.35;
+  // Submarines deeper than surface band use submerged max (~9 kn), not hull maxSpeed.
+  const speedCeiling = effectiveMaxSpeed({
+    type: unit.type,
+    maxSpeed: unit.maxSpeed,
+    depth: unit.position.depth,
+  });
+  const target = eotTargetSpeed(eot, speedCeiling);
+  // Speed steps toward target (class-scaled fraction of effective max per resolve).
+  const step =
+    speedCeiling * resolveSpeedStepFraction({ class: unit.class, type: unit.type });
   if (speed < target) speed = Math.min(target, speed + step);
   else if (speed > target) speed = Math.max(target, speed - step);
+  speed = clampSpeedToMax(speed, speedCeiling);
 
   const distance = Math.abs(speed) * KNOTS_TO_MPS * turnLengthSeconds;
   const moveHeading = speed >= 0 ? heading : normalizeHeading(heading + 180);

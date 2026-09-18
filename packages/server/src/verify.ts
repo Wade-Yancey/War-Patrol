@@ -5,7 +5,18 @@
  */
 import { buildApp } from './app.js';
 import { runtime } from './game/runtime.js';
-import { formatWallDuration, parseWallDuration, snapWallDuration } from '@war-patrol/shared';
+import {
+  CLASS_MAX_SPEED_KNOTS,
+  CLASS_SPEED_STEP_FRACTION,
+  SUBMERGED_MAX_SPEED_KNOTS,
+  clampSpeedToMax,
+  editMaxSpeedForClass,
+  effectiveMaxSpeed,
+  formatWallDuration,
+  parseWallDuration,
+  resolveMaxSpeed,
+  snapWallDuration,
+} from '@war-patrol/shared';
 
 type Json = Record<string, unknown>;
 
@@ -27,6 +38,51 @@ async function main() {
   check('parseWallDuration bare minutes', parseWallDuration('3') === 180);
   check('parseWallDuration mm:ss', parseWallDuration('3:30') === 210);
   check('snapWallDuration 30s', snapWallDuration(200, 30) === 210);
+
+  check('class max Destroyer 36', CLASS_MAX_SPEED_KNOTS.Destroyer === 36);
+  check('class max Fleet Submarine 20', CLASS_MAX_SPEED_KNOTS['Fleet Submarine'] === 20);
+  check('class max Fighter 320', CLASS_MAX_SPEED_KNOTS.Fighter === 320);
+  check('class max Merchant 11', CLASS_MAX_SPEED_KNOTS.Merchant === 11);
+  check(
+    'resolveMaxSpeed prefers explicit',
+    resolveMaxSpeed({ maxSpeed: 21, class: 'Fleet Submarine' }) === 21,
+  );
+  check(
+    'resolveMaxSpeed class default',
+    resolveMaxSpeed({ class: 'Battleship' }) === 33,
+  );
+  check('destroyer accelerates faster than merchant', CLASS_SPEED_STEP_FRACTION.Destroyer > CLASS_SPEED_STEP_FRACTION.Merchant);
+  check(
+    'editMaxSpeed prefers unit when class matches',
+    editMaxSpeedForClass({
+      draftClass: 'Fleet Submarine',
+      unitClass: 'Fleet Submarine',
+      unitMaxSpeed: 21,
+    }) === 21,
+  );
+  check(
+    'editMaxSpeed uses class table when draft differs',
+    editMaxSpeedForClass({
+      draftClass: 'Merchant',
+      unitClass: 'Destroyer',
+      unitMaxSpeed: 36,
+    }) === 11,
+  );
+  check('clampSpeedToMax caps high', clampSpeedToMax(99, 36) === 36);
+  check('clampSpeedToMax caps reverse', clampSpeedToMax(-50, 36) === -36);
+  check('submerged max is 9 kn', SUBMERGED_MAX_SPEED_KNOTS === 9);
+  check(
+    'effectiveMaxSpeed surfaced hull',
+    effectiveMaxSpeed({ type: 'Submarine', maxSpeed: 21, depth: 0 }) === 21,
+  );
+  check(
+    'effectiveMaxSpeed submerged caps 9',
+    effectiveMaxSpeed({ type: 'Submarine', maxSpeed: 21, depth: 40 }) === 9,
+  );
+  check(
+    'ships ignore depth for speed',
+    effectiveMaxSpeed({ type: 'Ship', maxSpeed: 36, depth: 40 }) === 36,
+  );
 
   const api = async (
     method: string,
@@ -122,6 +178,7 @@ async function main() {
   check('sub radarSignature small', gato.radarSignature === 'small');
   check('porter type Ship', porter.type === 'Ship');
   check('porter class Destroyer', porter.class === 'Destroyer');
+  check('porter maxSpeed Fletcher 36 kn', porter.maxSpeed === 36);
   check('porter faction Blue', porter.faction === 'Blue');
   check('porter afloat', porter.condition === 'afloat');
   check('porter propulsion intact', (porter.subsystems as Json).propulsion === 'intact');
@@ -129,6 +186,8 @@ async function main() {
   check('porter depth surface', (porter.position as Json).depth === 0);
   check('gato type Submarine', gato.type === 'Submarine');
   check('gato class Fleet Submarine', gato.class === 'Fleet Submarine');
+  check('gato maxSpeed Gato 21 kn', gato.maxSpeed === 21);
+  check('demo speeds distinct', (porter.maxSpeed as number) > (gato.maxSpeed as number));
   check('gato faction Red', gato.faction === 'Red');
   check('gato afloat', gato.condition === 'afloat');
   check('destroyer turnRate medium size', porter.turnRate === 7);
@@ -431,6 +490,18 @@ async function main() {
   const afterId = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
   check('class wins over mismatched type', afterId.class === 'Destroyer' && afterId.type === 'Ship');
 
+  // Class change refreshes historical maxSpeed default (Merchant 11 kn).
+  const merchantPatch = await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { class: 'Merchant' },
+    umpireToken,
+  );
+  check('merchant class patch ok', merchantPatch.status === 200);
+  const asMerchant = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
+  check('merchant maxSpeed class default 11', asMerchant.maxSpeed === 11);
+  check('merchant type Ship', asMerchant.type === 'Ship');
+
   // Faction patch + migrate-from-side behavior is covered by seed defaults;
   // also verify Civilian can be set and side stays in sync.
   await api(
@@ -445,6 +516,82 @@ async function main() {
     'PATCH',
     `/api/games/${gameId}/units/dd-101`,
     { type: 'Ship', class: 'Destroyer', name: 'USS Porter', faction: 'Blue' },
+    umpireToken,
+  );
+  const restoredDd = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
+  check('destroyer class restores 36 kn', restoredDd.maxSpeed === 36);
+
+  // Umpire speed patch is clamped to ±maxSpeed
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { speed: 99 },
+    umpireToken,
+  );
+  check(
+    'speed patch clamped to maxSpeed',
+    runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!.speed === 36,
+  );
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { speed: -50 },
+    umpireToken,
+  );
+  check(
+    'reverse speed patch clamped',
+    runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!.speed === -36,
+  );
+  // Class change with overspeed clamps to new class max
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { speed: 30, class: 'Merchant' },
+    umpireToken,
+  );
+  const merchantOverspeed = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
+  check('class change clamps speed to 11', merchantOverspeed.speed === 11 && merchantOverspeed.maxSpeed === 11);
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { type: 'Ship', class: 'Destroyer', name: 'USS Porter', speed: 12 },
+    umpireToken,
+  );
+
+  // Submerged submarine speed ceiling ~9 kn (hull maxSpeed stays 21).
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { speed: 18, position: { depth: 0 } },
+    umpireToken,
+  );
+  check(
+    'surfaced sub can hold 18 kn',
+    runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!.speed === 18,
+  );
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { position: { depth: 40 } },
+    umpireToken,
+  );
+  const dived = runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!;
+  check('submerged clamps speed to 9', dived.speed === 9);
+  check('hull maxSpeed unchanged while submerged', dived.maxSpeed === 21);
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { speed: 15, position: { depth: 40 } },
+    umpireToken,
+  );
+  check(
+    'submerged speed patch capped at 9',
+    runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!.speed === 9,
+  );
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { position: { depth: 0 }, speed: 6 },
     umpireToken,
   );
 

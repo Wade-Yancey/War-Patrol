@@ -2,21 +2,23 @@ import { nanoid } from 'nanoid';
 import {
   DEFAULT_TURN_SECONDS,
   SCHEMA_VERSION,
+  clampSpeedToMax,
+  defaultMaxSpeed,
   defaultRadarSignature,
   defaultSensors,
-  defaultMaxSpeedForClass,
+  effectiveMaxSpeed,
   normalizeHeading,
   normalizePositionForType,
   resolveCondition,
   resolveFaction,
   resolveFlightLevel,
+  resolveMaxSpeed,
   resolveStartGameTimeSeconds,
   resolveSubsystems,
   resolveTurnLengthSeconds,
   resolveTurnRate,
   resolveVesselIdentity,
   sideFromFaction,
-  clampSpeedToMax,
   type EotSetting,
   type GameSave,
   type HullClass,
@@ -71,7 +73,11 @@ function unitFromScenario(seed: Scenario['units'][number]): UnitState {
     stations: seed.stations.map((s) => ({ ...s, capabilities: [...s.capabilities] })),
     health: seed.health ?? 100,
     orders: {},
-    maxSpeed: seed.maxSpeed ?? defaultMaxSpeedForClass(identity.class),
+    maxSpeed: resolveMaxSpeed({
+      maxSpeed: seed.maxSpeed,
+      class: identity.class,
+      type: identity.type,
+    }),
     turnRate: resolveTurnRate({
       turnRate: seed.turnRate,
       radarSignature,
@@ -115,15 +121,23 @@ function normalizeUnit(unit: UnitState): UnitState {
     class: identity.class,
   });
   const position = normalizePositionForType(identity.type, { ...unit.position });
-  const maxSpeed =
-    typeof unit.maxSpeed === 'number' && unit.maxSpeed > 0
-      ? unit.maxSpeed
-      : defaultMaxSpeedForClass(identity.class);
-  let speed = clampSpeedToMax(unit.speed, maxSpeed);
+  const maxSpeed = resolveMaxSpeed({
+    maxSpeed: unit.maxSpeed,
+    class: identity.class,
+    type: identity.type,
+  });
+  let speed = unit.speed;
   let eot = unit.eot;
   if (condition === 'sunk' || subsystems.propulsion === 'disabled') {
     speed = 0;
     eot = 'stop';
+  } else {
+    const ceiling = effectiveMaxSpeed({
+      type: identity.type,
+      maxSpeed,
+      depth: position.depth,
+    });
+    speed = clampSpeedToMax(speed, ceiling);
   }
   return {
     ...unit,
@@ -139,8 +153,8 @@ function normalizeUnit(unit: UnitState): UnitState {
     orderedCourse,
     speed,
     eot,
-    maxSpeed,
     radarSignature,
+    maxSpeed,
     turnRate: resolveTurnRate({
       turnRate: unit.turnRate,
       radarSignature,
@@ -545,9 +559,15 @@ export class GameRuntime {
         const classChanged = identity.class !== unit.class;
         unit.type = identity.type;
         unit.class = identity.class;
-        // When taxonomic class changes, adopt class default maxSpeed (library may refine later).
+        // Class change → refresh performance defaults (size / max speed / turn).
         if (classChanged) {
-          unit.maxSpeed = defaultMaxSpeedForClass(identity.class);
+          unit.maxSpeed = defaultMaxSpeed(identity.class);
+          unit.radarSignature = defaultRadarSignature(identity.class);
+          unit.turnRate = resolveTurnRate({
+            radarSignature: unit.radarSignature,
+            class: identity.class,
+            type: identity.type,
+          });
         }
       }
       if (patch.faction !== undefined) {
@@ -566,15 +586,20 @@ export class GameRuntime {
           ...patch.subsystems,
         });
       }
-      // Always clamp speed to current class max (reject over-capability values).
+      // Clamp using effective ceiling (submerged subs → ~9 kn); normalizeUnit re-checks.
       const maxSpeed =
         typeof unit.maxSpeed === 'number' && unit.maxSpeed > 0
           ? unit.maxSpeed
-          : defaultMaxSpeedForClass(unit.class);
+          : defaultMaxSpeed(unit.class);
       unit.maxSpeed = maxSpeed;
-      if (patch.speed !== undefined || patch.class !== undefined || patch.type !== undefined) {
-        unit.speed = clampSpeedToMax(unit.speed, maxSpeed);
-      }
+      unit.speed = clampSpeedToMax(
+        unit.speed,
+        effectiveMaxSpeed({
+          type: unit.type,
+          maxSpeed,
+          depth: unit.position.depth,
+        }),
+      );
       // Re-normalize so type rules (surface depth, flight level, dead-in-water) stick.
       save.units[idx] = normalizeUnit(unit);
       return save;

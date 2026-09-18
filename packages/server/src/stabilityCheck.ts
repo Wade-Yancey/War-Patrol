@@ -9,12 +9,17 @@ import {
   KNOTS_TO_MPS,
   bearingRangeNm,
   clamp,
+  clampSpeedToMax,
+  effectiveMaxSpeed,
   eotTargetSpeed,
   moveAlongHeading,
   normalizeHeading,
+  resolveSpeedStepFraction,
   type EotSetting,
+  type HullClass,
   type LatLonDepth,
   type UnitState,
+  type VesselType,
 } from '@war-patrol/shared';
 import { buildApp } from './app.js';
 import { runtime } from './game/runtime.js';
@@ -30,6 +35,8 @@ const SPEED_EPS = 1e-9;
 
 type ExpectedUnit = {
   id: string;
+  type: VesselType;
+  class: HullClass;
   position: LatLonDepth;
   heading: number;
   orderedCourse: number;
@@ -59,10 +66,17 @@ function expectApply(
 
   if (orders.eot !== undefined) eot = orders.eot;
 
-  const target = eotTargetSpeed(eot, unit.maxSpeed);
-  const step = unit.maxSpeed * 0.35;
+  const speedCeiling = effectiveMaxSpeed({
+    type: unit.type,
+    maxSpeed: unit.maxSpeed,
+    depth: unit.position.depth,
+  });
+  const target = eotTargetSpeed(eot, speedCeiling);
+  const step =
+    speedCeiling * resolveSpeedStepFraction({ class: unit.class, type: unit.type });
   if (speed < target) speed = Math.min(target, speed + step);
   else if (speed > target) speed = Math.max(target, speed - step);
+  speed = clampSpeedToMax(speed, speedCeiling);
 
   const distance = Math.abs(speed) * KNOTS_TO_MPS * turnLengthSeconds;
   const moveHeading = speed >= 0 ? heading : normalizeHeading(heading + 180);
@@ -179,6 +193,8 @@ export async function runStabilityCheck(baseUrl?: string): Promise<string[]> {
 
     const seedExpected = (u: UnitState): ExpectedUnit => ({
       id: u.id,
+      type: u.type,
+      class: u.class,
       position: { ...u.position },
       heading: u.heading,
       orderedCourse: u.orderedCourse,

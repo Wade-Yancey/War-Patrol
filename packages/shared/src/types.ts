@@ -154,7 +154,7 @@ export interface UnitState {
   health: number;
   /** In-progress orders for current turn (cleared on resolve/rollback). */
   orders: UnitOrders;
-  /** Max speed knots for class (from library stub). */
+  /** Max speed knots for class (from library stub or class enum default). */
   maxSpeed: number;
   /**
    * Steady turn rate deg per in-game minute.
@@ -294,7 +294,9 @@ export interface VesselClassStub {
    * (e.g. Merchant/Oiler → Civilian).
    */
   defaultFaction?: Faction;
+  /** Max speed knots (historical approximation for the concrete hull). */
   maxSpeed: number;
+  /** Steady turn rate deg per in-game minute. */
   turnRate: number;
   /** Default radar echo size for ships of this class. */
   radarSignature: RadarSignature;
