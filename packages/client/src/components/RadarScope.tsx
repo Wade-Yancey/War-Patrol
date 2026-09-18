@@ -169,12 +169,14 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
 
   return (
     <div className="radar-scope">
-      <svg
-        viewBox={`0 0 ${SIZE} ${SIZE}`}
-        className="radar-scope-svg"
-        role="img"
-        aria-label={`Radar PPI, ${scaleNm} nautical mile scale`}
-      >
+      <div className="radar-scope-plot">
+        <svg
+          viewBox={`0 0 ${SIZE} ${SIZE}`}
+          className="radar-scope-svg"
+          role="img"
+          aria-label={`Radar PPI, ${scaleNm} nautical mile scale`}
+          preserveAspectRatio="xMidYMid meet"
+        >
         <defs>
           <radialGradient id="radar-glow" cx="50%" cy="50%" r="50%">
             <stop offset="0%" stopColor="#0a2a14" />
@@ -291,9 +293,10 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
             )}
           </g>
         ))}
-      </svg>
+        </svg>
+      </div>
 
-      <div className="radar-side-panel">
+      <aside className="radar-side-panel">
         <div className="radar-scale-panel">
           <h3>Range scale</h3>
           <p className="mono readout radar-scale-readout">
@@ -340,7 +343,7 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
             </ul>
           )}
         </div>
-      </div>
+      </aside>
     </div>
   );
 }
