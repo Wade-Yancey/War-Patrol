@@ -1,9 +1,8 @@
 :root {
-  /* Classic CRT / sonar green (umpire + neutral) */
+  /* Classic CRT / sonar green — flatter/cheaper paints for tablet snappiness */
   --phosphor: #3dff6a;
   --phosphor-dim: #1a8f3c;
   --phosphor-deep: #0a3d1c;
-  --phosphor-glow: rgba(61, 255, 106, 0.28);
   --bg-void: #010805;
   --bg-crt: #041208;
   --bg-panel: #0a1a10;
@@ -31,7 +30,7 @@
   line-height: 1.45;
   font-weight: 400;
   font-synthesis: none;
-  text-rendering: optimizeLegibility;
+  text-rendering: optimizeSpeed;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
 }
@@ -59,7 +58,6 @@ a {
 
 a:hover {
   text-decoration: underline;
-  text-shadow: 0 0 8px var(--phosphor-glow);
 }
 
 button,
@@ -79,11 +77,6 @@ button {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-size: 0.85rem;
-  transition:
-    background 120ms ease,
-    border-color 120ms ease,
-    box-shadow 120ms ease,
-    transform 80ms ease;
   touch-action: manipulation;
   user-select: none;
 }
@@ -91,11 +84,10 @@ button {
 button:hover:not(:disabled) {
   border-color: var(--phosphor);
   background: var(--phosphor-deep);
-  box-shadow: 0 0 12px var(--phosphor-glow);
 }
 
 button:active:not(:disabled) {
-  transform: translateY(1px);
+  background: var(--bg-panel);
 }
 
 button:disabled {
@@ -104,15 +96,14 @@ button:disabled {
 }
 
 button.primary {
-  background: color-mix(in srgb, var(--phosphor) 22%, var(--bg-elevated));
+  background: var(--phosphor-deep);
   color: var(--accent-strong);
   border-color: var(--phosphor);
   font-weight: 600;
-  box-shadow: inset 0 0 18px var(--phosphor-glow);
 }
 
 button.primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--phosphor) 35%, var(--bg-elevated));
+  background: #0f4a24;
 }
 
 button.danger {
@@ -148,7 +139,6 @@ select:focus,
 button:focus-visible {
   outline: 1px solid var(--phosphor);
   outline-offset: 2px;
-  box-shadow: 0 0 10px var(--phosphor-glow);
 }
 
 label {
@@ -161,41 +151,14 @@ label {
   color: var(--ink-muted);
 }
 
-/* Industrial CRT bezel shell */
+/* Industrial CRT bezel — no full-viewport overlays / scanlines */
 .crt-bezel {
   position: relative;
   min-height: 100vh;
   min-height: 100dvh;
   padding: clamp(0.5rem, 1.5vw, 1rem);
-  background:
-    linear-gradient(145deg, color-mix(in srgb, var(--bezel-edge) 55%, #000) 0%, var(--bezel) 40%, #0c100e 100%);
-  box-shadow: inset 0 0 0 1px var(--bezel-edge);
-}
-
-.crt-bezel::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 3;
-  background: radial-gradient(ellipse at center, transparent 42%, rgba(0, 0, 0, 0.55) 100%);
-}
-
-.crt-bezel::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 4;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    rgba(0, 0, 0, 0.14) 2px,
-    rgba(0, 0, 0, 0.14) 4px
-  );
-  opacity: 0.5;
-  mix-blend-mode: multiply;
+  background: var(--bezel);
+  border: 1px solid var(--bezel-edge);
 }
 
 .crt-screen {
@@ -203,30 +166,9 @@ label {
   z-index: 1;
   min-height: calc(100vh - 2 * clamp(0.5rem, 1.5vw, 1rem));
   min-height: calc(100dvh - 2 * clamp(0.5rem, 1.5vw, 1rem));
-  background:
-    radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--phosphor) 8%, transparent), transparent 55%),
-    linear-gradient(180deg, var(--bg-crt) 0%, var(--bg-void) 100%);
+  background: var(--bg-crt);
   border: 3px solid var(--bezel-edge);
-  box-shadow:
-    inset 0 0 60px rgba(0, 0, 0, 0.65),
-    inset 0 0 120px var(--phosphor-glow),
-    0 0 0 1px #050805;
   overflow: auto;
-}
-
-.crt-screen::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.03) 0%,
-    transparent 8%,
-    transparent 92%,
-    rgba(0, 0, 0, 0.25) 100%
-  );
-  z-index: 1;
 }
 
 .app-shell {
@@ -245,10 +187,6 @@ label {
   font-size: clamp(1.75rem, 5vw, 2.75rem);
   color: var(--accent-strong);
   margin: 0;
-  text-shadow:
-    0 0 12px var(--phosphor-glow),
-    0 0 28px var(--phosphor-glow);
-  animation: phosphorPulse 4.5s ease-in-out infinite;
 }
 
 .brand-mark {
@@ -257,8 +195,6 @@ label {
   letter-spacing: 0.28em;
   color: var(--ink-muted);
   margin-bottom: 0.35rem;
-  text-shadow: none;
-  animation: none;
 }
 
 .subhead {
@@ -269,25 +205,10 @@ label {
 }
 
 .panel {
-  position: relative;
-  background: color-mix(in srgb, var(--bg-panel) 92%, transparent);
+  background: var(--bg-panel);
   border: 1px solid var(--line);
   border-radius: 2px;
   padding: 1rem 1.1rem;
-  box-shadow:
-    inset 0 0 24px rgba(0, 0, 0, 0.35),
-    0 0 18px rgba(0, 0, 0, 0.2);
-}
-
-.panel::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--phosphor), transparent);
-  opacity: 0.45;
 }
 
 .panel + .panel {
@@ -302,7 +223,6 @@ label {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--phosphor);
-  text-shadow: 0 0 8px var(--phosphor-glow);
 }
 
 .row {
@@ -332,7 +252,6 @@ label {
 .readout {
   font-family: var(--font-display);
   color: var(--accent-strong);
-  text-shadow: 0 0 10px var(--phosphor-glow);
   letter-spacing: 0.06em;
 }
 
@@ -356,7 +275,6 @@ label {
 .status-pill.open {
   border-color: var(--ok);
   color: var(--accent-strong);
-  box-shadow: 0 0 8px var(--phosphor-glow);
 }
 
 .status-pill.locked,
@@ -401,64 +319,16 @@ label {
   border-radius: 2px;
 }
 
-.fade-in {
-  animation: fadeIn 320ms ease both;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes phosphorPulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.88;
-  }
-}
-
-@keyframes pulseLine {
-  0%,
-  100% {
-    opacity: 0.35;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-@keyframes scanSweep {
-  0% {
-    transform: translateY(-100%);
-  }
-  100% {
-    transform: translateY(100vh);
-  }
-}
-
 .live-dot {
   width: 0.55rem;
   height: 0.55rem;
   border-radius: 50%;
   background: var(--ok);
   display: inline-block;
-  box-shadow: 0 0 8px var(--phosphor-glow);
-  animation: pulseLine 1.6s ease-in-out infinite;
 }
 
 .live-dot.off {
   background: var(--danger);
-  box-shadow: none;
-  animation: none;
 }
 
 /* Touch numeric control */
@@ -485,7 +355,6 @@ label {
   font-family: var(--font-display);
   font-size: clamp(1.5rem, 4vw, 2rem);
   color: var(--accent-strong);
-  text-shadow: 0 0 12px var(--phosphor-glow);
   letter-spacing: 0.08em;
   cursor: pointer;
   touch-action: manipulation;
@@ -530,11 +399,7 @@ label {
 
 .touch-num-slider::-webkit-slider-runnable-track {
   height: 0.55rem;
-  background: linear-gradient(
-    90deg,
-    var(--phosphor-deep),
-    color-mix(in srgb, var(--phosphor) 45%, var(--phosphor-deep))
-  );
+  background: var(--phosphor-deep);
   border: 1px solid var(--line);
   border-radius: 1px;
 }
@@ -548,16 +413,11 @@ label {
   background: var(--phosphor);
   border: 2px solid var(--bg-void);
   border-radius: 2px;
-  box-shadow: 0 0 12px var(--phosphor-glow);
 }
 
 .touch-num-slider::-moz-range-track {
   height: 0.55rem;
-  background: linear-gradient(
-    90deg,
-    var(--phosphor-deep),
-    color-mix(in srgb, var(--phosphor) 45%, var(--phosphor-deep))
-  );
+  background: var(--phosphor-deep);
   border: 1px solid var(--line);
   border-radius: 1px;
 }
@@ -568,7 +428,6 @@ label {
   background: var(--phosphor);
   border: 2px solid var(--bg-void);
   border-radius: 2px;
-  box-shadow: 0 0 12px var(--phosphor-glow);
 }
 
 .touch-num-hint {
@@ -595,12 +454,9 @@ label {
 }
 
 .eot-telegraph button.active {
-  background: color-mix(in srgb, var(--phosphor) 28%, var(--bg-elevated));
+  background: var(--phosphor-deep);
   border-color: var(--phosphor);
   color: var(--accent-strong);
-  box-shadow:
-    inset 0 0 20px var(--phosphor-glow),
-    0 0 10px var(--phosphor-glow);
 }
 
 .eot-telegraph button .eot-idx {
@@ -625,7 +481,6 @@ label {
 .map-frame {
   border: 1px solid var(--line);
   background: var(--map-water);
-  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.5);
   position: relative;
 }
 
@@ -655,17 +510,14 @@ label {
   width: 5px;
   z-index: 5;
   pointer-events: none;
-  border-radius: 1px;
 }
 
 .side-stripe--blue {
   background: var(--side-blue);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--side-blue) 45%, transparent);
 }
 
 .side-stripe--red {
   background: var(--side-red);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--side-red) 45%, transparent);
 }
 
 .side-badge {
@@ -685,13 +537,12 @@ label {
   content: '';
   width: 0.55rem;
   height: 0.55rem;
-  border-radius: 1px;
   background: var(--phosphor);
 }
 
 .side-badge--blue {
-  border-color: color-mix(in srgb, var(--side-blue) 55%, var(--line));
-  color: color-mix(in srgb, var(--side-blue) 70%, var(--ink));
+  border-color: var(--side-blue);
+  color: #9cc8e8;
 }
 
 .side-badge--blue::before {
@@ -699,8 +550,8 @@ label {
 }
 
 .side-badge--red {
-  border-color: color-mix(in srgb, var(--side-red) 55%, var(--line));
-  color: color-mix(in srgb, var(--side-red) 70%, var(--ink));
+  border-color: var(--side-red);
+  color: #e8a898;
 }
 
 .side-badge--red::before {
