@@ -1280,6 +1280,162 @@ label {
   width: 100%;
 }
 
+/* Umpire: player join URL copy panel */
+.vessel-join-links-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.35rem;
+}
+
+.vessel-join-links-header h2 {
+  margin: 0;
+}
+
+.vessel-join-links-help {
+  margin: 0 0 0.85rem;
+  font-size: 0.8rem;
+}
+
+.vessel-join-list {
+  gap: 0.85rem;
+}
+
+.vessel-join-vessel {
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg-elevated) 55%, transparent);
+  padding: 0.65rem 0.7rem;
+}
+
+.vessel-join-vessel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.55rem;
+}
+
+.vessel-join-vessel-name {
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+  color: var(--accent-strong);
+}
+
+.vessel-join-vessel-meta {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.vessel-join-vessel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.vessel-join-vessel-actions button {
+  padding: 0.45rem 0.7rem;
+  min-height: 2.4rem;
+  font-size: 0.72rem;
+}
+
+.vessel-join-npc {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.vessel-join-stations {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.vessel-join-station {
+  border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  padding-top: 0.55rem;
+}
+
+.vessel-join-station-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.65rem;
+  margin-bottom: 0.35rem;
+}
+
+.vessel-join-station-name {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--phosphor);
+}
+
+.vessel-join-station-id {
+  font-size: 0.7rem;
+}
+
+.vessel-join-url-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0.4rem;
+}
+
+.vessel-join-url {
+  flex: 1 1 12rem;
+  display: block;
+  min-width: 0;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--line);
+  background: var(--bezel-inset);
+  color: var(--ink);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+
+.vessel-join-station-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.vessel-join-station-actions button {
+  padding: 0.45rem 0.75rem;
+  min-height: 2.4rem;
+  font-size: 0.72rem;
+}
+
+.vessel-join-open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.4rem;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--line);
+  background: var(--bg-elevated);
+  color: var(--ink);
+  text-decoration: none;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.72rem;
+}
+
+.vessel-join-open:hover {
+  border-color: var(--phosphor);
+  background: var(--phosphor-deep);
+  text-decoration: none;
+}
+
 .header-bar {
   display: flex;
   flex-wrap: wrap;
