@@ -452,11 +452,45 @@ export interface GameSave {
   /** In-flight / sinking weapons (umpire ground truth + resolve tracking). */
   torpedoes: TorpedoTrack[];
   depthCharges: DepthChargeTrack[];
-  /**
-   * Recent depth-charge detonations for hydrophone / Controls audio FoW.
+  /** Recent depth-charge detonations for hydrophone / Controls audio FoW.
    * Pruned after a few turns.
    */
   recentDetonations: WeaponDetonationEvent[];
+  /**
+   * Chronological umpire-only action / damage log (weapon launches, hits, DCs, …).
+   * Appended on resolve; not included in vessel FoW views.
+   */
+  combatLog: CombatLogEntry[];
+}
+
+/** Kinds of umpire combat / action log lines. */
+export type CombatLogKind =
+  | 'torpedo_launch'
+  | 'torpedo_hit'
+  | 'torpedo_expired'
+  | 'depth_charge_drop'
+  | 'depth_charge_detonation'
+  | 'depth_charge_damage'
+  | 'unit_sunk';
+
+/** One umpire-visible action / damage line (CRT log). */
+export interface CombatLogEntry {
+  id: string;
+  kind: CombatLogKind;
+  /** Turn number when the event was resolved. */
+  turnNumber: number;
+  /** In-game clock after that resolve (seconds since midnight). */
+  gameTimeSeconds: number;
+  /** Wall-clock ISO when logged. */
+  at: string;
+  /** Compact CRT summary (no secrets beyond GT). */
+  summary: string;
+  actorUnitId?: string;
+  actorName?: string;
+  targetUnitId?: string;
+  targetName?: string;
+  /** Hit points applied when relevant. */
+  damage?: number;
 }
 
 /** Vessel-class library stub (ARCH-LIB data shape only). */
@@ -522,6 +556,8 @@ export interface UmpireView {
   torpedoes: TorpedoTrack[];
   depthCharges: DepthChargeTrack[];
   recentDetonations: WeaponDetonationEvent[];
+  /** Chronological action / damage log (umpire only). */
+  combatLog: CombatLogEntry[];
   historyTurnNumbers: number[];
   vesselLinks: Array<{
     unitId: string;
