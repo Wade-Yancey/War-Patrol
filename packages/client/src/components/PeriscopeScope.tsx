@@ -1,9 +1,7 @@
 import { memo, useMemo, useState } from 'react';
-import {
-  periscopeSilhouetteScale,
-  periscopeSilhouetteUrl,
-  type PeriscopeContact,
-} from '@war-patrol/shared';
+import { periscopeSilhouetteScale, type PeriscopeContact } from '@war-patrol/shared';
+/** Vite-bundled JPG — guaranteed in the client graph (not a fragile public-path string). */
+import destroyerSilhouetteJpg from '../assets/silhouettes/destroyer.jpg';
 
 interface Props {
   contacts: PeriscopeContact[];
@@ -24,9 +22,10 @@ function contactsKey(contacts: PeriscopeContact[]): string {
 }
 
 /**
- * Periscope CRT — plain silhouette photo (left) + anonymous Contact N list (right).
- * Click a contact to select; left panel always mounts an `<img>` for the selection
- * (class map, or destroyer JPG fallback).
+ * Periscope CRT — plain destroyer JPG (left) + anonymous Contact N list (right).
+ *
+ * Image path is intentionally dumb: one Vite-imported JPG, one `<img>`, no class-map
+ * gate, no CSS filters, no "?" placeholder. If contacts exist, the plate paints.
  */
 function PeriscopeScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
   const sorted = useMemo(
@@ -39,6 +38,7 @@ function PeriscopeScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
   );
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [imgFailed, setImgFailed] = useState(false);
 
   // Synchronous selection — no useEffect gap where contacts exist but img never mounts.
   const effectiveId =
@@ -50,8 +50,7 @@ function PeriscopeScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
   const selectedIndex = selected ? sorted.findIndex((c) => c.id === selected.id) : -1;
   const selectedLabelN = selectedIndex >= 0 ? selectedIndex + 1 : null;
 
-  const scale = selected ? periscopeSilhouetteScale(selected.rangeNm, maxRangeNm) : 1;
-  const imgSrc = selected ? periscopeSilhouetteUrl(selected.silhouetteClass) : null;
+  const scale = selected ? Math.max(periscopeSilhouetteScale(selected.rangeNm, maxRangeNm), 0.55) : 1;
 
   return (
     <div className="radar-scope radar-console periscope-scope">
@@ -66,23 +65,28 @@ function PeriscopeScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
 
         {sorted.length === 0 ? (
           <p className="periscope-empty mono muted">No visual contacts within {maxRangeNm} nm</p>
-        ) : selected && imgSrc ? (
+        ) : selected ? (
           <div
             className="periscope-selected"
-            style={{ ['--peri-scale' as string]: String(Math.max(scale, 0.45)) }}
+            style={{ ['--peri-scale' as string]: String(scale) }}
           >
-            {/*
-              Plain <img> — no CSS filters, no conditional "?" branch that skips the
-              asset. Class miss → destroyer JPG via periscopeSilhouetteUrl().
-            */}
-            <img
-              className="periscope-silhouette"
-              src={imgSrc}
-              alt=""
-              width={350}
-              height={150}
-              draggable={false}
-            />
+            {imgFailed ? (
+              <p className="periscope-img-error mono" role="alert">
+                Silhouette failed to load
+              </p>
+            ) : (
+              <img
+                className="periscope-silhouette"
+                src={destroyerSilhouetteJpg}
+                alt="Destroyer silhouette"
+                width={350}
+                height={150}
+                decoding="sync"
+                loading="eager"
+                draggable={false}
+                onError={() => setImgFailed(true)}
+              />
+            )}
             <div className="periscope-readouts mono">
               <span className="readout">Contact {selectedLabelN}</span>
               <span>{formatRelBearing(selected.relativeBearing)}</span>

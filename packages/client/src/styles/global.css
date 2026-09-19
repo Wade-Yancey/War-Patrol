@@ -2159,16 +2159,15 @@ label {
 }
 
 .periscope-selected {
-  /* Flex child of viewport — not absolute/zero-size; stays on the blue plane. */
+  /* Flex child of viewport — not absolute; real box size so <img> can paint. */
   position: relative;
-  z-index: 1;
+  z-index: 3;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 0.55rem;
-  width: 100%;
-  max-width: 92%;
+  width: min(100%, 24rem);
   padding: 1.25rem 0.75rem 1rem;
   transform: scale(var(--peri-scale, 1));
   transform-origin: center center;
@@ -2176,19 +2175,29 @@ label {
 }
 
 .periscope-silhouette {
-  /* Plain photo — no brightness/opacity/filter tricks. Intrinsic 350×150 + mins. */
+  /* Plain Vite-bundled JPG — no filters, no opacity tricks, fixed paint box. */
   display: block;
   flex: 0 0 auto;
-  width: clamp(12rem, 52vw, 22rem);
-  min-width: 12rem;
-  min-height: 5rem;
+  box-sizing: border-box;
+  width: 350px;
+  max-width: min(92vw, 22rem);
   height: auto;
-  max-height: 10rem;
+  aspect-ratio: 350 / 150;
+  min-height: 4.5rem;
   object-fit: contain;
   object-position: center center;
   background: #ffffff;
+  border: 1px solid color-mix(in srgb, #0a1620 25%, transparent);
   user-select: none;
   -webkit-user-drag: none;
+}
+
+.periscope-img-error {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  color: #0a1620;
+  background: #ffffff;
+  border: 1px solid #0a1620;
 }
 
 .periscope-readouts {
