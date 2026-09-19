@@ -887,7 +887,7 @@ export function StationPage() {
                   aria-selected={controlsTab === 'eot'}
                   onClick={() => setControlsTab('eot')}
                 >
-                  EOT / Turn
+                  EOT
                 </button>
               )}
             </div>
