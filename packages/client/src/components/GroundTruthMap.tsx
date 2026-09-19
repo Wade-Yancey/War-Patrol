@@ -1,5 +1,12 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
-import type { BoundingBox, SensorDef, UnitState, UnitTrail } from '@war-patrol/shared';
+import type {
+  BoundingBox,
+  DepthChargeTrack,
+  SensorDef,
+  TorpedoTrack,
+  UnitState,
+  UnitTrail,
+} from '@war-patrol/shared';
 import {
   METERS_PER_DEG_LAT,
   METERS_PER_NM,
@@ -16,6 +23,10 @@ interface Props {
   units: UnitState[];
   /** Prior-turn position trails (umpire ground truth). */
   trails?: UnitTrail[];
+  /** Full-truth torpedo tracks (launch → path → tip). */
+  torpedoes?: TorpedoTrack[];
+  /** Full-truth depth-charge tracks (drop → sink/detonate). */
+  depthCharges?: DepthChargeTrack[];
 }
 
 const SIDE_COLORS: Record<string, string> = {
@@ -185,6 +196,25 @@ function trailsSignature(trails: UnitTrail[] | undefined): string {
     .join('|');
 }
 
+function weaponsSignature(
+  torpedoes: TorpedoTrack[] | undefined,
+  depthCharges: DepthChargeTrack[] | undefined,
+): string {
+  const t = (torpedoes ?? [])
+    .map(
+      (f) =>
+        `${f.id}:${f.status}:${f.position.lat.toFixed(5)},${f.position.lon.toFixed(5)}:${(f.path ?? []).length}`,
+    )
+    .join('|');
+  const d = (depthCharges ?? [])
+    .map(
+      (c) =>
+        `${c.id}:${c.status}:${c.position.lat.toFixed(5)},${c.position.lon.toFixed(5)},${c.position.depth.toFixed(0)}`,
+    )
+    .join('|');
+  return `${t}#${d}`;
+}
+
 function areaSignature(area: BoundingBox): string {
   return `${area.minLat},${area.maxLat},${area.minLon},${area.maxLon}`;
 }
@@ -280,7 +310,13 @@ function shouldLabelGridValue(value: number, step: number, tickCount: number): b
   return Math.abs(q - Math.round(q)) < 1e-6;
 }
 
-function GroundTruthMapInner({ area, units, trails = [] }: Props) {
+function GroundTruthMapInner({
+  area,
+  units,
+  trails = [],
+  torpedoes = [],
+  depthCharges = [],
+}: Props) {
   const unitIds = useMemo(() => [...units.map((u) => u.id)].sort().join(','), [units]);
   const areaKey = useMemo(() => areaSignature(area), [area]);
   const baseView = useMemo(() => fitUnitsView(units, area), [units, area]);
@@ -290,6 +326,11 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
     return map;
   }, [trails]);
 
+  const unitAccentById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const u of units) m.set(u.id, unitAccent(u));
+    return m;
+  }, [units]);
   const [zoomIdx, setZoomIdx] = useState(DEFAULT_ZOOM_IDX);
   const [panLat, setPanLat] = useState(0);
   const [panLon, setPanLon] = useState(0);
@@ -386,6 +427,82 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
     for (const t of trailPolylines) map.set(t.id, t.inboundDx);
     return map;
   }, [trailPolylines]);
+
+  /**
+   * Weapon GT overlays — launch origin pip, path polyline, tip/end marker.
+   * Torpedoes: dashed amber run track. Depth charges: cyan drop + detonation burst.
+   */
+  const weaponOverlays = useMemo(() => {
+    const toXy = (lat: number, lon: number) => {
+      const { u, v } = projectToUv(lat, lon, view);
+      return { x: u * W, y: v * H, u, v };
+    };
+
+    const fish = torpedoes.map((t) => {
+      const color = unitAccentById.get(t.firerUnitId) ?? '#ffc857';
+      const launch = t.launchPosition ?? t.path?.[0] ?? t.position;
+      const pathPts = (t.path?.length ? t.path : [{ lat: launch.lat, lon: launch.lon }]).map((p) =>
+        toXy(p.lat, p.lon),
+      );
+      const tip = toXy(t.position.lat, t.position.lon);
+      const origin = toXy(launch.lat, launch.lon);
+      const hRad = ((normalizeHeading(t.heading) - 90) * Math.PI) / 180;
+      const tipLen = 10;
+      const statusLabel =
+        t.status === 'running'
+          ? `FISH · ${t.remainingRunNm.toFixed(1)}NM`
+          : t.status === 'hit'
+            ? 'FISH · HIT'
+            : t.status === 'expired'
+              ? 'FISH · END'
+              : `FISH · ${t.status.toUpperCase()}`;
+      return {
+        id: t.id,
+        kind: 'torpedo' as const,
+        color,
+        status: t.status,
+        points: pathPts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '),
+        origin,
+        tip,
+        tipX: tip.x + Math.cos(hRad) * tipLen,
+        tipY: tip.y + Math.sin(hRad) * tipLen,
+        label: statusLabel,
+        onPlot:
+          pathPts.some((p) => p.u >= -0.1 && p.u <= 1.1 && p.v >= -0.1 && p.v <= 1.1) ||
+          (tip.u >= -0.1 && tip.u <= 1.1 && tip.v >= -0.1 && tip.v <= 1.1),
+      };
+    });
+
+    const charges = depthCharges.map((c) => {
+      const color = unitAccentById.get(c.firerUnitId) ?? '#7ec8ff';
+      const launch = c.launchPosition ?? c.path?.[0] ?? c.position;
+      const origin = toXy(launch.lat, launch.lon);
+      const tip = toXy(c.position.lat, c.position.lon);
+      const detonated = c.status === 'detonated' || c.status === 'spent';
+      const sinking = c.status === 'sinking';
+      const label = detonated
+        ? `DC · DET ${Math.round(c.detonatedAtDepthM ?? c.depthSettingM)}M`
+        : sinking
+          ? `DC · ${Math.round(c.position.depth)}→${Math.round(c.depthSettingM)}M`
+          : `DC · ${c.status.toUpperCase()}`;
+      return {
+        id: c.id,
+        kind: 'depth_charge' as const,
+        color,
+        status: c.status,
+        origin,
+        tip,
+        detonated,
+        sinking,
+        label,
+        onPlot:
+          (origin.u >= -0.1 && origin.u <= 1.1 && origin.v >= -0.1 && origin.v <= 1.1) ||
+          (tip.u >= -0.1 && tip.u <= 1.1 && tip.v >= -0.1 && tip.v <= 1.1),
+      };
+    });
+
+    return { fish, charges };
+  }, [torpedoes, depthCharges, view, unitAccentById]);
 
   const markers = useMemo(
     () =>
@@ -729,7 +846,7 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
           </g>
 
           <text x={12} y={18} fill="#5a9a68" fontSize={10} fontFamily="IBM Plex Mono, monospace">
-            GROUND TRUTH · LAT/LON · {GRID_STEP_DEG}° GRID · TRAILS · TRUE N
+            GROUND TRUTH · LAT/LON · {GRID_STEP_DEG}° GRID · TRAILS · WEAPONS · TRUE N
             {showSensorRanges ? ' · RANGES' : ''}
           </text>
 
@@ -765,6 +882,128 @@ function GroundTruthMapInner({ area, units, trails = [] }: Props) {
               strokeLinecap="round"
             />
           ))}
+
+          {/* Weapon tracks — launch origin → path → tip/detonation (umpire full truth) */}
+          <g className="map-weapon-tracks" pointerEvents="none">
+            {weaponOverlays.fish
+              .filter((f) => f.onPlot)
+              .map((f) => (
+                <g key={`fish-${f.id}`} opacity={f.status === 'running' ? 1 : 0.75}>
+                  {f.points.includes(' ') || f.points.split(',').length > 2 ? (
+                    <polyline
+                      points={f.points}
+                      fill="none"
+                      stroke="#ffc857"
+                      strokeWidth={1.5}
+                      strokeOpacity={0.85}
+                      strokeDasharray="5 3"
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                    />
+                  ) : null}
+                  {/* Launch origin */}
+                  <circle
+                    cx={f.origin.x}
+                    cy={f.origin.y}
+                    r={3.5}
+                    fill="none"
+                    stroke="#ffc857"
+                    strokeWidth={1.25}
+                  />
+                  <circle cx={f.origin.x} cy={f.origin.y} r={1.5} fill="#ffc857" />
+                  {/* Tip + heading pip */}
+                  <line
+                    x1={f.tip.x}
+                    y1={f.tip.y}
+                    x2={f.tipX}
+                    y2={f.tipY}
+                    stroke="#ffc857"
+                    strokeWidth={1.5}
+                    strokeLinecap="square"
+                  />
+                  <circle
+                    cx={f.tip.x}
+                    cy={f.tip.y}
+                    r={f.status === 'hit' ? 5 : 3.5}
+                    fill={f.status === 'hit' ? '#ff6a4a' : '#ffc857'}
+                    stroke="#061a0e"
+                    strokeWidth={1}
+                  />
+                  <text
+                    className="map-plot-label"
+                    x={f.tip.x + 8}
+                    y={f.tip.y - 6}
+                    fill="#ffc857"
+                    fontSize={8}
+                    fontFamily="IBM Plex Mono, monospace"
+                  >
+                    {f.label}
+                  </text>
+                </g>
+              ))}
+
+            {weaponOverlays.charges
+              .filter((c) => c.onPlot)
+              .map((c) => (
+                <g key={`dc-${c.id}`} opacity={c.sinking ? 1 : 0.8}>
+                  {/* Drop origin → current (same lat/lon while sinking; still mark both) */}
+                  <line
+                    x1={c.origin.x}
+                    y1={c.origin.y}
+                    x2={c.tip.x}
+                    y2={c.tip.y}
+                    stroke="#7ec8ff"
+                    strokeWidth={1}
+                    strokeOpacity={0.5}
+                    strokeDasharray="2 3"
+                  />
+                  <rect
+                    x={c.origin.x - 3}
+                    y={c.origin.y - 3}
+                    width={6}
+                    height={6}
+                    fill="none"
+                    stroke="#7ec8ff"
+                    strokeWidth={1.25}
+                    transform={`rotate(45 ${c.origin.x} ${c.origin.y})`}
+                  />
+                  {c.detonated ? (
+                    <>
+                      <circle
+                        cx={c.tip.x}
+                        cy={c.tip.y}
+                        r={9}
+                        fill="#7ec8ff"
+                        fillOpacity={0.12}
+                        stroke="#7ec8ff"
+                        strokeWidth={1.25}
+                        strokeDasharray="3 2"
+                      />
+                      <circle cx={c.tip.x} cy={c.tip.y} r={3} fill="#c8f0ff" />
+                    </>
+                  ) : (
+                    <circle
+                      cx={c.tip.x}
+                      cy={c.tip.y}
+                      r={3.5}
+                      fill="#7ec8ff"
+                      stroke="#061a0e"
+                      strokeWidth={1}
+                    />
+                  )}
+                  <text
+                    className="map-plot-label"
+                    x={c.tip.x + 8}
+                    y={c.tip.y + (c.detonated ? 14 : 4)}
+                    fill="#7ec8ff"
+                    fontSize={8}
+                    fontFamily="IBM Plex Mono, monospace"
+                  >
+                    {c.label}
+                  </text>
+                </g>
+              ))}
+          </g>
 
           {/* Combined per-unit sensor readout — above trails so rings stay labeled */}
           <g className="map-sensor-labels" pointerEvents="none">
@@ -956,5 +1195,11 @@ export const GroundTruthMap = memo(GroundTruthMapInner, (prev, next) => {
     return false;
   }
   if (trailsSignature(prev.trails) !== trailsSignature(next.trails)) return false;
+  if (
+    weaponsSignature(prev.torpedoes, prev.depthCharges) !==
+    weaponsSignature(next.torpedoes, next.depthCharges)
+  ) {
+    return false;
+  }
   return unitsSignature(prev.units) === unitsSignature(next.units);
 });

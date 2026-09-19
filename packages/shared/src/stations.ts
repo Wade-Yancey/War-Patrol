@@ -21,7 +21,7 @@ export function defaultTwoScreenStations(
   const controls: StationDef = {
     id: STATION_ID_CONTROLS,
     name: 'Controls',
-    capabilities: ['helm', 'engineering', 'plot'],
+    capabilities: ['helm', 'engineering', 'plot', 'weapons'],
   };
 
   switch (hullClass) {
@@ -37,7 +37,11 @@ export function defaultTwoScreenStations(
       ];
     case 'Fleet Submarine':
       return [
-        controls,
+        {
+          id: STATION_ID_CONTROLS,
+          name: 'Controls',
+          capabilities: ['helm', 'engineering', 'plot', 'weapons', 'torpedo'],
+        },
         {
           id: STATION_ID_SENSORS,
           name: 'Sensors',

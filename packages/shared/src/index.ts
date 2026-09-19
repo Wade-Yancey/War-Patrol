@@ -14,3 +14,4 @@ export * from './time.js';
 export * from './vessel.js';
 export * from './performance.js';
 export * from './dimensions.js';
+export * from './weapons.js';

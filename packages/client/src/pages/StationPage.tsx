@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   EOT_LABELS,
@@ -10,7 +10,9 @@ import {
   formatPendingOrdersSummary,
   hasPendingOrders,
   isRadarSurfaced,
+  type DepthChargeDropOrder,
   type EotSetting,
+  type TorpedoFireOrder,
   type VesselView,
 } from '@war-patrol/shared';
 import { api } from '../api/client';
@@ -26,6 +28,13 @@ import { HydrophoneScope } from '../components/HydrophoneScope';
 import { PeriscopeScope } from '../components/PeriscopeScope';
 import { RadarScope } from '../components/RadarScope';
 import { ActiveSonarScope } from '../components/ActiveSonarScope';
+import { TorpedoCalculator } from '../components/TorpedoCalculator';
+import { DepthChargeControls } from '../components/DepthChargeControls';
+import {
+  DEPTH_CHARGE_CONTROLS_GAIN,
+  loadDepthChargeBuffer,
+  playDepthChargeSample,
+} from '../audio/depthCharge';
 
 function tokenKey(gameId: string, accessToken: string, stationId: string) {
   return `wp-token:${gameId}:${accessToken}:${stationId}`;
@@ -96,12 +105,66 @@ export function StationPage() {
   const canHydrophone = caps.has('hydrophone');
   const canActiveSonar = caps.has('active_sonar');
   const canPeriscope = caps.has('lookout');
+  const canWeapons = caps.has('weapons') || caps.has('torpedo');
+  const canTorpedo =
+    canWeapons && (vessel?.unit.type === 'Submarine' || caps.has('torpedo'));
+  const canDepthCharges = canWeapons && vessel?.unit.class === 'Destroyer';
   /** Surface ships use lookout (always available); subs use depth-gated periscope. */
   const opticsVariant: 'periscope' | 'lookout' =
     vessel?.unit.type === 'Submarine' ? 'periscope' : 'lookout';
   const opticsTabLabel = opticsVariant === 'lookout' ? 'Lookout' : 'Periscope';
   const sensorFocus =
     isSensors && (canRadar || canHydrophone || canActiveSonar || canPeriscope);
+
+  const playedBridgeDcRef = useRef<Set<string>>(new Set());
+  const bridgeAudioRef = useRef<{
+    ctx: AudioContext | null;
+    buffer: AudioBuffer | null;
+  }>({ ctx: null, buffer: null });
+
+  // Controls bridge: play depth-charge WAV when detonations are close to own ship.
+  useEffect(() => {
+    if (!vessel || !isControls || isSensors) return;
+    const events = vessel.bridgeDetonations ?? [];
+    if (!events.length) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        if (!bridgeAudioRef.current.ctx) {
+          const Ctx =
+            window.AudioContext ||
+            (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+          bridgeAudioRef.current.ctx = new Ctx();
+        }
+        const ctx = bridgeAudioRef.current.ctx;
+        if (ctx.state === 'suspended') await ctx.resume();
+        if (!bridgeAudioRef.current.buffer) {
+          bridgeAudioRef.current.buffer = await loadDepthChargeBuffer(ctx);
+        }
+        if (cancelled) return;
+        const live = new Set(events.map((e) => e.id));
+        for (const id of [...playedBridgeDcRef.current]) {
+          if (!live.has(id)) playedBridgeDcRef.current.delete(id);
+        }
+        for (const e of events) {
+          if (playedBridgeDcRef.current.has(e.id)) continue;
+          const proximity = Math.max(0.15, 1 - e.rangeNm / 0.45);
+          playDepthChargeSample(
+            ctx,
+            bridgeAudioRef.current.buffer,
+            ctx.destination,
+            DEPTH_CHARGE_CONTROLS_GAIN * proximity,
+          );
+          playedBridgeDcRef.current.add(e.id);
+        }
+      } catch {
+        /* autoplay / sample — ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [vessel, isControls, isSensors, vessel?.bridgeDetonations, vessel?.stateVersion]);
 
   const surfaced = vessel ? isRadarSurfaced(vessel.unit.position) : true;
   const depthM = vessel?.unit.position.depth ?? 0;
@@ -180,7 +243,15 @@ export function StationPage() {
     }
   };
 
-  const submit = async (patch: { course?: number; eot?: EotSetting; depth?: number }) => {
+  const submit = async (
+    patch: {
+      course?: number;
+      eot?: EotSetting;
+      depth?: number;
+      fireTorpedo?: TorpedoFireOrder | null;
+      dropDepthCharges?: DepthChargeDropOrder | null;
+    },
+  ) => {
     if (!token) return;
     setActionError(null);
     try {
@@ -421,12 +492,34 @@ export function StationPage() {
                     </p>
                   </div>
                 ) : (
-                  <PeriscopeScope
-                    contacts={vessel.periscopeContacts ?? []}
-                    maxRangeNm={vessel.periscopeMaxRangeNm ?? 6}
-                    ownHeading={vessel.unit.heading}
-                    variant={opticsVariant}
-                  />
+                  <>
+                    <PeriscopeScope
+                      contacts={vessel.periscopeContacts ?? []}
+                      maxRangeNm={vessel.periscopeMaxRangeNm ?? 6}
+                      ownHeading={vessel.unit.heading}
+                      variant={opticsVariant}
+                    />
+                    {(vessel.torpedoWakeCues?.length ?? 0) > 0 && (
+                      <div className="wake-cues panel" role="status">
+                        <h3 className="mono" style={{ margin: '0 0 0.35rem', fontSize: '0.9rem' }}>
+                          Wake sighting (FoW)
+                        </h3>
+                        <p className="muted" style={{ margin: '0 0 0.5rem', fontSize: '0.8rem' }}>
+                          Possible torpedo wake direction — not a firm ID.
+                        </p>
+                        <ul className="mono" style={{ margin: 0, paddingLeft: '1.2rem' }}>
+                          {vessel.torpedoWakeCues!.map((w) => (
+                            <li key={w.id}>
+                              {w.confidence.toUpperCase()} · wake travel{' '}
+                              {w.relativeBearing === 0
+                                ? 'dead ahead'
+                                : `${Math.abs(w.relativeBearing)}° ${w.relativeBearing > 0 ? 'stbd' : 'port'}`}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
                 )}
               </section>
             )}
@@ -436,8 +529,8 @@ export function StationPage() {
                 <div className="radar-station-head">
                   <h2>Hydrophone · Bearing listen</h2>
                   <p className="muted radar-station-blurb">
-                    Train the needle by ear — no visual contacts. Underway propellers and active-sonar pings;
-                    volume falls with range and misalignment.
+                    Train the needle by ear — no visual contacts. Underway propellers, active-sonar
+                    pings, and depth-charge detonations; volume falls with range and misalignment.
                     {vessel.hydrophoneOperational
                       ? ` Passive · ${vessel.hydrophoneMaxRangeNm ?? 30} nm.`
                       : vessel.hydrophoneUnavailableReason === 'surfaced'
@@ -662,6 +755,29 @@ export function StationPage() {
               </section>
             )}
 
+            {canTorpedo && (
+              <TorpedoCalculator
+                ownHeading={vessel.unit.heading}
+                torpedoLoad={vessel.unit.torpedoLoad ?? 0}
+                pending={vessel.unit.orders.fireTorpedo}
+                running={vessel.ownTorpedoes}
+                disabled={!vessel.canSubmitOrders}
+                onSubmit={(fireTorpedo) => void submit({ fireTorpedo })}
+                onClear={() => void submit({ fireTorpedo: null })}
+              />
+            )}
+
+            {canDepthCharges && (
+              <DepthChargeControls
+                depthChargeLoad={vessel.unit.depthChargeLoad ?? 0}
+                pending={vessel.unit.orders.dropDepthCharges}
+                tracks={vessel.ownDepthCharges}
+                disabled={!vessel.canSubmitOrders}
+                onSubmit={(dropDepthCharges) => void submit({ dropDepthCharges })}
+                onClear={() => void submit({ dropDepthCharges: null })}
+              />
+            )}
+
             <section className="panel controls-status-strip" aria-label="Own ship status">
               <div className="controls-status-grid">
                 <div className="controls-status-item">
@@ -801,8 +917,8 @@ export function StationPage() {
             </details>
 
             <p className="muted controls-ambient-note">
-              Ambient bridge audio (nearby depth charges / sonar via BT speakers) planned for this
-              screen later — not in this build.
+              Bridge audio: nearby depth-charge detonations play on this screen when within ~0.45 nm.
+              Hydrophone hears the same sample at longer range when submerged.
             </p>
           </div>
         )}

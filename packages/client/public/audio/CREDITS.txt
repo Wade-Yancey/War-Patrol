@@ -8,3 +8,7 @@ License: CC0 / public domain
 Original: https://freesound.org/people/KIZILSUNGUR/sounds/70299/
 Local copy: sonar-ping.wav
 Original filename: 70299__kizilsungur__sonar.wav
+
+Source: Depth charge with water (craigsmith / Freesound-style)
+License: as provided for War Patrol media pack
+Local copy: depth-charge.wav

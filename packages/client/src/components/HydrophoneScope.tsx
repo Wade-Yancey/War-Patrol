@@ -13,6 +13,11 @@ import {
   loadSonarPingBuffer,
   playSonarPingSample,
 } from '../audio/sonarPing';
+import {
+  hydrophoneDepthChargePeakGain,
+  loadDepthChargeBuffer,
+  playDepthChargeSample,
+} from '../audio/depthCharge';
 
 const PROP_SAMPLE_URL = '/audio/echo-propeller.wav';
 /** Fine-adjust nudge step for ◀ / ▶ flanking the bearing slider (degrees). */
@@ -86,6 +91,8 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const bufferRef = useRef<AudioBuffer | null>(null);
   const pingBufferRef = useRef<AudioBuffer | null>(null);
+  const dcBufferRef = useRef<AudioBuffer | null>(null);
+  const playedDcIdsRef = useRef<Set<string>>(new Set());
   const masterGainRef = useRef<GainNode | null>(null);
   const voicesRef = useRef<Map<string, ContactVoice>>(new Map());
   const listenRef = useRef(listenBearing);
@@ -171,6 +178,9 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
       if (!pingBufferRef.current) {
         pingBufferRef.current = await loadSonarPingBuffer(audioCtxRef.current);
       }
+      if (!dcBufferRef.current) {
+        dcBufferRef.current = await loadDepthChargeBuffer(audioCtxRef.current);
+      }
       setAudioReady(true);
       setAudioError(null);
       return true;
@@ -204,8 +214,10 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
     const master = masterGainRef.current;
     if (!ctx || !buffer || !master || ctx.state !== 'running') return;
 
-    // Propeller loops only — active-sonar pings use the shared ping sample path.
-    const list = contactsRef.current.filter((c) => c.kind !== 'active_sonar_ping');
+    // Propeller loops only — active-sonar pings + depth charges use one-shot samples.
+    const list = contactsRef.current.filter(
+      (c) => c.kind !== 'active_sonar_ping' && c.kind !== 'depth_charge',
+    );
     const bearing = listenRef.current;
     const keep = new Set(list.map((c) => c.id));
 
@@ -267,6 +279,28 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
     }
   }, []);
 
+  /** One-shot depth-charge detonations when new contacts appear in hearing. */
+  const playDepthChargeSamples = useCallback(() => {
+    const ctx = audioCtxRef.current;
+    const master = masterGainRef.current;
+    const dcBuffer = dcBufferRef.current;
+    if (!ctx || !master || !dcBuffer || ctx.state !== 'running') return;
+    const bearing = listenRef.current;
+    const charges = contactsRef.current.filter((c) => c.kind === 'depth_charge');
+    const liveIds = new Set(charges.map((c) => c.id));
+    for (const id of [...playedDcIdsRef.current]) {
+      if (!liveIds.has(id)) playedDcIdsRef.current.delete(id);
+    }
+    for (const c of charges) {
+      if (playedDcIdsRef.current.has(c.id)) continue;
+      const gainAmt = hydrophoneContactGain(c.rangeNm, bearing, c.bearing);
+      // Detonations are loud — play even off-beam at reduced gain.
+      const peak = Math.max(0.04, hydrophoneDepthChargePeakGain(Math.max(gainAmt, 0.15)));
+      playDepthChargeSample(ctx, dcBuffer, master, peak);
+      playedDcIdsRef.current.add(c.id);
+    }
+  }, []);
+
   // Propeller gain tracks listen bearing / contact list; never restart ping cadence here.
   useEffect(() => {
     if (!listening) {
@@ -274,7 +308,8 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
       return;
     }
     syncVoices();
-  }, [listening, contacts, listenBearing, syncVoices, stopAllVoices]);
+    playDepthChargeSamples();
+  }, [listening, contacts, listenBearing, syncVoices, stopAllVoices, playDepthChargeSamples]);
 
   // Active-sonar hear path: one emit cadence from the destroyer stub interval.
   // Listen bearing / gain only modulate volume inside playPingSamples (via refs) —

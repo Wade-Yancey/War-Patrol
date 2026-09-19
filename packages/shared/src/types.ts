@@ -100,6 +100,43 @@ export interface StationDef {
   capabilities: StationCapability[];
 }
 
+/** Depth-charge drop pattern (destroyer rack / thrower stub). */
+export type DepthChargePattern = 'single' | 'pair' | 'pattern_3' | 'pattern_5';
+
+/**
+ * How long the TMA / firing solution was plotted before this shot.
+ * Explicit player choice on the calculator — grants additive hit %.
+ */
+export type SolutionPlotDuration = 'none' | 'half_turn' | 'full_turn';
+
+/** Pending torpedo shot for the current turn (fleet sub Controls). */
+export interface TorpedoFireOrder {
+  /** True heading the fish will run (gyro from player aim — not auto-solved). */
+  aimHeading: number;
+  /** Run depth meters (positive down). */
+  runDepthM: number;
+  /**
+   * Player-entered target length estimate (meters).
+   * Compared to sim truth for the +10% “length accurately identified” modifier.
+   * Never auto-filled from lengthM.
+   */
+  estimatedLengthM: number;
+  /**
+   * Player-entered target speed estimate (knots).
+   * Compared to |truth speed| for the +10% speed-ID modifier.
+   */
+  estimatedSpeedKn: number;
+  /** Solution-plotting commitment before fire. */
+  solutionPlot: SolutionPlotDuration;
+}
+
+/** Pending depth-charge drop for the current turn (destroyer Controls). */
+export interface DepthChargeDropOrder {
+  pattern: DepthChargePattern;
+  /** Detonation depth setting meters (positive down). */
+  depthSettingM: number;
+}
+
 export interface UnitOrders {
   /** Desired course in degrees true (0–360). */
   course?: number;
@@ -110,8 +147,91 @@ export interface UnitOrders {
    * Applied to {@link UnitState.position}.depth on turn resolve.
    */
   depth?: number;
+  /** Fire one fish this resolve (consumes load on launch). */
+  fireTorpedo?: TorpedoFireOrder;
+  /** Drop a depth-charge pattern this resolve (consumes rack load). */
+  dropDepthCharges?: DepthChargeDropOrder;
   updatedAt?: string;
   updatedByStationId?: string;
+}
+
+/** Running / spent steam torpedo (Mk 14–ish). */
+export type TorpedoStatus = 'running' | 'hit' | 'expired' | 'duded';
+
+export interface TorpedoTrack {
+  id: string;
+  firerUnitId: string;
+  /** Launch / drop origin (fixed) — umpire GT trail start. */
+  launchPosition: LatLonDepth;
+  position: LatLonDepth;
+  /** Run heading degrees true. */
+  heading: number;
+  /** Speed knots (constant for v1). */
+  speedKn: number;
+  /** Remaining run distance in nautical miles. */
+  remainingRunNm: number;
+  /** Ordered run depth (m). */
+  runDepthM: number;
+  launchedTurn: number;
+  status: TorpedoStatus;
+  /** Target unit id when status === hit. */
+  hitUnitId?: string;
+  /** Snapshotted calculator estimates at launch (for hit resolution). */
+  estimatedLengthM: number;
+  estimatedSpeedKn: number;
+  solutionPlot: SolutionPlotDuration;
+  /**
+   * Breadcrumb positions along the run (launch → current/end).
+   * Umpire GT map polyline; includes launch as first point.
+   */
+  path: Array<{ lat: number; lon: number }>;
+}
+
+export type DepthChargeStatus = 'sinking' | 'detonated' | 'spent';
+
+/** Sinking / detonated depth charge. */
+export interface DepthChargeTrack {
+  id: string;
+  firerUnitId: string;
+  /** Surface drop origin (fixed) — umpire GT trail start. */
+  launchPosition: LatLonDepth;
+  position: LatLonDepth;
+  /** Operator depth setting (m) — detonates when keel depth reaches this. */
+  depthSettingM: number;
+  sinkRateMps: number;
+  status: DepthChargeStatus;
+  launchedTurn: number;
+  pattern: DepthChargePattern;
+  detonatedAtDepthM?: number;
+  /**
+   * Horizontal path is a point (drops in place); we still keep launch + current
+   * for GT markers. Depth progress is labeled on the end pip.
+   */
+  path: Array<{ lat: number; lon: number; depth: number }>;
+}
+
+/** Recent depth-charge detonation (audio + umpire truth). Cleared after a few turns. */
+export interface WeaponDetonationEvent {
+  id: string;
+  kind: 'depth_charge';
+  position: LatLonDepth;
+  turnNumber: number;
+  firerUnitId: string;
+}
+
+/**
+ * Lookout / periscope FoW cue — torpedo wake direction only (not identity).
+ * Relative bearing of apparent wake travel vs own heading.
+ */
+export interface TorpedoWakeCue {
+  id: string;
+  /**
+   * Relative bearing of wake travel direction (−180, 180], coarsened.
+   * Bow = 0; starboard positive.
+   */
+  relativeBearing: number;
+  /** Operator confidence — never a sure ID. */
+  confidence: 'possible' | 'likely';
 }
 
 export interface UnitState {
@@ -193,6 +313,16 @@ export interface UnitState {
    * When true and the set is installed/healthy, the unit pings and paints a forward-cone picture.
    */
   activeSonarEnabled: boolean;
+  /**
+   * Ready torpedoes remaining (fleet subs). 0 for non-torpedo hulls.
+   * Consumed when a fire order launches on resolve.
+   */
+  torpedoLoad: number;
+  /**
+   * Ready depth charges remaining (destroyers). 0 for non-DC hulls.
+   * Consumed when a drop pattern launches on resolve.
+   */
+  depthChargeLoad: number;
 }
 
 export interface ScenarioUnitSeed {
@@ -234,6 +364,10 @@ export interface ScenarioUnitSeed {
   sensors?: SensorDef[];
   /** Optional seed for destroyer active sonar toggle (default false). */
   activeSonarEnabled?: boolean;
+  /** Optional ready torpedo count (fleet subs). */
+  torpedoLoad?: number;
+  /** Optional ready depth-charge count (destroyers). */
+  depthChargeLoad?: number;
 }
 
 export interface Scenario {
@@ -315,6 +449,14 @@ export interface GameSave {
   startTrails: UnitTrail[];
   units: UnitState[];
   history: TurnSnapshot[];
+  /** In-flight / sinking weapons (umpire ground truth + resolve tracking). */
+  torpedoes: TorpedoTrack[];
+  depthCharges: DepthChargeTrack[];
+  /**
+   * Recent depth-charge detonations for hydrophone / Controls audio FoW.
+   * Pruned after a few turns.
+   */
+  recentDetonations: WeaponDetonationEvent[];
 }
 
 /** Vessel-class library stub (ARCH-LIB data shape only). */
@@ -376,6 +518,10 @@ export interface UmpireView {
   units: UnitState[];
   /** Prior-turn position trails per unit (history + current). */
   trails: UnitTrail[];
+  /** Full-truth weapon tracks (running fish + sinking/detonated charges). */
+  torpedoes: TorpedoTrack[];
+  depthCharges: DepthChargeTrack[];
+  recentDetonations: WeaponDetonationEvent[];
   historyTurnNumbers: number[];
   vesselLinks: Array<{
     unitId: string;
@@ -449,12 +595,34 @@ export interface VesselView {
     | 'radarSignature'
     | 'stations'
     | 'activeSonarEnabled'
+    | 'torpedoLoad'
+    | 'depthChargeLoad'
   >;
   stationId: string;
   station: StationDef;
   /** Other stations on own vessel with connection counts (multi-connect indicator). */
   stationConnections: Array<{ stationId: string; count: number }>;
   canSubmitOrders: boolean;
+  /**
+   * Own-side weapon tracks only (fired by this hull) — FoW vs umpire full truth.
+   * Running fish / sinking charges the crew launched; never enemy weapons.
+   */
+  ownTorpedoes?: TorpedoTrack[];
+  ownDepthCharges?: DepthChargeTrack[];
+  /**
+   * Lookout / periscope FoW — possible torpedo wake directions (not identity).
+   * Only on stations with `lookout` capability.
+   */
+  torpedoWakeCues?: TorpedoWakeCue[];
+  /**
+   * Depth-charge detonations audible on Controls when close to own ship.
+   * Polar only — range for gain; no firer identity.
+   */
+  bridgeDetonations?: Array<{
+    id: string;
+    bearing: number;
+    rangeNm: number;
+  }>;
   /**
    * Radar picture for stations with the `radar` capability.
    * Omitted for non-radar stations — never full unit list.
@@ -526,8 +694,9 @@ export interface HydrophoneContact {
    * Emitter class for audio mixing:
    * - `propeller` — continuous underwater noise from an underway hull
    * - `active_sonar_ping` — intermittent ping from a destroyer with search sonar ON
+   * - `depth_charge` — one-shot detonation cue (recent DC explosion in hearing range)
    */
-  kind: 'propeller' | 'active_sonar_ping';
+  kind: 'propeller' | 'active_sonar_ping' | 'depth_charge';
 }
 
 /**

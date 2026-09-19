@@ -1,6 +1,7 @@
 import {
   bearingRangeNm,
   canUseSensors,
+  DEPTH_CHARGE_HYDROPHONE_RANGE_NM,
   findHydrophoneSensor,
   isActiveSonarPinging,
   isHydrophoneDepthOk,
@@ -22,8 +23,8 @@ export type HydrophonePicture = {
  * Server-authoritative hydrophone cues (audio only).
  *
  * Propeller contacts: underway waterborne hulls.
- * Active-sonar pings: destroyers (or other units) with search sonar toggled ON —
- * audible through the same range × beam model when the listener trains the needle.
+ * Active-sonar pings: destroyers with search sonar toggled ON.
+ * Depth-charge detonations: recent explosions within hearing range (one-shot WAV).
  *
  * Fleet-sub hydrophone is submerged-only (depth > 5 m).
  */
@@ -88,6 +89,21 @@ export function buildHydrophoneContacts(own: UnitState, save: GameSave): Hydroph
         kind: 'active_sonar_ping',
       });
     }
+  }
+
+  // Recent depth-charge detonations (acoustic events — not continuous emitters).
+  const dcMax = Math.min(maxRangeNm, DEPTH_CHARGE_HYDROPHONE_RANGE_NM);
+  for (const det of save.recentDetonations ?? []) {
+    if (det.kind !== 'depth_charge') continue;
+    if (det.turnNumber < save.turn.number - 1) continue;
+    const { bearing, rangeNm } = bearingRangeNm(own.position, det.position);
+    if (rangeNm > dcMax || rangeNm <= 0) continue;
+    contacts.push({
+      id: `h-dc-${det.id}`,
+      bearing: Math.round(bearing * 10) / 10,
+      rangeNm: Math.round(rangeNm * 100) / 100,
+      kind: 'depth_charge',
+    });
   }
 
   contacts.sort((a, b) => a.bearing - b.bearing || a.rangeNm - b.rangeNm);

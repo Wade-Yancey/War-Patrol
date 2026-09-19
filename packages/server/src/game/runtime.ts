@@ -10,6 +10,8 @@ import {
   defaultRadarSignature,
   defaultSensors,
   defaultTwoScreenStations,
+  defaultDepthChargeLoad,
+  defaultTorpedoLoad,
   effectiveMaxSpeed,
   hasActiveSonarSensor,
   isTwoScreenStationLayout,
@@ -112,6 +114,14 @@ function unitFromScenario(seed: Scenario['units'][number]): UnitState {
     radarSignature,
     sensors: seed.sensors ? seed.sensors.map((s) => ({ ...s })) : defaultSensors(identity.class),
     activeSonarEnabled: Boolean(seed.activeSonarEnabled),
+    torpedoLoad:
+      typeof seed.torpedoLoad === 'number'
+        ? Math.max(0, Math.floor(seed.torpedoLoad))
+        : defaultTorpedoLoad(identity),
+    depthChargeLoad:
+      typeof seed.depthChargeLoad === 'number'
+        ? Math.max(0, Math.floor(seed.depthChargeLoad))
+        : defaultDepthChargeLoad(identity),
   });
 }
 
@@ -225,6 +235,14 @@ function normalizeUnit(unit: UnitState): UnitState {
     activeSonarEnabled: hasActiveSonarSensor({ sensors })
       ? Boolean(unit.activeSonarEnabled)
       : false,
+    torpedoLoad:
+      typeof unit.torpedoLoad === 'number'
+        ? Math.max(0, Math.floor(unit.torpedoLoad))
+        : defaultTorpedoLoad(identity),
+    depthChargeLoad:
+      typeof unit.depthChargeLoad === 'number'
+        ? Math.max(0, Math.floor(unit.depthChargeLoad))
+        : defaultDepthChargeLoad(identity),
   };
 }
 
@@ -250,6 +268,9 @@ function normalizeSave(save: GameSave): GameSave {
       gameTimeSeconds,
     },
     units,
+    torpedoes: save.torpedoes ?? [],
+    depthCharges: save.depthCharges ?? [],
+    recentDetonations: save.recentDetonations ?? [],
     history: (save.history ?? []).map((h) => ({
       ...h,
       gameTimeSeconds: h.gameTimeSeconds ?? h.turn?.gameTimeSeconds ?? gameTimeSeconds,
@@ -332,6 +353,9 @@ export class GameRuntime {
         points: [{ lat: u.position.lat, lon: u.position.lon, turnNumber: 0 }],
       })),
       units,
+      torpedoes: [],
+      depthCharges: [],
+      recentDetonations: [],
       history: [],
     };
     this.games.set(save.id, save);
@@ -461,7 +485,13 @@ export class GameRuntime {
     gameId: string,
     unitId: string,
     stationId: string,
-    patch: { course?: number; eot?: EotSetting; depth?: number },
+    patch: {
+      course?: number;
+      eot?: EotSetting;
+      depth?: number;
+      fireTorpedo?: import('@war-patrol/shared').TorpedoFireOrder | null;
+      dropDepthCharges?: import('@war-patrol/shared').DepthChargeDropOrder | null;
+    },
   ): GameSave {
     return this.touch(gameId, (save) => {
       if (save.turn.phase !== 'open') {
@@ -485,6 +515,33 @@ export class GameRuntime {
         }
         if (unit.type !== 'Submarine') {
           throw Object.assign(new Error('Only submarines can set depth'), { statusCode: 400 });
+        }
+      }
+      if (patch.fireTorpedo !== undefined && patch.fireTorpedo !== null) {
+        if (
+          !station.capabilities.includes('weapons') &&
+          !station.capabilities.includes('torpedo')
+        ) {
+          throw Object.assign(new Error('Station cannot fire torpedoes'), { statusCode: 403 });
+        }
+        if (unit.type !== 'Submarine') {
+          throw Object.assign(new Error('Only submarines can fire torpedoes'), { statusCode: 400 });
+        }
+        if ((unit.torpedoLoad ?? 0) <= 0) {
+          throw Object.assign(new Error('No torpedoes remaining'), { statusCode: 400 });
+        }
+      }
+      if (patch.dropDepthCharges !== undefined && patch.dropDepthCharges !== null) {
+        if (!station.capabilities.includes('weapons')) {
+          throw Object.assign(new Error('Station cannot drop depth charges'), { statusCode: 403 });
+        }
+        if (unit.class !== 'Destroyer') {
+          throw Object.assign(new Error('Only destroyers can drop depth charges'), {
+            statusCode: 400,
+          });
+        }
+        if ((unit.depthChargeLoad ?? 0) <= 0) {
+          throw Object.assign(new Error('No depth charges remaining'), { statusCode: 400 });
         }
       }
 

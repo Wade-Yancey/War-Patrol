@@ -14,7 +14,7 @@
     { "kind": "lookout", "maxRangeNm": 6 }
   ],
   "defaultStations": [
-    { "id": "controls", "name": "Controls", "capabilities": ["helm", "engineering", "plot"] },
+    { "id": "controls", "name": "Controls", "capabilities": ["helm", "engineering", "plot", "weapons", "torpedo"] },
     { "id": "sensors", "name": "Sensors", "capabilities": ["radar", "hydrophone", "lookout"] }
   ]
 }

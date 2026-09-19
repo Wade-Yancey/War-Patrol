@@ -7,12 +7,17 @@ import type {
   UmpireView,
   VesselView,
 } from '@war-patrol/shared';
-import { isV1PlayerUnit } from '@war-patrol/shared';
+import {
+  DEPTH_CHARGE_CONTROLS_AUDIBLE_NM,
+  bearingRangeNm,
+  isV1PlayerUnit,
+} from '@war-patrol/shared';
 import type { SseHub } from './sse.js';
 import { buildActiveSonarContacts } from './activeSonar.js';
 import { buildHydrophoneContacts } from './hydrophone.js';
 import { buildPeriscopeContacts } from './periscope.js';
 import { buildRadarContacts } from './radar.js';
+import { buildTorpedoWakeCues } from './wakeCues.js';
 
 /** Build umpire polylines from start positions + history snapshots + current. */
 export function buildUnitTrails(save: GameSave): UnitTrail[] {
@@ -78,6 +83,9 @@ export function buildUmpireView(save: GameSave, sse: SseHub): UmpireView {
     turnLengthSeconds: save.turnLengthSeconds,
     units: save.units,
     trails: buildUnitTrails(save),
+    torpedoes: save.torpedoes ?? [],
+    depthCharges: save.depthCharges ?? [],
+    recentDetonations: save.recentDetonations ?? [],
     historyTurnNumbers: save.history.map((h) => h.turnNumber),
     vesselLinks: save.units.map((u) => vesselLinkForUnit(save, u)),
     connections: sse.connectionSummary(save.id),
@@ -95,7 +103,10 @@ export function buildVesselView(
 
   const canOrder =
     save.turn.phase === 'open' &&
-    (station.capabilities.includes('helm') || station.capabilities.includes('engineering'));
+    (station.capabilities.includes('helm') ||
+      station.capabilities.includes('engineering') ||
+      station.capabilities.includes('weapons') ||
+      station.capabilities.includes('torpedo'));
 
   const view: VesselView = {
     role: 'vessel',
@@ -127,12 +138,35 @@ export function buildVesselView(
       radarSignature: unit.radarSignature,
       stations: unit.stations,
       activeSonarEnabled: Boolean(unit.activeSonarEnabled),
+      torpedoLoad: unit.torpedoLoad ?? 0,
+      depthChargeLoad: unit.depthChargeLoad ?? 0,
     },
     stationId,
     station,
     stationConnections: sse.stationConnectionCounts(save.id, unit.id),
     canSubmitOrders: canOrder,
   };
+
+  // Own-side weapon tracks (crew knows what they launched).
+  view.ownTorpedoes = (save.torpedoes ?? []).filter((t) => t.firerUnitId === unit.id);
+  view.ownDepthCharges = (save.depthCharges ?? []).filter((c) => c.firerUnitId === unit.id);
+
+  // Controls: close-range DC detonations for bridge audio (no firer ID).
+  if (station.capabilities.includes('helm') || station.capabilities.includes('weapons')) {
+    const bridge: NonNullable<VesselView['bridgeDetonations']> = [];
+    for (const d of save.recentDetonations ?? []) {
+      if (d.turnNumber < save.turn.number - 1) continue;
+      const { bearing, rangeNm } = bearingRangeNm(unit.position, d.position);
+      if (rangeNm <= DEPTH_CHARGE_CONTROLS_AUDIBLE_NM) {
+        bridge.push({
+          id: d.id,
+          bearing: Math.round(bearing * 10) / 10,
+          rangeNm: Math.round(rangeNm * 100) / 100,
+        });
+      }
+    }
+    if (bridge.length) view.bridgeDetonations = bridge;
+  }
 
   if (station.capabilities.includes('radar')) {
     const radar = buildRadarContacts(unit, save);
@@ -173,6 +207,8 @@ export function buildVesselView(
     if (peri.unavailableReason) {
       view.periscopeUnavailableReason = peri.unavailableReason;
     }
+    const wakes = buildTorpedoWakeCues(unit, save);
+    if (wakes.length) view.torpedoWakeCues = wakes;
   }
 
   return view;

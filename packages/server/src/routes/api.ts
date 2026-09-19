@@ -291,7 +291,22 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.post<{
     Params: { gameId: string };
-    Body: { course?: number; eot?: EotSetting; depth?: number };
+    Body: {
+      course?: number;
+      eot?: EotSetting;
+      depth?: number;
+      fireTorpedo?: {
+        aimHeading: number;
+        runDepthM: number;
+        estimatedLengthM: number;
+        estimatedSpeedKn: number;
+        solutionPlot: 'none' | 'half_turn' | 'full_turn';
+      } | null;
+      dropDepthCharges?: {
+        pattern: 'single' | 'pair' | 'pattern_3' | 'pattern_5';
+        depthSettingM: number;
+      } | null;
+    };
   }>('/api/games/:gameId/orders', async (request, reply) => {
     try {
       const session = requireSession(request, request.params.gameId);
