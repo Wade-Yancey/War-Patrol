@@ -35,6 +35,11 @@ import {
   loadDepthChargeBuffer,
   playDepthChargeSample,
 } from '../audio/depthCharge';
+import {
+  CONTROLS_AMBIENT_GAIN,
+  loadControlsAmbientBuffer,
+  startControlsAmbientLoop,
+} from '../audio/controlsAmbient';
 
 function tokenKey(gameId: string, accessToken: string, stationId: string) {
   return `wp-token:${gameId}:${accessToken}:${stationId}`;
@@ -116,28 +121,117 @@ export function StationPage() {
   const sensorFocus =
     isSensors && (canRadar || canHydrophone || canActiveSonar || canPeriscope);
 
+  const onControlsBridge = Boolean(vessel) && isControls && !isSensors;
+
   const playedBridgeDcRef = useRef<Set<string>>(new Set());
   const bridgeAudioRef = useRef<{
     ctx: AudioContext | null;
     buffer: AudioBuffer | null;
-  }>({ ctx: null, buffer: null });
+    ambientBuffer: AudioBuffer | null;
+    ambientSource: AudioBufferSourceNode | null;
+    ambientGain: GainNode | null;
+  }>({
+    ctx: null,
+    buffer: null,
+    ambientBuffer: null,
+    ambientSource: null,
+    ambientGain: null,
+  });
+
+  const ensureBridgeAudioCtx = async (): Promise<AudioContext> => {
+    if (!bridgeAudioRef.current.ctx) {
+      const Ctx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      bridgeAudioRef.current.ctx = new Ctx();
+    }
+    const ctx = bridgeAudioRef.current.ctx;
+    if (ctx.state === 'suspended') await ctx.resume();
+    return ctx;
+  };
+
+  // Controls ambient bed: quiet looping facility hum (BT speakers). Stop on leave.
+  useEffect(() => {
+    if (!onControlsBridge) return;
+    let cancelled = false;
+    let starting = false;
+
+    const stopAmbient = () => {
+      const voice = bridgeAudioRef.current;
+      if (voice.ambientSource) {
+        try {
+          voice.ambientSource.stop();
+        } catch {
+          /* already stopped */
+        }
+        try {
+          voice.ambientSource.disconnect();
+          voice.ambientGain?.disconnect();
+        } catch {
+          /* ignore */
+        }
+        voice.ambientSource = null;
+        voice.ambientGain = null;
+      }
+    };
+
+    const startAmbient = async () => {
+      if (cancelled || bridgeAudioRef.current.ambientSource || starting) return;
+      starting = true;
+      try {
+        const ctx = await ensureBridgeAudioCtx();
+        if (cancelled || bridgeAudioRef.current.ambientSource) return;
+        if (!bridgeAudioRef.current.ambientBuffer) {
+          bridgeAudioRef.current.ambientBuffer = await loadControlsAmbientBuffer(ctx);
+        }
+        if (cancelled || bridgeAudioRef.current.ambientSource) return;
+        const { source, gain } = startControlsAmbientLoop(
+          ctx,
+          bridgeAudioRef.current.ambientBuffer,
+          ctx.destination,
+          CONTROLS_AMBIENT_GAIN,
+        );
+        bridgeAudioRef.current.ambientSource = source;
+        bridgeAudioRef.current.ambientGain = gain;
+        window.removeEventListener('pointerdown', unlock);
+        window.removeEventListener('keydown', unlock);
+      } catch {
+        /* autoplay / sample — ignore; unlock listeners may retry */
+      } finally {
+        starting = false;
+      }
+    };
+
+    const unlock = () => {
+      void startAmbient();
+    };
+
+    void startAmbient();
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+      stopAmbient();
+      const ctx = bridgeAudioRef.current.ctx;
+      bridgeAudioRef.current.ctx = null;
+      bridgeAudioRef.current.buffer = null;
+      bridgeAudioRef.current.ambientBuffer = null;
+      if (ctx) void ctx.close();
+    };
+  }, [onControlsBridge]);
 
   // Controls bridge: play depth-charge WAV when detonations are close to own ship.
   useEffect(() => {
-    if (!vessel || !isControls || isSensors) return;
+    if (!onControlsBridge || !vessel) return;
     const events = vessel.bridgeDetonations ?? [];
     if (!events.length) return;
     let cancelled = false;
     void (async () => {
       try {
-        if (!bridgeAudioRef.current.ctx) {
-          const Ctx =
-            window.AudioContext ||
-            (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-          bridgeAudioRef.current.ctx = new Ctx();
-        }
-        const ctx = bridgeAudioRef.current.ctx;
-        if (ctx.state === 'suspended') await ctx.resume();
+        const ctx = await ensureBridgeAudioCtx();
         if (!bridgeAudioRef.current.buffer) {
           bridgeAudioRef.current.buffer = await loadDepthChargeBuffer(ctx);
         }
@@ -164,7 +258,7 @@ export function StationPage() {
     return () => {
       cancelled = true;
     };
-  }, [vessel, isControls, isSensors, vessel?.bridgeDetonations, vessel?.stateVersion]);
+  }, [onControlsBridge, vessel, vessel?.bridgeDetonations, vessel?.stateVersion]);
 
   const surfaced = vessel ? isRadarSurfaced(vessel.unit.position) : true;
   const depthM = vessel?.unit.position.depth ?? 0;
@@ -917,8 +1011,8 @@ export function StationPage() {
             </details>
 
             <p className="muted controls-ambient-note">
-              Bridge audio: nearby depth-charge detonations play on this screen when within ~0.45 nm.
-              Hydrophone hears the same sample at longer range when submerged.
+              Bridge audio: quiet facility hum loops on this screen; nearby depth-charge detonations
+              play when within ~0.45 nm. Hydrophone hears the DC sample at longer range when submerged.
             </p>
           </div>
         )}
