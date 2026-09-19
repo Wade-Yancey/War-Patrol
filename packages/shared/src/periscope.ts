@@ -86,8 +86,8 @@ export function periscopeSilhouetteScale(
 
 /**
  * Wade’s destroyer recognition plate — always available under Vite `public/`.
- * Used as the class map hit for Destroyer and as the UI fallback when any
- * contact is selected but class mapping misses.
+ * Used for docs/verify static path checks. The Sensors UI mounts the same bytes
+ * via a Vite-bundled import in `PeriscopeScope` (harder to 404 than a bare path).
  */
 export const DESTROYER_SILHOUETTE_URL = '/silhouettes/destroyer.jpg';
 

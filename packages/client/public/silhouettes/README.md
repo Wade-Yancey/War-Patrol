@@ -1,14 +1,12 @@
 # Periscope silhouettes
 
-Hull-class → image map used by the submarine Periscope Sensors tab.
+Side-profile recognition plates for the submarine periscope Sensors tab.
 
-| Hull class | Asset | Notes |
+| Hull class | File | Notes |
 | --- | --- | --- |
-| Destroyer | `destroyer.jpg` | Wade’s raw recognition plate (white plate + black line art). Served as-is from Vite `public/` → `/silhouettes/destroyer.jpg`. |
-| Other classes | _(none mapped)_ | UI falls back to `destroyer.jpg` whenever a contact is selected so the left panel always shows a photo. |
+| Destroyer | `destroyer.jpg` | Wade’s raw recognition plate (white plate + black line art). Also bundled via Vite at `packages/client/src/assets/silhouettes/destroyer.jpg` and mounted as a plain `<img>` in `PeriscopeScope` (no CSS filters). Public copy kept for static `/silhouettes/destroyer.jpg` checks. |
 
-**Display:** Plain `<img>` on a blue sky/sea viewport — **no** CSS filters, phosphor invert, or opacity tricks. Min size enforced so the plate cannot collapse to zero.
+Keep both copies byte-identical when updating the plate.
 
-Resolver: `silhouetteUrlForClass()` / `periscopeSilhouetteUrl()` in `@war-patrol/shared` (`periscope.ts`).
-
-Optional `destroyer.png` / `destroyer.svg` stubs remain in-tree but are **unused**.
+Resolver (docs / verify): `silhouetteUrlForClass()` / `DESTROYER_SILHOUETTE_URL` in `@war-patrol/shared` → `/silhouettes/destroyer.jpg`.  
+Runtime UI: Vite import in `PeriscopeScope.tsx` (bundled URL).

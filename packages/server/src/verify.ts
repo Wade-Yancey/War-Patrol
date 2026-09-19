@@ -12,6 +12,7 @@ import {
   CLASS_MAX_SPEED_KNOTS,
   CLASS_SPEED_STEP_FRACTION,
   SUBMERGED_MAX_SPEED_KNOTS,
+  bearingRangeNm,
   clampSpeedToMax,
   editMaxSpeedForClass,
   effectiveMaxSpeed,
@@ -317,8 +318,8 @@ async function main() {
   await api(
     'PATCH',
     `/api/games/${gameId}/units/ss-212`,
-    // Dead ahead of Porter (hdg 090) and inside active-sonar stub range (8 nm × small 0.7).
-    { position: { lat: 34.35, lon: -120.05, depth: 40 } },
+    // Dead ahead of Porter (hdg 090) from demo start lat/lon; inside active-sonar stub range.
+    { position: { lat: 34.38464, lon: -119.93226, depth: 40 } },
     umpireToken,
   );
   const sonarCone = await api('GET', `/api/games/${gameId}/view`, undefined, radarToken);
@@ -385,13 +386,17 @@ async function main() {
     typeof sss.periscopeMaxRangeNm === 'number' && (sss.periscopeMaxRangeNm as number) === 6,
   );
 
-  // Place Porter within visual range for deterministic periscope contact
-  await api(
-    'PATCH',
-    `/api/games/${gameId}/units/dd-101`,
-    { position: { lat: 34.43, lon: -119.96 }, speed: 12, eot: 'ahead_standard' },
-    umpireToken,
-  );
+  // Demo start places Porter ~3 nm from Gato (inside 6 nm lookout stub) — no PATCH required.
+  {
+    const demoPorter = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
+    const demoGato = runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!;
+    const { rangeNm: demoRange } = bearingRangeNm(demoGato.position, demoPorter.position);
+    check(
+      'demo start within periscope range',
+      demoRange <= 6,
+      `got ${demoRange.toFixed(2)} nm`,
+    );
+  }
   const periSurf = await api('GET', `/api/games/${gameId}/view`, undefined, subSensorsToken);
   const periSurfView = periSurf.json.view as Json;
   const periContacts = periSurfView.periscopeContacts as Array<Json>;
