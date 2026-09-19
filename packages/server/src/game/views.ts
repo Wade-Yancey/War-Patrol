@@ -86,6 +86,7 @@ export function buildUmpireView(save: GameSave, sse: SseHub): UmpireView {
     torpedoes: save.torpedoes ?? [],
     depthCharges: save.depthCharges ?? [],
     recentDetonations: save.recentDetonations ?? [],
+    combatLog: save.combatLog ?? [],
     historyTurnNumbers: save.history.map((h) => h.turnNumber),
     vesselLinks: save.units.map((u) => vesselLinkForUnit(save, u)),
     connections: sse.connectionSummary(save.id),
@@ -151,7 +152,9 @@ export function buildVesselView(
   view.ownTorpedoes = (save.torpedoes ?? []).filter((t) => t.firerUnitId === unit.id);
   view.ownDepthCharges = (save.depthCharges ?? []).filter((c) => c.firerUnitId === unit.id);
 
-  // Controls: close-range DC detonations for bridge audio (no firer ID).
+  // Controls: close-range DC detonations for bridge audio on **this** hull.
+  // Range is measured from this vessel's position to the detonation — any ship
+  // within DEPTH_CHARGE_CONTROLS_AUDIBLE_NM hears it (not only the dropper).
   if (station.capabilities.includes('helm') || station.capabilities.includes('weapons')) {
     const bridge: NonNullable<VesselView['bridgeDetonations']> = [];
     for (const d of save.recentDetonations ?? []) {

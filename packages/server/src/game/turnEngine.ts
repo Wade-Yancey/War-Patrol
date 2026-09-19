@@ -25,7 +25,7 @@ import {
   type UnitOrders,
   type UnitState,
 } from '@war-patrol/shared';
-import { resolveWeaponsForTurn } from './weaponsResolve.js';
+import { resolveWeaponsForTurn, appendCombatLog } from './weaponsResolve.js';
 
 /** Apply simultaneous helm/EOT/depth/weapons orders and advance kinematics + tracks. */
 export function resolveTurn(save: GameSave): GameSave {
@@ -33,6 +33,11 @@ export function resolveTurn(save: GameSave): GameSave {
   const turnLength = resolveTurnLengthSeconds(save.turnLengthSeconds);
   const gameTimeSeconds = (save.turn.gameTimeSeconds ?? 0) + turnLength;
   const resolveTurnNumber = save.turn.number;
+
+  // Snapshot pre-move positions so depth charges can release mid-track.
+  const startPositions = new Map(
+    save.units.map((u) => [u.id, { ...u.position } as const]),
+  );
 
   // Kinematics first (orders still present for weapon launch snapshot).
   const movedUnits = save.units.map((unit) => applyUnitOrders(unit, turnLength, false));
@@ -44,6 +49,8 @@ export function resolveTurn(save: GameSave): GameSave {
     save.recentDetonations ?? [],
     resolveTurnNumber,
     turnLength,
+    gameTimeSeconds,
+    startPositions,
   );
 
   // Clear remaining helm/EOT/depth orders after weapons consumed fire/drop fields.
@@ -80,6 +87,7 @@ export function resolveTurn(save: GameSave): GameSave {
     torpedoes: weapons.torpedoes,
     depthCharges: weapons.depthCharges,
     recentDetonations: weapons.recentDetonations,
+    combatLog: appendCombatLog(save.combatLog, weapons.combatLogEntries),
     turn: nextTurnState,
     history: [...save.history, snapshot],
   };

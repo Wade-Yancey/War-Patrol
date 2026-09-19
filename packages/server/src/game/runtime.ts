@@ -271,6 +271,7 @@ function normalizeSave(save: GameSave): GameSave {
     torpedoes: save.torpedoes ?? [],
     depthCharges: save.depthCharges ?? [],
     recentDetonations: save.recentDetonations ?? [],
+    combatLog: save.combatLog ?? [],
     history: (save.history ?? []).map((h) => ({
       ...h,
       gameTimeSeconds: h.gameTimeSeconds ?? h.turn?.gameTimeSeconds ?? gameTimeSeconds,
@@ -356,6 +357,7 @@ export class GameRuntime {
       torpedoes: [],
       depthCharges: [],
       recentDetonations: [],
+      combatLog: [],
       history: [],
     };
     this.games.set(save.id, save);

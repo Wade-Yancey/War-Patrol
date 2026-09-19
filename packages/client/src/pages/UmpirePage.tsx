@@ -30,6 +30,7 @@ import { api } from '../api/client';
 import { getAuthToken, setAuthToken } from '../api/authStorage';
 import { useGameStream } from '../hooks/useGameStream';
 import { GroundTruthMap } from '../components/GroundTruthMap';
+import { CombatLogPanel } from '../components/CombatLogPanel';
 import { PendingOrdersPanel } from '../components/PendingOrdersPanel';
 import { TurnStatus } from '../components/TurnStatus';
 import { CrtShell } from '../components/CrtShell';
@@ -307,8 +308,8 @@ export function UmpirePage() {
                   <h2>Ground truth</h2>
                   <TurnStatus turn={umpire.turn} turnLengthSeconds={umpire.turnLengthSeconds} />
                   <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-                    Full operating picture — zoom/pan, trails, true-north compass, optional sensor
-                    range bands (Ranges). Resolve here so the plot stays in view.
+                    Full operating picture — zoom/pan, trails, weapons tracks, true-north compass,
+                    optional sensor range bands (Ranges). Resolve here so the plot stays in view.
                   </p>
                 </div>
                 <div className="umpire-gt-map-actions" role="group" aria-label="Turn advance">
@@ -336,13 +337,16 @@ export function UmpirePage() {
                   </button>
                 </div>
               </div>
-              <GroundTruthMap
-                area={umpire.operatingArea}
-                units={umpire.units}
-                trails={umpire.trails}
-                torpedoes={umpire.torpedoes}
-                depthCharges={umpire.depthCharges}
-              />
+              <div className="umpire-gt-with-log">
+                <GroundTruthMap
+                  area={umpire.operatingArea}
+                  units={umpire.units}
+                  trails={umpire.trails}
+                  torpedoes={umpire.torpedoes}
+                  depthCharges={umpire.depthCharges}
+                />
+                <CombatLogPanel entries={umpire.combatLog ?? []} />
+              </div>
             </section>
 
             <div className="umpire-controls" style={{ marginTop: '1rem' }}>
