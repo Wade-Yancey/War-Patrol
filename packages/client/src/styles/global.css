@@ -2140,14 +2140,14 @@ label {
   display: block;
   flex: 0 0 auto;
   box-sizing: border-box;
-  width: 350px;
+  width: 349px;
   max-width: min(92vw, 22rem);
   height: auto;
-  aspect-ratio: 350 / 150;
-  min-height: 4.5rem;
+  aspect-ratio: 349 / 79;
+  min-height: 2.5rem;
   object-fit: contain;
   object-position: center center;
-  background: #ffffff;
+  background: #000000;
   border: 1px solid color-mix(in srgb, #0a1620 25%, transparent);
   user-select: none;
   -webkit-user-drag: none;
