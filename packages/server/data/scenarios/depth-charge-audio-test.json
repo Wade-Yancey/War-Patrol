@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "depth-charge-audio-test",
   "name": "Depth-charge / audio test",
-  "description": "Close-range ASW drill: Fletcher steams slowly over a submerged Gato (~0.2 nm). Depth-charge pattern releases mid-track; hydrophone DC WAV + Controls bridge audio on both hulls when blasts are close. Passwords: umpire / blue / red (same tokens as demo).",
+  "description": "Close-range ASW drill: Fletcher steams slowly over a submerged Gato (~0.2 nm). Depth-charge pattern trails along the move; hydrophone DC WAV + Controls bridge audio on BOTH hulls when blasts are within ~0.6 nm (range to blast — not only the dropper). Passwords: umpire / blue / red (same tokens as demo).",
   "mode": "pvp",
   "operatingArea": {
     "minLat": 34.35,

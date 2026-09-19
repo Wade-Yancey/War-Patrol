@@ -337,16 +337,17 @@ export function UmpirePage() {
                   </button>
                 </div>
               </div>
-              <div className="umpire-gt-with-log">
-                <GroundTruthMap
-                  area={umpire.operatingArea}
-                  units={umpire.units}
-                  trails={umpire.trails}
-                  torpedoes={umpire.torpedoes}
-                  depthCharges={umpire.depthCharges}
-                />
-                <CombatLogPanel entries={umpire.combatLog ?? []} />
-              </div>
+              <GroundTruthMap
+                area={umpire.operatingArea}
+                units={umpire.units}
+                trails={umpire.trails}
+                torpedoes={umpire.torpedoes}
+                depthCharges={umpire.depthCharges}
+              />
+            </section>
+
+            <section className="panel stack umpire-combat-log-panel" style={{ marginTop: '1rem' }}>
+              <CombatLogPanel entries={umpire.combatLog ?? []} />
             </section>
 
             <div className="umpire-controls" style={{ marginTop: '1rem' }}>

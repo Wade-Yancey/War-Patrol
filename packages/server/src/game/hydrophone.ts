@@ -92,6 +92,7 @@ export function buildHydrophoneContacts(own: UnitState, save: GameSave): Hydroph
   }
 
   // Recent depth-charge detonations (acoustic events — not continuous emitters).
+  // Range from *this* listening hull to the blast — never filtered by who dropped.
   const dcMax = Math.min(maxRangeNm, DEPTH_CHARGE_HYDROPHONE_RANGE_NM);
   for (const det of save.recentDetonations ?? []) {
     if (det.kind !== 'depth_charge') continue;

@@ -490,6 +490,8 @@ function GroundTruthMapInner({
         kind: 'depth_charge' as const,
         color,
         status: c.status,
+        firerUnitId: c.firerUnitId,
+        launchedTurn: c.launchedTurn,
         origin,
         tip,
         detonated,
@@ -501,7 +503,28 @@ function GroundTruthMapInner({
       };
     });
 
-    return { fish, charges };
+    // Polyline through a pattern's drop points (along-track trail).
+    const trailKey = (c: (typeof charges)[number]) => `${c.firerUnitId}|${c.launchedTurn}`;
+    const trailGroups = new Map<string, typeof charges>();
+    for (const c of charges) {
+      const k = trailKey(c);
+      const list = trailGroups.get(k) ?? [];
+      list.push(c);
+      trailGroups.set(k, list);
+    }
+    const dropTrails = [...trailGroups.values()]
+      .filter((g) => g.length >= 2)
+      .map((g) => {
+        const sorted = [...g].sort((a, b) => a.id.localeCompare(b.id));
+        return {
+          id: `dctrail-${sorted[0]!.id}`,
+          color: sorted[0]!.color,
+          points: sorted.map((c) => `${c.origin.x.toFixed(1)},${c.origin.y.toFixed(1)}`).join(' '),
+          onPlot: sorted.some((c) => c.onPlot),
+        };
+      });
+
+    return { fish, charges, dropTrails };
   }, [torpedoes, depthCharges, view, unitAccentById]);
 
   const markers = useMemo(
@@ -940,6 +963,22 @@ function GroundTruthMapInner({
                     {f.label}
                   </text>
                 </g>
+              ))}
+
+            {weaponOverlays.dropTrails
+              .filter((t) => t.onPlot)
+              .map((t) => (
+                <polyline
+                  key={t.id}
+                  points={t.points}
+                  fill="none"
+                  stroke="#7ec8ff"
+                  strokeWidth={1.25}
+                  strokeOpacity={0.55}
+                  strokeDasharray="4 3"
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
               ))}
 
             {weaponOverlays.charges

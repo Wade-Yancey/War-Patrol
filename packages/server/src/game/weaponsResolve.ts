@@ -73,13 +73,48 @@ function logLine(opts: {
   };
 }
 
+function logSubsystemCasualties(
+  before: UnitState,
+  after: UnitState,
+  opts: { turnNumber: number; gameTimeSeconds: number; actor?: UnitState },
+): CombatLogEntry[] {
+  const lines: CombatLogEntry[] = [];
+  if (before.subsystems.sensors === 'intact' && after.subsystems.sensors === 'disabled') {
+    lines.push(
+      logLine({
+        kind: 'subsystem_casualty',
+        turnNumber: opts.turnNumber,
+        gameTimeSeconds: opts.gameTimeSeconds,
+        actor: opts.actor,
+        target: after,
+        summary: `${after.name}: sensors disabled`,
+      }),
+    );
+  }
+  if (
+    before.subsystems.propulsion === 'intact' &&
+    after.subsystems.propulsion === 'disabled'
+  ) {
+    lines.push(
+      logLine({
+        kind: 'subsystem_casualty',
+        turnNumber: opts.turnNumber,
+        gameTimeSeconds: opts.gameTimeSeconds,
+        actor: opts.actor,
+        target: after,
+        summary: `${after.name}: propulsion disabled`,
+      }),
+    );
+  }
+  return lines;
+}
+
 /**
  * Launch pending weapon orders, then substep-advance tracks and resolve hits.
  *
- * Depth charges release at the **midpoint** of the firer's move this turn
- * (halfway between pre-resolve and post-resolve position) so the pattern
- * reflects transit — not only the final plot. Torpedoes still leave from the
- * post-resolve keel (fish run continues from there).
+ * Depth charges release as a **trail along the firer's move** this turn
+ * (spaced from pre-resolve → post-resolve position). Torpedoes still leave
+ * from the post-resolve keel (fish run continues from there).
  */
 export function resolveWeaponsForTurn(
   unitsIn: UnitState[],
@@ -141,15 +176,12 @@ export function resolveWeaponsForTurn(
       const have = next.depthChargeLoad ?? 0;
       if (have >= need) {
         const start = startPositions?.get(unit.id) ?? unit.position;
-        const dropPosition: LatLonDepth = {
-          lat: (start.lat + unit.position.lat) / 2,
-          lon: (start.lon + unit.position.lon) / 2,
-          depth: 0,
-        };
+        const end = unit.position;
         const tracks = createDepthChargeTracks({
           idPrefix: `dc-${nanoid(6)}`,
           firerUnitId: unit.id,
-          dropPosition,
+          startPosition: { ...start, depth: 0 },
+          endPosition: { lat: end.lat, lon: end.lon, depth: 0 },
           dropHeading: unit.heading,
           pattern,
           depthSettingM: clampDepthChargeSetting(drop.depthSettingM),
@@ -163,7 +195,7 @@ export function resolveWeaponsForTurn(
             turnNumber,
             gameTimeSeconds,
             actor: unit,
-            summary: `${unit.name} dropped DC ${pattern} ×${tracks.length} · set ${clampDepthChargeSetting(drop.depthSettingM)} m (mid-track)`,
+            summary: `${unit.name} dropped DC ${pattern} ×${tracks.length} · set ${clampDepthChargeSetting(drop.depthSettingM)} m (along-track trail)`,
           }),
         );
       }
@@ -245,6 +277,13 @@ export function resolveWeaponsForTurn(
               summary: `Torpedo HIT ${target.name} (−${TORPEDO_HIT_DAMAGE} HP · aspect ${roll.aspectDeg.toFixed(0)}° · p=${roll.hitPct.toFixed(0)}%)`,
             }),
           );
+          combatLogEntries.push(
+            ...logSubsystemCasualties(target, damaged, {
+              turnNumber,
+              gameTimeSeconds,
+              actor: unitMap.get(fish.firerUnitId),
+            }),
+          );
           if (damaged.condition === 'sunk') {
             combatLogEntries.push(
               logLine({
@@ -313,6 +352,13 @@ export function resolveWeaponsForTurn(
               target: damaged,
               damage,
               summary: `DC effect on ${target.name} −${damage} HP (miss ${horiz.toFixed(0)} m · ΔD ${depthErr.toFixed(0)} m)`,
+            }),
+          );
+          combatLogEntries.push(
+            ...logSubsystemCasualties(target, damaged, {
+              turnNumber,
+              gameTimeSeconds,
+              actor: unitMap.get(advanced.firerUnitId),
             }),
           );
           if (damaged.condition === 'sunk') {

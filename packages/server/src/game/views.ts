@@ -10,6 +10,7 @@ import type {
 import {
   DEPTH_CHARGE_CONTROLS_AUDIBLE_NM,
   bearingRangeNm,
+  buildOwnDamageLog,
   isV1PlayerUnit,
 } from '@war-patrol/shared';
 import type { SseHub } from './sse.js';
@@ -18,6 +19,35 @@ import { buildHydrophoneContacts } from './hydrophone.js';
 import { buildPeriscopeContacts } from './periscope.js';
 import { buildRadarContacts } from './radar.js';
 import { buildTorpedoWakeCues } from './wakeCues.js';
+
+/**
+ * Close-aboard depth-charge cues for Controls speakers.
+ *
+ * Range is measured from **this vessel's position** to each detonation —
+ * never filtered by firer / own-weapon. Any hull within
+ * {@link DEPTH_CHARGE_CONTROLS_AUDIBLE_NM} hears the blast (DD dropper and
+ * nearby sub alike).
+ */
+export function buildBridgeDetonations(
+  unit: UnitState,
+  save: GameSave,
+): NonNullable<VesselView['bridgeDetonations']> {
+  const bridge: NonNullable<VesselView['bridgeDetonations']> = [];
+  // Keep cues for the resolve turn and the following open turn.
+  const oldestTurn = save.turn.number - 1;
+  for (const d of save.recentDetonations ?? []) {
+    if (d.kind !== 'depth_charge') continue;
+    if (d.turnNumber < oldestTurn) continue;
+    const { bearing, rangeNm } = bearingRangeNm(unit.position, d.position);
+    if (rangeNm > DEPTH_CHARGE_CONTROLS_AUDIBLE_NM) continue;
+    bridge.push({
+      id: d.id,
+      bearing: Math.round(bearing * 10) / 10,
+      rangeNm: Math.round(rangeNm * 100) / 100,
+    });
+  }
+  return bridge;
+}
 
 /** Build umpire polylines from start positions + history snapshots + current. */
 export function buildUnitTrails(save: GameSave): UnitTrail[] {
@@ -152,22 +182,20 @@ export function buildVesselView(
   view.ownTorpedoes = (save.torpedoes ?? []).filter((t) => t.firerUnitId === unit.id);
   view.ownDepthCharges = (save.depthCharges ?? []).filter((c) => c.firerUnitId === unit.id);
 
-  // Controls: close-range DC detonations for bridge audio on **this** hull.
-  // Range is measured from this vessel's position to the detonation — any ship
-  // within DEPTH_CHARGE_CONTROLS_AUDIBLE_NM hears it (not only the dropper).
-  if (station.capabilities.includes('helm') || station.capabilities.includes('weapons')) {
-    const bridge: NonNullable<VesselView['bridgeDetonations']> = [];
-    for (const d of save.recentDetonations ?? []) {
-      if (d.turnNumber < save.turn.number - 1) continue;
-      const { bearing, rangeNm } = bearingRangeNm(unit.position, d.position);
-      if (rangeNm <= DEPTH_CHARGE_CONTROLS_AUDIBLE_NM) {
-        bridge.push({
-          id: d.id,
-          bearing: Math.round(bearing * 10) / 10,
-          rangeNm: Math.round(rangeNm * 100) / 100,
-        });
-      }
-    }
+  // Own-ship damage report (hits / casualties on this hull only).
+  const ownDamage = buildOwnDamageLog(unit.id, save.combatLog);
+  if (ownDamage.length) view.ownDamageLog = ownDamage;
+
+  // Controls bridge DC audio: every vessel in range of the blast, not only the dropper.
+  // Gate on Controls station (helm/weapons/torpedo OR station id), never on firerUnitId.
+  const onControlsStation =
+    stationId === 'controls' ||
+    station.capabilities.includes('helm') ||
+    station.capabilities.includes('weapons') ||
+    station.capabilities.includes('torpedo') ||
+    station.capabilities.includes('engineering');
+  if (onControlsStation) {
+    const bridge = buildBridgeDetonations(unit, save);
     if (bridge.length) view.bridgeDetonations = bridge;
   }
 
