@@ -22,8 +22,10 @@ export function hasLookoutSensor(unit: Pick<UnitState, 'sensors'>): boolean {
 }
 
 /**
- * Fleet-sub periscope usable when keel depth ≤ {@link PERISCOPE_DEPTH_M}.
- * Deeper → unavailable (`too_deep`), same CRT pattern as radar submerged.
+ * Visual optics depth gate (periscope / lookout).
+ * Fleet-sub periscope usable when keel depth ≤ {@link PERISCOPE_DEPTH_M};
+ * deeper → unavailable (`too_deep`). Surface ships (DD lookout) always pass —
+ * they don’t dive.
  */
 export function isPeriscopeDepthOk(
   unit: Pick<UnitState, 'type' | 'position'>,
@@ -88,7 +90,7 @@ export function periscopeSilhouetteScale(
  * Wade’s destroyer recognition plate — always available under Vite `public/`.
  * Used for docs/verify static path checks. The Sensors UI mounts the same bytes
  * via a Vite-bundled import in `PeriscopeScope` (harder to 404 than a bare path).
- * PNG with alpha so the plate composites over the periscope sky/sea.
+ * PNG with alpha so the plate composites over the periscope / lookout sky/sea.
  */
 export const DESTROYER_SILHOUETTE_URL = '/silhouettes/destroyer.png';
 
@@ -110,7 +112,7 @@ export function silhouetteUrlForClass(
 }
 
 /**
- * URL to show for a selected periscope contact: class map when present,
+ * URL to show for a selected periscope / lookout contact: class map when present,
  * otherwise the destroyer PNG so the left panel never goes blank.
  */
 export function periscopeSilhouetteUrl(
@@ -119,7 +121,11 @@ export function periscopeSilhouetteUrl(
   return silhouetteUrlForClass(hullClass) ?? DESTROYER_SILHOUETTE_URL;
 }
 
-/** Default lookout / periscope install — fleet submarines only. */
+/**
+ * Default lookout / periscope install.
+ * - Fleet Submarine: periscope optics (depth-gated on server)
+ * - Destroyer: bridge lookout (always available when sensors live — surface ships don’t dive)
+ */
 export function defaultLookoutSensor(
   hullClassOrType: HullClass | string | undefined,
 ): SensorDef | undefined {
@@ -129,6 +135,7 @@ export function defaultLookoutSensor(
   });
   switch (hullClass) {
     case 'Fleet Submarine':
+    case 'Destroyer':
       return { kind: 'lookout', maxRangeNm: PERISCOPE_MAX_RANGE_NM };
     default:
       return undefined;

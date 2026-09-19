@@ -96,6 +96,10 @@ export function StationPage() {
   const canHydrophone = caps.has('hydrophone');
   const canActiveSonar = caps.has('active_sonar');
   const canPeriscope = caps.has('lookout');
+  /** Surface ships use lookout (always available); subs use depth-gated periscope. */
+  const opticsVariant: 'periscope' | 'lookout' =
+    vessel?.unit.type === 'Submarine' ? 'periscope' : 'lookout';
+  const opticsTabLabel = opticsVariant === 'lookout' ? 'Lookout' : 'Periscope';
   const sensorFocus =
     isSensors && (canRadar || canHydrophone || canActiveSonar || canPeriscope);
 
@@ -270,6 +274,7 @@ export function StationPage() {
             {(canRadar && canHydrophone) ||
             (canRadar && canActiveSonar) ||
             (canRadar && canPeriscope) ||
+            (canActiveSonar && canPeriscope) ||
             (canHydrophone && canPeriscope) ? (
               <div className="sensor-tabs" role="tablist" aria-label="Sensor instruments">
                 {canRadar && (
@@ -291,7 +296,7 @@ export function StationPage() {
                     aria-selected={activeTab === 'periscope'}
                     onClick={() => setSensorTab('periscope')}
                   >
-                    Periscope
+                    {opticsTabLabel}
                   </button>
                 )}
                 {canHydrophone && (
@@ -376,11 +381,15 @@ export function StationPage() {
             {canPeriscope && activeTab === 'periscope' && (
               <section className="panel stack radar-station-panel">
                 <div className="radar-station-head">
-                  <h2>Periscope · Visual</h2>
+                  <h2>
+                    {opticsVariant === 'lookout' ? 'Lookout · Visual' : 'Periscope · Visual'}
+                  </h2>
                   <p className="muted radar-station-blurb">
                     Short-range silhouettes only — relative bearing and approximate speed.
                     {vessel.periscopeOperational
-                      ? ` Visual · ${vessel.periscopeMaxRangeNm ?? 6} nm · usable depth ≤ ${PERISCOPE_DEPTH_M} m.`
+                      ? opticsVariant === 'lookout'
+                        ? ` Visual · ${vessel.periscopeMaxRangeNm ?? 6} nm · bridge lookout.`
+                        : ` Visual · ${vessel.periscopeMaxRangeNm ?? 6} nm · usable depth ≤ ${PERISCOPE_DEPTH_M} m.`
                       : vessel.periscopeUnavailableReason === 'too_deep'
                         ? ` Depth ≤ ${PERISCOPE_DEPTH_M} m (periscope / surface) required.`
                         : vessel.periscopeUnavailableReason === 'no_sensor'
@@ -398,17 +407,17 @@ export function StationPage() {
                       {vessel.periscopeUnavailableReason === 'too_deep'
                         ? 'Periscope unavailable — too deep'
                         : vessel.periscopeUnavailableReason === 'sunk'
-                          ? 'Periscope unavailable — sunk/destroyed'
+                          ? `${opticsTabLabel} unavailable — sunk/destroyed`
                           : vessel.periscopeUnavailableReason === 'sensors_disabled'
-                            ? 'Periscope unavailable — sensors disabled'
+                            ? `${opticsTabLabel} unavailable — sensors disabled`
                             : vessel.periscopeUnavailableReason === 'no_sensor'
-                              ? 'Periscope unavailable — no sensor'
-                              : 'Periscope unavailable'}
+                              ? `${opticsTabLabel} unavailable — no sensor`
+                              : `${opticsTabLabel} unavailable`}
                     </p>
                     <p className="muted" style={{ margin: '0.5rem 0 0', fontSize: '0.85rem' }}>
                       {vessel.periscopeUnavailableReason === 'too_deep'
                         ? `Come up to periscope depth or shallower (≤ ${PERISCOPE_DEPTH_M} m) to raise optics.`
-                        : 'This station has no usable periscope picture.'}
+                        : `This station has no usable ${opticsVariant === 'lookout' ? 'lookout' : 'periscope'} picture.`}
                     </p>
                   </div>
                 ) : (
@@ -416,6 +425,7 @@ export function StationPage() {
                     contacts={vessel.periscopeContacts ?? []}
                     maxRangeNm={vessel.periscopeMaxRangeNm ?? 6}
                     ownHeading={vessel.unit.heading}
+                    variant={opticsVariant}
                   />
                 )}
               </section>

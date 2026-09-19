@@ -8,10 +8,11 @@
   "radarSignature": "medium",
   "sensors": [
     { "kind": "radar", "maxRangeNm": 25 },
-    { "kind": "active_sonar", "maxRangeNm": 8 }
+    { "kind": "active_sonar", "maxRangeNm": 8 },
+    { "kind": "lookout", "maxRangeNm": 6 }
   ],
   "defaultStations": [
     { "id": "controls", "name": "Controls", "capabilities": ["helm", "engineering", "plot"] },
-    { "id": "sensors", "name": "Sensors", "capabilities": ["radar", "active_sonar"] }
+    { "id": "sensors", "name": "Sensors", "capabilities": ["radar", "active_sonar", "lookout"] }
   ]
 }

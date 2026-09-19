@@ -108,7 +108,8 @@ export const ACTIVE_SONAR_HALF_ANGLE_DEG = 30;
 export const ACTIVE_SONAR_PING_INTERVAL_SEC = 2;
 
 /**
- * Fleet-sub periscope / lookout visual max range (nm) — short stub.
+ * Periscope / lookout visual max range (nm) — short stub.
+ * Shared by fleet-sub periscope and destroyer bridge lookout.
  * Silhouettes only; farther contacts shrink on the CRT.
  */
 export const PERISCOPE_MAX_RANGE_NM = 6;

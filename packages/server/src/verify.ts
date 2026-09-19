@@ -227,7 +227,8 @@ async function main() {
           s.id === 'sensors' &&
           Array.isArray(s.capabilities) &&
           (s.capabilities as string[]).includes('radar') &&
-          (s.capabilities as string[]).includes('active_sonar'),
+          (s.capabilities as string[]).includes('active_sonar') &&
+          (s.capabilities as string[]).includes('lookout'),
       ),
   );
   check(
@@ -239,6 +240,11 @@ async function main() {
     'destroyer has active_sonar sensor',
     Array.isArray(porter.sensors) &&
       (porter.sensors as Json[]).some((s) => s.kind === 'active_sonar'),
+  );
+  check(
+    'destroyer has lookout sensor',
+    Array.isArray(porter.sensors) &&
+      (porter.sensors as Json[]).some((s) => s.kind === 'lookout'),
   );
   check(
     'destroyer has no hydrophone sensor',
@@ -291,7 +297,7 @@ async function main() {
   });
   check('legacy bridge station rejected', legacyBridge.status === 404);
 
-  // 3c. Destroyer Sensors: active sonar toggle + forward cone (no hydrophone)
+  // 3c. Destroyer Sensors: active sonar toggle + forward cone + lookout (no hydrophone)
   check('destroyer sensors has sonar fields', typeof rv.sonarOperational === 'boolean');
   check('sonar off by default', rv.sonarOperational === false);
   check('sonar off reason', rv.sonarUnavailableReason === 'sonar_off');
@@ -301,6 +307,32 @@ async function main() {
     typeof rv.sonarMaxRangeNm === 'number' && (rv.sonarMaxRangeNm as number) === 8,
   );
   check('destroyer sensors has no hydrophone picture', !('hydrophoneContacts' in rv));
+  check('destroyer lookout live', rv.periscopeOperational === true);
+  check('destroyer lookout has contacts array', Array.isArray(rv.periscopeContacts));
+  check(
+    'destroyer lookout max range stub',
+    typeof rv.periscopeMaxRangeNm === 'number' && (rv.periscopeMaxRangeNm as number) === 6,
+  );
+  {
+    const ddLookoutContacts = rv.periscopeContacts as Array<Json>;
+    check(
+      'destroyer lookout sees sub on surface',
+      ddLookoutContacts.length >= 1,
+      `got ${ddLookoutContacts.length}`,
+    );
+    if (ddLookoutContacts[0]) {
+      check(
+        'destroyer lookout contact FoW fields',
+        typeof ddLookoutContacts[0].relativeBearing === 'number' &&
+          typeof ddLookoutContacts[0].rangeNm === 'number' &&
+          typeof ddLookoutContacts[0].speedKn === 'number' &&
+          ddLookoutContacts[0].silhouetteClass === 'Fleet Submarine' &&
+          !('side' in ddLookoutContacts[0]) &&
+          !('name' in ddLookoutContacts[0]) &&
+          !('position' in ddLookoutContacts[0]),
+      );
+    }
+  }
 
   const sonarOn = await api(
     'POST',
@@ -434,7 +466,7 @@ async function main() {
     ];
     const resolved = candidates.find((p) => fs.existsSync(p));
     const buf = resolved ? fs.readFileSync(resolved) : null;
-    // PNG signature + tRNS (indexed alpha) or RGBA — keep transparency for periscope.
+    // PNG signature + tRNS (indexed alpha) or RGBA — keep transparency for optics.
     const isPng = Boolean(
       buf &&
         buf[0] === 0x89 &&
@@ -457,11 +489,15 @@ async function main() {
     if (distPng) {
       const distBuf = fs.readFileSync(distPng);
       const distIsPng =
-        distBuf[0] === 0x89 && distBuf[1] === 0x50 && distBuf[2] === 0x4e && distBuf[3] === 0x47;
+        distBuf[0] === 0x89 &&
+        distBuf[1] === 0x50 &&
+        distBuf[2] === 0x4e &&
+        distBuf[3] === 0x47;
+      const distTrns = distBuf.includes(Buffer.from('tRNS'));
       check(
         'destroyer silhouette in client dist',
-        distIsPng && distBuf.length > 1000,
-        `${distPng} ${distBuf.length} bytes`,
+        distIsPng && distBuf.length > 1000 && distTrns,
+        `${distPng} ${distBuf.length} bytes trns=${distTrns}`,
       );
     }
   }
