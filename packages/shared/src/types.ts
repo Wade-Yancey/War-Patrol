@@ -471,7 +471,8 @@ export type CombatLogKind =
   | 'depth_charge_drop'
   | 'depth_charge_detonation'
   | 'depth_charge_damage'
-  | 'unit_sunk';
+  | 'unit_sunk'
+  | 'subsystem_casualty';
 
 /** One umpire-visible action / damage line (CRT log). */
 export interface CombatLogEntry {
@@ -490,6 +491,23 @@ export interface CombatLogEntry {
   targetUnitId?: string;
   targetName?: string;
   /** Hit points applied when relevant. */
+  damage?: number;
+}
+
+/**
+ * Own-ship FoW damage line for Controls Damage report.
+ * Never includes enemy full damage board — only events targeting this hull.
+ */
+export interface OwnDamageEvent {
+  id: string;
+  kind: Extract<
+    CombatLogKind,
+    'torpedo_hit' | 'depth_charge_damage' | 'unit_sunk' | 'subsystem_casualty'
+  >;
+  turnNumber: number;
+  gameTimeSeconds: number;
+  /** Operator-facing summary (no enemy GT beyond what own crew knows). */
+  summary: string;
   damage?: number;
 }
 
@@ -714,6 +732,11 @@ export interface VesselView {
   periscopeOperational?: boolean;
   /** Operator-facing reason when periscopeOperational is false. */
   periscopeUnavailableReason?: 'no_sensor' | 'sunk' | 'sensors_disabled' | 'too_deep';
+  /**
+   * Own-ship damage events (hits / casualties on this hull only).
+   * Controls Damage report — FoW; never the enemy damage board.
+   */
+  ownDamageLog?: OwnDamageEvent[];
 }
 
 /**

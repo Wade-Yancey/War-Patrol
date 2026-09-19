@@ -21,6 +21,8 @@ function kindLabel(kind: CombatLogEntry['kind']): string {
       return 'DC DMG';
     case 'unit_sunk':
       return 'SUNK';
+    case 'subsystem_casualty':
+      return 'CASUALTY';
     default:
       return 'EVENT';
   }
@@ -28,7 +30,7 @@ function kindLabel(kind: CombatLogEntry['kind']): string {
 
 /**
  * Compact umpire CRT action / damage log — chronological, newest at bottom.
- * Sits beside the GT map without replacing it.
+ * Rendered below the full-width GT map (not beside it).
  */
 export function CombatLogPanel({ entries }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
@@ -41,11 +43,12 @@ export function CombatLogPanel({ entries }: Props) {
   }, [sorted.length]);
 
   return (
-    <section className="panel stack umpire-combat-log" aria-label="Action and damage log">
+    <div className="stack umpire-combat-log" aria-label="Action and damage log">
       <div className="umpire-combat-log-head">
         <h2>Action log</h2>
         <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-          Weapon launches, detonations, hits, and damage — umpire GT only.
+          Weapon launches, detonations, hits, and damage — umpire GT only. Below the map so the
+          plot stays full-width.
         </p>
       </div>
       <div className="umpire-combat-log-list mono" ref={listRef} role="log" aria-live="polite">
@@ -66,6 +69,6 @@ export function CombatLogPanel({ entries }: Props) {
           </ul>
         )}
       </div>
-    </section>
+    </div>
   );
 }

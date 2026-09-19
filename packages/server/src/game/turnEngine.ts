@@ -34,7 +34,7 @@ export function resolveTurn(save: GameSave): GameSave {
   const gameTimeSeconds = (save.turn.gameTimeSeconds ?? 0) + turnLength;
   const resolveTurnNumber = save.turn.number;
 
-  // Snapshot pre-move positions so depth charges can release mid-track.
+  // Snapshot pre-move positions so depth charges can trail along the move.
   const startPositions = new Map(
     save.units.map((u) => [u.id, { ...u.position } as const]),
   );

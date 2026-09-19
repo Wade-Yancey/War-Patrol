@@ -1458,7 +1458,7 @@ async function main() {
         (dcv.recentDetonations?.length ?? 0) > 0,
     );
 
-    // Launch origin near midpoint of firer's start→end move (pattern offsets apply).
+    // Launch origins spaced along firer's start→end move (trail, not one pile).
     const umpireFull = dcView.json.view as {
       units: Array<{ id: string; position: { lat: number; lon: number } }>;
       trails: Array<{ unitId: string; points: Array<{ lat: number; lon: number; turnNumber: number }> }>;
@@ -1469,26 +1469,54 @@ async function main() {
     const porter = umpireFull.units.find((u) => u.id === 'dd-101');
     const trailPts = umpireFull.trails.find((t) => t.unitId === 'dd-101')?.points ?? [];
     const startPt = trailPts.find((p) => p.turnNumber === 0) ?? trailPts[0];
-    const launch = umpireFull.depthCharges[0]?.launchPosition;
-    if (porter && startPt && launch) {
+    const launches = (umpireFull.depthCharges ?? [])
+      .map((c) => c.launchPosition)
+      .filter(Boolean) as Array<{ lat: number; lon: number }>;
+    check('dc pattern trail has multiple drop points', launches.length >= 3, `n=${launches.length}`);
+    if (porter && startPt && launches.length >= 2) {
+      const { bearingRangeNm, eastNorthMeters } = await import('@war-patrol/shared');
+      // Span of drop points should be a meaningful fraction of the move, not a midpoint pile.
+      let maxPairNm = 0;
+      for (let i = 0; i < launches.length; i++) {
+        for (let j = i + 1; j < launches.length; j++) {
+          const { rangeNm } = bearingRangeNm(launches[i]!, launches[j]!);
+          if (rangeNm > maxPairNm) maxPairNm = rangeNm;
+        }
+      }
+      const { rangeNm: moveNm } = bearingRangeNm(startPt, porter.position);
+      check(
+        'dc drop trail spans along move',
+        moveNm > 0.05 && maxPairNm > moveNm * 0.35,
+        `move=${moveNm.toFixed(3)}nm span=${maxPairNm.toFixed(3)}nm`,
+      );
+      // First/last drops should sit nearer their respective ends than a single midpoint pile.
+      const sorted = [...launches].sort((a, b) => {
+        const da = eastNorthMeters(startPt, a);
+        const db = eastNorthMeters(startPt, b);
+        const move = eastNorthMeters(startPt, porter.position);
+        const moveLen2 = move.east * move.east + move.north * move.north || 1;
+        const ta = (da.east * move.east + da.north * move.north) / moveLen2;
+        const tb = (db.east * move.east + db.north * move.north) / moveLen2;
+        return ta - tb;
+      });
+      const first = sorted[0]!;
+      const last = sorted[sorted.length - 1]!;
+      const { rangeNm: firstToStart } = bearingRangeNm(startPt, first);
+      const { rangeNm: lastToEnd } = bearingRangeNm(porter.position, last);
       const mid = {
         lat: (startPt.lat + porter.position.lat) / 2,
         lon: (startPt.lon + porter.position.lon) / 2,
       };
-      const { rangeNm: toMid } = (
-        await import('@war-patrol/shared')
-      ).bearingRangeNm(mid, launch);
-      const { rangeNm: toEnd } = (
-        await import('@war-patrol/shared')
-      ).bearingRangeNm(porter.position, launch);
-      // Pattern offsets are tens of meters; release must be nearer mid-track than end plot.
+      const { rangeNm: firstToMid } = bearingRangeNm(mid, first);
+      const { rangeNm: lastToMid } = bearingRangeNm(mid, last);
       check(
-        'dc launch nearer mid-track than end',
-        toMid < toEnd && toMid < 0.1,
-        `toMid=${toMid.toFixed(3)}nm toEnd=${toEnd.toFixed(3)}nm`,
+        'dc trail not piled at midpoint',
+        firstToStart < firstToMid && lastToEnd < lastToMid,
+        `firstToStart=${firstToStart.toFixed(3)} firstToMid=${firstToMid.toFixed(3)} lastToEnd=${lastToEnd.toFixed(3)} lastToMid=${lastToMid.toFixed(3)}`,
       );
     } else {
-      check('dc launch nearer mid-track than end', false, 'missing porter/start/launch');
+      check('dc drop trail spans along move', false, 'missing porter/start/launches');
+      check('dc trail not piled at midpoint', false, 'missing porter/start/launches');
     }
 
     // Non-firer Controls hears close detonations (range to this hull, not only dropper).
@@ -1509,6 +1537,36 @@ async function main() {
       'non-firer Controls gets close DC bridge audio',
       Array.isArray(gBridge) && gBridge.length > 0,
       `bridge=${JSON.stringify(gBridge)}`,
+    );
+    // Prove cue is range-based (has rangeNm) and not an own-weapon-only channel.
+    const gBridgeTyped = (gBridge ?? []) as Array<{ id: string; rangeNm: number; bearing: number }>;
+    check(
+      'non-firer bridge cues expose range not firer id',
+      gBridgeTyped.every(
+        (c) =>
+          typeof c.rangeNm === 'number' &&
+          c.rangeNm <= 0.6 &&
+          !('firerUnitId' in c) &&
+          typeof c.id === 'string',
+      ),
+      JSON.stringify(gBridgeTyped),
+    );
+    const porterTok2 = await api('POST', `/api/games/${dcId}/auth/vessel`, {
+      accessToken: 'porter-demo',
+      password: 'blue',
+      stationId: 'controls',
+    });
+    const porterView2 = await api(
+      'GET',
+      `/api/games/${dcId}/view`,
+      undefined,
+      String(porterTok2.json.token),
+    );
+    const pBridge = (porterView2.json.view as { bridgeDetonations?: unknown[] }).bridgeDetonations;
+    check(
+      'firer Controls also gets close DC bridge audio',
+      Array.isArray(pBridge) && pBridge.length > 0,
+      `bridge=${JSON.stringify(pBridge)}`,
     );
 
     // Hydrophone on sub Sensors also lists depth_charge contacts in range.

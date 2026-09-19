@@ -30,6 +30,7 @@ import { RadarScope } from '../components/RadarScope';
 import { ActiveSonarScope } from '../components/ActiveSonarScope';
 import { TorpedoCalculator } from '../components/TorpedoCalculator';
 import { DepthChargeControls } from '../components/DepthChargeControls';
+import { DamageReportPanel } from '../components/DamageReportPanel';
 import {
   DEPTH_CHARGE_CONTROLS_GAIN,
   loadDepthChargeBuffer,
@@ -46,7 +47,7 @@ function tokenKey(gameId: string, accessToken: string, stationId: string) {
 }
 
 type SensorTab = 'radar' | 'hydrophone' | 'sonar' | 'periscope';
-type ControlsTab = 'helm' | 'weapons' | 'eot';
+type ControlsTab = 'helm' | 'weapons' | 'damage' | 'eot';
 
 export function StationPage() {
   const { gameId = '', accessToken = '', stationId = '' } = useParams();
@@ -126,6 +127,9 @@ export function StationPage() {
   const onControlsBridge = Boolean(vessel) && isControls && !isSensors;
 
   const playedBridgeDcRef = useRef<Set<string>>(new Set());
+  const pendingBridgeDcRef = useRef<
+    Array<{ id: string; rangeNm: number }>
+  >([]);
   const bridgeAudioRef = useRef<{
     ctx: AudioContext | null;
     buffer: AudioBuffer | null;
@@ -141,15 +145,47 @@ export function StationPage() {
   });
 
   const ensureBridgeAudioCtx = async (): Promise<AudioContext> => {
-    if (!bridgeAudioRef.current.ctx) {
+    if (!bridgeAudioRef.current.ctx || bridgeAudioRef.current.ctx.state === 'closed') {
       const Ctx =
         window.AudioContext ||
         (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       bridgeAudioRef.current.ctx = new Ctx();
+      bridgeAudioRef.current.buffer = null;
+      bridgeAudioRef.current.ambientBuffer = null;
     }
     const ctx = bridgeAudioRef.current.ctx;
     if (ctx.state === 'suspended') await ctx.resume();
     return ctx;
+  };
+
+  /** Play any queued close-aboard DC one-shots (range-based; never firer-filtered). */
+  const flushBridgeDcAudio = async (): Promise<void> => {
+    const pending = pendingBridgeDcRef.current;
+    if (!pending.length) return;
+    const ctx = await ensureBridgeAudioCtx();
+    if (ctx.state !== 'running') return;
+    if (!bridgeAudioRef.current.buffer) {
+      bridgeAudioRef.current.buffer = await loadDepthChargeBuffer(ctx);
+    }
+    const buffer = bridgeAudioRef.current.buffer;
+    if (!buffer) return;
+    const still: Array<{ id: string; rangeNm: number }> = [];
+    for (const e of pending) {
+      if (playedBridgeDcRef.current.has(e.id)) continue;
+      try {
+        const proximity = Math.max(0.15, 1 - e.rangeNm / 0.6);
+        playDepthChargeSample(
+          ctx,
+          buffer,
+          ctx.destination,
+          DEPTH_CHARGE_CONTROLS_GAIN * proximity,
+        );
+        playedBridgeDcRef.current.add(e.id);
+      } catch {
+        still.push(e);
+      }
+    }
+    pendingBridgeDcRef.current = still;
   };
 
   // Controls ambient bed: quiet looping facility hum (BT speakers). Stop on leave.
@@ -195,6 +231,8 @@ export function StationPage() {
         );
         bridgeAudioRef.current.ambientSource = source;
         bridgeAudioRef.current.ambientGain = gain;
+        // Same gesture / unlock also drains pending DC one-shots.
+        await flushBridgeDcAudio();
         window.removeEventListener('pointerdown', unlock);
         window.removeEventListener('keydown', unlock);
       } catch {
@@ -206,6 +244,7 @@ export function StationPage() {
 
     const unlock = () => {
       void startAmbient();
+      void flushBridgeDcAudio();
     };
 
     void startAmbient();
@@ -221,41 +260,28 @@ export function StationPage() {
       bridgeAudioRef.current.ctx = null;
       bridgeAudioRef.current.buffer = null;
       bridgeAudioRef.current.ambientBuffer = null;
-      if (ctx) void ctx.close();
+      // Closed ctx → allow replay after remount (React Strict Mode / leave+rejoin).
+      playedBridgeDcRef.current.clear();
+      if (ctx && ctx.state !== 'closed') void ctx.close();
     };
   }, [onControlsBridge]);
 
-  // Controls bridge: play depth-charge WAV when detonations are close to own ship.
+  // Controls bridge: queue + play depth-charge WAV for every close blast (any firer).
   useEffect(() => {
     if (!onControlsBridge || !vessel) return;
     const events = vessel.bridgeDetonations ?? [];
-    if (!events.length) return;
+    const live = new Set(events.map((e) => e.id));
+    for (const id of [...playedBridgeDcRef.current]) {
+      if (!live.has(id)) playedBridgeDcRef.current.delete(id);
+    }
+    pendingBridgeDcRef.current = events
+      .filter((e) => !playedBridgeDcRef.current.has(e.id))
+      .map((e) => ({ id: e.id, rangeNm: e.rangeNm }));
+    if (!pendingBridgeDcRef.current.length) return;
     let cancelled = false;
     void (async () => {
-      try {
-        const ctx = await ensureBridgeAudioCtx();
-        if (!bridgeAudioRef.current.buffer) {
-          bridgeAudioRef.current.buffer = await loadDepthChargeBuffer(ctx);
-        }
-        if (cancelled) return;
-        const live = new Set(events.map((e) => e.id));
-        for (const id of [...playedBridgeDcRef.current]) {
-          if (!live.has(id)) playedBridgeDcRef.current.delete(id);
-        }
-        for (const e of events) {
-          if (playedBridgeDcRef.current.has(e.id)) continue;
-          const proximity = Math.max(0.15, 1 - e.rangeNm / 0.45);
-          playDepthChargeSample(
-            ctx,
-            bridgeAudioRef.current.buffer,
-            ctx.destination,
-            DEPTH_CHARGE_CONTROLS_GAIN * proximity,
-          );
-          playedBridgeDcRef.current.add(e.id);
-        }
-      } catch {
-        /* autoplay / sample — ignore */
-      }
+      if (cancelled) return;
+      await flushBridgeDcAudio();
     })();
     return () => {
       cancelled = true;
@@ -765,6 +791,19 @@ export function StationPage() {
         {vessel && isControls && !isSensors && (
           <div className="controls-station">
             <section className="panel controls-status-strip" aria-label="Own ship status">
+              {(vessel.bridgeDetonations?.length ?? 0) > 0 && (
+                <div className="controls-bridge-dc-alert" role="status" aria-live="assertive">
+                  <span className="controls-bridge-dc-alert-key">BRIDGE</span>
+                  <span className="readout">
+                    DEPTH CHARGE close aboard — {vessel.bridgeDetonations!.length} blast
+                    {vessel.bridgeDetonations!.length === 1 ? '' : 's'} within ~
+                    {Math.max(
+                      ...vessel.bridgeDetonations!.map((d) => d.rangeNm),
+                    ).toFixed(2)}{' '}
+                    nm (own ship FoW — any firer)
+                  </span>
+                </div>
+              )}
               <div className="controls-status-grid">
                 <div className="controls-status-item">
                   <span className="controls-status-key">HDG</span>
@@ -831,6 +870,15 @@ export function StationPage() {
                   Weapons
                 </button>
               )}
+              <button
+                type="button"
+                role="tab"
+                className={controlsTab === 'damage' ? 'primary' : undefined}
+                aria-selected={controlsTab === 'damage'}
+                onClick={() => setControlsTab('damage')}
+              >
+                Damage
+              </button>
               {canEot && (
                 <button
                   type="button"
@@ -934,10 +982,21 @@ export function StationPage() {
                 )}
                 <p className="muted controls-ambient-note">
                   Bridge audio: quiet facility hum loops on this screen; nearby depth-charge
-                  detonations play when within ~0.45 nm of own ship (any vessel — not only the
+                  detonations play when within ~0.6 nm of own ship (any vessel — not only the
                   dropper). Hydrophone hears the DC sample at longer range when submerged.
                 </p>
               </>
+            )}
+
+            {controlsTab === 'damage' && (
+              <DamageReportPanel
+                vesselName={vessel.unit.name}
+                vesselType={vessel.unit.type}
+                health={vessel.unit.health}
+                condition={vessel.unit.condition}
+                subsystems={vessel.unit.subsystems}
+                damageLog={vessel.ownDamageLog}
+              />
             )}
 
             {controlsTab === 'eot' && (

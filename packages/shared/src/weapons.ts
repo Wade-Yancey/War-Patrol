@@ -18,9 +18,11 @@ import {
   normalizeHeading,
 } from './geo.js';
 import type {
+  CombatLogEntry,
   DepthChargePattern,
   DepthChargeTrack,
   LatLonDepth,
+  OwnDamageEvent,
   SolutionPlotDuration,
   TorpedoTrack,
   UnitState,
@@ -141,29 +143,76 @@ export const DEPTH_CHARGE_LETHAL_DAMAGE = 55;
 export const DEPTH_CHARGE_DAMAGE_AMOUNT = 22;
 export const DEPTH_CHARGE_STUN_DAMAGE = 8;
 
-/** Pattern → drop offsets (ahead/lateral meters relative to drop heading). */
+/**
+ * Pattern → thrower lateral offsets (m, + = starboard of track heading).
+ * Along-track spacing uses {@link depthChargeReleaseFractions} on the firer's
+ * start→end move — charges trail along the path, not a single midpoint pile.
+ */
+export const DEPTH_CHARGE_PATTERN_LATERAL_M: Record<
+  DepthChargePattern,
+  ReadonlyArray<number>
+> = {
+  single: [0],
+  pair: [-28, 28],
+  pattern_3: [-35, 0, 35],
+  pattern_5: [-40, 22, -22, 40, 0],
+};
+
+/**
+ * Legacy ahead/lateral offsets — used only when the firer barely moved
+ * (stationary / creep) so a pattern still fans out along heading.
+ */
 export const DEPTH_CHARGE_PATTERN_OFFSETS: Record<
   DepthChargePattern,
   ReadonlyArray<{ aheadM: number; lateralM: number }>
 > = {
   single: [{ aheadM: -40, lateralM: 0 }],
   pair: [
-    { aheadM: -35, lateralM: -25 },
-    { aheadM: -35, lateralM: 25 },
+    { aheadM: -20, lateralM: -28 },
+    { aheadM: -55, lateralM: 28 },
   ],
   pattern_3: [
-    { aheadM: -30, lateralM: 0 },
-    { aheadM: -55, lateralM: -40 },
-    { aheadM: -55, lateralM: 40 },
+    { aheadM: -15, lateralM: -35 },
+    { aheadM: -45, lateralM: 0 },
+    { aheadM: -75, lateralM: 35 },
   ],
   pattern_5: [
-    { aheadM: -20, lateralM: 0 },
-    { aheadM: -45, lateralM: -45 },
-    { aheadM: -45, lateralM: 45 },
-    { aheadM: -70, lateralM: -25 },
-    { aheadM: -70, lateralM: 25 },
+    { aheadM: -10, lateralM: -40 },
+    { aheadM: -30, lateralM: 22 },
+    { aheadM: -50, lateralM: -22 },
+    { aheadM: -70, lateralM: 40 },
+    { aheadM: -90, lateralM: 0 },
   ],
 };
+
+/** Min firer move (nm) before drops space along the track vs heading fan. */
+export const DEPTH_CHARGE_TRACK_SPREAD_MIN_NM = 0.04;
+
+/**
+ * Along-track release fractions in [0, 1] from move start→end for a pattern.
+ * Spaced so a multi-charge rack leaves a trail, not one midpoint dump.
+ */
+export function depthChargeReleaseFractions(pattern: DepthChargePattern): number[] {
+  const n = depthChargePatternCount(pattern);
+  if (n <= 1) return [0.5];
+  const first = 0.12;
+  const last = 0.88;
+  return Array.from({ length: n }, (_, i) => first + ((last - first) * i) / (n - 1));
+}
+
+/** Linear interpolate lat/lon (surface) between two points. */
+export function lerpLatLon(
+  a: Pick<LatLonDepth, 'lat' | 'lon'>,
+  b: Pick<LatLonDepth, 'lat' | 'lon'>,
+  t: number,
+): LatLonDepth {
+  const u = clamp(t, 0, 1);
+  return {
+    lat: a.lat + (b.lat - a.lat) * u,
+    lon: a.lon + (b.lon - a.lon) * u,
+    depth: 0,
+  };
+}
 
 // --- Lookout wake FoW ---
 
@@ -174,7 +223,8 @@ export const TORPEDO_WAKE_BEARING_STEP_DEG = 15;
 // --- Acoustic range for depth-charge WAV ---
 
 export const DEPTH_CHARGE_HYDROPHONE_RANGE_NM = 12;
-export const DEPTH_CHARGE_CONTROLS_AUDIBLE_NM = 0.45;
+/** Controls bridge speakers — any vessel this close to a blast hears it. */
+export const DEPTH_CHARGE_CONTROLS_AUDIBLE_NM = 0.6;
 
 /** Substeps per turn for weapon geometry. */
 export const WEAPON_SUBSTEPS = 10;
@@ -497,21 +547,47 @@ export function createTorpedoTrack(opts: {
 export function createDepthChargeTracks(opts: {
   idPrefix: string;
   firerUnitId: string;
-  dropPosition: LatLonDepth;
+  /**
+   * Firer position at turn start (pre-kinematics). With {@link endPosition},
+   * multi-charge patterns space drops along this segment.
+   */
+  startPosition: LatLonDepth;
+  /** Firer position after kinematics this turn. */
+  endPosition: LatLonDepth;
+  /** Track / bow heading for lateral thrower offsets. */
   dropHeading: number;
   pattern: DepthChargePattern;
   depthSettingM: number;
   launchedTurn: number;
 }): DepthChargeTrack[] {
   const setting = clampDepthChargeSetting(opts.depthSettingM);
-  const offsets = DEPTH_CHARGE_PATTERN_OFFSETS[opts.pattern] ?? DEPTH_CHARGE_PATTERN_OFFSETS.single;
-  return offsets.map((off, i) => {
-    const pos = offsetAlongHeading(
-      opts.dropPosition,
-      opts.dropHeading,
-      off.aheadM,
-      off.lateralM,
-    );
+  const pattern = opts.pattern;
+  const laterals =
+    DEPTH_CHARGE_PATTERN_LATERAL_M[pattern] ?? DEPTH_CHARGE_PATTERN_LATERAL_M.single;
+  const fractions = depthChargeReleaseFractions(pattern);
+  const trackNm = bearingRangeNm(opts.startPosition, opts.endPosition).rangeNm;
+  const useTrack = trackNm >= DEPTH_CHARGE_TRACK_SPREAD_MIN_NM;
+  const legacy =
+    DEPTH_CHARGE_PATTERN_OFFSETS[pattern] ?? DEPTH_CHARGE_PATTERN_OFFSETS.single;
+
+  return fractions.map((frac, i) => {
+    let pos: LatLonDepth;
+    if (useTrack) {
+      const along = lerpLatLon(opts.startPosition, opts.endPosition, frac);
+      const lateralM = laterals[i] ?? 0;
+      pos =
+        lateralM === 0
+          ? along
+          : offsetAlongHeading(along, opts.dropHeading, 0, lateralM);
+    } else {
+      const off = legacy[i] ?? legacy[0]!;
+      pos = offsetAlongHeading(
+        opts.endPosition,
+        opts.dropHeading,
+        off.aheadM,
+        off.lateralM,
+      );
+    }
     const launch = { lat: pos.lat, lon: pos.lon, depth: 0 };
     return {
       id: `${opts.idPrefix}-${i}`,
@@ -522,7 +598,7 @@ export function createDepthChargeTracks(opts: {
       sinkRateMps: DEPTH_CHARGE_SINK_MPS,
       status: 'sinking' as const,
       launchedTurn: opts.launchedTurn,
-      pattern: opts.pattern,
+      pattern,
       path: [{ lat: launch.lat, lon: launch.lon, depth: 0 }],
     };
   });
@@ -676,6 +752,12 @@ export function isDepthChargeTarget(unit: UnitState): boolean {
   return unit.position.depth > RADAR_SURFACE_DEPTH_M;
 }
 
+/** Health below this → sensors subsystem disabled (combat damage cascade). */
+export const HEALTH_SENSORS_DISABLED_BELOW = 70;
+
+/** Health below this → propulsion subsystem disabled (combat damage cascade). */
+export const HEALTH_PROPULSION_DISABLED_BELOW = 35;
+
 export function applyHealthDamage(unit: UnitState, damage: number): UnitState {
   if (damage <= 0 || unit.condition === 'sunk') return unit;
   const health = Math.max(0, unit.health - damage);
@@ -687,9 +769,76 @@ export function applyHealthDamage(unit: UnitState, damage: number): UnitState {
       speed: 0,
       eot: 'stop',
       activeSonarEnabled: false,
+      subsystems: { propulsion: 'disabled', sensors: 'disabled' },
     };
   }
-  return { ...unit, health };
+
+  const subsystems = { ...unit.subsystems };
+  if (health < HEALTH_SENSORS_DISABLED_BELOW) subsystems.sensors = 'disabled';
+  if (health < HEALTH_PROPULSION_DISABLED_BELOW) subsystems.propulsion = 'disabled';
+
+  const propulsionOut = subsystems.propulsion === 'disabled';
+  const sensorsOut = subsystems.sensors === 'disabled';
+  return {
+    ...unit,
+    health,
+    subsystems,
+    speed: propulsionOut ? 0 : unit.speed,
+    eot: propulsionOut ? 'stop' : unit.eot,
+    activeSonarEnabled: sensorsOut ? false : unit.activeSonarEnabled,
+  };
+}
+
+/**
+ * Build FoW-safe own-ship damage lines from the umpire combat log.
+ * Only events that targeted this hull; summaries omit enemy GT identity.
+ */
+export function buildOwnDamageLog(
+  unitId: string,
+  combatLog: CombatLogEntry[] | undefined,
+): OwnDamageEvent[] {
+  const out: OwnDamageEvent[] = [];
+  for (const e of combatLog ?? []) {
+    if (e.targetUnitId !== unitId) continue;
+    if (
+      e.kind !== 'torpedo_hit' &&
+      e.kind !== 'depth_charge_damage' &&
+      e.kind !== 'unit_sunk' &&
+      e.kind !== 'subsystem_casualty'
+    ) {
+      continue;
+    }
+    let summary: string;
+    switch (e.kind) {
+      case 'torpedo_hit':
+        summary =
+          e.damage != null ? `Torpedo hit — −${e.damage} HP` : 'Torpedo hit';
+        break;
+      case 'depth_charge_damage':
+        summary =
+          e.damage != null
+            ? `Depth-charge shock — −${e.damage} HP`
+            : 'Depth-charge shock';
+        break;
+      case 'unit_sunk':
+        summary = 'Hull lost — sunk / destroyed';
+        break;
+      case 'subsystem_casualty':
+        summary = e.summary;
+        break;
+      default:
+        summary = e.summary;
+    }
+    out.push({
+      id: e.id,
+      kind: e.kind,
+      turnNumber: e.turnNumber,
+      gameTimeSeconds: e.gameTimeSeconds,
+      summary,
+      damage: e.damage,
+    });
+  }
+  return out;
 }
 
 export function unitLengthBeam(unit: UnitState): { lengthM: number; beamM: number } {
