@@ -1,7 +1,7 @@
 import { memo, useMemo, useState } from 'react';
 import { periscopeSilhouetteScale, type PeriscopeContact } from '@war-patrol/shared';
-/** Vite-bundled JPG — guaranteed in the client graph (not a fragile public-path string). */
-import destroyerSilhouetteJpg from '../assets/silhouettes/destroyer.jpg';
+/** Vite-bundled PNG (alpha) — guaranteed in the client graph (not a fragile public-path string). */
+import destroyerSilhouettePng from '../assets/silhouettes/destroyer.png';
 
 interface Props {
   contacts: PeriscopeContact[];
@@ -22,9 +22,9 @@ function contactsKey(contacts: PeriscopeContact[]): string {
 }
 
 /**
- * Periscope CRT — plain destroyer JPG (left) + anonymous Contact N list (right).
+ * Periscope CRT — plain destroyer PNG with alpha (left) + anonymous Contact N list (right).
  *
- * Image path is intentionally dumb: one Vite-imported JPG, one `<img>`, no class-map
+ * Image path is intentionally dumb: one Vite-imported PNG, one `<img>`, no class-map
  * gate, no CSS filters, no "?" placeholder. If contacts exist, the plate paints.
  */
 function PeriscopeScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
@@ -72,7 +72,7 @@ function PeriscopeScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
             ) : (
               <img
                 className="periscope-silhouette"
-                src={destroyerSilhouetteJpg}
+                src={destroyerSilhouettePng}
                 alt="Destroyer silhouette"
                 width={349}
                 height={79}

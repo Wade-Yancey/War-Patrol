@@ -2136,7 +2136,7 @@ label {
 }
 
 .periscope-silhouette {
-  /* Plain Vite-bundled JPG — no filters, no opacity tricks, fixed paint box. */
+  /* Plain Vite-bundled PNG with alpha — no filters; transparent over sky/sea. */
   display: block;
   flex: 0 0 auto;
   box-sizing: border-box;
@@ -2147,8 +2147,8 @@ label {
   min-height: 2.5rem;
   object-fit: contain;
   object-position: center center;
-  background: #000000;
-  border: 1px solid color-mix(in srgb, #0a1620 25%, transparent);
+  background: transparent;
+  border: none;
   user-select: none;
   -webkit-user-drag: none;
 }
