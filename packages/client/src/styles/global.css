@@ -2107,45 +2107,6 @@ label {
   pointer-events: none;
 }
 
-.periscope-reticule {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 2;
-}
-
-.periscope-cross {
-  position: absolute;
-  /* Dark reticule on blue sky/sea (phosphor green washes out on mid blue). */
-  background: color-mix(in srgb, #0a1620 45%, transparent);
-}
-
-.periscope-cross--h {
-  left: 8%;
-  right: 8%;
-  top: 42%;
-  height: 1px;
-}
-
-.periscope-cross--v {
-  top: 12%;
-  bottom: 12%;
-  left: 50%;
-  width: 1px;
-}
-
-.periscope-bow-mark {
-  position: absolute;
-  left: 50%;
-  top: 8%;
-  transform: translateX(-50%);
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 0.65rem;
-  letter-spacing: 0.12em;
-  color: color-mix(in srgb, #0a1620 70%, transparent);
-  text-shadow: 0 0 1px rgba(255, 255, 255, 0.35);
-}
-
 .periscope-empty {
   position: absolute;
   inset: 0;

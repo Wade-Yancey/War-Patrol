@@ -57,11 +57,6 @@ function PeriscopeScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
       <div className="periscope-viewport" aria-label="Periscope visual contact">
         <div className="periscope-horizon" aria-hidden />
         <div className="periscope-sea" aria-hidden />
-        <div className="periscope-reticule" aria-hidden>
-          <span className="periscope-cross periscope-cross--h" />
-          <span className="periscope-cross periscope-cross--v" />
-          <span className="periscope-bow-mark">BOW</span>
-        </div>
 
         {sorted.length === 0 ? (
           <p className="periscope-empty mono muted">No visual contacts within {maxRangeNm} nm</p>
