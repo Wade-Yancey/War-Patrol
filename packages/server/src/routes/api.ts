@@ -79,6 +79,16 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/api/saves', async () => store.listSaves());
 
+  app.delete('/api/saves', async (_request, reply) => {
+    try {
+      const result = await runtime.deleteAllSaves();
+      return { ok: true, ...result };
+    } catch (err) {
+      const e = httpError(err);
+      return reply.code(e.statusCode).send({ error: e.message });
+    }
+  });
+
   app.delete<{ Params: { saveId: string } }>('/api/saves/:saveId', async (request, reply) => {
     try {
       const result = await runtime.deleteSave(request.params.saveId);

@@ -352,6 +352,20 @@ export class GameRuntime {
     return { deletedFile, unloaded };
   }
 
+  /**
+   * Delete every save on disk and unload matching in-memory games / sessions.
+   * Idempotent: empty disk returns deleted=0.
+   */
+  async deleteAllSaves(): Promise<{ deleted: number; unloaded: number }> {
+    const listed = await store.listSaves();
+    let unloaded = 0;
+    for (const s of listed) {
+      if (this.unloadGame(s.id)) unloaded += 1;
+    }
+    const deleted = await store.deleteAllSaveFiles();
+    return { deleted, unloaded };
+  }
+
   /** Delete a scenario JSON file from disk. */
   async deleteScenario(scenarioId: string): Promise<void> {
     const ok = await store.deleteScenarioFile(scenarioId);
