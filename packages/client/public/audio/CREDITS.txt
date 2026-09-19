@@ -12,3 +12,9 @@ Original filename: 70299__kizilsungur__sonar.wav
 Source: Depth charge with water (craigsmith / Freesound-style)
 License: as provided for War Patrol media pack
 Local copy: depth-charge.wav
+
+Source: Facility Hum Ambience Loopable by aSuperiorPotato (Freesound #619320)
+License: CC0 / public domain
+Original: https://freesound.org/people/asuperiorpotato/sounds/619320/
+Local copy: controls-ambient-hum.wav
+Original filename: 619320__asuperiorpotato__facility-hum-ambience-loopable.wav
