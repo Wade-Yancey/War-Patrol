@@ -74,8 +74,8 @@ function PeriscopeScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
                 className="periscope-silhouette"
                 src={destroyerSilhouetteJpg}
                 alt="Destroyer silhouette"
-                width={350}
-                height={150}
+                width={349}
+                height={79}
                 decoding="sync"
                 loading="eager"
                 draggable={false}
