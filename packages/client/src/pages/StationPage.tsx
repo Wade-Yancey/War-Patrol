@@ -46,6 +46,7 @@ function tokenKey(gameId: string, accessToken: string, stationId: string) {
 }
 
 type SensorTab = 'radar' | 'hydrophone' | 'sonar' | 'periscope';
+type ControlsTab = 'helm' | 'weapons' | 'eot';
 
 export function StationPage() {
   const { gameId = '', accessToken = '', stationId = '' } = useParams();
@@ -60,6 +61,7 @@ export function StationPage() {
   const [depth, setDepth] = useState(0);
   const [seeded, setSeeded] = useState(false);
   const [sensorTab, setSensorTab] = useState<SensorTab | null>(null);
+  const [controlsTab, setControlsTab] = useState<ControlsTab>('helm');
   const [sonarBusy, setSonarBusy] = useState(false);
 
   const { view, stateVersion, connected, error } = useGameStream({
@@ -762,116 +764,6 @@ export function StationPage() {
 
         {vessel && isControls && !isSensors && (
           <div className="controls-station">
-            <section className="panel stack controls-helm-panel">
-              <div className="controls-section-head">
-                <h2>Helm</h2>
-                <p className="muted controls-section-blurb">
-                  Gyro compass dominates — set course with the dial controls, then submit.
-                </p>
-              </div>
-              {canHelm && (
-                <>
-                  <HelmCompass
-                    heading={vessel.unit.heading}
-                    orderedCourse={vessel.unit.orderedCourse}
-                    draftCourse={course}
-                    turnRate={vessel.unit.turnRate}
-                  />
-                  <TouchNumber
-                    label="Ordered / steering course"
-                    value={course}
-                    onChange={setCourse}
-                    min={0}
-                    max={359}
-                    step={1}
-                    wrap
-                    unit="°"
-                    disabled={!vessel.canSubmitOrders}
-                    format={(v) => `${String(v).padStart(3, '0')}°`}
-                  />
-                  <div className="control-actions">
-                    <button
-                      className="primary"
-                      type="button"
-                      disabled={!vessel.canSubmitOrders}
-                      onClick={() => void submit({ course })}
-                    >
-                      Submit course
-                    </button>
-                  </div>
-                </>
-              )}
-            </section>
-
-            {canHelm && vessel.unit.type === 'Submarine' && (
-              <section className="panel stack controls-dive-panel">
-                <div className="controls-section-head">
-                  <h2>Dive</h2>
-                  <p className="muted controls-section-blurb">
-                    Preset depths or set meters directly. Ships have no dive UI.
-                  </p>
-                </div>
-                <DiveControls
-                  depth={vessel.unit.position.depth}
-                  orderedDepth={vessel.unit.orderedDepth ?? vessel.unit.position.depth}
-                  draftDepth={depth}
-                  onDraftDepthChange={setDepth}
-                  maxDepthM={SUBMARINE_MAX_DEPTH_M}
-                  disabled={!vessel.canSubmitOrders}
-                  onSubmit={(d) => void submit({ depth: d })}
-                />
-              </section>
-            )}
-
-            {canEot && (
-              <section className="panel stack controls-eot-panel">
-                <div className="controls-section-head">
-                  <h2>Engine order telegraph</h2>
-                  <p className="muted controls-section-blurb">
-                    Ring up a bell — acknowledged on resolve; hull speed ramps.
-                  </p>
-                </div>
-                <EotTelegraph
-                  value={eot}
-                  onChange={setEot}
-                  disabled={!vessel.canSubmitOrders}
-                />
-                <div className="control-actions">
-                  <button
-                    className="primary"
-                    type="button"
-                    disabled={!vessel.canSubmitOrders}
-                    onClick={() => void submit({ eot })}
-                  >
-                    Ring up EOT
-                  </button>
-                </div>
-              </section>
-            )}
-
-            {canTorpedo && (
-              <TorpedoCalculator
-                ownHeading={vessel.unit.heading}
-                torpedoLoad={vessel.unit.torpedoLoad ?? 0}
-                pending={vessel.unit.orders.fireTorpedo}
-                running={vessel.ownTorpedoes}
-                disabled={!vessel.canSubmitOrders}
-                onSubmit={(fireTorpedo) => void submit({ fireTorpedo })}
-                onClear={() => void submit({ fireTorpedo: null })}
-              />
-            )}
-
-            {canDepthCharges && (
-              <DepthChargeControls
-                depthChargeLoad={vessel.unit.depthChargeLoad ?? 0}
-                pending={vessel.unit.orders.dropDepthCharges}
-                tracks={vessel.ownDepthCharges}
-                disabled={!vessel.canSubmitOrders}
-                onSubmit={(dropDepthCharges) => void submit({ dropDepthCharges })}
-                onClear={() => void submit({ dropDepthCharges: null })}
-              />
-            )}
-
             <section className="panel controls-status-strip" aria-label="Own ship status">
               <div className="controls-status-grid">
                 <div className="controls-status-item">
@@ -918,102 +810,270 @@ export function StationPage() {
               </div>
             </section>
 
-            <section className="panel stack station-turn-panel">
-              <h2>Turn</h2>
-              <TurnStatus turn={vessel.turn} turnLengthSeconds={vessel.turnLengthSeconds} />
-              {hasPendingOrders(vessel.unit.orders) ? (
-                <div className="orders-of-record" role="status">
-                  <span className="status-pill open">Of record</span>
-                  <span className="mono readout">{formatPendingOrdersSummary(vessel.unit.orders)}</span>
-                  {vessel.unit.orders.updatedByStationId && (
-                    <span className="mono muted">via {vessel.unit.orders.updatedByStationId}</span>
-                  )}
-                </div>
-              ) : (
-                <p className="muted mono" style={{ margin: 0, fontSize: '0.85rem' }}>
-                  No pending orders filed for this turn.
-                </p>
+            <div className="sensor-tabs" role="tablist" aria-label="Controls instruments">
+              <button
+                type="button"
+                role="tab"
+                className={controlsTab === 'helm' ? 'primary' : undefined}
+                aria-selected={controlsTab === 'helm'}
+                onClick={() => setControlsTab('helm')}
+              >
+                Helm{vessel.unit.type === 'Submarine' ? ' / Dive' : ''}
+              </button>
+              {(canTorpedo || canDepthCharges) && (
+                <button
+                  type="button"
+                  role="tab"
+                  className={controlsTab === 'weapons' ? 'primary' : undefined}
+                  aria-selected={controlsTab === 'weapons'}
+                  onClick={() => setControlsTab('weapons')}
+                >
+                  Weapons
+                </button>
               )}
-              {!vessel.canSubmitOrders && (
-                <p className="muted" style={{ margin: 0 }}>
-                  Ordering closed for this phase or this station cannot submit.
-                </p>
+              {canEot && (
+                <button
+                  type="button"
+                  role="tab"
+                  className={controlsTab === 'eot' ? 'primary' : undefined}
+                  aria-selected={controlsTab === 'eot'}
+                  onClick={() => setControlsTab('eot')}
+                >
+                  EOT / Turn
+                </button>
               )}
-              {vessel.stationConnections.some((c) => c.count > 1) && (
-                <p className="mono" style={{ margin: 0, color: 'var(--accent-strong)' }}>
-                  Multi-connection: last write wins —{' '}
-                  {vessel.stationConnections
-                    .filter((c) => c.count > 0)
-                    .map((c) => `${c.stationId}×${c.count}`)
-                    .join(', ')}
-                </p>
-              )}
-            </section>
+            </div>
 
-            <details className="panel controls-ownship-details">
-              <summary>Own ship details</summary>
-              <table className="table mono">
-                <tbody>
-                  <tr>
-                    <th>Faction</th>
-                    <td className="readout">{vessel.unit.faction}</td>
-                  </tr>
-                  <tr>
-                    <th>Type</th>
-                    <td className="readout">{vessel.unit.type}</td>
-                  </tr>
-                  <tr>
-                    <th>Class</th>
-                    <td className="readout">{vessel.unit.class}</td>
-                  </tr>
-                  <tr>
-                    <th>Condition</th>
-                    <td className="readout">
-                      {conditionLabel(vessel.unit.type, vessel.unit.condition)}
-                    </td>
-                  </tr>
-                  <tr>
-                    <th>Propulsion</th>
-                    <td className="readout">{vessel.unit.subsystems.propulsion}</td>
-                  </tr>
-                  <tr>
-                    <th>Sensors</th>
-                    <td className="readout">{vessel.unit.subsystems.sensors}</td>
-                  </tr>
-                  {vessel.unit.type === 'Aircraft' && (
-                    <tr>
-                      <th>Flight level</th>
-                      <td className="readout">{vessel.unit.flightLevel ?? 'medium'}</td>
-                    </tr>
+            {controlsTab === 'helm' && (
+              <>
+                <section className="panel stack controls-helm-panel">
+                  <div className="controls-section-head">
+                    <h2>Helm</h2>
+                    <p className="muted controls-section-blurb">
+                      Gyro compass dominates — set course with the dial controls, then submit.
+                    </p>
+                  </div>
+                  {canHelm && (
+                    <>
+                      <HelmCompass
+                        heading={vessel.unit.heading}
+                        orderedCourse={vessel.unit.orderedCourse}
+                        draftCourse={course}
+                        turnRate={vessel.unit.turnRate}
+                      />
+                      <TouchNumber
+                        label="Ordered / steering course"
+                        value={course}
+                        onChange={setCourse}
+                        min={0}
+                        max={359}
+                        step={1}
+                        wrap
+                        unit="°"
+                        disabled={!vessel.canSubmitOrders}
+                        format={(v) => `${String(v).padStart(3, '0')}°`}
+                      />
+                      <div className="control-actions">
+                        <button
+                          className="primary"
+                          type="button"
+                          disabled={!vessel.canSubmitOrders}
+                          onClick={() => void submit({ course })}
+                        >
+                          Submit course
+                        </button>
+                      </div>
+                    </>
                   )}
-                  {vessel.unit.type === 'Submarine' && (
-                    <tr>
-                      <th>Depth</th>
-                      <td className="readout">{formatDepthMeters(vessel.unit.position.depth)}</td>
-                    </tr>
-                  )}
-                  <tr>
-                    <th>Lat</th>
-                    <td className="readout">{vessel.unit.position.lat.toFixed(4)}</td>
-                  </tr>
-                  <tr>
-                    <th>Lon</th>
-                    <td className="readout">{vessel.unit.position.lon.toFixed(4)}</td>
-                  </tr>
-                  <tr>
-                    <th>Turn rate</th>
-                    <td className="readout">
-                      {vessel.unit.turnRate.toFixed(0)}°/min · {vessel.unit.radarSignature}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </details>
+                </section>
 
-            <p className="muted controls-ambient-note">
-              Bridge audio: quiet facility hum loops on this screen; nearby depth-charge detonations
-              play when within ~0.45 nm. Hydrophone hears the DC sample at longer range when submerged.
-            </p>
+                {canHelm && vessel.unit.type === 'Submarine' && (
+                  <section className="panel stack controls-dive-panel">
+                    <div className="controls-section-head">
+                      <h2>Dive</h2>
+                      <p className="muted controls-section-blurb">
+                        Preset depths or set meters directly. Ships have no dive UI.
+                      </p>
+                    </div>
+                    <DiveControls
+                      depth={vessel.unit.position.depth}
+                      orderedDepth={vessel.unit.orderedDepth ?? vessel.unit.position.depth}
+                      draftDepth={depth}
+                      onDraftDepthChange={setDepth}
+                      maxDepthM={SUBMARINE_MAX_DEPTH_M}
+                      disabled={!vessel.canSubmitOrders}
+                      onSubmit={(d) => void submit({ depth: d })}
+                    />
+                  </section>
+                )}
+              </>
+            )}
+
+            {controlsTab === 'weapons' && (canTorpedo || canDepthCharges) && (
+              <>
+                {canTorpedo && (
+                  <TorpedoCalculator
+                    ownHeading={vessel.unit.heading}
+                    torpedoLoad={vessel.unit.torpedoLoad ?? 0}
+                    pending={vessel.unit.orders.fireTorpedo}
+                    running={vessel.ownTorpedoes}
+                    disabled={!vessel.canSubmitOrders}
+                    onSubmit={(fireTorpedo) => void submit({ fireTorpedo })}
+                    onClear={() => void submit({ fireTorpedo: null })}
+                  />
+                )}
+                {canDepthCharges && (
+                  <DepthChargeControls
+                    depthChargeLoad={vessel.unit.depthChargeLoad ?? 0}
+                    pending={vessel.unit.orders.dropDepthCharges}
+                    tracks={vessel.ownDepthCharges}
+                    disabled={!vessel.canSubmitOrders}
+                    onSubmit={(dropDepthCharges) => void submit({ dropDepthCharges })}
+                    onClear={() => void submit({ dropDepthCharges: null })}
+                  />
+                )}
+                <p className="muted controls-ambient-note">
+                  Bridge audio: quiet facility hum loops on this screen; nearby depth-charge
+                  detonations play when within ~0.45 nm of own ship (any vessel — not only the
+                  dropper). Hydrophone hears the DC sample at longer range when submerged.
+                </p>
+              </>
+            )}
+
+            {controlsTab === 'eot' && (
+              <>
+                {canEot && (
+                  <section className="panel stack controls-eot-panel">
+                    <div className="controls-section-head">
+                      <h2>Engine order telegraph</h2>
+                      <p className="muted controls-section-blurb">
+                        Ring up a bell — acknowledged on resolve; hull speed ramps.
+                      </p>
+                    </div>
+                    <EotTelegraph
+                      value={eot}
+                      onChange={setEot}
+                      disabled={!vessel.canSubmitOrders}
+                    />
+                    <div className="control-actions">
+                      <button
+                        className="primary"
+                        type="button"
+                        disabled={!vessel.canSubmitOrders}
+                        onClick={() => void submit({ eot })}
+                      >
+                        Ring up EOT
+                      </button>
+                    </div>
+                  </section>
+                )}
+
+                <section className="panel stack station-turn-panel">
+                  <h2>Turn</h2>
+                  <TurnStatus turn={vessel.turn} turnLengthSeconds={vessel.turnLengthSeconds} />
+                  {hasPendingOrders(vessel.unit.orders) ? (
+                    <div className="orders-of-record" role="status">
+                      <span className="status-pill open">Of record</span>
+                      <span className="mono readout">
+                        {formatPendingOrdersSummary(vessel.unit.orders)}
+                      </span>
+                      {vessel.unit.orders.updatedByStationId && (
+                        <span className="mono muted">via {vessel.unit.orders.updatedByStationId}</span>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="muted mono" style={{ margin: 0, fontSize: '0.85rem' }}>
+                      No pending orders filed for this turn.
+                    </p>
+                  )}
+                  {!vessel.canSubmitOrders && (
+                    <p className="muted" style={{ margin: 0 }}>
+                      Ordering closed for this phase or this station cannot submit.
+                    </p>
+                  )}
+                  {vessel.stationConnections.some((c) => c.count > 1) && (
+                    <p className="mono" style={{ margin: 0, color: 'var(--accent-strong)' }}>
+                      Multi-connection: last write wins —{' '}
+                      {vessel.stationConnections
+                        .filter((c) => c.count > 0)
+                        .map((c) => `${c.stationId}×${c.count}`)
+                        .join(', ')}
+                    </p>
+                  )}
+                </section>
+
+                <details className="panel controls-ownship-details">
+                  <summary>Own ship details</summary>
+                  <table className="table mono">
+                    <tbody>
+                      <tr>
+                        <th>Faction</th>
+                        <td className="readout">{vessel.unit.faction}</td>
+                      </tr>
+                      <tr>
+                        <th>Type</th>
+                        <td className="readout">{vessel.unit.type}</td>
+                      </tr>
+                      <tr>
+                        <th>Class</th>
+                        <td className="readout">{vessel.unit.class}</td>
+                      </tr>
+                      <tr>
+                        <th>Condition</th>
+                        <td className="readout">
+                          {conditionLabel(vessel.unit.type, vessel.unit.condition)}
+                        </td>
+                      </tr>
+                      <tr>
+                        <th>Propulsion</th>
+                        <td className="readout">{vessel.unit.subsystems.propulsion}</td>
+                      </tr>
+                      <tr>
+                        <th>Sensors</th>
+                        <td className="readout">{vessel.unit.subsystems.sensors}</td>
+                      </tr>
+                      {vessel.unit.type === 'Aircraft' && (
+                        <tr>
+                          <th>Flight level</th>
+                          <td className="readout">{vessel.unit.flightLevel ?? 'medium'}</td>
+                        </tr>
+                      )}
+                      {vessel.unit.type === 'Submarine' && (
+                        <tr>
+                          <th>Depth</th>
+                          <td className="readout">{formatDepthMeters(vessel.unit.position.depth)}</td>
+                        </tr>
+                      )}
+                      {(canTorpedo || canDepthCharges) && (
+                        <tr>
+                          <th>Ordnance</th>
+                          <td className="readout">
+                            {canTorpedo ? `TORP ${vessel.unit.torpedoLoad ?? 0}` : ''}
+                            {canTorpedo && canDepthCharges ? ' · ' : ''}
+                            {canDepthCharges ? `DC ${vessel.unit.depthChargeLoad ?? 0}` : ''}
+                          </td>
+                        </tr>
+                      )}
+                      <tr>
+                        <th>Lat</th>
+                        <td className="readout">{vessel.unit.position.lat.toFixed(4)}</td>
+                      </tr>
+                      <tr>
+                        <th>Lon</th>
+                        <td className="readout">{vessel.unit.position.lon.toFixed(4)}</td>
+                      </tr>
+                      <tr>
+                        <th>Turn rate</th>
+                        <td className="readout">
+                          {vessel.unit.turnRate.toFixed(0)}°/min · {vessel.unit.radarSignature}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </details>
+              </>
+            )}
+
           </div>
         )}
       </div>

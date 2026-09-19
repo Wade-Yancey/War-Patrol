@@ -1438,21 +1438,103 @@ async function main() {
     check('resolve dc turn', dcRes.status === 200);
     const dcView = await api('GET', `/api/games/${dcId}/view`, undefined, dcUTok);
     const dcv = dcView.json.view as {
-      depthCharges?: Array<{ status: string; launchPosition?: unknown; path?: unknown[] }>;
-      recentDetonations?: unknown[];
+      depthCharges?: Array<{
+        status: string;
+        launchPosition?: { lat: number; lon: number };
+        path?: unknown[];
+        firerUnitId?: string;
+      }>;
+      units?: Array<{ id: string; position: { lat: number; lon: number } }>;
+      recentDetonations?: Array<{ position: { lat: number; lon: number }; firerUnitId: string }>;
+      trails?: Array<{ unitId: string; points: Array<{ lat: number; lon: number; turnNumber: number }> }>;
     };
     const charges = dcv.depthCharges ?? [];
     check('umpire has depth-charge tracks', charges.length >= 1);
-    check(
-      'dc has launch origin',
-      Boolean(charges[0]?.launchPosition),
-    );
+    check('dc has launch origin', Boolean(charges[0]?.launchPosition));
     // Sink rate 3.5 m/s × 300 s >> 50 m — should detonate same turn
     check(
       'dc detonated or spent same turn',
       charges.some((c) => c.status === 'spent' || c.status === 'detonated') ||
         (dcv.recentDetonations?.length ?? 0) > 0,
     );
+
+    // Launch origin near midpoint of firer's start→end move (pattern offsets apply).
+    const umpireFull = dcView.json.view as {
+      units: Array<{ id: string; position: { lat: number; lon: number } }>;
+      trails: Array<{ unitId: string; points: Array<{ lat: number; lon: number; turnNumber: number }> }>;
+      depthCharges: Array<{ launchPosition: { lat: number; lon: number } }>;
+      recentDetonations: Array<{ position: { lat: number; lon: number } }>;
+      combatLog?: Array<{ kind: string; summary: string }>;
+    };
+    const porter = umpireFull.units.find((u) => u.id === 'dd-101');
+    const trailPts = umpireFull.trails.find((t) => t.unitId === 'dd-101')?.points ?? [];
+    const startPt = trailPts.find((p) => p.turnNumber === 0) ?? trailPts[0];
+    const launch = umpireFull.depthCharges[0]?.launchPosition;
+    if (porter && startPt && launch) {
+      const mid = {
+        lat: (startPt.lat + porter.position.lat) / 2,
+        lon: (startPt.lon + porter.position.lon) / 2,
+      };
+      const { rangeNm: toMid } = (
+        await import('@war-patrol/shared')
+      ).bearingRangeNm(mid, launch);
+      const { rangeNm: toEnd } = (
+        await import('@war-patrol/shared')
+      ).bearingRangeNm(porter.position, launch);
+      // Pattern offsets are tens of meters; release must be nearer mid-track than end plot.
+      check(
+        'dc launch nearer mid-track than end',
+        toMid < toEnd && toMid < 0.1,
+        `toMid=${toMid.toFixed(3)}nm toEnd=${toEnd.toFixed(3)}nm`,
+      );
+    } else {
+      check('dc launch nearer mid-track than end', false, 'missing porter/start/launch');
+    }
+
+    // Non-firer Controls hears close detonations (range to this hull, not only dropper).
+    const gatoTok = await api('POST', `/api/games/${dcId}/auth/vessel`, {
+      accessToken: 'gato-demo',
+      password: 'red',
+      stationId: 'controls',
+    });
+    check('gato controls auth for bridge audio', gatoTok.status === 200);
+    const gatoView = await api(
+      'GET',
+      `/api/games/${dcId}/view`,
+      undefined,
+      String(gatoTok.json.token),
+    );
+    const gBridge = (gatoView.json.view as { bridgeDetonations?: unknown[] }).bridgeDetonations;
+    check(
+      'non-firer Controls gets close DC bridge audio',
+      Array.isArray(gBridge) && gBridge.length > 0,
+      `bridge=${JSON.stringify(gBridge)}`,
+    );
+
+    // Hydrophone on sub Sensors also lists depth_charge contacts in range.
+    const gatoSens = await api('POST', `/api/games/${dcId}/auth/vessel`, {
+      accessToken: 'gato-demo',
+      password: 'red',
+      stationId: 'sensors',
+    });
+    const gatoHydro = await api(
+      'GET',
+      `/api/games/${dcId}/view`,
+      undefined,
+      String(gatoSens.json.token),
+    );
+    const hydro = (gatoHydro.json.view as { hydrophoneContacts?: Array<{ kind: string }> })
+      .hydrophoneContacts;
+    check(
+      'hydrophone hears depth_charge in range',
+      Array.isArray(hydro) && hydro.some((c) => c.kind === 'depth_charge'),
+    );
+
+    check(
+      'umpire combat log has entries',
+      Array.isArray(umpireFull.combatLog) && (umpireFull.combatLog?.length ?? 0) > 0,
+    );
+
     await api('DELETE', `/api/saves/${dcId}`);
   }
 
