@@ -12,7 +12,7 @@ import {
   canDropDepthCharges,
   canFireTorpedo,
   clampDepthChargeSetting,
-  clampTorpedoDepth,
+  TORPEDO_DEFAULT_DEPTH_M,
   createDepthChargeTracks,
   createTorpedoTrack,
   depthChargePatternCount,
@@ -25,7 +25,8 @@ import {
   normalizeSolutionPlotDuration,
   resolveDepthChargeEffect,
   resolveTorpedoHit,
-  segmentClosestMissM,
+  segmentClosestPoint,
+  truncateTorpedoAtHit,
   unitLengthBeam,
   type CombatLogEntry,
   type CombatLogKind,
@@ -142,15 +143,16 @@ export function resolveWeaponsForTurn(
 
     if (orders.fireTorpedo && canFireTorpedo(unit)) {
       const fire = orders.fireTorpedo;
+      const runDepthM = TORPEDO_DEFAULT_DEPTH_M;
       const fish = createTorpedoTrack({
         id: `t-${nanoid(8)}`,
         firerUnitId: unit.id,
         position: {
           ...unit.position,
-          depth: clampTorpedoDepth(fire.runDepthM),
+          depth: runDepthM,
         },
         heading: normalizeHeading(fire.aimHeading),
-        runDepthM: fire.runDepthM,
+        runDepthM,
         launchedTurn: turnNumber,
         estimatedLengthM: Number(fire.estimatedLengthM) || 0,
         estimatedSpeedKn: Number(fire.estimatedSpeedKn) || 0,
@@ -164,7 +166,7 @@ export function resolveWeaponsForTurn(
           turnNumber,
           gameTimeSeconds,
           actor: unit,
-          summary: `${unit.name} fired torpedo HDG ${String(Math.round(fish.heading)).padStart(3, '0')}° · D${fish.runDepthM}m · rem ${fish.remainingRunNm.toFixed(1)} nm`,
+          summary: `${unit.name} fired torpedo HDG ${String(Math.round(fish.heading)).padStart(3, '0')}° · rem ${fish.remainingRunNm.toFixed(1)} nm`,
         }),
       );
     }
@@ -244,14 +246,14 @@ export function resolveWeaponsForTurn(
       for (const [uid, target] of unitMap) {
         if (uid === fish.firerUnitId) continue;
         if (!isTorpedoTarget(target)) continue;
-        const miss = segmentClosestMissM(before, advanced.position, target.position);
+        const closest = segmentClosestPoint(before, advanced.position, target.position);
         const depthOk =
           target.type === 'Ship' || target.position.depth <= RADAR_SURFACE_DEPTH_M
             ? advanced.runDepthM <= 8
             : Math.abs(advanced.runDepthM - target.position.depth) <= 6;
         const { lengthM } = unitLengthBeam(target);
         const roll = resolveTorpedoHit({
-          missDistanceM: miss,
+          missDistanceM: closest.missM,
           fishHeading: advanced.heading,
           targetHeading: target.heading,
           trueLengthM: lengthM,
@@ -296,12 +298,7 @@ export function resolveWeaponsForTurn(
               }),
             );
           }
-          return {
-            ...advanced,
-            status: 'hit' as const,
-            hitUnitId: uid,
-            remainingRunNm: advanced.remainingRunNm,
-          };
+          return truncateTorpedoAtHit(fish, advanced, before, closest, uid);
         }
       }
       return advanced;

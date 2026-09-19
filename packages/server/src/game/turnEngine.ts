@@ -5,7 +5,6 @@ import {
   clampDepthChargeSetting,
   clampSpeedToMax,
   clampSubmarineDepth,
-  clampTorpedoDepth,
   effectiveMaxSpeed,
   moveAlongHeading,
   normalizeDepthChargePattern,
@@ -232,7 +231,6 @@ export function mergeOrders(
   } else if (patch.fireTorpedo) {
     next.fireTorpedo = {
       aimHeading: normalizeHeading(patch.fireTorpedo.aimHeading),
-      runDepthM: clampTorpedoDepth(patch.fireTorpedo.runDepthM),
       estimatedLengthM: Math.max(0, Number(patch.fireTorpedo.estimatedLengthM) || 0),
       estimatedSpeedKn: Math.max(0, Number(patch.fireTorpedo.estimatedSpeedKn) || 0),
       solutionPlot: normalizeSolutionPlotDuration(patch.fireTorpedo.solutionPlot),

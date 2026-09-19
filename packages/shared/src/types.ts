@@ -113,8 +113,6 @@ export type SolutionPlotDuration = 'none' | 'half_turn' | 'full_turn';
 export interface TorpedoFireOrder {
   /** True heading the fish will run (gyro from player aim — not auto-solved). */
   aimHeading: number;
-  /** Run depth meters (positive down). */
-  runDepthM: number;
   /**
    * Player-entered target length estimate (meters).
    * Compared to sim truth for the +10% “length accurately identified” modifier.
@@ -170,7 +168,7 @@ export interface TorpedoTrack {
   speedKn: number;
   /** Remaining run distance in nautical miles. */
   remainingRunNm: number;
-  /** Ordered run depth (m). */
+  /** Ordered run depth (m) — sim-fixed default; not player-ordered in v1. */
   runDepthM: number;
   launchedTurn: number;
   status: TorpedoStatus;

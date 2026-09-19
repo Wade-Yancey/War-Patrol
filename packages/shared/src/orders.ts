@@ -34,7 +34,7 @@ function formatTorpedoOrderSummary(
       : fire.solutionPlot === 'half_turn'
         ? 'PLOT ½T'
         : 'PLOT —';
-  return `TORP ${formatCourseDegrees(fire.aimHeading)} · D${Math.round(fire.runDepthM)}m · L${Math.round(fire.estimatedLengthM)}m · ${Math.round(fire.estimatedSpeedKn)}kn · ${plot}`;
+  return `TORP ${formatCourseDegrees(fire.aimHeading)} · L${Math.round(fire.estimatedLengthM)}m · ${Math.round(fire.estimatedSpeedKn)}kn · ${plot}`;
 }
 
 function formatDepthChargeOrderSummary(

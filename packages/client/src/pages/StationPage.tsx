@@ -47,7 +47,7 @@ function tokenKey(gameId: string, accessToken: string, stationId: string) {
 }
 
 type SensorTab = 'radar' | 'hydrophone' | 'sonar' | 'periscope';
-type ControlsTab = 'helm' | 'weapons' | 'damage' | 'eot';
+type ControlsTab = 'helm' | 'eot' | 'dive' | 'weapons' | 'damage';
 
 export function StationPage() {
   const { gameId = '', accessToken = '', stationId = '' } = useParams();
@@ -857,8 +857,30 @@ export function StationPage() {
                 aria-selected={controlsTab === 'helm'}
                 onClick={() => setControlsTab('helm')}
               >
-                Helm{vessel.unit.type === 'Submarine' ? ' / Dive' : ''}
+                Helm
               </button>
+              {canEot && (
+                <button
+                  type="button"
+                  role="tab"
+                  className={controlsTab === 'eot' ? 'primary' : undefined}
+                  aria-selected={controlsTab === 'eot'}
+                  onClick={() => setControlsTab('eot')}
+                >
+                  EOT
+                </button>
+              )}
+              {canHelm && vessel.unit.type === 'Submarine' && (
+                <button
+                  type="button"
+                  role="tab"
+                  className={controlsTab === 'dive' ? 'primary' : undefined}
+                  aria-selected={controlsTab === 'dive'}
+                  onClick={() => setControlsTab('dive')}
+                >
+                  Dive Plane
+                </button>
+              )}
               {(canTorpedo || canDepthCharges) && (
                 <button
                   type="button"
@@ -879,82 +901,69 @@ export function StationPage() {
               >
                 Damage
               </button>
-              {canEot && (
-                <button
-                  type="button"
-                  role="tab"
-                  className={controlsTab === 'eot' ? 'primary' : undefined}
-                  aria-selected={controlsTab === 'eot'}
-                  onClick={() => setControlsTab('eot')}
-                >
-                  EOT
-                </button>
-              )}
             </div>
 
             {controlsTab === 'helm' && (
-              <>
-                <section className="panel stack controls-helm-panel">
-                  <div className="controls-section-head">
-                    <h2>Helm</h2>
-                    <p className="muted controls-section-blurb">
-                      Gyro compass dominates — set course with the dial controls, then submit.
-                    </p>
-                  </div>
-                  {canHelm && (
-                    <>
-                      <HelmCompass
-                        heading={vessel.unit.heading}
-                        orderedCourse={vessel.unit.orderedCourse}
-                        draftCourse={course}
-                        turnRate={vessel.unit.turnRate}
-                      />
-                      <TouchNumber
-                        label="Ordered / steering course"
-                        value={course}
-                        onChange={setCourse}
-                        min={0}
-                        max={359}
-                        step={1}
-                        wrap
-                        unit="°"
-                        disabled={!vessel.canSubmitOrders}
-                        format={(v) => `${String(v).padStart(3, '0')}°`}
-                      />
-                      <div className="control-actions">
-                        <button
-                          className="primary"
-                          type="button"
-                          disabled={!vessel.canSubmitOrders}
-                          onClick={() => void submit({ course })}
-                        >
-                          Submit course
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </section>
-
-                {canHelm && vessel.unit.type === 'Submarine' && (
-                  <section className="panel stack controls-dive-panel">
-                    <div className="controls-section-head">
-                      <h2>Dive</h2>
-                      <p className="muted controls-section-blurb">
-                        Preset depths or set meters directly. Ships have no dive UI.
-                      </p>
-                    </div>
-                    <DiveControls
-                      depth={vessel.unit.position.depth}
-                      orderedDepth={vessel.unit.orderedDepth ?? vessel.unit.position.depth}
-                      draftDepth={depth}
-                      onDraftDepthChange={setDepth}
-                      maxDepthM={SUBMARINE_MAX_DEPTH_M}
-                      disabled={!vessel.canSubmitOrders}
-                      onSubmit={(d) => void submit({ depth: d })}
+              <section className="panel stack controls-helm-panel">
+                <div className="controls-section-head">
+                  <h2>Helm</h2>
+                  <p className="muted controls-section-blurb">
+                    Gyro compass dominates — set course with the dial controls, then submit.
+                  </p>
+                </div>
+                {canHelm && (
+                  <>
+                    <HelmCompass
+                      heading={vessel.unit.heading}
+                      orderedCourse={vessel.unit.orderedCourse}
+                      draftCourse={course}
+                      turnRate={vessel.unit.turnRate}
                     />
-                  </section>
+                    <TouchNumber
+                      label="Ordered / steering course"
+                      value={course}
+                      onChange={setCourse}
+                      min={0}
+                      max={359}
+                      step={1}
+                      wrap
+                      unit="°"
+                      disabled={!vessel.canSubmitOrders}
+                      format={(v) => `${String(v).padStart(3, '0')}°`}
+                    />
+                    <div className="control-actions">
+                      <button
+                        className="primary"
+                        type="button"
+                        disabled={!vessel.canSubmitOrders}
+                        onClick={() => void submit({ course })}
+                      >
+                        Submit course
+                      </button>
+                    </div>
+                  </>
                 )}
-              </>
+              </section>
+            )}
+
+            {controlsTab === 'dive' && canHelm && vessel.unit.type === 'Submarine' && (
+              <section className="panel stack controls-dive-panel">
+                <div className="controls-section-head">
+                  <h2>Dive plane</h2>
+                  <p className="muted controls-section-blurb">
+                    Preset depths or set meters directly. Surface ships have no dive plane.
+                  </p>
+                </div>
+                <DiveControls
+                  depth={vessel.unit.position.depth}
+                  orderedDepth={vessel.unit.orderedDepth ?? vessel.unit.position.depth}
+                  draftDepth={depth}
+                  onDraftDepthChange={setDepth}
+                  maxDepthM={SUBMARINE_MAX_DEPTH_M}
+                  disabled={!vessel.canSubmitOrders}
+                  onSubmit={(d) => void submit({ depth: d })}
+                />
+              </section>
             )}
 
             {controlsTab === 'weapons' && (canTorpedo || canDepthCharges) && (

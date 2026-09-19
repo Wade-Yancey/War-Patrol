@@ -297,7 +297,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       depth?: number;
       fireTorpedo?: {
         aimHeading: number;
-        runDepthM: number;
         estimatedLengthM: number;
         estimatedSpeedKn: number;
         solutionPlot: 'none' | 'half_turn' | 'full_turn';
