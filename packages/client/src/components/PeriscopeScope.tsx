@@ -1,13 +1,18 @@
 import { memo, useMemo, useState } from 'react';
 import { periscopeSilhouetteScale, type PeriscopeContact } from '@war-patrol/shared';
-/** Vite-bundled JPG — guaranteed in the client graph (not a fragile public-path string). */
-import destroyerSilhouetteJpg from '../assets/silhouettes/destroyer.jpg';
+/** Vite-bundled PNG (alpha) — guaranteed in the client graph (not a fragile public-path string). */
+import destroyerSilhouettePng from '../assets/silhouettes/destroyer.png';
 
 interface Props {
   contacts: PeriscopeContact[];
   maxRangeNm: number;
   /** Own-ship heading — lubber / bow reference only. */
   ownHeading: number;
+  /**
+   * Sub periscope vs surface-ship lookout — same FoW / silhouette / contact list.
+   * Only affects operator-facing labels in the optics CRT.
+   */
+  variant?: 'periscope' | 'lookout';
 }
 
 function formatRelBearing(rel: number): string {
@@ -22,12 +27,18 @@ function contactsKey(contacts: PeriscopeContact[]): string {
 }
 
 /**
- * Periscope CRT — plain destroyer JPG (left) + anonymous Contact N list (right).
+ * Shared visual optics CRT — destroyer PNG with alpha (left) + anonymous Contact N list (right).
  *
- * Image path is intentionally dumb: one Vite-imported JPG, one `<img>`, no class-map
- * gate, no CSS filters, no "?" placeholder. If contacts exist, the plate paints.
+ * Used for fleet-sub periscope and surface-ship lookout. Image path is intentionally dumb:
+ * one Vite-imported PNG, one `<img>`, no class-map gate, no CSS filters on the plate.
+ * A subtle CRT grain/scanline overlay sits above the optics without hiding alpha.
  */
-function PeriscopeScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
+function PeriscopeScopeInner({
+  contacts,
+  maxRangeNm,
+  ownHeading,
+  variant = 'periscope',
+}: Props) {
   const sorted = useMemo(
     () =>
       [...contacts].sort(
@@ -51,10 +62,12 @@ function PeriscopeScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
   const selectedLabelN = selectedIndex >= 0 ? selectedIndex + 1 : null;
 
   const scale = selected ? Math.max(periscopeSilhouetteScale(selected.rangeNm, maxRangeNm), 0.55) : 1;
+  const viewportLabel =
+    variant === 'lookout' ? 'Lookout visual contact' : 'Periscope visual contact';
 
   return (
     <div className="radar-scope radar-console periscope-scope">
-      <div className="periscope-viewport" aria-label="Periscope visual contact">
+      <div className="periscope-viewport" aria-label={viewportLabel}>
         <div className="periscope-horizon" aria-hidden />
         <div className="periscope-sea" aria-hidden />
 
@@ -72,7 +85,7 @@ function PeriscopeScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
             ) : (
               <img
                 className="periscope-silhouette"
-                src={destroyerSilhouetteJpg}
+                src={destroyerSilhouettePng}
                 alt="Destroyer silhouette"
                 width={349}
                 height={79}
@@ -90,6 +103,12 @@ function PeriscopeScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
             </div>
           </div>
         ) : null}
+
+        {/* Subtle CRT grain + scanlines — above optics, pointer-events none, low opacity. */}
+        <div className="periscope-crt-overlay" aria-hidden>
+          <div className="periscope-scanlines" />
+          <div className="periscope-grain" />
+        </div>
       </div>
 
       <aside className="radar-side-panel periscope-side-panel">
@@ -139,6 +158,7 @@ export const PeriscopeScope = memo(PeriscopeScopeInner, (prev, next) => {
   return (
     prev.maxRangeNm === next.maxRangeNm &&
     prev.ownHeading === next.ownHeading &&
+    prev.variant === next.variant &&
     contactsKey(prev.contacts) === contactsKey(next.contacts) &&
     prev.contacts.length === next.contacts.length &&
     prev.contacts.every((c, i) => {

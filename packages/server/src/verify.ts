@@ -227,7 +227,8 @@ async function main() {
           s.id === 'sensors' &&
           Array.isArray(s.capabilities) &&
           (s.capabilities as string[]).includes('radar') &&
-          (s.capabilities as string[]).includes('active_sonar'),
+          (s.capabilities as string[]).includes('active_sonar') &&
+          (s.capabilities as string[]).includes('lookout'),
       ),
   );
   check(
@@ -239,6 +240,11 @@ async function main() {
     'destroyer has active_sonar sensor',
     Array.isArray(porter.sensors) &&
       (porter.sensors as Json[]).some((s) => s.kind === 'active_sonar'),
+  );
+  check(
+    'destroyer has lookout sensor',
+    Array.isArray(porter.sensors) &&
+      (porter.sensors as Json[]).some((s) => s.kind === 'lookout'),
   );
   check(
     'destroyer has no hydrophone sensor',
@@ -291,7 +297,7 @@ async function main() {
   });
   check('legacy bridge station rejected', legacyBridge.status === 404);
 
-  // 3c. Destroyer Sensors: active sonar toggle + forward cone (no hydrophone)
+  // 3c. Destroyer Sensors: active sonar toggle + forward cone + lookout (no hydrophone)
   check('destroyer sensors has sonar fields', typeof rv.sonarOperational === 'boolean');
   check('sonar off by default', rv.sonarOperational === false);
   check('sonar off reason', rv.sonarUnavailableReason === 'sonar_off');
@@ -301,6 +307,32 @@ async function main() {
     typeof rv.sonarMaxRangeNm === 'number' && (rv.sonarMaxRangeNm as number) === 8,
   );
   check('destroyer sensors has no hydrophone picture', !('hydrophoneContacts' in rv));
+  check('destroyer lookout live', rv.periscopeOperational === true);
+  check('destroyer lookout has contacts array', Array.isArray(rv.periscopeContacts));
+  check(
+    'destroyer lookout max range stub',
+    typeof rv.periscopeMaxRangeNm === 'number' && (rv.periscopeMaxRangeNm as number) === 6,
+  );
+  {
+    const ddLookoutContacts = rv.periscopeContacts as Array<Json>;
+    check(
+      'destroyer lookout sees sub on surface',
+      ddLookoutContacts.length >= 1,
+      `got ${ddLookoutContacts.length}`,
+    );
+    if (ddLookoutContacts[0]) {
+      check(
+        'destroyer lookout contact FoW fields',
+        typeof ddLookoutContacts[0].relativeBearing === 'number' &&
+          typeof ddLookoutContacts[0].rangeNm === 'number' &&
+          typeof ddLookoutContacts[0].speedKn === 'number' &&
+          ddLookoutContacts[0].silhouetteClass === 'Fleet Submarine' &&
+          !('side' in ddLookoutContacts[0]) &&
+          !('name' in ddLookoutContacts[0]) &&
+          !('position' in ddLookoutContacts[0]),
+      );
+    }
+  }
 
   const sonarOn = await api(
     'POST',
@@ -417,43 +449,55 @@ async function main() {
   );
   check(
     'destroyer silhouette asset path',
-    silhouetteUrlForClass('Destroyer') === '/silhouettes/destroyer.jpg' &&
+    silhouetteUrlForClass('Destroyer') === '/silhouettes/destroyer.png' &&
       silhouetteUrlForClass('Fleet Submarine') === null,
   );
   check(
     'periscope silhouette falls back to destroyer',
-    periscopeSilhouetteUrl('Fleet Submarine') === '/silhouettes/destroyer.jpg' &&
-      periscopeSilhouetteUrl('Destroyer') === '/silhouettes/destroyer.jpg' &&
-      periscopeSilhouetteUrl(undefined) === '/silhouettes/destroyer.jpg',
+    periscopeSilhouetteUrl('Fleet Submarine') === '/silhouettes/destroyer.png' &&
+      periscopeSilhouetteUrl('Destroyer') === '/silhouettes/destroyer.png' &&
+      periscopeSilhouetteUrl(undefined) === '/silhouettes/destroyer.png',
   );
   {
     const here = path.dirname(fileURLToPath(import.meta.url));
     const candidates = [
-      path.resolve(here, '../../client/public/silhouettes/destroyer.jpg'),
-      path.resolve(here, '../../../client/public/silhouettes/destroyer.jpg'),
+      path.resolve(here, '../../client/public/silhouettes/destroyer.png'),
+      path.resolve(here, '../../../client/public/silhouettes/destroyer.png'),
     ];
     const resolved = candidates.find((p) => fs.existsSync(p));
     const buf = resolved ? fs.readFileSync(resolved) : null;
-    // JPEG SOI marker FF D8 FF — use Wade’s raw plate, no PNG conversion.
-    const isJpeg = Boolean(buf && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff);
+    // PNG signature + tRNS (indexed alpha) or RGBA — keep transparency for optics.
+    const isPng = Boolean(
+      buf &&
+        buf[0] === 0x89 &&
+        buf[1] === 0x50 &&
+        buf[2] === 0x4e &&
+        buf[3] === 0x47,
+    );
+    const hasTrns = Boolean(buf && buf.includes(Buffer.from('tRNS')));
     check(
-      'destroyer silhouette JPG present',
-      isJpeg && Boolean(buf && buf.length > 1000),
-      resolved ? `${resolved} ${buf?.length ?? 0} bytes` : 'missing',
+      'destroyer silhouette PNG present',
+      isPng && Boolean(buf && buf.length > 1000) && hasTrns,
+      resolved ? `${resolved} ${buf?.length ?? 0} bytes trns=${hasTrns}` : 'missing',
     );
     // After `pnpm build`, Vite copies public/ → client/dist/; production serves dist.
     const distCandidates = [
-      path.resolve(here, '../../client/dist/silhouettes/destroyer.jpg'),
-      path.resolve(here, '../../../client/dist/silhouettes/destroyer.jpg'),
+      path.resolve(here, '../../client/dist/silhouettes/destroyer.png'),
+      path.resolve(here, '../../../client/dist/silhouettes/destroyer.png'),
     ];
-    const distJpg = distCandidates.find((p) => fs.existsSync(p));
-    if (distJpg) {
-      const distBuf = fs.readFileSync(distJpg);
-      const distJpeg = distBuf[0] === 0xff && distBuf[1] === 0xd8 && distBuf[2] === 0xff;
+    const distPng = distCandidates.find((p) => fs.existsSync(p));
+    if (distPng) {
+      const distBuf = fs.readFileSync(distPng);
+      const distIsPng =
+        distBuf[0] === 0x89 &&
+        distBuf[1] === 0x50 &&
+        distBuf[2] === 0x4e &&
+        distBuf[3] === 0x47;
+      const distTrns = distBuf.includes(Buffer.from('tRNS'));
       check(
         'destroyer silhouette in client dist',
-        distJpeg && distBuf.length > 1000,
-        `${distJpg} ${distBuf.length} bytes`,
+        distIsPng && distBuf.length > 1000 && distTrns,
+        `${distPng} ${distBuf.length} bytes trns=${distTrns}`,
       );
     }
   }

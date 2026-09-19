@@ -26,8 +26,10 @@ export type PeriscopePicture = {
 /**
  * Server-authoritative periscope / lookout picture (visual stub).
  *
- * Available at/above periscope depth (keel ≤ 18 m). Short visual range only.
- * Contacts: relative bearing, coarsened range/speed, silhouette class — own ship excluded.
+ * Subs: available at/above periscope depth (keel ≤ 18 m).
+ * Surface ships (DD lookout): always available when sensors live.
+ * Short visual range only. Contacts: relative bearing, coarsened range/speed,
+ * silhouette class — own ship excluded.
  */
 export function buildPeriscopeContacts(own: UnitState, save: GameSave): PeriscopePicture {
   const sensor = findLookoutSensor(own);

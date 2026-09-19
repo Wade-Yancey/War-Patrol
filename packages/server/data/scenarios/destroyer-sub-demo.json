@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "destroyer-sub-demo",
   "name": "Destroyer vs Submarine",
-  "description": "v1 demo: Fletcher destroyer vs Gato submarine (~3 nm apart so sub periscope has a contact at start). Each vessel has Controls + Sensors screens only. DD Sensors: radar + forward-cone active search sonar (toggle). Sub Sensors: radar (surfaced ≤5 m) / periscope (depth ≤18 m) / hydrophone (submerged >5 m) tabs. PvP. In-game clock advances 5 min per turn.",
+  "description": "v1 demo: Fletcher destroyer vs Gato submarine (~3 nm apart so visual lookout/periscope has a contact at start). Each vessel has Controls + Sensors screens only. DD Sensors: radar + forward-cone active search sonar (toggle) + bridge lookout. Sub Sensors: radar (surfaced ≤5 m) / periscope (depth ≤18 m) / hydrophone (submerged >5 m) tabs. PvP. In-game clock advances 5 min per turn.",
   "mode": "pvp",
   "operatingArea": {
     "minLat": 34.0,
@@ -35,11 +35,12 @@
       "activeSonarEnabled": false,
       "sensors": [
         { "kind": "radar", "maxRangeNm": 25 },
-        { "kind": "active_sonar", "maxRangeNm": 8 }
+        { "kind": "active_sonar", "maxRangeNm": 8 },
+        { "kind": "lookout", "maxRangeNm": 6 }
       ],
       "stations": [
         { "id": "controls", "name": "Controls", "capabilities": ["helm", "engineering", "plot"] },
-        { "id": "sensors", "name": "Sensors", "capabilities": ["radar", "active_sonar"] }
+        { "id": "sensors", "name": "Sensors", "capabilities": ["radar", "active_sonar", "lookout"] }
       ]
     },
     {
