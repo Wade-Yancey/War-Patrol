@@ -4,6 +4,8 @@
   "type": "Ship",
   "class": "Aircraft Carrier",
   "maxSpeed": 33,
+  "lengthM": 266,
+  "beamM": 28,
   "turnRate": 4,
   "radarSignature": "large",
   "sensors": [{ "kind": "radar", "maxRangeNm": 25 }],

@@ -4,6 +4,8 @@
   "type": "Ship",
   "class": "Cruiser",
   "maxSpeed": 32,
+  "lengthM": 186,
+  "beamM": 20,
   "turnRate": 4,
   "radarSignature": "large",
   "sensors": [{ "kind": "radar", "maxRangeNm": 25 }],

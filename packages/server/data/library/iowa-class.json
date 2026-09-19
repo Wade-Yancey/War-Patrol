@@ -4,6 +4,8 @@
   "type": "Ship",
   "class": "Battleship",
   "maxSpeed": 33,
+  "lengthM": 270,
+  "beamM": 33,
   "turnRate": 4,
   "radarSignature": "large",
   "sensors": [{ "kind": "radar", "maxRangeNm": 25 }],

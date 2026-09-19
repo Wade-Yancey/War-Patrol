@@ -31,6 +31,8 @@
       "password": "blue",
       "health": 100,
       "maxSpeed": 36,
+      "lengthM": 115,
+      "beamM": 12,
       "radarSignature": "medium",
       "activeSonarEnabled": false,
       "sensors": [
@@ -59,6 +61,8 @@
       "password": "red",
       "health": 100,
       "maxSpeed": 21,
+      "lengthM": 95,
+      "beamM": 8.3,
       "radarSignature": "small",
       "sensors": [
         { "kind": "radar", "maxRangeNm": 25 },

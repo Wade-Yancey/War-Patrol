@@ -4,6 +4,8 @@
   "type": "Aircraft",
   "class": "Bomber",
   "maxSpeed": 250,
+  "lengthM": 12,
+  "beamM": 17,
   "turnRate": 12,
   "radarSignature": "small",
   "defaultStations": []
