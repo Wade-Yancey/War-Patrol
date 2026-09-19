@@ -723,18 +723,73 @@ export function horizontalMissMeters(
   return Math.hypot(east, north);
 }
 
+/**
+ * Closest point on the great-circle-local segment `from`→`to` to `target`.
+ * `t` is the clamped fraction along the segment (0 = from, 1 = to).
+ */
+export function segmentClosestPoint(
+  from: LatLonDepth,
+  to: LatLonDepth,
+  target: Pick<LatLonDepth, 'lat' | 'lon'>,
+): { lat: number; lon: number; t: number; missM: number } {
+  const { east: te, north: tn } = eastNorthMeters(from, target);
+  const { east: se, north: sn } = eastNorthMeters(from, to);
+  const segLen2 = se * se + sn * sn;
+  if (segLen2 < 1e-6) {
+    return {
+      lat: from.lat,
+      lon: from.lon,
+      t: 0,
+      missM: Math.hypot(te, tn),
+    };
+  }
+  let t = (te * se + tn * sn) / segLen2;
+  t = clamp(t, 0, 1);
+  return {
+    lat: from.lat + (to.lat - from.lat) * t,
+    lon: from.lon + (to.lon - from.lon) * t,
+    t,
+    missM: Math.hypot(te - se * t, tn - sn * t),
+  };
+}
+
 export function segmentClosestMissM(
   from: LatLonDepth,
   to: LatLonDepth,
   target: Pick<LatLonDepth, 'lat' | 'lon'>,
 ): number {
-  const { east: te, north: tn } = eastNorthMeters(from, target);
-  const { east: se, north: sn } = eastNorthMeters(from, to);
-  const segLen2 = se * se + sn * sn;
-  if (segLen2 < 1e-6) return Math.hypot(te, tn);
-  let t = (te * se + tn * sn) / segLen2;
-  t = clamp(t, 0, 1);
-  return Math.hypot(te - se * t, tn - sn * t);
+  return segmentClosestPoint(from, to, target).missM;
+}
+
+/**
+ * Snap a fish track to the hit point on its last advance segment and truncate
+ * the GT path so the trail ends at the collision (does not continue past).
+ */
+export function truncateTorpedoAtHit(
+  prior: TorpedoTrack,
+  advanced: TorpedoTrack,
+  before: LatLonDepth,
+  hitPoint: { lat: number; lon: number },
+  hitUnitId: string,
+): TorpedoTrack {
+  const priorPath = prior.path?.length
+    ? prior.path
+    : [
+        {
+          lat: (prior.launchPosition ?? before).lat,
+          lon: (prior.launchPosition ?? before).lon,
+        },
+      ];
+  const traveledM = horizontalMissMeters(before, hitPoint);
+  const remainingRunNm = Math.max(0, prior.remainingRunNm - traveledM / METERS_PER_NM);
+  return {
+    ...advanced,
+    status: 'hit',
+    hitUnitId,
+    position: { lat: hitPoint.lat, lon: hitPoint.lon, depth: advanced.runDepthM },
+    remainingRunNm,
+    path: appendPathPoint(priorPath, { lat: hitPoint.lat, lon: hitPoint.lon }),
+  };
 }
 
 export function isTorpedoTarget(unit: UnitState): boolean {

@@ -447,7 +447,8 @@ function GroundTruthMapInner({
       const tip = toXy(t.position.lat, t.position.lon);
       const origin = toXy(launch.lat, launch.lon);
       const hRad = ((normalizeHeading(t.heading) - 90) * Math.PI) / 180;
-      const tipLen = 10;
+      // Heading pip only while running — hit/expired tip stops at end position.
+      const tipLen = t.status === 'running' ? 10 : 0;
       const statusLabel =
         t.status === 'running'
           ? `FISH · ${t.remainingRunNm.toFixed(1)}NM`
@@ -466,6 +467,7 @@ function GroundTruthMapInner({
         tip,
         tipX: tip.x + Math.cos(hRad) * tipLen,
         tipY: tip.y + Math.sin(hRad) * tipLen,
+        showHeadingPip: tipLen > 0,
         label: statusLabel,
         onPlot:
           pathPts.some((p) => p.u >= -0.1 && p.u <= 1.1 && p.v >= -0.1 && p.v <= 1.1) ||
@@ -934,16 +936,18 @@ function GroundTruthMapInner({
                     strokeWidth={1.25}
                   />
                   <circle cx={f.origin.x} cy={f.origin.y} r={1.5} fill="#ffc857" />
-                  {/* Tip + heading pip */}
-                  <line
-                    x1={f.tip.x}
-                    y1={f.tip.y}
-                    x2={f.tipX}
-                    y2={f.tipY}
-                    stroke="#ffc857"
-                    strokeWidth={1.5}
-                    strokeLinecap="square"
-                  />
+                  {/* Tip + heading pip (pip only while running — hit ends at tip) */}
+                  {f.showHeadingPip && (
+                    <line
+                      x1={f.tip.x}
+                      y1={f.tip.y}
+                      x2={f.tipX}
+                      y2={f.tipY}
+                      stroke="#ffc857"
+                      strokeWidth={1.5}
+                      strokeLinecap="square"
+                    />
+                  )}
                   <circle
                     cx={f.tip.x}
                     cy={f.tip.y}

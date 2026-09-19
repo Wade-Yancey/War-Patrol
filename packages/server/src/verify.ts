@@ -1330,6 +1330,10 @@ async function main() {
       isLengthAccuratelyIdentified,
       isSpeedAccuratelyIdentified,
       resolveTorpedoHit,
+      segmentClosestPoint,
+      truncateTorpedoAtHit,
+      createTorpedoTrack,
+      TORPEDO_DEFAULT_DEPTH_M,
     } = await import('@war-patrol/shared');
     check('aspect 90° base 50%', Math.abs(torpedoBaseHitPctFromAspect(90) - 50) < 0.01);
     check('aspect 45° base 25%', Math.abs(torpedoBaseHitPctFromAspect(45) - 25) < 0.01);
@@ -1358,6 +1362,47 @@ async function main() {
     check('beam shot base ~50', Math.abs(roll.basePct - 50) < 0.01);
     check('beam + mods hitPct', roll.hitPct === 90); // 50+10+10+20
     check('not geometric miss', roll.geometricMiss === false);
+
+    // Hit path truncation: trail ends at closest approach, not past the target.
+    {
+      const before = { lat: 0, lon: 0, depth: TORPEDO_DEFAULT_DEPTH_M };
+      const after = { lat: 0.02, lon: 0, depth: TORPEDO_DEFAULT_DEPTH_M };
+      const target = { lat: 0.01, lon: 0.0001 };
+      const closest = segmentClosestPoint(before, after, target);
+      check('closest point mid-segment', closest.t > 0.4 && closest.t < 0.6);
+      const prior = createTorpedoTrack({
+        id: 't-trunc',
+        firerUnitId: 'sub',
+        position: before,
+        heading: 0,
+        runDepthM: TORPEDO_DEFAULT_DEPTH_M,
+        launchedTurn: 1,
+        estimatedLengthM: 115,
+        estimatedSpeedKn: 14,
+        solutionPlot: 'none',
+      });
+      const advanced = {
+        ...prior,
+        position: after,
+        path: [
+          { lat: before.lat, lon: before.lon },
+          { lat: after.lat, lon: after.lon },
+        ],
+        remainingRunNm: 4,
+      };
+      const hit = truncateTorpedoAtHit(prior, advanced, before, closest, 'dd-1');
+      const tip = hit.path[hit.path.length - 1]!;
+      check('hit status set', hit.status === 'hit');
+      check(
+        'hit tip equals position',
+        Math.abs(tip.lat - hit.position.lat) < 1e-9 && Math.abs(tip.lon - hit.position.lon) < 1e-9,
+      );
+      check(
+        'hit tip not past target',
+        Math.abs(tip.lat - closest.lat) < 1e-9 && Math.abs(tip.lon - closest.lon) < 1e-9,
+      );
+      check('hit tip before segment end', tip.lat < after.lat - 1e-6);
+    }
 
     const scAll = await api('GET', '/api/scenarios');
     const scArr = Array.isArray(scAll.json)
@@ -1389,7 +1434,6 @@ async function main() {
     const fire = await api('POST', `/api/games/${torpId}/orders`, {
       fireTorpedo: {
         aimHeading: 0,
-        runDepthM: 3,
         estimatedLengthM: 115,
         estimatedSpeedKn: 14,
         solutionPlot: 'full_turn',

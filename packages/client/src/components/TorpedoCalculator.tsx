@@ -1,9 +1,6 @@
 import { useState } from 'react';
 import {
-  TORPEDO_DEFAULT_DEPTH_M,
-  TORPEDO_MAX_DEPTH_M,
   TORPEDO_MAX_RUN_NM,
-  TORPEDO_MIN_DEPTH_M,
   TORPEDO_SPEED_KN,
   type SolutionPlotDuration,
   type TorpedoFireOrder,
@@ -24,6 +21,7 @@ interface Props {
 /**
  * Torpedo firing calculator — all solution inputs are operator-entered.
  * Never auto-fills true length/speed from the sim (recognition manual + optics).
+ * Run depth is fixed in sim (shallow anti-surface default) — not operator-set.
  */
 export function TorpedoCalculator({
   ownHeading,
@@ -36,9 +34,6 @@ export function TorpedoCalculator({
 }: Props) {
   const [aimHeading, setAimHeading] = useState(
     () => Math.round(pending?.aimHeading ?? ownHeading),
-  );
-  const [runDepthM, setRunDepthM] = useState(
-    () => pending?.runDepthM ?? TORPEDO_DEFAULT_DEPTH_M,
   );
   const [estimatedLengthM, setEstimatedLengthM] = useState(
     () => pending?.estimatedLengthM ?? 0,
@@ -79,17 +74,6 @@ export function TorpedoCalculator({
         {gyro >= 0 ? '+' : ''}
         {Math.round(gyro)}°
       </p>
-
-      <TouchNumber
-        label="Run depth"
-        value={runDepthM}
-        onChange={setRunDepthM}
-        min={TORPEDO_MIN_DEPTH_M}
-        max={TORPEDO_MAX_DEPTH_M}
-        step={1}
-        unit="m"
-        disabled={disabled || torpedoLoad <= 0}
-      />
 
       <TouchNumber
         label="Est. target length (manual)"
@@ -143,7 +127,6 @@ export function TorpedoCalculator({
           onClick={() =>
             onSubmit({
               aimHeading,
-              runDepthM,
               estimatedLengthM,
               estimatedSpeedKn,
               solutionPlot,
@@ -161,9 +144,9 @@ export function TorpedoCalculator({
 
       {pending && (
         <p className="mono readout" style={{ margin: 0 }}>
-          Of record: aim {String(Math.round(pending.aimHeading)).padStart(3, '0')}° · D
-          {Math.round(pending.runDepthM)}m · L{Math.round(pending.estimatedLengthM)}m ·{' '}
-          {Math.round(pending.estimatedSpeedKn)}kn · plot {pending.solutionPlot}
+          Of record: aim {String(Math.round(pending.aimHeading)).padStart(3, '0')}° · L
+          {Math.round(pending.estimatedLengthM)}m · {Math.round(pending.estimatedSpeedKn)}kn ·
+          plot {pending.solutionPlot}
         </p>
       )}
 
@@ -176,7 +159,7 @@ export function TorpedoCalculator({
               .map((t) => (
                 <li key={t.id}>
                   HDG {String(Math.round(t.heading)).padStart(3, '0')}° · rem{' '}
-                  {t.remainingRunNm.toFixed(1)} nm · D{Math.round(t.runDepthM)}m
+                  {t.remainingRunNm.toFixed(1)} nm
                 </li>
               ))}
           </ul>

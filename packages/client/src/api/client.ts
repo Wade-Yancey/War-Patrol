@@ -80,7 +80,6 @@ export const api = {
       depth?: number;
       fireTorpedo?: {
         aimHeading: number;
-        runDepthM: number;
         estimatedLengthM: number;
         estimatedSpeedKn: number;
         solutionPlot: 'none' | 'half_turn' | 'full_turn';
