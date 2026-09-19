@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 160" role="img" aria-label="Destroyer side silhouette">
-  <!-- Side elevation stub for periscope FoW; replace with Wade side-profile JPG as destroyer.jpg when available. -->
+  <!-- Side elevation stub for periscope FoW; runtime uses destroyer.png (Vite + public). -->
   <g fill="#0a0f0c">
     <!-- hull -->
     <path d="M28 108 L72 96 L520 96 L590 108 L600 118 L40 118 Z"/>
