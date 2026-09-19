@@ -301,6 +301,48 @@ export function UmpirePage() {
               <PendingOrdersPanel units={umpire.units} />
             </div>
 
+            <section className="panel umpire-gt-map" style={{ marginTop: '1rem' }}>
+              <div className="umpire-gt-map-head">
+                <div className="umpire-gt-map-title">
+                  <h2>Ground truth</h2>
+                  <TurnStatus turn={umpire.turn} turnLengthSeconds={umpire.turnLengthSeconds} />
+                  <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
+                    Full operating picture — zoom/pan, trails, true-north compass, optional sensor
+                    range bands (Ranges). Resolve here so the plot stays in view.
+                  </p>
+                </div>
+                <div className="umpire-gt-map-actions" role="group" aria-label="Turn advance">
+                  <button
+                    type="button"
+                    disabled={busy || !isOpen}
+                    onClick={() => void run(() => api.turnLock(gameId, token))}
+                  >
+                    Lock orders
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy || !isLocked}
+                    onClick={() => void run(() => api.turnReopen(gameId, token))}
+                  >
+                    Reopen
+                  </button>
+                  <button
+                    className="primary"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void run(() => api.turnResolve(gameId, token))}
+                  >
+                    Resolve &amp; advance
+                  </button>
+                </div>
+              </div>
+              <GroundTruthMap
+                area={umpire.operatingArea}
+                units={umpire.units}
+                trails={umpire.trails}
+              />
+            </section>
+
             <div className="umpire-controls" style={{ marginTop: '1rem' }}>
               <section className="panel stack umpire-control-group">
                 <h2>1 · Timer</h2>
@@ -381,7 +423,8 @@ export function UmpirePage() {
               <section className="panel stack umpire-control-group">
                 <h2>2 · Order lock</h2>
                 <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-                  Lock closes ordering. Reopen returns to open without moving ships.
+                  Lock closes ordering. Reopen returns to open without moving ships. Also available
+                  above the ground-truth map.
                 </p>
                 <div className="control-actions">
                   <button
@@ -402,20 +445,12 @@ export function UmpirePage() {
               </section>
 
               <section className="panel stack umpire-control-group">
-                <h2>3 · Resolve turn</h2>
+                <h2>3 · Save &amp; rollback</h2>
                 <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-                  Applies all vessel orders, advances the plot, then opens the next turn. Works from open or
-                  locked.
+                  Persist the game or rewind history. Resolve &amp; advance lives on the ground-truth
+                  map so the plot stays visible.
                 </p>
                 <div className="control-actions">
-                  <button
-                    className="primary"
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void run(() => api.turnResolve(gameId, token))}
-                  >
-                    Resolve &amp; advance
-                  </button>
                   <button
                     type="button"
                     disabled={busy}
@@ -480,19 +515,6 @@ export function UmpirePage() {
                 />
               </div>
             )}
-
-            <section className="panel umpire-gt-map" style={{ marginTop: '1rem' }}>
-              <h2>Ground truth</h2>
-              <p className="muted" style={{ marginTop: 0, fontSize: '0.8rem' }}>
-                Full operating picture — zoom/pan, trails, true-north compass, optional sensor range bands
-                (Ranges).
-              </p>
-              <GroundTruthMap
-                area={umpire.operatingArea}
-                units={umpire.units}
-                trails={umpire.trails}
-              />
-            </section>
 
             <div className="grid-2 umpire-modules" style={{ marginTop: '1rem' }}>
               <VesselJoinLinks
