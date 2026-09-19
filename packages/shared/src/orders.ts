@@ -28,13 +28,12 @@ export function formatDepthMeters(depthM: number): string {
 function formatTorpedoOrderSummary(
   fire: NonNullable<UnitOrders['fireTorpedo']>,
 ): string {
-  const plot =
-    fire.solutionPlot === 'full_turn'
-      ? 'PLOT 1T'
-      : fire.solutionPlot === 'half_turn'
-        ? 'PLOT ½T'
-        : 'PLOT —';
-  return `TORP ${formatCourseDegrees(fire.aimHeading)} · L${Math.round(fire.estimatedLengthM)}m · ${Math.round(fire.estimatedSpeedKn)}kn · ${plot}`;
+  const count = Math.max(1, Math.floor(fire.spreadCount || 1));
+  const spread =
+    count > 1
+      ? ` ×${count}@${Math.round(fire.spreadDeg || 0)}°`
+      : '';
+  return `TORP ${formatCourseDegrees(fire.aimHeading)}${spread} · L${Math.round(fire.estimatedLengthM)}m · ${Math.round(fire.estimatedSpeedKn)}kn`;
 }
 
 function formatDepthChargeOrderSummary(

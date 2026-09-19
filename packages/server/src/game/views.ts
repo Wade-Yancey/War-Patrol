@@ -21,12 +21,12 @@ import { buildRadarContacts } from './radar.js';
 import { buildTorpedoWakeCues } from './wakeCues.js';
 
 /**
- * Close-aboard depth-charge cues for Controls speakers.
+ * Close-aboard / involved weapon blast cues for Controls speakers.
  *
- * Range is measured from **this vessel's position** to each detonation —
- * never filtered by firer / own-weapon. Any hull within
- * {@link DEPTH_CHARGE_CONTROLS_AUDIBLE_NM} hears the blast (DD dropper and
- * nearby sub alike).
+ * - Depth charges: any hull within {@link DEPTH_CHARGE_CONTROLS_AUDIBLE_NM}
+ *   of the blast (measured from own ship) — never filtered by firer.
+ * - Torpedo hits: firer and target always hear the cue; gain attenuates by
+ *   distance to the hit point ({@link TORPEDO_HIT_CONTROLS_REF_NM}).
  */
 export function buildBridgeDetonations(
   unit: UnitState,
@@ -36,14 +36,29 @@ export function buildBridgeDetonations(
   // Keep cues for the resolve turn and the following open turn.
   const oldestTurn = save.turn.number - 1;
   for (const d of save.recentDetonations ?? []) {
-    if (d.kind !== 'depth_charge') continue;
     if (d.turnNumber < oldestTurn) continue;
     const { bearing, rangeNm } = bearingRangeNm(unit.position, d.position);
+
+    if (d.kind === 'torpedo_hit') {
+      const involved =
+        unit.id === d.firerUnitId || (d.targetUnitId != null && unit.id === d.targetUnitId);
+      if (!involved) continue;
+      bridge.push({
+        id: d.id,
+        bearing: Math.round(bearing * 10) / 10,
+        rangeNm: Math.round(rangeNm * 100) / 100,
+        kind: 'torpedo_hit',
+      });
+      continue;
+    }
+
+    if (d.kind !== 'depth_charge') continue;
     if (rangeNm > DEPTH_CHARGE_CONTROLS_AUDIBLE_NM) continue;
     bridge.push({
       id: d.id,
       bearing: Math.round(bearing * 10) / 10,
       rangeNm: Math.round(rangeNm * 100) / 100,
+      kind: 'depth_charge',
     });
   }
   return bridge;

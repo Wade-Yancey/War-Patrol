@@ -82,7 +82,8 @@ export const api = {
         aimHeading: number;
         estimatedLengthM: number;
         estimatedSpeedKn: number;
-        solutionPlot: 'none' | 'half_turn' | 'full_turn';
+        spreadCount?: number;
+        spreadDeg?: number;
       } | null;
       dropDepthCharges?: {
         pattern: 'single' | 'pair' | 'pattern_3' | 'pattern_5';

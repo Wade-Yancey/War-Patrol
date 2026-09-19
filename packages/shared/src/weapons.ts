@@ -1,8 +1,8 @@
 /**
  * Torpedo + depth-charge combat model (v1).
  *
- * Hit resolution is RNG with geometric gates + additive identification /
- * solution-plot modifiers — not continuous hydrodynamic physics.
+ * Hit resolution is RNG with geometric gates + additive identification
+ * modifiers — not continuous hydrodynamic physics.
  * See docs/simulation-physics.md in the project store.
  */
 import {
@@ -23,7 +23,6 @@ import type {
   DepthChargeTrack,
   LatLonDepth,
   OwnDamageEvent,
-  SolutionPlotDuration,
   TorpedoTrack,
   UnitState,
   WeaponDetonationEvent,
@@ -46,6 +45,15 @@ export const TORPEDO_MAX_DEPTH_M = 25;
 
 /** Fleet-sub ready fish at scenario start (bow tubes only for v1). */
 export const FLEET_SUB_TORPEDO_LOAD = 6;
+
+/** Max fish in one queued spread order. */
+export const TORPEDO_SPREAD_MAX_COUNT = 4;
+
+/** Max angular spacing between adjacent fish in a spread (degrees). */
+export const TORPEDO_SPREAD_MAX_DEG = 8;
+
+/** Default inter-fish spacing when operator leaves spreadDeg unset. */
+export const TORPEDO_SPREAD_DEFAULT_DEG = 2;
 
 /**
  * Horizontal miss distance (m) inside which a hit roll is attempted.
@@ -73,12 +81,6 @@ export const TORPEDO_MOD_LENGTH_ACCURATE_PCT = 10;
 /** Additive % when estimated speed is within tolerance of truth. */
 export const TORPEDO_MOD_SPEED_ACCURATE_PCT = 10;
 
-/** Additive % for half-turn solution plot commitment. */
-export const TORPEDO_MOD_PLOT_HALF_TURN_PCT = 10;
-
-/** Additive % for full-turn solution plot commitment. */
-export const TORPEDO_MOD_PLOT_FULL_TURN_PCT = 20;
-
 /**
  * Length estimate is "accurate" when |est − truth| / truth ≤ this fraction
  * (or absolute ≤ TORPEDO_LENGTH_ABS_TOL_M for short hulls).
@@ -92,6 +94,13 @@ export const TORPEDO_LENGTH_ABS_TOL_M = 12;
  * Speed estimate is "accurate" when |est − truth| ≤ this many knots.
  */
 export const TORPEDO_SPEED_ABS_TOL_KN = 2;
+
+/**
+ * Max range (nm) for Controls torpedo-hit explosion cue attenuation.
+ * Firer and target always get a cue when they are the involved units;
+ * gain falls off with distance to the hit point.
+ */
+export const TORPEDO_HIT_CONTROLS_REF_NM = 4;
 
 // --- Depth charges (DD rack / thrower stub) ---
 
@@ -248,9 +257,32 @@ export function normalizeDepthChargePattern(raw: unknown): DepthChargePattern {
   return 'single';
 }
 
-export function normalizeSolutionPlotDuration(raw: unknown): SolutionPlotDuration {
-  if (raw === 'half_turn' || raw === 'full_turn' || raw === 'none') return raw;
-  return 'none';
+export function clampTorpedoSpreadCount(raw: unknown): number {
+  const n = Math.floor(Number(raw));
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(TORPEDO_SPREAD_MAX_COUNT, n);
+}
+
+export function clampTorpedoSpreadDeg(raw: unknown): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return TORPEDO_SPREAD_DEFAULT_DEG;
+  return Math.min(TORPEDO_SPREAD_MAX_DEG, n);
+}
+
+/**
+ * True headings for a fan centered on `aimHeading`.
+ * Odd counts put one fish on the aim axis; even counts straddle it.
+ */
+export function torpedoSpreadHeadings(
+  aimHeading: number,
+  count: number,
+  spreadDeg: number,
+): number[] {
+  const n = clampTorpedoSpreadCount(count);
+  const spacing = clampTorpedoSpreadDeg(spreadDeg);
+  if (n <= 1) return [normalizeHeading(aimHeading)];
+  const start = aimHeading - ((n - 1) / 2) * spacing;
+  return Array.from({ length: n }, (_, i) => normalizeHeading(start + i * spacing));
 }
 
 export function defaultTorpedoLoad(unit: Pick<UnitState, 'class' | 'type'>): number {
@@ -341,17 +373,6 @@ export function isSpeedAccuratelyIdentified(
   return Math.abs(estimatedSpeedKn - Math.abs(trueSpeedKn)) <= TORPEDO_SPEED_ABS_TOL_KN;
 }
 
-export function solutionPlotModifierPct(duration: SolutionPlotDuration): number {
-  switch (duration) {
-    case 'half_turn':
-      return TORPEDO_MOD_PLOT_HALF_TURN_PCT;
-    case 'full_turn':
-      return TORPEDO_MOD_PLOT_FULL_TURN_PCT;
-    default:
-      return 0;
-  }
-}
-
 export type TorpedoHitRollInput = {
   /** Geometric miss distance at closest approach (m). */
   missDistanceM: number;
@@ -365,7 +386,6 @@ export type TorpedoHitRollInput = {
   estimatedLengthM: number;
   /** Player calculator estimate (kn). */
   estimatedSpeedKn: number;
-  solutionPlot: SolutionPlotDuration;
   /** Fish run depth vs target keel — surface targets need shallow fish. */
   depthOk: boolean;
   seed: string;
@@ -378,7 +398,6 @@ export type TorpedoHitRollResult = {
   aspectDeg: number;
   lengthAccurate: boolean;
   speedAccurate: boolean;
-  plotModPct: number;
   geometricMiss: boolean;
 };
 
@@ -397,7 +416,6 @@ export function resolveTorpedoHit(input: TorpedoHitRollInput): TorpedoHitRollRes
     input.estimatedSpeedKn,
     input.trueSpeedKn,
   );
-  const plotModPct = solutionPlotModifierPct(input.solutionPlot);
 
   if (!input.depthOk || input.missDistanceM > TORPEDO_HIT_GATE_M) {
     return {
@@ -407,7 +425,6 @@ export function resolveTorpedoHit(input: TorpedoHitRollInput): TorpedoHitRollRes
       aspectDeg,
       lengthAccurate,
       speedAccurate,
-      plotModPct,
       geometricMiss: true,
     };
   }
@@ -415,7 +432,6 @@ export function resolveTorpedoHit(input: TorpedoHitRollInput): TorpedoHitRollRes
   let hitPct = basePct;
   if (lengthAccurate) hitPct += TORPEDO_MOD_LENGTH_ACCURATE_PCT;
   if (speedAccurate) hitPct += TORPEDO_MOD_SPEED_ACCURATE_PCT;
-  hitPct += plotModPct;
   hitPct = clamp(hitPct, 0, 95);
 
   const roll = weaponRng01(input.seed) * 100;
@@ -426,7 +442,6 @@ export function resolveTorpedoHit(input: TorpedoHitRollInput): TorpedoHitRollRes
     aspectDeg,
     lengthAccurate,
     speedAccurate,
-    plotModPct,
     geometricMiss: false,
   };
 }
@@ -519,7 +534,6 @@ export function createTorpedoTrack(opts: {
   launchedTurn: number;
   estimatedLengthM: number;
   estimatedSpeedKn: number;
-  solutionPlot: SolutionPlotDuration;
 }): TorpedoTrack {
   const launch = {
     lat: opts.position.lat,
@@ -539,7 +553,6 @@ export function createTorpedoTrack(opts: {
     status: 'running',
     estimatedLengthM: opts.estimatedLengthM,
     estimatedSpeedKn: opts.estimatedSpeedKn,
-    solutionPlot: opts.solutionPlot,
     path: [{ lat: launch.lat, lon: launch.lon }],
   };
 }
@@ -905,17 +918,27 @@ export function unitLengthBeam(unit: UnitState): { lengthM: number; beamM: numbe
 
 export function makeDetonationEvent(opts: {
   id: string;
+  kind?: 'depth_charge' | 'torpedo_hit';
   position: LatLonDepth;
   turnNumber: number;
   firerUnitId: string;
+  targetUnitId?: string;
 }): WeaponDetonationEvent {
   return {
     id: opts.id,
-    kind: 'depth_charge',
+    kind: opts.kind ?? 'depth_charge',
     position: { ...opts.position },
     turnNumber: opts.turnNumber,
     firerUnitId: opts.firerUnitId,
+    ...(opts.targetUnitId ? { targetUnitId: opts.targetUnitId } : {}),
   };
+}
+
+/** Controls gain falloff for torpedo-hit cues (0–1). Soft inverse-square-ish. */
+export function torpedoHitControlsGain(rangeNm: number): number {
+  const r = Math.max(0, rangeNm);
+  const r0 = TORPEDO_HIT_CONTROLS_REF_NM;
+  return 1 / (1 + (r / r0) * (r / r0));
 }
 
 export { bearingRangeNm };
