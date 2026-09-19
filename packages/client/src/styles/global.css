@@ -2065,6 +2065,11 @@ label {
   --peri-horizon-line: color-mix(in srgb, #e8f2fa 70%, transparent);
 
   position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 12rem;
   min-height: min(52vw, 22rem);
   border: 1px solid color-mix(in srgb, var(--phosphor-dim) 55%, var(--line));
   background: linear-gradient(
@@ -2154,48 +2159,36 @@ label {
 }
 
 .periscope-selected {
-  position: absolute;
-  left: 50%;
-  bottom: 22%;
-  transform: translateX(-50%) scale(var(--peri-scale, 1));
-  transform-origin: center bottom;
+  /* Flex child of viewport — not absolute/zero-size; stays on the blue plane. */
+  position: relative;
   z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 0.55rem;
-  transition: transform 280ms ease-out;
+  width: 100%;
   max-width: 92%;
+  padding: 1.25rem 0.75rem 1rem;
+  transform: scale(var(--peri-scale, 1));
+  transform-origin: center center;
+  transition: transform 280ms ease-out;
 }
 
 .periscope-silhouette {
+  /* Plain photo — no brightness/opacity/filter tricks. Intrinsic 350×150 + mins. */
   display: block;
-  width: clamp(11rem, 48vw, 22rem);
+  flex: 0 0 auto;
+  width: clamp(12rem, 52vw, 22rem);
+  min-width: 12rem;
+  min-height: 5rem;
   height: auto;
-  max-height: 8.5rem;
+  max-height: 10rem;
   object-fit: contain;
-  object-position: center bottom;
-  /*
-   * Raw Wade recognition JPG (white plate + black lines). No brightness(0),
-   * phosphor invert, or other CSS filters — display as a normal photo on the
-   * blue sky/sea viewport so the plate stays readable.
-   */
-  filter: none;
-  opacity: 1;
+  object-position: center center;
+  background: #ffffff;
   user-select: none;
   -webkit-user-drag: none;
-}
-
-.periscope-silhouette--missing {
-  width: clamp(4rem, 14vw, 7rem);
-  height: 2.5rem;
-  display: grid;
-  place-items: center;
-  border: 1px dashed color-mix(in srgb, #0a1620 45%, transparent);
-  color: #0a1620;
-  filter: none;
-  opacity: 0.75;
-  background: color-mix(in srgb, #e8f2fa 35%, transparent);
 }
 
 .periscope-readouts {

@@ -1,14 +1,14 @@
 # Periscope silhouettes
 
-Hull-class → image map used by the submarine Periscope Sensors tab (side elevation / side profile).
+Hull-class → image map used by the submarine Periscope Sensors tab.
 
 | Hull class | Asset | Notes |
 | --- | --- | --- |
-| Destroyer | `destroyer.jpg` | Wade’s raw recognition plate (white plate + black line art). Served as-is — no PNG conversion, thresholding, or CSS phosphor filters. |
-| Other classes | _(none)_ | Missing → CRT `?` placeholder. Add kebab files later or reuse stub. |
+| Destroyer | `destroyer.jpg` | Wade’s raw recognition plate (white plate + black line art). Served as-is from Vite `public/` → `/silhouettes/destroyer.jpg`. |
+| Other classes | _(none mapped)_ | UI falls back to `destroyer.jpg` whenever a contact is selected so the left panel always shows a photo. |
 
-**Display:** Periscope viewport uses a blue sky/sea plane so the white plate + black lines stay readable. The image uses `object-fit: contain` with **no** `brightness(0)` / phosphor CSS filters.
+**Display:** Plain `<img>` on a blue sky/sea viewport — **no** CSS filters, phosphor invert, or opacity tricks. Min size enforced so the plate cannot collapse to zero.
 
-Resolver: `silhouetteUrlForClass()` in `@war-patrol/shared` (`periscope.ts`) → `/silhouettes/destroyer.jpg`.
+Resolver: `silhouetteUrlForClass()` / `periscopeSilhouetteUrl()` in `@war-patrol/shared` (`periscope.ts`).
 
-Optional `destroyer.png` / `destroyer.svg` stubs remain unused by the client resolver.
+Optional `destroyer.png` / `destroyer.svg` stubs remain in-tree but are **unused**.
