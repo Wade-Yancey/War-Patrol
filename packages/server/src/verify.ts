@@ -18,6 +18,7 @@ import {
   formatWallDuration,
   parseWallDuration,
   resolveMaxSpeed,
+  periscopeSilhouetteUrl,
   silhouetteUrlForClass,
   snapWallDuration,
 } from '@war-patrol/shared';
@@ -414,6 +415,12 @@ async function main() {
     silhouetteUrlForClass('Destroyer') === '/silhouettes/destroyer.jpg' &&
       silhouetteUrlForClass('Fleet Submarine') === null,
   );
+  check(
+    'periscope silhouette falls back to destroyer',
+    periscopeSilhouetteUrl('Fleet Submarine') === '/silhouettes/destroyer.jpg' &&
+      periscopeSilhouetteUrl('Destroyer') === '/silhouettes/destroyer.jpg' &&
+      periscopeSilhouetteUrl(undefined) === '/silhouettes/destroyer.jpg',
+  );
   {
     const here = path.dirname(fileURLToPath(import.meta.url));
     const candidates = [
@@ -429,6 +436,21 @@ async function main() {
       isJpeg && Boolean(buf && buf.length > 1000),
       resolved ? `${resolved} ${buf?.length ?? 0} bytes` : 'missing',
     );
+    // After `pnpm build`, Vite copies public/ → client/dist/; production serves dist.
+    const distCandidates = [
+      path.resolve(here, '../../client/dist/silhouettes/destroyer.jpg'),
+      path.resolve(here, '../../../client/dist/silhouettes/destroyer.jpg'),
+    ];
+    const distJpg = distCandidates.find((p) => fs.existsSync(p));
+    if (distJpg) {
+      const distBuf = fs.readFileSync(distJpg);
+      const distJpeg = distBuf[0] === 0xff && distBuf[1] === 0xd8 && distBuf[2] === 0xff;
+      check(
+        'destroyer silhouette in client dist',
+        distJpeg && distBuf.length > 1000,
+        `${distJpg} ${distBuf.length} bytes`,
+      );
+    }
   }
   check(
     'controls has no periscope picture',

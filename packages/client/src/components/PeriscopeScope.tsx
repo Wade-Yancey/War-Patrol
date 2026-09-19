@@ -1,7 +1,7 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import {
   periscopeSilhouetteScale,
-  silhouetteUrlForClass,
+  periscopeSilhouetteUrl,
   type PeriscopeContact,
 } from '@war-patrol/shared';
 
@@ -24,8 +24,9 @@ function contactsKey(contacts: PeriscopeContact[]): string {
 }
 
 /**
- * Periscope CRT — silhouette viewer (left) + anonymous Contact N list (right).
- * Click a contact to show its silhouette and coarsened readouts.
+ * Periscope CRT — plain silhouette photo (left) + anonymous Contact N list (right).
+ * Click a contact to select; left panel always mounts an `<img>` for the selection
+ * (class map, or destroyer JPG fallback).
  */
 function PeriscopeScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
   const sorted = useMemo(
@@ -39,59 +40,49 @@ function PeriscopeScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (sorted.length === 0) {
-      setSelectedId(null);
-      return;
-    }
-    setSelectedId((prev) =>
-      prev && sorted.some((c) => c.id === prev) ? prev : sorted[0]!.id,
-    );
-  }, [sorted]);
+  // Synchronous selection — no useEffect gap where contacts exist but img never mounts.
+  const effectiveId =
+    selectedId != null && sorted.some((c) => c.id === selectedId)
+      ? selectedId
+      : (sorted[0]?.id ?? null);
 
-  const selected = useMemo(
-    () => sorted.find((c) => c.id === selectedId) ?? null,
-    [sorted, selectedId],
-  );
-
+  const selected = effectiveId ? (sorted.find((c) => c.id === effectiveId) ?? null) : null;
   const selectedIndex = selected ? sorted.findIndex((c) => c.id === selected.id) : -1;
   const selectedLabelN = selectedIndex >= 0 ? selectedIndex + 1 : null;
 
   const scale = selected ? periscopeSilhouetteScale(selected.rangeNm, maxRangeNm) : 1;
-  const url = selected ? silhouetteUrlForClass(selected.silhouetteClass) : null;
+  const imgSrc = selected ? periscopeSilhouetteUrl(selected.silhouetteClass) : null;
 
   return (
     <div className="radar-scope radar-console periscope-scope">
-      <div className="periscope-viewport" role="img" aria-label="Periscope visual contact">
-        <div className="periscope-horizon" />
-        <div className="periscope-sea" />
+      <div className="periscope-viewport" aria-label="Periscope visual contact">
+        <div className="periscope-horizon" aria-hidden />
+        <div className="periscope-sea" aria-hidden />
         <div className="periscope-reticule" aria-hidden>
           <span className="periscope-cross periscope-cross--h" />
           <span className="periscope-cross periscope-cross--v" />
           <span className="periscope-bow-mark">BOW</span>
         </div>
+
         {sorted.length === 0 ? (
           <p className="periscope-empty mono muted">No visual contacts within {maxRangeNm} nm</p>
-        ) : selected ? (
+        ) : selected && imgSrc ? (
           <div
             className="periscope-selected"
-            style={{ ['--peri-scale' as string]: String(scale) }}
+            style={{ ['--peri-scale' as string]: String(Math.max(scale, 0.45)) }}
           >
-            {url ? (
-              <img
-                className="periscope-silhouette"
-                src={url}
-                alt=""
-                draggable={false}
-              />
-            ) : (
-              <div
-                className="periscope-silhouette periscope-silhouette--missing"
-                title="No silhouette"
-              >
-                <span className="mono">?</span>
-              </div>
-            )}
+            {/*
+              Plain <img> — no CSS filters, no conditional "?" branch that skips the
+              asset. Class miss → destroyer JPG via periscopeSilhouetteUrl().
+            */}
+            <img
+              className="periscope-silhouette"
+              src={imgSrc}
+              alt=""
+              width={350}
+              height={150}
+              draggable={false}
+            />
             <div className="periscope-readouts mono">
               <span className="readout">Contact {selectedLabelN}</span>
               <span>{formatRelBearing(selected.relativeBearing)}</span>
@@ -115,7 +106,7 @@ function PeriscopeScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
           ) : (
             <ul className="sensor-contact-scroll">
               {sorted.map((c, i) => {
-                const active = c.id === selectedId;
+                const active = c.id === effectiveId;
                 return (
                   <li key={c.id}>
                     <button
@@ -138,7 +129,7 @@ function PeriscopeScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
           )}
         </div>
         <p className="periscope-caption muted">
-          Silhouette only — class image when available. Range scales size (farther = smaller).
+          Silhouette photo when a contact is selected. Range scales size (farther = smaller).
         </p>
       </aside>
     </div>

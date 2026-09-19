@@ -85,10 +85,16 @@ export function periscopeSilhouetteScale(
 }
 
 /**
+ * Wade’s destroyer recognition plate — always available under Vite `public/`.
+ * Used as the class map hit for Destroyer and as the UI fallback when any
+ * contact is selected but class mapping misses.
+ */
+export const DESTROYER_SILHOUETTE_URL = '/silhouettes/destroyer.jpg';
+
+/**
  * Public asset path for a hull-class silhouette (side profile).
- * Destroyer → `/silhouettes/destroyer.jpg` — Wade’s raw recognition plate
- * (white plate + black line art). No PNG conversion / thresholding.
- * Other classes → null.
+ * Destroyer → {@link DESTROYER_SILHOUETTE_URL}. Other classes → null
+ * (UI should fall back to the destroyer JPG so something still paints).
  */
 export function silhouetteUrlForClass(
   hullClass: HullClass | string | undefined,
@@ -96,10 +102,20 @@ export function silhouetteUrlForClass(
   if (!hullClass) return null;
   switch (hullClass) {
     case 'Destroyer':
-      return '/silhouettes/destroyer.jpg';
+      return DESTROYER_SILHOUETTE_URL;
     default:
       return null;
   }
+}
+
+/**
+ * URL to show for a selected periscope contact: class map when present,
+ * otherwise the destroyer JPG so the left panel never goes blank.
+ */
+export function periscopeSilhouetteUrl(
+  hullClass: HullClass | string | undefined,
+): string {
+  return silhouetteUrlForClass(hullClass) ?? DESTROYER_SILHOUETTE_URL;
 }
 
 /** Default lookout / periscope install — fleet submarines only. */
