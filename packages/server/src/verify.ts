@@ -417,43 +417,51 @@ async function main() {
   );
   check(
     'destroyer silhouette asset path',
-    silhouetteUrlForClass('Destroyer') === '/silhouettes/destroyer.jpg' &&
+    silhouetteUrlForClass('Destroyer') === '/silhouettes/destroyer.png' &&
       silhouetteUrlForClass('Fleet Submarine') === null,
   );
   check(
     'periscope silhouette falls back to destroyer',
-    periscopeSilhouetteUrl('Fleet Submarine') === '/silhouettes/destroyer.jpg' &&
-      periscopeSilhouetteUrl('Destroyer') === '/silhouettes/destroyer.jpg' &&
-      periscopeSilhouetteUrl(undefined) === '/silhouettes/destroyer.jpg',
+    periscopeSilhouetteUrl('Fleet Submarine') === '/silhouettes/destroyer.png' &&
+      periscopeSilhouetteUrl('Destroyer') === '/silhouettes/destroyer.png' &&
+      periscopeSilhouetteUrl(undefined) === '/silhouettes/destroyer.png',
   );
   {
     const here = path.dirname(fileURLToPath(import.meta.url));
     const candidates = [
-      path.resolve(here, '../../client/public/silhouettes/destroyer.jpg'),
-      path.resolve(here, '../../../client/public/silhouettes/destroyer.jpg'),
+      path.resolve(here, '../../client/public/silhouettes/destroyer.png'),
+      path.resolve(here, '../../../client/public/silhouettes/destroyer.png'),
     ];
     const resolved = candidates.find((p) => fs.existsSync(p));
     const buf = resolved ? fs.readFileSync(resolved) : null;
-    // JPEG SOI marker FF D8 FF — use Wade’s raw plate, no PNG conversion.
-    const isJpeg = Boolean(buf && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff);
+    // PNG signature + tRNS (indexed alpha) or RGBA — keep transparency for periscope.
+    const isPng = Boolean(
+      buf &&
+        buf[0] === 0x89 &&
+        buf[1] === 0x50 &&
+        buf[2] === 0x4e &&
+        buf[3] === 0x47,
+    );
+    const hasTrns = Boolean(buf && buf.includes(Buffer.from('tRNS')));
     check(
-      'destroyer silhouette JPG present',
-      isJpeg && Boolean(buf && buf.length > 1000),
-      resolved ? `${resolved} ${buf?.length ?? 0} bytes` : 'missing',
+      'destroyer silhouette PNG present',
+      isPng && Boolean(buf && buf.length > 1000) && hasTrns,
+      resolved ? `${resolved} ${buf?.length ?? 0} bytes trns=${hasTrns}` : 'missing',
     );
     // After `pnpm build`, Vite copies public/ → client/dist/; production serves dist.
     const distCandidates = [
-      path.resolve(here, '../../client/dist/silhouettes/destroyer.jpg'),
-      path.resolve(here, '../../../client/dist/silhouettes/destroyer.jpg'),
+      path.resolve(here, '../../client/dist/silhouettes/destroyer.png'),
+      path.resolve(here, '../../../client/dist/silhouettes/destroyer.png'),
     ];
-    const distJpg = distCandidates.find((p) => fs.existsSync(p));
-    if (distJpg) {
-      const distBuf = fs.readFileSync(distJpg);
-      const distJpeg = distBuf[0] === 0xff && distBuf[1] === 0xd8 && distBuf[2] === 0xff;
+    const distPng = distCandidates.find((p) => fs.existsSync(p));
+    if (distPng) {
+      const distBuf = fs.readFileSync(distPng);
+      const distIsPng =
+        distBuf[0] === 0x89 && distBuf[1] === 0x50 && distBuf[2] === 0x4e && distBuf[3] === 0x47;
       check(
         'destroyer silhouette in client dist',
-        distJpeg && distBuf.length > 1000,
-        `${distJpg} ${distBuf.length} bytes`,
+        distIsPng && distBuf.length > 1000,
+        `${distPng} ${distBuf.length} bytes`,
       );
     }
   }
