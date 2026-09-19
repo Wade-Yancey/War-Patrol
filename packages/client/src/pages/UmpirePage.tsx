@@ -35,6 +35,7 @@ import { TurnStatus } from '../components/TurnStatus';
 import { CrtShell } from '../components/CrtShell';
 import { TouchNumber } from '../components/TouchNumber';
 import { ConfirmAction } from '../components/ConfirmAction';
+import { VesselJoinLinks } from '../components/VesselJoinLinks';
 
 function tokenKey(gameId: string) {
   return `wp-token:${gameId}:umpire`;
@@ -494,81 +495,16 @@ export function UmpirePage() {
             </section>
 
             <div className="grid-2 umpire-modules" style={{ marginTop: '1rem' }}>
-              <section className="panel">
-                  <h2>Vessel links &amp; passwords</h2>
-                  <p className="muted" style={{ marginTop: 0, fontSize: '0.8rem' }}>
-                    Destroyers and fleet submarines include a dedicated <strong>Radar</strong> station plus an
-                    installed radar sensor. Sub radar (own PPI and as a contact) only when surfaced (depth ≤ 5
-                    m).
-                  </p>
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>Vessel</th>
-                        <th>Stations</th>
-                        <th />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {umpire.vesselLinks.map((v) => {
-                        const unit = umpire.units.find((u) => u.id === v.unitId);
-                        return (
-                          <tr key={v.unitId}>
-                            <td>
-                              <div>{v.name}</div>
-                              {unit && (
-                                <span
-                                  className={`side-badge side-badge--${unit.faction.toLowerCase()} vessel-faction-badge`}
-                                >
-                                  {unit.faction}
-                                </span>
-                              )}
-                              <div className="mono muted" style={{ fontSize: '0.75rem' }}>
-                                {unit ? `${unit.type} · ${unit.class}` : '—'}
-                              </div>
-                              <div className="mono muted" style={{ fontSize: '0.75rem' }}>
-                                token {v.accessToken}
-                                {v.passwordProtected ? ' · password set' : ' · open'}
-                              </div>
-                            </td>
-                            <td>
-                              <div className="stack" style={{ gap: '0.25rem' }}>
-                                {v.stations.length === 0 ? (
-                                  <span className="muted" style={{ fontSize: '0.8rem' }}>
-                                    NPC / umpire-only — no player stations in v1
-                                    (Destroyer + Submarine only)
-                                  </span>
-                                ) : (
-                                  v.stations.map((s) => (
-                                    <div key={s.stationId}>
-                                      <Link to={s.path}>{s.name}</Link>
-                                      <span className="mono muted" style={{ marginLeft: 8, fontSize: '0.7rem' }}>
-                                        {s.path}
-                                      </span>
-                                    </div>
-                                  ))
-                                )}
-                              </div>
-                            </td>
-                            <td>
-                              <button
-                                type="button"
-                                disabled={busy}
-                                onClick={() =>
-                                  void run(async () => {
-                                    await api.rotateToken(gameId, token, v.unitId);
-                                  })
-                                }
-                              >
-                                Rotate token
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </section>
+              <VesselJoinLinks
+                vesselLinks={umpire.vesselLinks}
+                units={umpire.units}
+                busy={busy}
+                onRotateToken={(unitId) =>
+                  void run(async () => {
+                    await api.rotateToken(gameId, token, unitId);
+                  })
+                }
+              />
 
                 <section
                   className={`panel stack unit-edit${selectedUnit ? ` unit-edit--${editFaction.toLowerCase()}` : ''}`}
