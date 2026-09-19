@@ -4,6 +4,8 @@ import {
   SCHEMA_VERSION,
   clampSpeedToMax,
   clampSubmarineDepth,
+  defaultBeamM,
+  defaultLengthM,
   defaultMaxSpeed,
   defaultRadarSignature,
   defaultSensors,
@@ -13,9 +15,11 @@ import {
   isTwoScreenStationLayout,
   normalizeHeading,
   normalizePositionForType,
+  resolveBeamM,
   resolveCondition,
   resolveFaction,
   resolveFlightLevel,
+  resolveLengthM,
   resolveMaxSpeed,
   resolveOrderedDepth,
   resolveStartGameTimeSeconds,
@@ -89,6 +93,16 @@ function unitFromScenario(seed: Scenario['units'][number]): UnitState {
       class: identity.class,
       type: identity.type,
     }),
+    lengthM: resolveLengthM({
+      lengthM: seed.lengthM,
+      class: identity.class,
+      type: identity.type,
+    }),
+    beamM: resolveBeamM({
+      beamM: seed.beamM,
+      class: identity.class,
+      type: identity.type,
+    }),
     turnRate: resolveTurnRate({
       turnRate: seed.turnRate,
       radarSignature,
@@ -158,6 +172,16 @@ function normalizeUnit(unit: UnitState): UnitState {
     class: identity.class,
     type: identity.type,
   });
+  const lengthM = resolveLengthM({
+    lengthM: unit.lengthM,
+    class: identity.class,
+    type: identity.type,
+  });
+  const beamM = resolveBeamM({
+    beamM: unit.beamM,
+    class: identity.class,
+    type: identity.type,
+  });
   let speed = unit.speed;
   let eot = unit.eot;
   if (condition === 'sunk' || subsystems.propulsion === 'disabled') {
@@ -188,6 +212,8 @@ function normalizeUnit(unit: UnitState): UnitState {
     eot,
     radarSignature,
     maxSpeed,
+    lengthM,
+    beamM,
     turnRate: resolveTurnRate({
       turnRate: unit.turnRate,
       radarSignature,
@@ -662,9 +688,11 @@ export class GameRuntime {
         const classChanged = identity.class !== unit.class;
         unit.type = identity.type;
         unit.class = identity.class;
-        // Class change → refresh performance defaults (size / max speed / turn).
+        // Class change → refresh performance defaults (size / max speed / turn / hull dims).
         if (classChanged) {
           unit.maxSpeed = defaultMaxSpeed(identity.class);
+          unit.lengthM = defaultLengthM(identity.class);
+          unit.beamM = defaultBeamM(identity.class);
           unit.radarSignature = defaultRadarSignature(identity.class);
           unit.turnRate = resolveTurnRate({
             radarSignature: unit.radarSignature,

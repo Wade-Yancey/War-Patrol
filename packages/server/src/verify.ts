@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url';
 import { buildApp } from './app.js';
 import { runtime } from './game/runtime.js';
 import {
+  CLASS_BEAM_M,
+  CLASS_LENGTH_M,
   CLASS_MAX_SPEED_KNOTS,
   CLASS_SPEED_STEP_FRACTION,
   SUBMERGED_MAX_SPEED_KNOTS,
@@ -18,6 +20,8 @@ import {
   effectiveMaxSpeed,
   formatWallDuration,
   parseWallDuration,
+  resolveBeamM,
+  resolveLengthM,
   resolveMaxSpeed,
   periscopeSilhouetteUrl,
   silhouetteUrlForClass,
@@ -49,6 +53,10 @@ async function main() {
   check('class max Fleet Submarine 20', CLASS_MAX_SPEED_KNOTS['Fleet Submarine'] === 20);
   check('class max Fighter 320', CLASS_MAX_SPEED_KNOTS.Fighter === 320);
   check('class max Merchant 11', CLASS_MAX_SPEED_KNOTS.Merchant === 11);
+  check('class length Fletcher Destroyer 115 m', CLASS_LENGTH_M.Destroyer === 115);
+  check('class length Gato Fleet Sub 95 m', CLASS_LENGTH_M['Fleet Submarine'] === 95);
+  check('class beam Fletcher Destroyer 12 m', CLASS_BEAM_M.Destroyer === 12);
+  check('class beam Gato Fleet Sub 8.3 m', CLASS_BEAM_M['Fleet Submarine'] === 8.3);
   check(
     'resolveMaxSpeed prefers explicit',
     resolveMaxSpeed({ maxSpeed: 21, class: 'Fleet Submarine' }) === 21,
@@ -56,6 +64,22 @@ async function main() {
   check(
     'resolveMaxSpeed class default',
     resolveMaxSpeed({ class: 'Battleship' }) === 33,
+  );
+  check(
+    'resolveLengthM prefers explicit',
+    resolveLengthM({ lengthM: 95, class: 'Destroyer' }) === 95,
+  );
+  check(
+    'resolveLengthM class default',
+    resolveLengthM({ class: 'Battleship' }) === 270,
+  );
+  check(
+    'resolveBeamM prefers explicit',
+    resolveBeamM({ beamM: 8.3, class: 'Destroyer' }) === 8.3,
+  );
+  check(
+    'resolveBeamM class default',
+    resolveBeamM({ class: 'Fighter' }) === 13,
   );
   check('destroyer accelerates faster than merchant', CLASS_SPEED_STEP_FRACTION.Destroyer > CLASS_SPEED_STEP_FRACTION.Merchant);
   check(
@@ -194,6 +218,8 @@ async function main() {
   check('porter type Ship', porter.type === 'Ship');
   check('porter class Destroyer', porter.class === 'Destroyer');
   check('porter maxSpeed Fletcher 36 kn', porter.maxSpeed === 36);
+  check('porter lengthM Fletcher 115 m', porter.lengthM === 115);
+  check('porter beamM Fletcher 12 m', porter.beamM === 12);
   check('porter faction Blue', porter.faction === 'Blue');
   check('porter afloat', porter.condition === 'afloat');
   check('porter propulsion intact', (porter.subsystems as Json).propulsion === 'intact');
@@ -202,7 +228,13 @@ async function main() {
   check('gato type Submarine', gato.type === 'Submarine');
   check('gato class Fleet Submarine', gato.class === 'Fleet Submarine');
   check('gato maxSpeed Gato 21 kn', gato.maxSpeed === 21);
+  check('gato lengthM Gato 95 m', gato.lengthM === 95);
+  check('gato beamM Gato 8.3 m', gato.beamM === 8.3);
   check('demo speeds distinct', (porter.maxSpeed as number) > (gato.maxSpeed as number));
+  check(
+    'vessel view omits hull dimensions',
+    !('lengthM' in (bv.unit as Json)) && !('beamM' in (bv.unit as Json)),
+  );
   check('gato faction Red', gato.faction === 'Red');
   check('gato afloat', gato.condition === 'afloat');
   check('destroyer turnRate medium size', porter.turnRate === 7);
@@ -912,6 +944,8 @@ async function main() {
   check('merchant class patch ok', merchantPatch.status === 200);
   const asMerchant = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
   check('merchant maxSpeed class default 11', asMerchant.maxSpeed === 11);
+  check('merchant lengthM class default 135', asMerchant.lengthM === 135);
+  check('merchant beamM class default 17', asMerchant.beamM === 17);
   check('merchant type Ship', asMerchant.type === 'Ship');
 
   // Faction patch + migrate-from-side behavior is covered by seed defaults;

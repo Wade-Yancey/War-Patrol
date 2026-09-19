@@ -4,6 +4,8 @@
   "type": "Aircraft",
   "class": "Fighter",
   "maxSpeed": 320,
+  "lengthM": 10,
+  "beamM": 13,
   "turnRate": 12,
   "radarSignature": "small",
   "defaultStations": []

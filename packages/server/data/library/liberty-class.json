@@ -4,6 +4,8 @@
   "type": "Ship",
   "class": "Merchant",
   "maxSpeed": 11,
+  "lengthM": 135,
+  "beamM": 17,
   "turnRate": 7,
   "radarSignature": "medium",
   "defaultStations": [

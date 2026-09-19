@@ -170,6 +170,16 @@ export interface UnitState {
   /** Max speed knots for class (from library stub or class enum default). */
   maxSpeed: number;
   /**
+   * Overall length in meters (sim / collision — not shown on player stations).
+   * From library stub or taxonomic class default.
+   */
+  lengthM: number;
+  /**
+   * Beam (ships/subs) or wingspan (aircraft) in meters — sim / collision only.
+   * From library stub or taxonomic class default.
+   */
+  beamM: number;
+  /**
    * Steady turn rate deg per in-game minute.
    * Derived from radarSignature (size) unless scenario overrides.
    */
@@ -214,6 +224,10 @@ export interface ScenarioUnitSeed {
   stations: StationDef[];
   health?: number;
   maxSpeed?: number;
+  /** Overall length meters; omit to inherit taxonomic / library default. */
+  lengthM?: number;
+  /** Beam (or aircraft wingspan) meters; omit to inherit class default. */
+  beamM?: number;
   /** Explicit deg/min override; else from radarSignature size. */
   turnRate?: number;
   radarSignature?: RadarSignature;
@@ -318,6 +332,13 @@ export interface VesselClassStub {
   defaultFaction?: Faction;
   /** Max speed knots (historical approximation for the concrete hull). */
   maxSpeed: number;
+  /** Overall length meters (historical approximation for the concrete hull). */
+  lengthM: number;
+  /**
+   * Beam meters for ships/subs; wingspan meters for aircraft.
+   * Historical approximation for collision / combat stubs.
+   */
+  beamM: number;
   /** Steady turn rate deg per in-game minute. */
   turnRate: number;
   /** Default radar echo size for ships of this class. */

@@ -4,6 +4,8 @@
   "type": "Ship",
   "class": "Oiler",
   "maxSpeed": 18,
+  "lengthM": 169,
+  "beamM": 23,
   "turnRate": 7,
   "radarSignature": "medium",
   "defaultStations": [

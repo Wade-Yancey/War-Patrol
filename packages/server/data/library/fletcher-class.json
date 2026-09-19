@@ -4,6 +4,8 @@
   "type": "Ship",
   "class": "Destroyer",
   "maxSpeed": 36,
+  "lengthM": 115,
+  "beamM": 12,
   "turnRate": 7,
   "radarSignature": "medium",
   "sensors": [
