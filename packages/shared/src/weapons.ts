@@ -1,0 +1,717 @@
+/**
+ * Torpedo + depth-charge combat model (v1).
+ *
+ * Hit resolution is RNG with geometric gates + additive identification /
+ * solution-plot modifiers — not continuous hydrodynamic physics.
+ * See docs/simulation-physics.md in the project store.
+ */
+import {
+  KNOTS_TO_MPS,
+  METERS_PER_NM,
+  RADAR_SURFACE_DEPTH_M,
+} from './constants.js';
+import {
+  bearingRangeNm,
+  clamp,
+  eastNorthMeters,
+  moveAlongHeading,
+  normalizeHeading,
+} from './geo.js';
+import type {
+  DepthChargePattern,
+  DepthChargeTrack,
+  LatLonDepth,
+  SolutionPlotDuration,
+  TorpedoTrack,
+  UnitState,
+  WeaponDetonationEvent,
+} from './types.js';
+import { resolveBeamM, resolveLengthM } from './dimensions.js';
+
+// --- Torpedo (Mk 14–ish fleet-sub fish) ---
+
+/** High-speed setting ~46 kn. */
+export const TORPEDO_SPEED_KN = 46;
+
+/** Max run at high-speed setting (~9,000 yd ≈ 4.5 nm). */
+export const TORPEDO_MAX_RUN_NM = 4.5;
+
+/** Default run depth (m) — shallow anti-surface. */
+export const TORPEDO_DEFAULT_DEPTH_M = 3;
+
+export const TORPEDO_MIN_DEPTH_M = 1;
+export const TORPEDO_MAX_DEPTH_M = 25;
+
+/** Fleet-sub ready fish at scenario start (bow tubes only for v1). */
+export const FLEET_SUB_TORPEDO_LOAD = 6;
+
+/**
+ * Horizontal miss distance (m) inside which a hit roll is attempted.
+ * Outside this gate the fish misses geometrically (no RNG).
+ */
+export const TORPEDO_HIT_GATE_M = 90;
+
+/** Damage applied on a successful torpedo hit (health points). */
+export const TORPEDO_HIT_DAMAGE = 45;
+
+/**
+ * Aspect → base hit % (track angle off target's bow-stern axis).
+ * 90° = full beam (best); 0° = end-on (worst). Interpolate between knots.
+ */
+export const TORPEDO_ASPECT_BASE_TABLE: ReadonlyArray<{ angleDeg: number; hitPct: number }> = [
+  { angleDeg: 0, hitPct: 5 },
+  { angleDeg: 15, hitPct: 10 },
+  { angleDeg: 45, hitPct: 25 },
+  { angleDeg: 90, hitPct: 50 },
+];
+
+/** Additive % when estimated length is within tolerance of truth. */
+export const TORPEDO_MOD_LENGTH_ACCURATE_PCT = 10;
+
+/** Additive % when estimated speed is within tolerance of truth. */
+export const TORPEDO_MOD_SPEED_ACCURATE_PCT = 10;
+
+/** Additive % for half-turn solution plot commitment. */
+export const TORPEDO_MOD_PLOT_HALF_TURN_PCT = 10;
+
+/** Additive % for full-turn solution plot commitment. */
+export const TORPEDO_MOD_PLOT_FULL_TURN_PCT = 20;
+
+/**
+ * Length estimate is "accurate" when |est − truth| / truth ≤ this fraction
+ * (or absolute ≤ TORPEDO_LENGTH_ABS_TOL_M for short hulls).
+ */
+export const TORPEDO_LENGTH_REL_TOL = 0.15;
+
+/** Absolute length tolerance (m) floor — e.g. ±12 m. */
+export const TORPEDO_LENGTH_ABS_TOL_M = 12;
+
+/**
+ * Speed estimate is "accurate" when |est − truth| ≤ this many knots.
+ */
+export const TORPEDO_SPEED_ABS_TOL_KN = 2;
+
+// --- Depth charges (DD rack / thrower stub) ---
+
+/** Approximate sink rate (m/s) — ~10–15 ft/s order of magnitude. */
+export const DEPTH_CHARGE_SINK_MPS = 3.5;
+
+export const DEPTH_CHARGE_DEFAULT_DEPTH_M = 50;
+export const DEPTH_CHARGE_MIN_DEPTH_M = 15;
+export const DEPTH_CHARGE_MAX_DEPTH_M = 90;
+
+/** Fletcher-class ready rack load for demo. */
+export const DESTROYER_DEPTH_CHARGE_LOAD = 12;
+
+/**
+ * Base effect % at zero horizontal miss + perfect depth match (single charge).
+ * Pattern spreads more charges; each rolls independently.
+ */
+export const DEPTH_CHARGE_BASE_EFFECT_PCT = 55;
+
+/** Depth-match: within this many meters counts as good setting. */
+export const DEPTH_CHARGE_DEPTH_GOOD_TOL_M = 10;
+
+/** Depth-match: within this many meters still partial. */
+export const DEPTH_CHARGE_DEPTH_PARTIAL_TOL_M = 25;
+
+export const DEPTH_CHARGE_MOD_DEPTH_GOOD_PCT = 20;
+export const DEPTH_CHARGE_MOD_DEPTH_PARTIAL_PCT = 5;
+export const DEPTH_CHARGE_MOD_DEPTH_BAD_PCT = -25;
+
+/** Horizontal range bands (m) for additive range modifiers. */
+export const DEPTH_CHARGE_RANGE_CLOSE_M = 25;
+export const DEPTH_CHARGE_RANGE_MED_M = 55;
+export const DEPTH_CHARGE_RANGE_FAR_M = 90;
+
+export const DEPTH_CHARGE_MOD_RANGE_CLOSE_PCT = 15;
+export const DEPTH_CHARGE_MOD_RANGE_MED_PCT = 0;
+export const DEPTH_CHARGE_MOD_RANGE_FAR_PCT = -20;
+export const DEPTH_CHARGE_MOD_RANGE_OUT_PCT = -100;
+
+/** Pattern discipline bonus (tight diamond vs hurried single). */
+export const DEPTH_CHARGE_MOD_PATTERN: Record<DepthChargePattern, number> = {
+  single: 0,
+  pair: 5,
+  pattern_3: 8,
+  pattern_5: 10,
+};
+
+export const DEPTH_CHARGE_LETHAL_DAMAGE = 55;
+export const DEPTH_CHARGE_DAMAGE_AMOUNT = 22;
+export const DEPTH_CHARGE_STUN_DAMAGE = 8;
+
+/** Pattern → drop offsets (ahead/lateral meters relative to drop heading). */
+export const DEPTH_CHARGE_PATTERN_OFFSETS: Record<
+  DepthChargePattern,
+  ReadonlyArray<{ aheadM: number; lateralM: number }>
+> = {
+  single: [{ aheadM: -40, lateralM: 0 }],
+  pair: [
+    { aheadM: -35, lateralM: -25 },
+    { aheadM: -35, lateralM: 25 },
+  ],
+  pattern_3: [
+    { aheadM: -30, lateralM: 0 },
+    { aheadM: -55, lateralM: -40 },
+    { aheadM: -55, lateralM: 40 },
+  ],
+  pattern_5: [
+    { aheadM: -20, lateralM: 0 },
+    { aheadM: -45, lateralM: -45 },
+    { aheadM: -45, lateralM: 45 },
+    { aheadM: -70, lateralM: -25 },
+    { aheadM: -70, lateralM: 25 },
+  ],
+};
+
+// --- Lookout wake FoW ---
+
+export const TORPEDO_WAKE_DETECT_MAX_NM = 2.5;
+export const TORPEDO_WAKE_BASE_P = 0.55;
+export const TORPEDO_WAKE_BEARING_STEP_DEG = 15;
+
+// --- Acoustic range for depth-charge WAV ---
+
+export const DEPTH_CHARGE_HYDROPHONE_RANGE_NM = 12;
+export const DEPTH_CHARGE_CONTROLS_AUDIBLE_NM = 0.45;
+
+/** Substeps per turn for weapon geometry. */
+export const WEAPON_SUBSTEPS = 10;
+
+export function depthChargePatternCount(pattern: DepthChargePattern): number {
+  return DEPTH_CHARGE_PATTERN_OFFSETS[pattern]?.length ?? 1;
+}
+
+export function clampTorpedoDepth(depthM: number): number {
+  return clamp(Math.round(depthM), TORPEDO_MIN_DEPTH_M, TORPEDO_MAX_DEPTH_M);
+}
+
+export function clampDepthChargeSetting(depthM: number): number {
+  return clamp(Math.round(depthM), DEPTH_CHARGE_MIN_DEPTH_M, DEPTH_CHARGE_MAX_DEPTH_M);
+}
+
+export function normalizeDepthChargePattern(raw: unknown): DepthChargePattern {
+  if (raw === 'pair' || raw === 'pattern_3' || raw === 'pattern_5' || raw === 'single') {
+    return raw;
+  }
+  return 'single';
+}
+
+export function normalizeSolutionPlotDuration(raw: unknown): SolutionPlotDuration {
+  if (raw === 'half_turn' || raw === 'full_turn' || raw === 'none') return raw;
+  return 'none';
+}
+
+export function defaultTorpedoLoad(unit: Pick<UnitState, 'class' | 'type'>): number {
+  if (unit.class === 'Fleet Submarine' || unit.type === 'Submarine') {
+    return FLEET_SUB_TORPEDO_LOAD;
+  }
+  return 0;
+}
+
+export function defaultDepthChargeLoad(unit: Pick<UnitState, 'class' | 'type'>): number {
+  if (unit.class === 'Destroyer') return DESTROYER_DEPTH_CHARGE_LOAD;
+  return 0;
+}
+
+export function canFireTorpedo(
+  unit: Pick<UnitState, 'type' | 'class' | 'condition' | 'torpedoLoad'>,
+): boolean {
+  if (unit.condition === 'sunk') return false;
+  if (unit.type !== 'Submarine' && unit.class !== 'Fleet Submarine') return false;
+  return (unit.torpedoLoad ?? 0) > 0;
+}
+
+export function canDropDepthCharges(
+  unit: Pick<UnitState, 'type' | 'class' | 'condition' | 'depthChargeLoad'>,
+): boolean {
+  if (unit.condition === 'sunk') return false;
+  if (unit.class !== 'Destroyer') return false;
+  return (unit.depthChargeLoad ?? 0) > 0;
+}
+
+/** Deterministic 0–1 from string seed. */
+export function weaponRng01(seed: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  let x = h >>> 0;
+  x ^= x << 13;
+  x ^= x >>> 17;
+  x ^= x << 5;
+  return (x >>> 0) / 4294967296;
+}
+
+/** Smallest angle between fish track and target bow-stern axis → [0, 90]. */
+export function torpedoAspectAngleDeg(fishHeading: number, targetHeading: number): number {
+  let d = Math.abs(((fishHeading - targetHeading + 540) % 360) - 180);
+  if (d > 90) d = 180 - d;
+  return d;
+}
+
+/**
+ * Interpolate base hit % from the aspect table.
+ * Angle is track-vs-bow/stern axis in [0, 90]°.
+ */
+export function torpedoBaseHitPctFromAspect(aspectDeg: number): number {
+  const a = clamp(aspectDeg, 0, 90);
+  const table = TORPEDO_ASPECT_BASE_TABLE;
+  for (let i = 0; i < table.length - 1; i++) {
+    const lo = table[i]!;
+    const hi = table[i + 1]!;
+    if (a >= lo.angleDeg && a <= hi.angleDeg) {
+      const t = (a - lo.angleDeg) / (hi.angleDeg - lo.angleDeg || 1);
+      return lo.hitPct + t * (hi.hitPct - lo.hitPct);
+    }
+  }
+  return table[table.length - 1]!.hitPct;
+}
+
+/** True when player length estimate is within documented tolerance of truth. */
+export function isLengthAccuratelyIdentified(
+  estimatedLengthM: number,
+  trueLengthM: number,
+): boolean {
+  if (!Number.isFinite(estimatedLengthM) || estimatedLengthM <= 0) return false;
+  if (!Number.isFinite(trueLengthM) || trueLengthM <= 0) return false;
+  const err = Math.abs(estimatedLengthM - trueLengthM);
+  const tol = Math.max(TORPEDO_LENGTH_ABS_TOL_M, trueLengthM * TORPEDO_LENGTH_REL_TOL);
+  return err <= tol;
+}
+
+/** True when player speed estimate is within ±TORPEDO_SPEED_ABS_TOL_KN of |truth|. */
+export function isSpeedAccuratelyIdentified(
+  estimatedSpeedKn: number,
+  trueSpeedKn: number,
+): boolean {
+  if (!Number.isFinite(estimatedSpeedKn) || estimatedSpeedKn < 0) return false;
+  return Math.abs(estimatedSpeedKn - Math.abs(trueSpeedKn)) <= TORPEDO_SPEED_ABS_TOL_KN;
+}
+
+export function solutionPlotModifierPct(duration: SolutionPlotDuration): number {
+  switch (duration) {
+    case 'half_turn':
+      return TORPEDO_MOD_PLOT_HALF_TURN_PCT;
+    case 'full_turn':
+      return TORPEDO_MOD_PLOT_FULL_TURN_PCT;
+    default:
+      return 0;
+  }
+}
+
+export type TorpedoHitRollInput = {
+  /** Geometric miss distance at closest approach (m). */
+  missDistanceM: number;
+  fishHeading: number;
+  targetHeading: number;
+  /** True target length (sim) — never shown to players. */
+  trueLengthM: number;
+  /** True |speed| (sim). */
+  trueSpeedKn: number;
+  /** Player calculator estimate (m). */
+  estimatedLengthM: number;
+  /** Player calculator estimate (kn). */
+  estimatedSpeedKn: number;
+  solutionPlot: SolutionPlotDuration;
+  /** Fish run depth vs target keel — surface targets need shallow fish. */
+  depthOk: boolean;
+  seed: string;
+};
+
+export type TorpedoHitRollResult = {
+  hit: boolean;
+  hitPct: number;
+  basePct: number;
+  aspectDeg: number;
+  lengthAccurate: boolean;
+  speedAccurate: boolean;
+  plotModPct: number;
+  geometricMiss: boolean;
+};
+
+/**
+ * Resolve one fish vs one target: geometric gate, then aspect base + additive mods.
+ * Final hit % clamped to [0, 95] (never quite certain).
+ */
+export function resolveTorpedoHit(input: TorpedoHitRollInput): TorpedoHitRollResult {
+  const aspectDeg = torpedoAspectAngleDeg(input.fishHeading, input.targetHeading);
+  const basePct = torpedoBaseHitPctFromAspect(aspectDeg);
+  const lengthAccurate = isLengthAccuratelyIdentified(
+    input.estimatedLengthM,
+    input.trueLengthM,
+  );
+  const speedAccurate = isSpeedAccuratelyIdentified(
+    input.estimatedSpeedKn,
+    input.trueSpeedKn,
+  );
+  const plotModPct = solutionPlotModifierPct(input.solutionPlot);
+
+  if (!input.depthOk || input.missDistanceM > TORPEDO_HIT_GATE_M) {
+    return {
+      hit: false,
+      hitPct: 0,
+      basePct,
+      aspectDeg,
+      lengthAccurate,
+      speedAccurate,
+      plotModPct,
+      geometricMiss: true,
+    };
+  }
+
+  let hitPct = basePct;
+  if (lengthAccurate) hitPct += TORPEDO_MOD_LENGTH_ACCURATE_PCT;
+  if (speedAccurate) hitPct += TORPEDO_MOD_SPEED_ACCURATE_PCT;
+  hitPct += plotModPct;
+  hitPct = clamp(hitPct, 0, 95);
+
+  const roll = weaponRng01(input.seed) * 100;
+  return {
+    hit: roll < hitPct,
+    hitPct,
+    basePct,
+    aspectDeg,
+    lengthAccurate,
+    speedAccurate,
+    plotModPct,
+    geometricMiss: false,
+  };
+}
+
+export type DepthChargeEffectInput = {
+  horizontalMissM: number;
+  depthErrorM: number;
+  pattern: DepthChargePattern;
+  seed: string;
+};
+
+/**
+ * Depth-charge effect: base % + depth-match + range + pattern mods → damage band.
+ * Returns damage points (0 = no effect).
+ */
+export function resolveDepthChargeEffect(input: DepthChargeEffectInput): {
+  damage: number;
+  effectPct: number;
+} {
+  const absDepthErr = Math.abs(input.depthErrorM);
+  let depthMod = DEPTH_CHARGE_MOD_DEPTH_BAD_PCT;
+  if (absDepthErr <= DEPTH_CHARGE_DEPTH_GOOD_TOL_M) {
+    depthMod = DEPTH_CHARGE_MOD_DEPTH_GOOD_PCT;
+  } else if (absDepthErr <= DEPTH_CHARGE_DEPTH_PARTIAL_TOL_M) {
+    depthMod = DEPTH_CHARGE_MOD_DEPTH_PARTIAL_PCT;
+  }
+
+  let rangeMod = DEPTH_CHARGE_MOD_RANGE_OUT_PCT;
+  if (input.horizontalMissM <= DEPTH_CHARGE_RANGE_CLOSE_M) {
+    rangeMod = DEPTH_CHARGE_MOD_RANGE_CLOSE_PCT;
+  } else if (input.horizontalMissM <= DEPTH_CHARGE_RANGE_MED_M) {
+    rangeMod = DEPTH_CHARGE_MOD_RANGE_MED_PCT;
+  } else if (input.horizontalMissM <= DEPTH_CHARGE_RANGE_FAR_M) {
+    rangeMod = DEPTH_CHARGE_MOD_RANGE_FAR_PCT;
+  }
+
+  if (rangeMod <= -100) {
+    return { damage: 0, effectPct: 0 };
+  }
+
+  const patternMod = DEPTH_CHARGE_MOD_PATTERN[input.pattern] ?? 0;
+  const effectPct = clamp(
+    DEPTH_CHARGE_BASE_EFFECT_PCT + depthMod + rangeMod + patternMod,
+    0,
+    95,
+  );
+  const roll = weaponRng01(input.seed) * 100;
+  if (roll >= effectPct) return { damage: 0, effectPct };
+
+  // Severity from how good the geometry was (not a second RNG).
+  const quality = effectPct / 95;
+  if (quality >= 0.75 && input.horizontalMissM <= DEPTH_CHARGE_RANGE_CLOSE_M) {
+    return { damage: DEPTH_CHARGE_LETHAL_DAMAGE, effectPct };
+  }
+  if (quality >= 0.45) {
+    return { damage: DEPTH_CHARGE_DAMAGE_AMOUNT, effectPct };
+  }
+  return { damage: DEPTH_CHARGE_STUN_DAMAGE, effectPct };
+}
+
+export function coarsenWakeRelativeBearing(relDeg: number): number {
+  const step = TORPEDO_WAKE_BEARING_STEP_DEG;
+  const clamped = clamp(relDeg, -180, 180);
+  return Math.round(clamped / step) * step;
+}
+
+export function torpedoWakeDetectProbability(rangeNm: number): number {
+  if (rangeNm <= 0 || rangeNm > TORPEDO_WAKE_DETECT_MAX_NM) return 0;
+  const proximity = 1 - rangeNm / TORPEDO_WAKE_DETECT_MAX_NM;
+  return clamp(TORPEDO_WAKE_BASE_P * (0.35 + 0.65 * proximity), 0, 0.85);
+}
+
+export function offsetAlongHeading(
+  pos: LatLonDepth,
+  headingDeg: number,
+  aheadM: number,
+  lateralM: number,
+): LatLonDepth {
+  const along = moveAlongHeading(pos, headingDeg, aheadM);
+  const lateralHdg = normalizeHeading(headingDeg + 90);
+  return moveAlongHeading(along, lateralHdg, lateralM);
+}
+
+export function createTorpedoTrack(opts: {
+  id: string;
+  firerUnitId: string;
+  position: LatLonDepth;
+  heading: number;
+  runDepthM: number;
+  launchedTurn: number;
+  estimatedLengthM: number;
+  estimatedSpeedKn: number;
+  solutionPlot: SolutionPlotDuration;
+}): TorpedoTrack {
+  const launch = {
+    lat: opts.position.lat,
+    lon: opts.position.lon,
+    depth: clampTorpedoDepth(opts.runDepthM),
+  };
+  return {
+    id: opts.id,
+    firerUnitId: opts.firerUnitId,
+    launchPosition: { ...launch },
+    position: { ...launch },
+    heading: normalizeHeading(opts.heading),
+    speedKn: TORPEDO_SPEED_KN,
+    remainingRunNm: TORPEDO_MAX_RUN_NM,
+    runDepthM: clampTorpedoDepth(opts.runDepthM),
+    launchedTurn: opts.launchedTurn,
+    status: 'running',
+    estimatedLengthM: opts.estimatedLengthM,
+    estimatedSpeedKn: opts.estimatedSpeedKn,
+    solutionPlot: opts.solutionPlot,
+    path: [{ lat: launch.lat, lon: launch.lon }],
+  };
+}
+
+export function createDepthChargeTracks(opts: {
+  idPrefix: string;
+  firerUnitId: string;
+  dropPosition: LatLonDepth;
+  dropHeading: number;
+  pattern: DepthChargePattern;
+  depthSettingM: number;
+  launchedTurn: number;
+}): DepthChargeTrack[] {
+  const setting = clampDepthChargeSetting(opts.depthSettingM);
+  const offsets = DEPTH_CHARGE_PATTERN_OFFSETS[opts.pattern] ?? DEPTH_CHARGE_PATTERN_OFFSETS.single;
+  return offsets.map((off, i) => {
+    const pos = offsetAlongHeading(
+      opts.dropPosition,
+      opts.dropHeading,
+      off.aheadM,
+      off.lateralM,
+    );
+    const launch = { lat: pos.lat, lon: pos.lon, depth: 0 };
+    return {
+      id: `${opts.idPrefix}-${i}`,
+      firerUnitId: opts.firerUnitId,
+      launchPosition: { ...launch },
+      position: { ...launch },
+      depthSettingM: setting,
+      sinkRateMps: DEPTH_CHARGE_SINK_MPS,
+      status: 'sinking' as const,
+      launchedTurn: opts.launchedTurn,
+      pattern: opts.pattern,
+      path: [{ lat: launch.lat, lon: launch.lon, depth: 0 }],
+    };
+  });
+}
+
+export function advanceTorpedo(track: TorpedoTrack, dtSeconds: number): TorpedoTrack {
+  if (track.status !== 'running') return track;
+  const distanceM = track.speedKn * KNOTS_TO_MPS * dtSeconds;
+  const distanceNm = distanceM / METERS_PER_NM;
+  const remaining = track.remainingRunNm - distanceNm;
+  const launchPosition = track.launchPosition ?? {
+    lat: track.path?.[0]?.lat ?? track.position.lat,
+    lon: track.path?.[0]?.lon ?? track.position.lon,
+    depth: track.runDepthM,
+  };
+  const prevPath = track.path?.length
+    ? track.path
+    : [{ lat: launchPosition.lat, lon: launchPosition.lon }];
+
+  if (remaining <= 0) {
+    const spent = moveAlongHeading(
+      track.position,
+      track.heading,
+      Math.max(0, track.remainingRunNm) * METERS_PER_NM,
+    );
+    const end = { lat: spent.lat, lon: spent.lon };
+    return {
+      ...track,
+      launchPosition,
+      position: { ...spent, depth: track.runDepthM },
+      remainingRunNm: 0,
+      status: 'expired',
+      path: appendPathPoint(prevPath, end),
+    };
+  }
+  const next = moveAlongHeading(track.position, track.heading, distanceM);
+  const end = { lat: next.lat, lon: next.lon };
+  return {
+    ...track,
+    launchPosition,
+    position: { ...next, depth: track.runDepthM },
+    remainingRunNm: remaining,
+    path: appendPathPoint(prevPath, end),
+  };
+}
+
+function appendPathPoint(
+  path: Array<{ lat: number; lon: number }>,
+  pt: { lat: number; lon: number },
+  minStepDeg = 1e-5,
+): Array<{ lat: number; lon: number }> {
+  const last = path[path.length - 1];
+  if (
+    last &&
+    Math.abs(last.lat - pt.lat) < minStepDeg &&
+    Math.abs(last.lon - pt.lon) < minStepDeg
+  ) {
+    return path;
+  }
+  // Cap path length for save size (keep launch + evenly spaced + tip).
+  const next = [...path, pt];
+  if (next.length <= 48) return next;
+  const launch = next[0]!;
+  const tip = next[next.length - 1]!;
+  const mid = next.slice(1, -1);
+  const stride = Math.ceil(mid.length / 40);
+  const sampled = mid.filter((_, i) => i % stride === 0);
+  return [launch, ...sampled, tip];
+}
+
+export function advanceDepthCharge(
+  track: DepthChargeTrack,
+  dtSeconds: number,
+): DepthChargeTrack {
+  if (track.status !== 'sinking') return track;
+  const launchPosition = track.launchPosition ?? {
+    lat: track.position.lat,
+    lon: track.position.lon,
+    depth: 0,
+  };
+  const prevPath = track.path?.length
+    ? track.path
+    : [{ lat: launchPosition.lat, lon: launchPosition.lon, depth: 0 }];
+  const nextDepth = track.position.depth + track.sinkRateMps * dtSeconds;
+  if (nextDepth >= track.depthSettingM) {
+    const end = {
+      lat: track.position.lat,
+      lon: track.position.lon,
+      depth: track.depthSettingM,
+    };
+    return {
+      ...track,
+      launchPosition,
+      position: { ...track.position, depth: track.depthSettingM },
+      status: 'detonated',
+      detonatedAtDepthM: track.depthSettingM,
+      path: [...prevPath, end].slice(-8),
+    };
+  }
+  const mid = {
+    lat: track.position.lat,
+    lon: track.position.lon,
+    depth: nextDepth,
+  };
+  // Only append when depth moved meaningfully (horizontal is fixed).
+  const last = prevPath[prevPath.length - 1];
+  const path =
+    last && Math.abs(last.depth - nextDepth) < 2 ? prevPath : [...prevPath, mid].slice(-8);
+  return {
+    ...track,
+    launchPosition,
+    position: { ...track.position, depth: nextDepth },
+    path,
+  };
+}
+
+export function horizontalMissMeters(
+  from: Pick<LatLonDepth, 'lat' | 'lon'>,
+  to: Pick<LatLonDepth, 'lat' | 'lon'>,
+): number {
+  const { east, north } = eastNorthMeters(from, to);
+  return Math.hypot(east, north);
+}
+
+export function segmentClosestMissM(
+  from: LatLonDepth,
+  to: LatLonDepth,
+  target: Pick<LatLonDepth, 'lat' | 'lon'>,
+): number {
+  const { east: te, north: tn } = eastNorthMeters(from, target);
+  const { east: se, north: sn } = eastNorthMeters(from, to);
+  const segLen2 = se * se + sn * sn;
+  if (segLen2 < 1e-6) return Math.hypot(te, tn);
+  let t = (te * se + tn * sn) / segLen2;
+  t = clamp(t, 0, 1);
+  return Math.hypot(te - se * t, tn - sn * t);
+}
+
+export function isTorpedoTarget(unit: UnitState): boolean {
+  if (unit.condition === 'sunk') return false;
+  if (unit.type === 'Aircraft') return false;
+  if (unit.type === 'Submarine' && unit.position.depth > RADAR_SURFACE_DEPTH_M) {
+    return false;
+  }
+  return true;
+}
+
+export function isDepthChargeTarget(unit: UnitState): boolean {
+  if (unit.condition === 'sunk') return false;
+  if (unit.type !== 'Submarine') return false;
+  return unit.position.depth > RADAR_SURFACE_DEPTH_M;
+}
+
+export function applyHealthDamage(unit: UnitState, damage: number): UnitState {
+  if (damage <= 0 || unit.condition === 'sunk') return unit;
+  const health = Math.max(0, unit.health - damage);
+  if (health <= 0) {
+    return {
+      ...unit,
+      health: 0,
+      condition: 'sunk',
+      speed: 0,
+      eot: 'stop',
+      activeSonarEnabled: false,
+    };
+  }
+  return { ...unit, health };
+}
+
+export function unitLengthBeam(unit: UnitState): { lengthM: number; beamM: number } {
+  return {
+    lengthM: resolveLengthM({ lengthM: unit.lengthM, class: unit.class, type: unit.type }),
+    beamM: resolveBeamM({ beamM: unit.beamM, class: unit.class, type: unit.type }),
+  };
+}
+
+export function makeDetonationEvent(opts: {
+  id: string;
+  position: LatLonDepth;
+  turnNumber: number;
+  firerUnitId: string;
+}): WeaponDetonationEvent {
+  return {
+    id: opts.id,
+    kind: 'depth_charge',
+    position: { ...opts.position },
+    turnNumber: opts.turnNumber,
+    firerUnitId: opts.firerUnitId,
+  };
+}
+
+export { bearingRangeNm };

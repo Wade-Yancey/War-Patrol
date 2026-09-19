@@ -1821,6 +1821,43 @@ label {
   font-size: 0.8rem;
 }
 
+.weapons-plot-fieldset {
+  border: 1px solid var(--border, #1a4a28);
+  padding: 0.55rem 0.65rem 0.7rem;
+  margin: 0;
+}
+
+.weapons-plot-fieldset legend {
+  padding: 0 0.35rem;
+  color: var(--muted, #5a9a68);
+  font-size: 0.8rem;
+}
+
+.weapons-plot-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.weapons-plot-row button {
+  flex: 1 1 auto;
+  min-width: 5.5rem;
+  min-height: 2.5rem;
+  font-size: 0.8rem;
+}
+
+.weapons-track-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.wake-cues {
+  margin-top: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px dashed var(--border, #1a4a28);
+}
+
 /* Dive presets — large touch targets */
 .dive-controls {
   display: flex;

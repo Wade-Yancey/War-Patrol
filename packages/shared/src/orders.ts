@@ -2,11 +2,15 @@ import { EOT_LABELS } from './eot.js';
 import type { UnitOrders, UnitState } from './types.js';
 import { isV1PlayerUnit } from './vessel.js';
 
-/** True when the unit has filed helm, EOT, and/or depth for the current turn. */
+/** True when the unit has filed helm, EOT, depth, and/or weapons for the current turn. */
 export function hasPendingOrders(orders: UnitOrders | undefined | null): boolean {
   if (!orders) return false;
   return (
-    orders.course !== undefined || orders.eot !== undefined || orders.depth !== undefined
+    orders.course !== undefined ||
+    orders.eot !== undefined ||
+    orders.depth !== undefined ||
+    orders.fireTorpedo !== undefined ||
+    orders.dropDepthCharges !== undefined
   );
 }
 
@@ -21,6 +25,32 @@ export function formatDepthMeters(depthM: number): string {
   return `${String(Math.round(depthM)).padStart(3, '0')} m`;
 }
 
+function formatTorpedoOrderSummary(
+  fire: NonNullable<UnitOrders['fireTorpedo']>,
+): string {
+  const plot =
+    fire.solutionPlot === 'full_turn'
+      ? 'PLOT 1T'
+      : fire.solutionPlot === 'half_turn'
+        ? 'PLOT ½T'
+        : 'PLOT —';
+  return `TORP ${formatCourseDegrees(fire.aimHeading)} · D${Math.round(fire.runDepthM)}m · L${Math.round(fire.estimatedLengthM)}m · ${Math.round(fire.estimatedSpeedKn)}kn · ${plot}`;
+}
+
+function formatDepthChargeOrderSummary(
+  drop: NonNullable<UnitOrders['dropDepthCharges']>,
+): string {
+  const pat =
+    drop.pattern === 'pattern_5'
+      ? 'P5'
+      : drop.pattern === 'pattern_3'
+        ? 'P3'
+        : drop.pattern === 'pair'
+          ? 'PAIR'
+          : '1';
+  return `DC ${pat} · SET ${formatDepthMeters(drop.depthSettingM)}`;
+}
+
 /**
  * Compact of-record summary for a unit's in-progress orders.
  * Missing halves show as `—` so the umpire sees partial submissions.
@@ -32,6 +62,12 @@ export function formatPendingOrdersSummary(orders: UnitOrders | undefined | null
   parts.push(orders!.eot ? EOT_LABELS[orders!.eot] : 'EOT —');
   if (orders!.depth !== undefined) {
     parts.push(`DPT ${formatDepthMeters(orders!.depth)}`);
+  }
+  if (orders!.fireTorpedo) {
+    parts.push(formatTorpedoOrderSummary(orders!.fireTorpedo));
+  }
+  if (orders!.dropDepthCharges) {
+    parts.push(formatDepthChargeOrderSummary(orders!.dropDepthCharges));
   }
   return parts.join(' · ');
 }

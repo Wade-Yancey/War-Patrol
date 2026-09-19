@@ -71,7 +71,26 @@ export const api = {
     }),
   deleteScenario: (scenarioId: string) =>
     request<{ ok: boolean }>(`/api/scenarios/${scenarioId}`, { method: 'DELETE' }),
-  orders: (gameId: string, token: string, body: { course?: number; eot?: EotSetting; depth?: number }) =>
+  orders: (
+    gameId: string,
+    token: string,
+    body: {
+      course?: number;
+      eot?: EotSetting;
+      depth?: number;
+      fireTorpedo?: {
+        aimHeading: number;
+        runDepthM: number;
+        estimatedLengthM: number;
+        estimatedSpeedKn: number;
+        solutionPlot: 'none' | 'half_turn' | 'full_turn';
+      } | null;
+      dropDepthCharges?: {
+        pattern: 'single' | 'pair' | 'pattern_3' | 'pattern_5';
+        depthSettingM: number;
+      } | null;
+    },
+  ) =>
     request<{ ok: boolean; stateVersion: number }>(`/api/games/${gameId}/orders`, {
       method: 'POST',
       token,

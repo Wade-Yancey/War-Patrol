@@ -2,31 +2,52 @@ import {
   KNOTS_TO_MPS,
   canMakeWay,
   clamp,
+  clampDepthChargeSetting,
   clampSpeedToMax,
   clampSubmarineDepth,
+  clampTorpedoDepth,
   effectiveMaxSpeed,
   moveAlongHeading,
+  normalizeDepthChargePattern,
   normalizeHeading,
   normalizePositionForType,
+  normalizeSolutionPlotDuration,
   resolveOrderedDepth,
   resolveSpeedStepFraction,
   resolveTurnLengthSeconds,
   stepSpeedTowardTarget,
   targetSpeedForUnit,
+  type DepthChargeDropOrder,
   type EotSetting,
   type GameSave,
+  type TorpedoFireOrder,
   type TurnSnapshot,
   type UnitOrders,
   type UnitState,
 } from '@war-patrol/shared';
+import { resolveWeaponsForTurn } from './weaponsResolve.js';
 
-/** Apply simultaneous helm/EOT/depth orders and advance unit kinematics (resolve stub). */
+/** Apply simultaneous helm/EOT/depth/weapons orders and advance kinematics + tracks. */
 export function resolveTurn(save: GameSave): GameSave {
   const now = new Date().toISOString();
   const turnLength = resolveTurnLengthSeconds(save.turnLengthSeconds);
   const gameTimeSeconds = (save.turn.gameTimeSeconds ?? 0) + turnLength;
+  const resolveTurnNumber = save.turn.number;
 
-  const resolvedUnits = save.units.map((unit) => applyUnitOrders(unit, turnLength));
+  // Kinematics first (orders still present for weapon launch snapshot).
+  const movedUnits = save.units.map((unit) => applyUnitOrders(unit, turnLength, false));
+
+  const weapons = resolveWeaponsForTurn(
+    movedUnits,
+    save.torpedoes ?? [],
+    save.depthCharges ?? [],
+    save.recentDetonations ?? [],
+    resolveTurnNumber,
+    turnLength,
+  );
+
+  // Clear remaining helm/EOT/depth orders after weapons consumed fire/drop fields.
+  const resolvedUnits = weapons.units.map((u) => ({ ...u, orders: {} as UnitOrders }));
 
   const nextTurnState = {
     number: save.turn.number + 1,
@@ -56,6 +77,9 @@ export function resolveTurn(save: GameSave): GameSave {
     stateVersion: save.stateVersion + 1,
     turnLengthSeconds: turnLength,
     units: resolvedUnits,
+    torpedoes: weapons.torpedoes,
+    depthCharges: weapons.depthCharges,
+    recentDetonations: weapons.recentDetonations,
     turn: nextTurnState,
     history: [...save.history, snapshot],
   };
@@ -63,14 +87,22 @@ export function resolveTurn(save: GameSave): GameSave {
   return next;
 }
 
-function applyUnitOrders(unit: UnitState, turnLengthSeconds: number): UnitState {
+/**
+ * Apply helm/EOT/depth kinematics.
+ * When `clearOrders` is false, weapon order fields are preserved for launch this resolve.
+ */
+function applyUnitOrders(
+  unit: UnitState,
+  turnLengthSeconds: number,
+  clearOrders = true,
+): UnitState {
   // Sunk / destroyed or dead propulsion: no way — clear motion, ignore orders kinematics.
   if (!canMakeWay(unit)) {
     return {
       ...unit,
       speed: 0,
       eot: 'stop',
-      orders: {},
+      orders: clearOrders ? {} : preserveWeaponOrders(unit.orders),
     };
   }
 
@@ -131,6 +163,8 @@ function applyUnitOrders(unit: UnitState, turnLengthSeconds: number): UnitState 
   const moveHeading = speed >= 0 ? heading : normalizeHeading(heading + 180);
   position = distance > 0 ? moveAlongHeading(position, moveHeading, distance) : position;
 
+  const nextOrders = clearOrders ? {} : preserveWeaponOrders(orders);
+
   return {
     ...unit,
     heading: normalizeHeading(heading),
@@ -139,8 +173,15 @@ function applyUnitOrders(unit: UnitState, turnLengthSeconds: number): UnitState 
     eot,
     speed,
     position,
-    orders: {},
+    orders: nextOrders,
   };
+}
+
+function preserveWeaponOrders(orders: UnitOrders): UnitOrders {
+  const next: UnitOrders = {};
+  if (orders.fireTorpedo) next.fireTorpedo = { ...orders.fireTorpedo };
+  if (orders.dropDepthCharges) next.dropDepthCharges = { ...orders.dropDepthCharges };
+  return next;
 }
 
 function turnToward(current: number, desired: number, maxDelta: number): number {
@@ -157,12 +198,20 @@ export function clearInProgressOrders(units: UnitState[]): UnitState[] {
   return units.map((u) => ({ ...u, orders: {} as UnitOrders }));
 }
 
+export type OrdersPatch = {
+  course?: number;
+  eot?: EotSetting;
+  depth?: number;
+  fireTorpedo?: TorpedoFireOrder | null;
+  dropDepthCharges?: DepthChargeDropOrder | null;
+};
+
 export function mergeOrders(
   existing: UnitOrders,
-  patch: { course?: number; eot?: EotSetting; depth?: number },
+  patch: OrdersPatch,
   stationId: string,
 ): UnitOrders {
-  return {
+  const next: UnitOrders = {
     ...existing,
     ...(patch.course !== undefined ? { course: normalizeHeading(patch.course) } : {}),
     ...(patch.eot !== undefined ? { eot: patch.eot } : {}),
@@ -170,6 +219,26 @@ export function mergeOrders(
     updatedAt: new Date().toISOString(),
     updatedByStationId: stationId,
   };
+  if (patch.fireTorpedo === null) {
+    delete next.fireTorpedo;
+  } else if (patch.fireTorpedo) {
+    next.fireTorpedo = {
+      aimHeading: normalizeHeading(patch.fireTorpedo.aimHeading),
+      runDepthM: clampTorpedoDepth(patch.fireTorpedo.runDepthM),
+      estimatedLengthM: Math.max(0, Number(patch.fireTorpedo.estimatedLengthM) || 0),
+      estimatedSpeedKn: Math.max(0, Number(patch.fireTorpedo.estimatedSpeedKn) || 0),
+      solutionPlot: normalizeSolutionPlotDuration(patch.fireTorpedo.solutionPlot),
+    };
+  }
+  if (patch.dropDepthCharges === null) {
+    delete next.dropDepthCharges;
+  } else if (patch.dropDepthCharges) {
+    next.dropDepthCharges = {
+      pattern: normalizeDepthChargePattern(patch.dropDepthCharges.pattern),
+      depthSettingM: clampDepthChargeSetting(patch.dropDepthCharges.depthSettingM),
+    };
+  }
+  return next;
 }
 
 export function setTimerDeadline(seconds: number, from = Date.now()): string {

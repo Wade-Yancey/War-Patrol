@@ -340,6 +340,8 @@ export function UmpirePage() {
                 area={umpire.operatingArea}
                 units={umpire.units}
                 trails={umpire.trails}
+                torpedoes={umpire.torpedoes}
+                depthCharges={umpire.depthCharges}
               />
             </section>
 

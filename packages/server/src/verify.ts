@@ -1323,6 +1323,139 @@ async function main() {
     : [];
   check('scenario removed from list', !scList2.some((s) => s.id === tempId));
 
+  // --- Weapons: scenarios + torpedo fire + DC drop + umpire GT tracks ---
+  {
+    const {
+      torpedoBaseHitPctFromAspect,
+      isLengthAccuratelyIdentified,
+      isSpeedAccuratelyIdentified,
+      resolveTorpedoHit,
+    } = await import('@war-patrol/shared');
+    check('aspect 90° base 50%', Math.abs(torpedoBaseHitPctFromAspect(90) - 50) < 0.01);
+    check('aspect 45° base 25%', Math.abs(torpedoBaseHitPctFromAspect(45) - 25) < 0.01);
+    check('aspect 15° base 10%', Math.abs(torpedoBaseHitPctFromAspect(15) - 10) < 0.01);
+    check('aspect 0° base 5%', Math.abs(torpedoBaseHitPctFromAspect(0) - 5) < 0.01);
+    check(
+      'aspect 30° interpolated',
+      Math.abs(torpedoBaseHitPctFromAspect(30) - 17.5) < 0.01,
+    );
+    check('length ID within 15%', isLengthAccuratelyIdentified(115, 115));
+    check('length ID rejects bad', !isLengthAccuratelyIdentified(50, 115));
+    check('speed ID within 2 kn', isSpeedAccuratelyIdentified(14, 14.5));
+    check('speed ID rejects bad', !isSpeedAccuratelyIdentified(5, 14));
+    const roll = resolveTorpedoHit({
+      missDistanceM: 5,
+      fishHeading: 0,
+      targetHeading: 90,
+      trueLengthM: 115,
+      trueSpeedKn: 14,
+      estimatedLengthM: 115,
+      estimatedSpeedKn: 14,
+      solutionPlot: 'full_turn',
+      depthOk: true,
+      seed: 'verify-aspect-beam',
+    });
+    check('beam shot base ~50', Math.abs(roll.basePct - 50) < 0.01);
+    check('beam + mods hitPct', roll.hitPct === 90); // 50+10+10+20
+    check('not geometric miss', roll.geometricMiss === false);
+
+    const scAll = await api('GET', '/api/scenarios');
+    const scArr = Array.isArray(scAll.json)
+      ? (scAll.json as unknown as Array<{ id: string; name: string }>)
+      : [];
+    check(
+      'depth-charge-audio-test scenario listed',
+      scArr.some((s) => s.id === 'depth-charge-audio-test'),
+    );
+    check(
+      'torpedo-fire-test scenario listed',
+      scArr.some((s) => s.id === 'torpedo-fire-test'),
+    );
+
+    const torpGame = await api('POST', '/api/games', {
+      scenarioId: 'torpedo-fire-test',
+      name: 'Verify Torpedo',
+    });
+    check('torpedo scenario create', torpGame.status === 200);
+    const torpId = String(torpGame.json.gameId);
+    const torpUmp = await api('POST', `/api/games/${torpId}/auth/umpire`, { password: 'umpire' });
+    const torpUTok = String(torpUmp.json.token);
+    const torpSub = await api('POST', `/api/games/${torpId}/auth/vessel`, {
+      accessToken: 'gato-demo',
+      password: 'red',
+      stationId: 'controls',
+    });
+    const torpTok = String(torpSub.json.token);
+    const fire = await api('POST', `/api/games/${torpId}/orders`, {
+      fireTorpedo: {
+        aimHeading: 0,
+        runDepthM: 3,
+        estimatedLengthM: 115,
+        estimatedSpeedKn: 14,
+        solutionPlot: 'full_turn',
+      },
+    }, torpTok);
+    check('queue torpedo fire', fire.status === 200);
+    await api('POST', `/api/games/${torpId}/turn/lock`, {}, torpUTok);
+    const torpRes = await api('POST', `/api/games/${torpId}/turn/resolve`, {}, torpUTok);
+    check('resolve torpedo turn', torpRes.status === 200);
+    const torpView = await api('GET', `/api/games/${torpId}/view`, undefined, torpUTok);
+    const uv = torpView.json.view as {
+      torpedoes?: Array<{ status: string; path?: unknown[]; launchPosition?: unknown }>;
+    };
+    const fish = uv.torpedoes ?? [];
+    check('umpire has torpedo tracks', fish.length >= 1);
+    check(
+      'torpedo has launch + path',
+      Boolean(fish[0]?.launchPosition) && Array.isArray(fish[0]?.path) && (fish[0]!.path!.length >= 1),
+    );
+    await api('DELETE', `/api/saves/${torpId}`);
+
+    const dcGame = await api('POST', '/api/games', {
+      scenarioId: 'depth-charge-audio-test',
+      name: 'Verify DC',
+    });
+    check('dc scenario create', dcGame.status === 200);
+    const dcId = String(dcGame.json.gameId);
+    const dcUmp = await api('POST', `/api/games/${dcId}/auth/umpire`, { password: 'umpire' });
+    const dcUTok = String(dcUmp.json.token);
+    const dcDd = await api('POST', `/api/games/${dcId}/auth/vessel`, {
+      accessToken: 'porter-demo',
+      password: 'blue',
+      stationId: 'controls',
+    });
+    const dcTok = String(dcDd.json.token);
+    const drop = await api(
+      'POST',
+      `/api/games/${dcId}/orders`,
+      { dropDepthCharges: { pattern: 'pattern_3', depthSettingM: 50 } },
+      dcTok,
+    );
+    check('queue depth charges', drop.status === 200);
+    await api('POST', `/api/games/${dcId}/turn/lock`, {}, dcUTok);
+    // May need multiple resolves for sink — force short path by resolving once then checking tracks
+    const dcRes = await api('POST', `/api/games/${dcId}/turn/resolve`, {}, dcUTok);
+    check('resolve dc turn', dcRes.status === 200);
+    const dcView = await api('GET', `/api/games/${dcId}/view`, undefined, dcUTok);
+    const dcv = dcView.json.view as {
+      depthCharges?: Array<{ status: string; launchPosition?: unknown; path?: unknown[] }>;
+      recentDetonations?: unknown[];
+    };
+    const charges = dcv.depthCharges ?? [];
+    check('umpire has depth-charge tracks', charges.length >= 1);
+    check(
+      'dc has launch origin',
+      Boolean(charges[0]?.launchPosition),
+    );
+    // Sink rate 3.5 m/s × 300 s >> 50 m — should detonate same turn
+    check(
+      'dc detonated or spent same turn',
+      charges.some((c) => c.status === 'spent' || c.status === 'detonated') ||
+        (dcv.recentDetonations?.length ?? 0) > 0,
+    );
+    await api('DELETE', `/api/saves/${dcId}`);
+  }
+
   // Ground-truth multi-turn stability (separate game; cleans up its save)
   const { runStabilityCheck } = await import('./stabilityCheck.js');
   const stab = await runStabilityCheck(base);
