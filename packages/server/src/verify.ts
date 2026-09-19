@@ -1229,6 +1229,34 @@ async function main() {
     : [];
   check('delete removed from list', !saveList.some((s) => s.id === gameId));
 
+  // Delete all saves — wipe remaining disk saves + unload memory
+  const extraA = await api('POST', '/api/games', { scenarioId: 'destroyer-sub-demo', name: 'Wipe A' });
+  const extraB = await api('POST', '/api/games', { scenarioId: 'destroyer-sub-demo', name: 'Wipe B' });
+  check('delete-all seed A', extraA.status === 200 && typeof extraA.json.gameId === 'string');
+  check('delete-all seed B', extraB.status === 200 && typeof extraB.json.gameId === 'string');
+  const wipeIdA = String(extraA.json.gameId);
+  const wipeIdB = String(extraB.json.gameId);
+  const wiped = await api('DELETE', '/api/saves');
+  check(
+    'delete all saves',
+    wiped.status === 200 &&
+      wiped.json.ok === true &&
+      typeof wiped.json.deleted === 'number' &&
+      (wiped.json.deleted as number) >= 2,
+  );
+  check('delete all unloaded A', runtime.getGame(wipeIdA) === undefined);
+  check('delete all unloaded B', runtime.getGame(wipeIdB) === undefined);
+  const savesWiped = await api('GET', '/api/saves');
+  const wipedList = Array.isArray(savesWiped.json)
+    ? (savesWiped.json as unknown as Array<{ id: string }>)
+    : [];
+  check('delete all emptied list', wipedList.length === 0);
+  const wipeEmpty = await api('DELETE', '/api/saves');
+  check(
+    'delete all idempotent empty',
+    wipeEmpty.status === 200 && wipeEmpty.json.ok === true && wipeEmpty.json.deleted === 0,
+  );
+
   // Disposable scenario delete (do not remove destroyer-sub-demo)
   const { writeScenario, deleteScenarioFile, loadScenario } = await import('./store/fileStore.js');
   const tempId = `verify-temp-${Date.now()}`;

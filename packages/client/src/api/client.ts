@@ -65,6 +65,10 @@ export const api = {
     request<{ ok: boolean; deletedFile: boolean; unloaded: boolean }>(`/api/saves/${saveId}`, {
       method: 'DELETE',
     }),
+  deleteAllSaves: () =>
+    request<{ ok: boolean; deleted: number; unloaded: number }>('/api/saves', {
+      method: 'DELETE',
+    }),
   deleteScenario: (scenarioId: string) =>
     request<{ ok: boolean }>(`/api/scenarios/${scenarioId}`, { method: 'DELETE' }),
   orders: (gameId: string, token: string, body: { course?: number; eot?: EotSetting; depth?: number }) =>

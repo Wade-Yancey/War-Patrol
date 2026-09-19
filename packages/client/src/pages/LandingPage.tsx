@@ -17,6 +17,7 @@ type SaveRow = { id: string; name: string; updatedAt: string };
 
 type PendingDelete =
   | { kind: 'save'; id: string; name: string }
+  | { kind: 'all-saves'; count: number }
   | { kind: 'scenario'; id: string; name: string };
 
 export function LandingPage() {
@@ -90,6 +91,8 @@ export function LandingPage() {
     try {
       if (pendingDelete.kind === 'save') {
         await api.deleteSave(pendingDelete.id);
+      } else if (pendingDelete.kind === 'all-saves') {
+        await api.deleteAllSaves();
       } else {
         await api.deleteScenario(pendingDelete.id);
       }
@@ -101,6 +104,22 @@ export function LandingPage() {
       setBusy(false);
     }
   };
+
+  const deleteConfirmTitle =
+    pendingDelete?.kind === 'save'
+      ? `Delete save · ${pendingDelete.name}`
+      : pendingDelete?.kind === 'all-saves'
+        ? `Delete all saves · ${pendingDelete.count}`
+        : pendingDelete?.kind === 'scenario'
+          ? `Delete scenario · ${pendingDelete.name}`
+          : '';
+
+  const deleteConfirmLabel =
+    pendingDelete?.kind === 'save'
+      ? 'Delete save'
+      : pendingDelete?.kind === 'all-saves'
+        ? 'Delete all saves'
+        : 'Delete scenario';
 
   return (
     <CrtShell>
@@ -121,17 +140,24 @@ export function LandingPage() {
         {pendingDelete && (
           <div style={{ marginBottom: '1rem' }}>
             <ConfirmAction
-              title={
-                pendingDelete.kind === 'save'
-                  ? `Delete save · ${pendingDelete.name}`
-                  : `Delete scenario · ${pendingDelete.name}`
-              }
+              title={deleteConfirmTitle}
               warning={
                 pendingDelete.kind === 'save' ? (
                   <>
                     <p>
                       This permanently removes the save file from disk and unloads it from memory if
                       active. Open sessions for that game will disconnect.
+                    </p>
+                    <p>
+                      <strong>This cannot be undone.</strong>
+                    </p>
+                  </>
+                ) : pendingDelete.kind === 'all-saves' ? (
+                  <>
+                    <p>
+                      This permanently removes <strong>all {pendingDelete.count}</strong> save file
+                      {pendingDelete.count === 1 ? '' : 's'} from disk and unloads any matching games
+                      from memory. Open sessions for those games will disconnect.
                     </p>
                     <p>
                       <strong>This cannot be undone.</strong>
@@ -150,9 +176,13 @@ export function LandingPage() {
                   </>
                 )
               }
-              confirmTokens={['DELETE']}
-              confirmHint='Type DELETE to confirm'
-              confirmLabel={pendingDelete.kind === 'save' ? 'Delete save' : 'Delete scenario'}
+              confirmTokens={pendingDelete.kind === 'all-saves' ? ['DELETE ALL'] : ['DELETE']}
+              confirmHint={
+                pendingDelete.kind === 'all-saves'
+                  ? 'Type DELETE ALL to confirm'
+                  : 'Type DELETE to confirm'
+              }
+              confirmLabel={deleteConfirmLabel}
               busy={busy}
               onCancel={() => setPendingDelete(null)}
               onConfirm={() => void runDelete()}
@@ -250,38 +280,48 @@ export function LandingPage() {
             {saves.length === 0 ? (
               <p className="muted">No saves on disk yet.</p>
             ) : (
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Updated</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {saves.map((s) => (
-                    <tr key={s.id}>
-                      <td>{s.name}</td>
-                      <td className="mono muted">{new Date(s.updatedAt).toLocaleString()}</td>
-                      <td>
-                        <div className="row" style={{ gap: '0.35rem', flexWrap: 'wrap' }}>
-                          <button type="button" disabled={busy} onClick={() => void loadSave(s.id)}>
-                            Load
-                          </button>
-                          <button
-                            type="button"
-                            className="danger"
-                            disabled={busy || pendingDelete !== null}
-                            onClick={() => setPendingDelete({ kind: 'save', id: s.id, name: s.name })}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
+              <>
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Updated</th>
+                      <th />
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {saves.map((s) => (
+                      <tr key={s.id}>
+                        <td>{s.name}</td>
+                        <td className="mono muted">{new Date(s.updatedAt).toLocaleString()}</td>
+                        <td>
+                          <div className="row" style={{ gap: '0.35rem', flexWrap: 'wrap' }}>
+                            <button type="button" disabled={busy} onClick={() => void loadSave(s.id)}>
+                              Load
+                            </button>
+                            <button
+                              type="button"
+                              className="danger"
+                              disabled={busy || pendingDelete !== null}
+                              onClick={() => setPendingDelete({ kind: 'save', id: s.id, name: s.name })}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <button
+                  type="button"
+                  className="danger"
+                  disabled={busy || pendingDelete !== null}
+                  onClick={() => setPendingDelete({ kind: 'all-saves', count: saves.length })}
+                >
+                  Delete all saves
+                </button>
+              </>
             )}
             <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
               Demo vessel links use passwords <span className="mono">blue</span> /{' '}

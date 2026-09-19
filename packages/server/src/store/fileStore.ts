@@ -116,6 +116,18 @@ export async function deleteSaveFile(id: string): Promise<boolean> {
   return true;
 }
 
+/** Remove every save JSON file from disk. Returns how many files were deleted. */
+export async function deleteAllSaveFiles(): Promise<number> {
+  await ensureDirs();
+  const files = (await readdir(savesDir())).filter((f) => f.endsWith('.json'));
+  let deleted = 0;
+  for (const file of files) {
+    await unlink(path.join(savesDir(), file));
+    deleted += 1;
+  }
+  return deleted;
+}
+
 /** Remove a scenario JSON file from disk. Returns false if missing. */
 export async function deleteScenarioFile(id: string): Promise<boolean> {
   await ensureDirs();
