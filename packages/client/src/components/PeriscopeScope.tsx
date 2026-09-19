@@ -1,7 +1,12 @@
 import { memo, useMemo, useState } from 'react';
-import { periscopeSilhouetteScale, type PeriscopeContact } from '@war-patrol/shared';
-/** Vite-bundled PNG (alpha) — guaranteed in the client graph (not a fragile public-path string). */
+import {
+  periscopeSilhouetteScale,
+  type HullClass,
+  type PeriscopeContact,
+} from '@war-patrol/shared';
+/** Vite-bundled PNGs (alpha) — guaranteed in the client graph (not fragile public-path strings). */
 import destroyerSilhouettePng from '../assets/silhouettes/destroyer.png';
+import submarineSilhouettePng from '../assets/silhouettes/submarine.png';
 
 interface Props {
   contacts: PeriscopeContact[];
@@ -13,6 +18,30 @@ interface Props {
    * Only affects operator-facing labels in the optics CRT.
    */
   variant?: 'periscope' | 'lookout';
+}
+
+/** Intrinsic pixel size for the plate `<img>` (matches source PNG). */
+const SILHOUETTE_SIZE: Record<string, { width: number; height: number }> = {
+  Destroyer: { width: 349, height: 79 },
+  'Fleet Submarine': { width: 350, height: 55 },
+};
+
+/**
+ * Class → Vite-bundled plate. Mirrors `silhouetteUrlForClass` in shared
+ * (public `/silhouettes/*.png` for verify; bundled import for the CRT).
+ */
+function silhouetteSrcForClass(hullClass: HullClass | string | undefined): string {
+  switch (hullClass) {
+    case 'Fleet Submarine':
+      return submarineSilhouettePng;
+    case 'Destroyer':
+    default:
+      return destroyerSilhouettePng;
+  }
+}
+
+function silhouetteAlt(hullClass: HullClass | string | undefined): string {
+  return hullClass === 'Fleet Submarine' ? 'Submarine silhouette' : 'Destroyer silhouette';
 }
 
 function formatRelBearing(rel: number): string {
@@ -27,11 +56,13 @@ function contactsKey(contacts: PeriscopeContact[]): string {
 }
 
 /**
- * Shared visual optics CRT — destroyer PNG with alpha (left) + anonymous Contact N list (right).
+ * Shared visual optics CRT — class-mapped silhouette PNG with alpha (left) +
+ * anonymous Contact N list (right).
  *
- * Used for fleet-sub periscope and surface-ship lookout. Image path is intentionally dumb:
- * one Vite-imported PNG, one `<img>`, no class-map gate, no CSS filters on the plate.
- * A subtle CRT grain/scanline overlay sits above the optics without hiding alpha.
+ * Used for fleet-sub periscope and surface-ship lookout. Destroyer / ship
+ * contacts → `destroyer.png`; Fleet Submarine contacts → `submarine.png`.
+ * Unknown classes fall back to the destroyer plate. CRT grain/scanline overlay
+ * sits above the optics without hiding alpha.
  */
 function PeriscopeScopeInner({
   contacts,
@@ -65,6 +96,10 @@ function PeriscopeScopeInner({
   const viewportLabel =
     variant === 'lookout' ? 'Lookout visual contact' : 'Periscope visual contact';
 
+  const plateClass = selected?.silhouetteClass;
+  const plateSrc = silhouetteSrcForClass(plateClass);
+  const plateSize = SILHOUETTE_SIZE[plateClass ?? ''] ?? SILHOUETTE_SIZE.Destroyer;
+
   return (
     <div className="radar-scope radar-console periscope-scope">
       <div className="periscope-viewport" aria-label={viewportLabel}>
@@ -84,15 +119,17 @@ function PeriscopeScopeInner({
               </p>
             ) : (
               <img
+                key={plateSrc}
                 className="periscope-silhouette"
-                src={destroyerSilhouettePng}
-                alt="Destroyer silhouette"
-                width={349}
-                height={79}
+                src={plateSrc}
+                alt={silhouetteAlt(plateClass)}
+                width={plateSize.width}
+                height={plateSize.height}
                 decoding="sync"
                 loading="eager"
                 draggable={false}
                 onError={() => setImgFailed(true)}
+                onLoad={() => setImgFailed(false)}
               />
             )}
             <div className="periscope-readouts mono">
@@ -131,7 +168,10 @@ function PeriscopeScopeInner({
                       type="button"
                       className={`periscope-contact-btn mono${active ? ' primary' : ''}`}
                       aria-pressed={active}
-                      onClick={() => setSelectedId(c.id)}
+                      onClick={() => {
+                        setImgFailed(false);
+                        setSelectedId(c.id);
+                      }}
                     >
                       <span className="readout">Contact {i + 1}</span>
                       <span className="radar-contact-meta">

@@ -4,9 +4,10 @@ Side-profile recognition plates for the Sensors visual optics tab (sub periscope
 
 | Hull class | File | Notes |
 | --- | --- | --- |
-| Destroyer | `destroyer.png` | Side-profile plate with alpha (stippled hull, bow right). Bundled via Vite at `packages/client/src/assets/silhouettes/destroyer.png` and mounted as a plain `<img>` in `PeriscopeScope` (no CSS filters). Public copy kept for static `/silhouettes/destroyer.png` checks. |
+| Destroyer | `destroyer.png` | Side-profile plate with alpha (stippled hull, bow right). Bundled via Vite at `packages/client/src/assets/silhouettes/destroyer.png`. |
+| Fleet Submarine | `submarine.png` | Side-profile plate with alpha (halftone hull, bow right). Bundled via Vite at `packages/client/src/assets/silhouettes/submarine.png`. |
 
-Keep both copies byte-identical when updating the plate. Preserve PNG transparency (`tRNS` / alpha) so the plate composites over the optics sky/sea.
+Keep public + Vite asset copies byte-identical when updating a plate. Preserve PNG transparency (`tRNS` / alpha) so the plate composites over the optics sky/sea. CRT grain/scanlines are CSS overlays above the `<img>` — do not bake them into the PNG.
 
-Resolver (docs / verify): `silhouetteUrlForClass()` / `DESTROYER_SILHOUETTE_URL` in `@war-patrol/shared` → `/silhouettes/destroyer.png`.  
-Runtime UI: Vite import in `PeriscopeScope.tsx` (bundled URL).
+Resolver (docs / verify): `silhouetteUrlForClass()` / `DESTROYER_SILHOUETTE_URL` / `SUBMARINE_SILHOUETTE_URL` in `@war-patrol/shared`.  
+Runtime UI: class map of Vite imports in `PeriscopeScope.tsx` (bundled URLs). Unknown classes fall back to the destroyer plate.

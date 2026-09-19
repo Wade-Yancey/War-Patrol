@@ -449,57 +449,65 @@ async function main() {
   );
   check(
     'destroyer silhouette asset path',
-    silhouetteUrlForClass('Destroyer') === '/silhouettes/destroyer.png' &&
-      silhouetteUrlForClass('Fleet Submarine') === null,
+    silhouetteUrlForClass('Destroyer') === '/silhouettes/destroyer.png',
   );
   check(
-    'periscope silhouette falls back to destroyer',
-    periscopeSilhouetteUrl('Fleet Submarine') === '/silhouettes/destroyer.png' &&
+    'submarine silhouette asset path',
+    silhouetteUrlForClass('Fleet Submarine') === '/silhouettes/submarine.png',
+  );
+  check(
+    'periscope silhouette class map + destroyer fallback',
+    periscopeSilhouetteUrl('Fleet Submarine') === '/silhouettes/submarine.png' &&
       periscopeSilhouetteUrl('Destroyer') === '/silhouettes/destroyer.png' &&
-      periscopeSilhouetteUrl(undefined) === '/silhouettes/destroyer.png',
+      periscopeSilhouetteUrl(undefined) === '/silhouettes/destroyer.png' &&
+      periscopeSilhouetteUrl('Merchant') === '/silhouettes/destroyer.png',
   );
   {
     const here = path.dirname(fileURLToPath(import.meta.url));
-    const candidates = [
-      path.resolve(here, '../../client/public/silhouettes/destroyer.png'),
-      path.resolve(here, '../../../client/public/silhouettes/destroyer.png'),
-    ];
-    const resolved = candidates.find((p) => fs.existsSync(p));
-    const buf = resolved ? fs.readFileSync(resolved) : null;
-    // PNG signature + tRNS (indexed alpha) or RGBA — keep transparency for optics.
-    const isPng = Boolean(
-      buf &&
-        buf[0] === 0x89 &&
-        buf[1] === 0x50 &&
-        buf[2] === 0x4e &&
-        buf[3] === 0x47,
-    );
-    const hasTrns = Boolean(buf && buf.includes(Buffer.from('tRNS')));
-    check(
-      'destroyer silhouette PNG present',
-      isPng && Boolean(buf && buf.length > 1000) && hasTrns,
-      resolved ? `${resolved} ${buf?.length ?? 0} bytes trns=${hasTrns}` : 'missing',
-    );
-    // After `pnpm build`, Vite copies public/ → client/dist/; production serves dist.
-    const distCandidates = [
-      path.resolve(here, '../../client/dist/silhouettes/destroyer.png'),
-      path.resolve(here, '../../../client/dist/silhouettes/destroyer.png'),
-    ];
-    const distPng = distCandidates.find((p) => fs.existsSync(p));
-    if (distPng) {
-      const distBuf = fs.readFileSync(distPng);
-      const distIsPng =
-        distBuf[0] === 0x89 &&
-        distBuf[1] === 0x50 &&
-        distBuf[2] === 0x4e &&
-        distBuf[3] === 0x47;
-      const distTrns = distBuf.includes(Buffer.from('tRNS'));
-      check(
-        'destroyer silhouette in client dist',
-        distIsPng && distBuf.length > 1000 && distTrns,
-        `${distPng} ${distBuf.length} bytes trns=${distTrns}`,
+    const assertSilhouettePng = (name: string, minBytes: number) => {
+      const candidates = [
+        path.resolve(here, `../../client/public/silhouettes/${name}`),
+        path.resolve(here, `../../../client/public/silhouettes/${name}`),
+      ];
+      const resolved = candidates.find((p) => fs.existsSync(p));
+      const buf = resolved ? fs.readFileSync(resolved) : null;
+      // PNG signature + tRNS (indexed alpha) or RGBA — keep transparency for optics.
+      const isPng = Boolean(
+        buf &&
+          buf[0] === 0x89 &&
+          buf[1] === 0x50 &&
+          buf[2] === 0x4e &&
+          buf[3] === 0x47,
       );
-    }
+      const hasTrns = Boolean(buf && buf.includes(Buffer.from('tRNS')));
+      check(
+        `${name.replace('.png', '')} silhouette PNG present`,
+        isPng && Boolean(buf && buf.length > minBytes) && hasTrns,
+        resolved ? `${resolved} ${buf?.length ?? 0} bytes trns=${hasTrns}` : 'missing',
+      );
+      // After `pnpm build`, Vite copies public/ → client/dist/; production serves dist.
+      const distCandidates = [
+        path.resolve(here, `../../client/dist/silhouettes/${name}`),
+        path.resolve(here, `../../../client/dist/silhouettes/${name}`),
+      ];
+      const distPng = distCandidates.find((p) => fs.existsSync(p));
+      if (distPng) {
+        const distBuf = fs.readFileSync(distPng);
+        const distIsPng =
+          distBuf[0] === 0x89 &&
+          distBuf[1] === 0x50 &&
+          distBuf[2] === 0x4e &&
+          distBuf[3] === 0x47;
+        const distTrns = distBuf.includes(Buffer.from('tRNS'));
+        check(
+          `${name.replace('.png', '')} silhouette in client dist`,
+          distIsPng && distBuf.length > minBytes && distTrns,
+          `${distPng} ${distBuf.length} bytes trns=${distTrns}`,
+        );
+      }
+    };
+    assertSilhouettePng('destroyer.png', 1000);
+    assertSilhouettePng('submarine.png', 1000);
   }
   check(
     'controls has no periscope picture',

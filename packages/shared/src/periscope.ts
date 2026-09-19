@@ -87,17 +87,19 @@ export function periscopeSilhouetteScale(
 }
 
 /**
- * Wade’s destroyer recognition plate — always available under Vite `public/`.
+ * Recognition plates under Vite `public/silhouettes/`.
  * Used for docs/verify static path checks. The Sensors UI mounts the same bytes
- * via a Vite-bundled import in `PeriscopeScope` (harder to 404 than a bare path).
- * PNG with alpha so the plate composites over the periscope / lookout sky/sea.
+ * via Vite-bundled imports in `PeriscopeScope` (harder to 404 than a bare path).
+ * PNGs keep alpha (`tRNS`) so plates composite over the periscope / lookout sky/sea.
  */
 export const DESTROYER_SILHOUETTE_URL = '/silhouettes/destroyer.png';
+export const SUBMARINE_SILHOUETTE_URL = '/silhouettes/submarine.png';
 
 /**
  * Public asset path for a hull-class silhouette (side profile).
- * Destroyer → {@link DESTROYER_SILHOUETTE_URL}. Other classes → null
- * (UI should fall back to the destroyer PNG so something still paints).
+ * Destroyer → {@link DESTROYER_SILHOUETTE_URL};
+ * Fleet Submarine → {@link SUBMARINE_SILHOUETTE_URL}.
+ * Other classes → null (UI falls back to the destroyer PNG).
  */
 export function silhouetteUrlForClass(
   hullClass: HullClass | string | undefined,
@@ -106,6 +108,8 @@ export function silhouetteUrlForClass(
   switch (hullClass) {
     case 'Destroyer':
       return DESTROYER_SILHOUETTE_URL;
+    case 'Fleet Submarine':
+      return SUBMARINE_SILHOUETTE_URL;
     default:
       return null;
   }

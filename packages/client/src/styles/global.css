@@ -2345,15 +2345,15 @@ label {
 }
 
 .periscope-silhouette {
-  /* Plain Vite-bundled PNG with alpha — no filters; transparent over sky/sea. */
+  /* Plain Vite-bundled PNG with alpha — no filters; transparent over sky/sea.
+     Natural aspect from width/height attrs (DD 349×79, sub 350×55). */
   display: block;
   flex: 0 0 auto;
   box-sizing: border-box;
-  width: 349px;
-  max-width: min(92vw, 22rem);
+  width: min(92vw, 22rem);
+  max-width: 100%;
   height: auto;
-  aspect-ratio: 349 / 79;
-  min-height: 2.5rem;
+  min-height: 2rem;
   object-fit: contain;
   object-position: center center;
   background: transparent;
