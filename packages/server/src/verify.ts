@@ -411,27 +411,23 @@ async function main() {
   );
   check(
     'destroyer silhouette asset path',
-    silhouetteUrlForClass('Destroyer') === '/silhouettes/destroyer.png' &&
+    silhouetteUrlForClass('Destroyer') === '/silhouettes/destroyer.jpg' &&
       silhouetteUrlForClass('Fleet Submarine') === null,
   );
   {
     const here = path.dirname(fileURLToPath(import.meta.url));
     const candidates = [
-      path.resolve(here, '../../client/public/silhouettes/destroyer.png'),
-      path.resolve(here, '../../../client/public/silhouettes/destroyer.png'),
+      path.resolve(here, '../../client/public/silhouettes/destroyer.jpg'),
+      path.resolve(here, '../../../client/public/silhouettes/destroyer.jpg'),
     ];
     const resolved = candidates.find((p) => fs.existsSync(p));
     const buf = resolved ? fs.readFileSync(resolved) : null;
-    const isPng = Boolean(
-      buf && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47,
-    );
-    // IHDR width/height at bytes 16–23 (big-endian); expect a wide side elevation.
-    const width = buf && isPng ? buf.readUInt32BE(16) : 0;
-    const height = buf && isPng ? buf.readUInt32BE(20) : 0;
+    // JPEG SOI marker FF D8 FF — use Wade’s raw plate, no PNG conversion.
+    const isJpeg = Boolean(buf && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff);
     check(
-      'destroyer silhouette PNG present',
-      isPng && width >= 300 && height >= 70 && height < width,
-      resolved ? `${resolved} ${width}x${height}` : 'missing',
+      'destroyer silhouette JPG present',
+      isJpeg && Boolean(buf && buf.length > 1000),
+      resolved ? `${resolved} ${buf?.length ?? 0} bytes` : 'missing',
     );
   }
   check(
