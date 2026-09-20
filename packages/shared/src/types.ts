@@ -103,15 +103,9 @@ export interface StationDef {
 /** Depth-charge drop pattern (destroyer rack / thrower stub). */
 export type DepthChargePattern = 'single' | 'pair' | 'pattern_3' | 'pattern_5';
 
-/**
- * How long the TMA / firing solution was plotted before this shot.
- * Explicit player choice on the calculator — grants additive hit %.
- */
-export type SolutionPlotDuration = 'none' | 'half_turn' | 'full_turn';
-
 /** Pending torpedo shot for the current turn (fleet sub Controls). */
 export interface TorpedoFireOrder {
-  /** True heading the fish will run (gyro from player aim — not auto-solved). */
+  /** True heading of the spread center (gyro from player aim — not auto-solved). */
   aimHeading: number;
   /**
    * Player-entered target length estimate (meters).
@@ -124,8 +118,16 @@ export interface TorpedoFireOrder {
    * Compared to |truth speed| for the +10% speed-ID modifier.
    */
   estimatedSpeedKn: number;
-  /** Solution-plotting commitment before fire. */
-  solutionPlot: SolutionPlotDuration;
+  /**
+   * Number of fish in the spread (1 = single shot). Consumes that many from load.
+   * Omitted → 1. Clamped to available tubes / load on resolve.
+   */
+  spreadCount?: number;
+  /**
+   * Angular spacing between adjacent fish (degrees). Centered on aimHeading.
+   * Ignored when spreadCount === 1. Omitted → default interval.
+   */
+  spreadDeg?: number;
 }
 
 /** Pending depth-charge drop for the current turn (destroyer Controls). */
@@ -145,7 +147,7 @@ export interface UnitOrders {
    * Applied to {@link UnitState.position}.depth on turn resolve.
    */
   depth?: number;
-  /** Fire one fish this resolve (consumes load on launch). */
+  /** Fire a torpedo / spread this resolve (consumes load on launch). */
   fireTorpedo?: TorpedoFireOrder;
   /** Drop a depth-charge pattern this resolve (consumes rack load). */
   dropDepthCharges?: DepthChargeDropOrder;
@@ -177,7 +179,6 @@ export interface TorpedoTrack {
   /** Snapshotted calculator estimates at launch (for hit resolution). */
   estimatedLengthM: number;
   estimatedSpeedKn: number;
-  solutionPlot: SolutionPlotDuration;
   /**
    * Breadcrumb positions along the run (launch → current/end).
    * Umpire GT map polyline; includes launch as first point.
@@ -208,13 +209,15 @@ export interface DepthChargeTrack {
   path: Array<{ lat: number; lon: number; depth: number }>;
 }
 
-/** Recent depth-charge detonation (audio + umpire truth). Cleared after a few turns. */
+/** Recent weapon blast (audio + umpire truth). Cleared after a few turns. */
 export interface WeaponDetonationEvent {
   id: string;
-  kind: 'depth_charge';
+  kind: 'depth_charge' | 'torpedo_hit';
   position: LatLonDepth;
   turnNumber: number;
   firerUnitId: string;
+  /** Hit target for torpedo_hit — firer and target both get Controls audio cues. */
+  targetUnitId?: string;
 }
 
 /**
@@ -667,13 +670,14 @@ export interface VesselView {
    */
   torpedoWakeCues?: TorpedoWakeCue[];
   /**
-   * Depth-charge detonations audible on Controls when close to own ship.
-   * Polar only — range for gain; no firer identity.
+   * Weapon blasts audible on Controls (close DC, or torpedo hit for firer/target).
+   * Polar only — range for gain attenuation; no firer identity in FoW fields.
    */
   bridgeDetonations?: Array<{
     id: string;
     bearing: number;
     rangeNm: number;
+    kind: 'depth_charge' | 'torpedo_hit';
   }>;
   /**
    * Radar picture for stations with the `radar` capability.

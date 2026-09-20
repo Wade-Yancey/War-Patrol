@@ -12,6 +12,8 @@ import {
   canDropDepthCharges,
   canFireTorpedo,
   clampDepthChargeSetting,
+  clampTorpedoSpreadCount,
+  clampTorpedoSpreadDeg,
   TORPEDO_DEFAULT_DEPTH_M,
   createDepthChargeTracks,
   createTorpedoTrack,
@@ -22,10 +24,10 @@ import {
   makeDetonationEvent,
   normalizeDepthChargePattern,
   normalizeHeading,
-  normalizeSolutionPlotDuration,
   resolveDepthChargeEffect,
   resolveTorpedoHit,
   segmentClosestPoint,
+  torpedoSpreadHeadings,
   truncateTorpedoAtHit,
   unitLengthBeam,
   type CombatLogEntry,
@@ -144,29 +146,41 @@ export function resolveWeaponsForTurn(
     if (orders.fireTorpedo && canFireTorpedo(unit)) {
       const fire = orders.fireTorpedo;
       const runDepthM = TORPEDO_DEFAULT_DEPTH_M;
-      const fish = createTorpedoTrack({
-        id: `t-${nanoid(8)}`,
-        firerUnitId: unit.id,
-        position: {
-          ...unit.position,
-          depth: runDepthM,
-        },
-        heading: normalizeHeading(fire.aimHeading),
-        runDepthM,
-        launchedTurn: turnNumber,
-        estimatedLengthM: Number(fire.estimatedLengthM) || 0,
-        estimatedSpeedKn: Number(fire.estimatedSpeedKn) || 0,
-        solutionPlot: normalizeSolutionPlotDuration(fire.solutionPlot),
-      });
-      launchedFish.push(fish);
-      next = { ...next, torpedoLoad: Math.max(0, (next.torpedoLoad ?? 0) - 1) };
+      const want = clampTorpedoSpreadCount(fire.spreadCount);
+      const have = next.torpedoLoad ?? 0;
+      const count = Math.min(want, have);
+      const spacing = clampTorpedoSpreadDeg(fire.spreadDeg);
+      const headings = torpedoSpreadHeadings(fire.aimHeading, count, spacing);
+      const estLen = Number(fire.estimatedLengthM) || 0;
+      const estSpd = Number(fire.estimatedSpeedKn) || 0;
+      for (const hdg of headings) {
+        const fish = createTorpedoTrack({
+          id: `t-${nanoid(8)}`,
+          firerUnitId: unit.id,
+          position: {
+            ...unit.position,
+            depth: runDepthM,
+          },
+          heading: normalizeHeading(hdg),
+          runDepthM,
+          launchedTurn: turnNumber,
+          estimatedLengthM: estLen,
+          estimatedSpeedKn: estSpd,
+        });
+        launchedFish.push(fish);
+      }
+      next = { ...next, torpedoLoad: Math.max(0, have - count) };
+      const fanLabel =
+        count > 1
+          ? ` spread ×${count} @${spacing}° · center `
+          : ' ';
       combatLogEntries.push(
         logLine({
           kind: 'torpedo_launch',
           turnNumber,
           gameTimeSeconds,
           actor: unit,
-          summary: `${unit.name} fired torpedo HDG ${String(Math.round(fish.heading)).padStart(3, '0')}° · rem ${fish.remainingRunNm.toFixed(1)} nm`,
+          summary: `${unit.name} fired torpedo${fanLabel}HDG ${String(Math.round(normalizeHeading(fire.aimHeading))).padStart(3, '0')}° · ${count} fish`,
         }),
       );
     }
@@ -260,7 +274,6 @@ export function resolveWeaponsForTurn(
           trueSpeedKn: target.speed,
           estimatedLengthM: advanced.estimatedLengthM,
           estimatedSpeedKn: advanced.estimatedSpeedKn,
-          solutionPlot: advanced.solutionPlot,
           depthOk,
           seed: `${fish.id}|${uid}|${turnNumber}|${step}`,
         });
@@ -268,6 +281,17 @@ export function resolveWeaponsForTurn(
           const damaged = applyHealthDamage(target, TORPEDO_HIT_DAMAGE);
           units = units.map((u) => (u.id === uid ? damaged : u));
           unitMap.set(uid, damaged);
+          const truncated = truncateTorpedoAtHit(fish, advanced, before, closest, uid);
+          newDetonations.push(
+            makeDetonationEvent({
+              id: `thit-${fish.id}`,
+              kind: 'torpedo_hit',
+              position: truncated.position,
+              turnNumber,
+              firerUnitId: fish.firerUnitId,
+              targetUnitId: uid,
+            }),
+          );
           combatLogEntries.push(
             logLine({
               kind: 'torpedo_hit',
@@ -298,7 +322,7 @@ export function resolveWeaponsForTurn(
               }),
             );
           }
-          return truncateTorpedoAtHit(fish, advanced, before, closest, uid);
+          return truncated;
         }
       }
       return advanced;

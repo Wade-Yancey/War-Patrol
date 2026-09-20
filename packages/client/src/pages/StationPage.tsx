@@ -10,6 +10,7 @@ import {
   formatPendingOrdersSummary,
   hasPendingOrders,
   isRadarSurfaced,
+  torpedoHitControlsGain,
   type DepthChargeDropOrder,
   type EotSetting,
   type TorpedoFireOrder,
@@ -41,6 +42,11 @@ import {
   loadControlsAmbientBuffer,
   startControlsAmbientLoop,
 } from '../audio/controlsAmbient';
+import {
+  TORPEDO_HIT_CONTROLS_PEAK_GAIN,
+  playTorpedoHitSample,
+  synthesizeTorpedoHitBuffer,
+} from '../audio/torpedoHit';
 
 function tokenKey(gameId: string, accessToken: string, stationId: string) {
   return `wp-token:${gameId}:${accessToken}:${stationId}`;
@@ -126,19 +132,21 @@ export function StationPage() {
 
   const onControlsBridge = Boolean(vessel) && isControls && !isSensors;
 
-  const playedBridgeDcRef = useRef<Set<string>>(new Set());
-  const pendingBridgeDcRef = useRef<
-    Array<{ id: string; rangeNm: number }>
+  const playedBridgeBlastRef = useRef<Set<string>>(new Set());
+  const pendingBridgeBlastRef = useRef<
+    Array<{ id: string; rangeNm: number; kind: 'depth_charge' | 'torpedo_hit' }>
   >([]);
   const bridgeAudioRef = useRef<{
     ctx: AudioContext | null;
     buffer: AudioBuffer | null;
+    torpedoHitBuffer: AudioBuffer | null;
     ambientBuffer: AudioBuffer | null;
     ambientSource: AudioBufferSourceNode | null;
     ambientGain: GainNode | null;
   }>({
     ctx: null,
     buffer: null,
+    torpedoHitBuffer: null,
     ambientBuffer: null,
     ambientSource: null,
     ambientGain: null,
@@ -151,6 +159,7 @@ export function StationPage() {
         (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       bridgeAudioRef.current.ctx = new Ctx();
       bridgeAudioRef.current.buffer = null;
+      bridgeAudioRef.current.torpedoHitBuffer = null;
       bridgeAudioRef.current.ambientBuffer = null;
     }
     const ctx = bridgeAudioRef.current.ctx;
@@ -158,34 +167,45 @@ export function StationPage() {
     return ctx;
   };
 
-  /** Play any queued close-aboard DC one-shots (range-based; never firer-filtered). */
-  const flushBridgeDcAudio = async (): Promise<void> => {
-    const pending = pendingBridgeDcRef.current;
+  /** Play queued bridge blasts (close DC + torpedo hits for firer/target). */
+  const flushBridgeBlastAudio = async (): Promise<void> => {
+    const pending = pendingBridgeBlastRef.current;
     if (!pending.length) return;
     const ctx = await ensureBridgeAudioCtx();
     if (ctx.state !== 'running') return;
     if (!bridgeAudioRef.current.buffer) {
       bridgeAudioRef.current.buffer = await loadDepthChargeBuffer(ctx);
     }
-    const buffer = bridgeAudioRef.current.buffer;
-    if (!buffer) return;
-    const still: Array<{ id: string; rangeNm: number }> = [];
+    if (!bridgeAudioRef.current.torpedoHitBuffer) {
+      bridgeAudioRef.current.torpedoHitBuffer = synthesizeTorpedoHitBuffer(ctx);
+    }
+    const dcBuffer = bridgeAudioRef.current.buffer;
+    const hitBuffer = bridgeAudioRef.current.torpedoHitBuffer;
+    if (!dcBuffer || !hitBuffer) return;
+    const still: Array<{ id: string; rangeNm: number; kind: 'depth_charge' | 'torpedo_hit' }> =
+      [];
     for (const e of pending) {
-      if (playedBridgeDcRef.current.has(e.id)) continue;
+      if (playedBridgeBlastRef.current.has(e.id)) continue;
       try {
-        const proximity = Math.max(0.15, 1 - e.rangeNm / 0.6);
-        playDepthChargeSample(
-          ctx,
-          buffer,
-          ctx.destination,
-          DEPTH_CHARGE_CONTROLS_GAIN * proximity,
-        );
-        playedBridgeDcRef.current.add(e.id);
+        if (e.kind === 'torpedo_hit') {
+          const gain =
+            TORPEDO_HIT_CONTROLS_PEAK_GAIN * torpedoHitControlsGain(e.rangeNm);
+          playTorpedoHitSample(ctx, hitBuffer, ctx.destination, gain);
+        } else {
+          const proximity = Math.max(0.15, 1 - e.rangeNm / 0.6);
+          playDepthChargeSample(
+            ctx,
+            dcBuffer,
+            ctx.destination,
+            DEPTH_CHARGE_CONTROLS_GAIN * proximity,
+          );
+        }
+        playedBridgeBlastRef.current.add(e.id);
       } catch {
         still.push(e);
       }
     }
-    pendingBridgeDcRef.current = still;
+    pendingBridgeBlastRef.current = still;
   };
 
   // Controls ambient bed: quiet looping facility hum (BT speakers). Stop on leave.
@@ -232,7 +252,7 @@ export function StationPage() {
         bridgeAudioRef.current.ambientSource = source;
         bridgeAudioRef.current.ambientGain = gain;
         // Same gesture / unlock also drains pending DC one-shots.
-        await flushBridgeDcAudio();
+        await flushBridgeBlastAudio();
         window.removeEventListener('pointerdown', unlock);
         window.removeEventListener('keydown', unlock);
       } catch {
@@ -244,7 +264,7 @@ export function StationPage() {
 
     const unlock = () => {
       void startAmbient();
-      void flushBridgeDcAudio();
+      void flushBridgeBlastAudio();
     };
 
     void startAmbient();
@@ -259,29 +279,34 @@ export function StationPage() {
       const ctx = bridgeAudioRef.current.ctx;
       bridgeAudioRef.current.ctx = null;
       bridgeAudioRef.current.buffer = null;
+      bridgeAudioRef.current.torpedoHitBuffer = null;
       bridgeAudioRef.current.ambientBuffer = null;
       // Closed ctx → allow replay after remount (React Strict Mode / leave+rejoin).
-      playedBridgeDcRef.current.clear();
+      playedBridgeBlastRef.current.clear();
       if (ctx && ctx.state !== 'closed') void ctx.close();
     };
   }, [onControlsBridge]);
 
-  // Controls bridge: queue + play depth-charge WAV for every close blast (any firer).
+  // Controls bridge: queue + play DC / torpedo-hit blasts (attenuated by range).
   useEffect(() => {
     if (!onControlsBridge || !vessel) return;
     const events = vessel.bridgeDetonations ?? [];
     const live = new Set(events.map((e) => e.id));
-    for (const id of [...playedBridgeDcRef.current]) {
-      if (!live.has(id)) playedBridgeDcRef.current.delete(id);
+    for (const id of [...playedBridgeBlastRef.current]) {
+      if (!live.has(id)) playedBridgeBlastRef.current.delete(id);
     }
-    pendingBridgeDcRef.current = events
-      .filter((e) => !playedBridgeDcRef.current.has(e.id))
-      .map((e) => ({ id: e.id, rangeNm: e.rangeNm }));
-    if (!pendingBridgeDcRef.current.length) return;
+    pendingBridgeBlastRef.current = events
+      .filter((e) => !playedBridgeBlastRef.current.has(e.id))
+      .map((e) => ({
+        id: e.id,
+        rangeNm: e.rangeNm,
+        kind: e.kind ?? 'depth_charge',
+      }));
+    if (!pendingBridgeBlastRef.current.length) return;
     let cancelled = false;
     void (async () => {
       if (cancelled) return;
-      await flushBridgeDcAudio();
+      await flushBridgeBlastAudio();
     })();
     return () => {
       cancelled = true;
@@ -795,12 +820,25 @@ export function StationPage() {
                 <div className="controls-bridge-dc-alert" role="status" aria-live="assertive">
                   <span className="controls-bridge-dc-alert-key">BRIDGE</span>
                   <span className="readout">
-                    DEPTH CHARGE close aboard — {vessel.bridgeDetonations!.length} blast
-                    {vessel.bridgeDetonations!.length === 1 ? '' : 's'} within ~
-                    {Math.max(
-                      ...vessel.bridgeDetonations!.map((d) => d.rangeNm),
-                    ).toFixed(2)}{' '}
-                    nm (own ship FoW — any firer)
+                    {(() => {
+                      const events = vessel.bridgeDetonations!;
+                      const hits = events.filter((d) => d.kind === 'torpedo_hit').length;
+                      const dcs = events.filter((d) => d.kind !== 'torpedo_hit').length;
+                      const parts: string[] = [];
+                      if (hits > 0) {
+                        parts.push(
+                          `TORPEDO HIT ×${hits} (attenuated · firer/target)`,
+                        );
+                      }
+                      if (dcs > 0) {
+                        parts.push(
+                          `DEPTH CHARGE ×${dcs} within ~${Math.max(
+                            ...events.filter((d) => d.kind !== 'torpedo_hit').map((d) => d.rangeNm),
+                          ).toFixed(2)} nm`,
+                        );
+                      }
+                      return parts.join(' · ') || 'Weapon blast';
+                    })()}
                   </span>
                 </div>
               )}
@@ -992,7 +1030,9 @@ export function StationPage() {
                 <p className="muted controls-ambient-note">
                   Bridge audio: quiet facility hum loops on this screen; nearby depth-charge
                   detonations play when within ~0.6 nm of own ship (any vessel — not only the
-                  dropper). Hydrophone hears the DC sample at longer range when submerged.
+                  dropper). Torpedo hits play a procedural explosion for both firer and target
+                  Controls, attenuated by range. Hydrophone hears the DC sample at longer range
+                  when submerged.
                 </p>
               </>
             )}

@@ -10,7 +10,8 @@ import {
   normalizeDepthChargePattern,
   normalizeHeading,
   normalizePositionForType,
-  normalizeSolutionPlotDuration,
+  clampTorpedoSpreadCount,
+  clampTorpedoSpreadDeg,
   resolveOrderedDepth,
   resolveSpeedStepFraction,
   resolveTurnLengthSeconds,
@@ -233,7 +234,8 @@ export function mergeOrders(
       aimHeading: normalizeHeading(patch.fireTorpedo.aimHeading),
       estimatedLengthM: Math.max(0, Number(patch.fireTorpedo.estimatedLengthM) || 0),
       estimatedSpeedKn: Math.max(0, Number(patch.fireTorpedo.estimatedSpeedKn) || 0),
-      solutionPlot: normalizeSolutionPlotDuration(patch.fireTorpedo.solutionPlot),
+      spreadCount: clampTorpedoSpreadCount(patch.fireTorpedo.spreadCount),
+      spreadDeg: clampTorpedoSpreadDeg(patch.fireTorpedo.spreadDeg),
     };
   }
   if (patch.dropDepthCharges === null) {

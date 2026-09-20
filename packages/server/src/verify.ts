@@ -1139,6 +1139,11 @@ async function main() {
   const rso = radarSensorsOff.json.view as Json;
   check('sensors disabled radar off', rso.radarOperational === false);
   check('sensors disabled reason', rso.radarUnavailableReason === 'sensors_disabled');
+  check(
+    'DD lookout immune to sensors casualty',
+    rso.periscopeOperational === true,
+    `got operational=${String(rso.periscopeOperational)} reason=${String(rso.periscopeUnavailableReason)}`,
+  );
 
   // Propulsion disabled → stop
   await api(
@@ -1333,6 +1338,7 @@ async function main() {
       segmentClosestPoint,
       truncateTorpedoAtHit,
       createTorpedoTrack,
+      torpedoSpreadHeadings,
       TORPEDO_DEFAULT_DEPTH_M,
     } = await import('@war-patrol/shared');
     check('aspect 90° base 50%', Math.abs(torpedoBaseHitPctFromAspect(90) - 50) < 0.01);
@@ -1347,6 +1353,8 @@ async function main() {
     check('length ID rejects bad', !isLengthAccuratelyIdentified(50, 115));
     check('speed ID within 2 kn', isSpeedAccuratelyIdentified(14, 14.5));
     check('speed ID rejects bad', !isSpeedAccuratelyIdentified(5, 14));
+    const fan = torpedoSpreadHeadings(0, 3, 2).map((h) => Math.round(h));
+    check('spread 3×2° headings', fan[0] === 358 && fan[1] === 0 && fan[2] === 2);
     const roll = resolveTorpedoHit({
       missDistanceM: 5,
       fishHeading: 0,
@@ -1355,12 +1363,11 @@ async function main() {
       trueSpeedKn: 14,
       estimatedLengthM: 115,
       estimatedSpeedKn: 14,
-      solutionPlot: 'full_turn',
       depthOk: true,
       seed: 'verify-aspect-beam',
     });
     check('beam shot base ~50', Math.abs(roll.basePct - 50) < 0.01);
-    check('beam + mods hitPct', roll.hitPct === 90); // 50+10+10+20
+    check('beam + mods hitPct', roll.hitPct === 70); // 50+10+10
     check('not geometric miss', roll.geometricMiss === false);
 
     // Hit path truncation: trail ends at closest approach, not past the target.
@@ -1379,7 +1386,6 @@ async function main() {
         launchedTurn: 1,
         estimatedLengthM: 115,
         estimatedSpeedKn: 14,
-        solutionPlot: 'none',
       });
       const advanced = {
         ...prior,
@@ -1436,7 +1442,8 @@ async function main() {
         aimHeading: 0,
         estimatedLengthM: 115,
         estimatedSpeedKn: 14,
-        solutionPlot: 'full_turn',
+        spreadCount: 3,
+        spreadDeg: 2,
       },
     }, torpTok);
     check('queue torpedo fire', fire.status === 200);
@@ -1445,13 +1452,19 @@ async function main() {
     check('resolve torpedo turn', torpRes.status === 200);
     const torpView = await api('GET', `/api/games/${torpId}/view`, undefined, torpUTok);
     const uv = torpView.json.view as {
-      torpedoes?: Array<{ status: string; path?: unknown[]; launchPosition?: unknown }>;
+      torpedoes?: Array<{ status: string; heading?: number; path?: unknown[]; launchPosition?: unknown }>;
     };
     const fish = uv.torpedoes ?? [];
-    check('umpire has torpedo tracks', fish.length >= 1);
+    check('umpire has torpedo tracks', fish.length >= 3);
     check(
       'torpedo has launch + path',
       Boolean(fish[0]?.launchPosition) && Array.isArray(fish[0]?.path) && (fish[0]!.path!.length >= 1),
+    );
+    const headings = [...new Set(fish.map((f) => Math.round(((f.heading ?? 0) % 360) + 360) % 360))];
+    check(
+      'spread fan headings',
+      headings.includes(0) && headings.includes(2) && headings.includes(358),
+      `got ${headings.join(',')}`,
     );
     await api('DELETE', `/api/saves/${torpId}`);
 

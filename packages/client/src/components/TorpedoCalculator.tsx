@@ -2,7 +2,9 @@ import { useState } from 'react';
 import {
   TORPEDO_MAX_RUN_NM,
   TORPEDO_SPEED_KN,
-  type SolutionPlotDuration,
+  TORPEDO_SPREAD_DEFAULT_DEG,
+  TORPEDO_SPREAD_MAX_COUNT,
+  TORPEDO_SPREAD_MAX_DEG,
   type TorpedoFireOrder,
   type TorpedoTrack,
 } from '@war-patrol/shared';
@@ -22,6 +24,7 @@ interface Props {
  * Torpedo firing calculator — all solution inputs are operator-entered.
  * Never auto-fills true length/speed from the sim (recognition manual + optics).
  * Run depth is fixed in sim (shallow anti-surface default) — not operator-set.
+ * Supports single shot or angular fan spreads (multiple tracked fish).
  */
 export function TorpedoCalculator({
   ownHeading,
@@ -41,11 +44,17 @@ export function TorpedoCalculator({
   const [estimatedSpeedKn, setEstimatedSpeedKn] = useState(
     () => pending?.estimatedSpeedKn ?? 0,
   );
-  const [solutionPlot, setSolutionPlot] = useState<SolutionPlotDuration>(
-    () => pending?.solutionPlot ?? 'none',
+  const [spreadCount, setSpreadCount] = useState(
+    () => pending?.spreadCount ?? 1,
+  );
+  const [spreadDeg, setSpreadDeg] = useState(
+    () => pending?.spreadDeg ?? TORPEDO_SPREAD_DEFAULT_DEG,
   );
 
   const gyro = ((aimHeading - ownHeading + 540) % 360) - 180;
+  const maxCount = Math.max(1, Math.min(TORPEDO_SPREAD_MAX_COUNT, torpedoLoad || 1));
+  const effectiveCount = Math.min(spreadCount, maxCount);
+  const loadBlocked = torpedoLoad <= 0;
 
   return (
     <section className="panel stack controls-weapons-panel">
@@ -66,13 +75,16 @@ export function TorpedoCalculator({
         step={1}
         wrap
         unit="°"
-        disabled={disabled || torpedoLoad <= 0}
+        disabled={disabled || loadBlocked}
         format={(v) => `${String(v).padStart(3, '0')}°`}
       />
       <p className="mono muted" style={{ margin: 0, fontSize: '0.85rem' }}>
         Gyro vs own HDG {String(Math.round(ownHeading)).padStart(3, '0')}° →{' '}
         {gyro >= 0 ? '+' : ''}
         {Math.round(gyro)}°
+        {effectiveCount > 1
+          ? ` · fan ×${effectiveCount} @${spreadDeg}° (center aim)`
+          : ''}
       </p>
 
       <TouchNumber
@@ -83,7 +95,7 @@ export function TorpedoCalculator({
         max={400}
         step={5}
         unit="m"
-        disabled={disabled || torpedoLoad <= 0}
+        disabled={disabled || loadBlocked}
       />
       <TouchNumber
         label="Est. target speed"
@@ -93,47 +105,47 @@ export function TorpedoCalculator({
         max={50}
         step={1}
         unit="kn"
-        disabled={disabled || torpedoLoad <= 0}
+        disabled={disabled || loadBlocked}
       />
 
-      <fieldset className="weapons-plot-fieldset" disabled={disabled || torpedoLoad <= 0}>
-        <legend className="mono">Solution plot time</legend>
-        <div className="weapons-plot-row">
-          {(
-            [
-              ['none', 'None'],
-              ['half_turn', '½ turn (+10%)'],
-              ['full_turn', '1 turn (+20%)'],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              className={solutionPlot === id ? 'primary' : undefined}
-              aria-pressed={solutionPlot === id}
-              onClick={() => setSolutionPlot(id)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </fieldset>
+      <TouchNumber
+        label="Spread count"
+        value={spreadCount}
+        onChange={(v) => setSpreadCount(Math.min(maxCount, Math.max(1, v)))}
+        min={1}
+        max={maxCount}
+        step={1}
+        unit="fish"
+        disabled={disabled || loadBlocked}
+      />
+      <TouchNumber
+        label="Spread interval"
+        value={spreadDeg}
+        onChange={setSpreadDeg}
+        min={0}
+        max={TORPEDO_SPREAD_MAX_DEG}
+        step={0.5}
+        unit="°"
+        disabled={disabled || loadBlocked || effectiveCount <= 1}
+      />
 
       <div className="control-actions">
         <button
           className="primary"
           type="button"
-          disabled={disabled || torpedoLoad <= 0 || estimatedLengthM <= 0}
+          disabled={disabled || loadBlocked || estimatedLengthM <= 0}
           onClick={() =>
             onSubmit({
               aimHeading,
               estimatedLengthM,
               estimatedSpeedKn,
-              solutionPlot,
+              spreadCount: effectiveCount,
+              spreadDeg,
             })
           }
         >
           Queue torpedo fire
+          {effectiveCount > 1 ? ` (×${effectiveCount})` : ''}
         </button>
         {pending && onClear && (
           <button type="button" disabled={disabled} onClick={onClear}>
@@ -144,9 +156,11 @@ export function TorpedoCalculator({
 
       {pending && (
         <p className="mono readout" style={{ margin: 0 }}>
-          Of record: aim {String(Math.round(pending.aimHeading)).padStart(3, '0')}° · L
-          {Math.round(pending.estimatedLengthM)}m · {Math.round(pending.estimatedSpeedKn)}kn ·
-          plot {pending.solutionPlot}
+          Of record: aim {String(Math.round(pending.aimHeading)).padStart(3, '0')}°
+          {pending.spreadCount && pending.spreadCount > 1
+            ? ` · ×${pending.spreadCount}@${pending.spreadDeg ?? 0}°`
+            : ''}{' '}
+          · L{Math.round(pending.estimatedLengthM)}m · {Math.round(pending.estimatedSpeedKn)}kn
         </p>
       )}
 
@@ -167,4 +181,4 @@ export function TorpedoCalculator({
       )}
     </section>
   );
-}
+};

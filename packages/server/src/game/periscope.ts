@@ -1,6 +1,6 @@
 import {
   bearingRangeNm,
-  canUseSensors,
+  canUseLookoutOptics,
   coarsenPeriscopeRangeNm,
   coarsenPeriscopeSpeedKn,
   coarsenRelativeBearingDeg,
@@ -26,8 +26,10 @@ export type PeriscopePicture = {
 /**
  * Server-authoritative periscope / lookout picture (visual stub).
  *
- * Subs: available at/above periscope depth (keel ≤ 18 m).
- * Surface ships (DD lookout): always available when sensors live.
+ * Subs: available at/above periscope depth (keel ≤ 18 m); sensors subsystem
+ * can still knock out the periscope.
+ * Surface ships (DD lookout): available whenever not sunk — lookout is immune
+ * to sensors-subsystem combat damage.
  * Short visual range only. Contacts: relative bearing, coarsened range/speed,
  * silhouette class — own ship excluded.
  */
@@ -44,13 +46,13 @@ export function buildPeriscopeContacts(own: UnitState, save: GameSave): Periscop
 
   const maxRangeNm = resolvePeriscopeMaxRangeNm(sensor);
 
-  const sensorOk = canUseSensors(own);
-  if (!sensorOk.ok) {
+  const opticsOk = canUseLookoutOptics(own);
+  if (!opticsOk.ok) {
     return {
       contacts: [],
       maxRangeNm,
       operational: false,
-      unavailableReason: sensorOk.reason,
+      unavailableReason: opticsOk.reason,
     };
   }
 
