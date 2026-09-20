@@ -185,6 +185,7 @@ export function buildVesselView(
       stations: unit.stations,
       activeSonarEnabled: Boolean(unit.activeSonarEnabled),
       periscopeRaised: Boolean(unit.periscopeRaised),
+      periscopeExposure: unit.type === 'Submarine' ? Number(unit.periscopeExposure) || 0 : 0,
       plotStampTurns: unit.plotStampTurns ?? 0,
       torpedoLoad: unit.torpedoLoad ?? 0,
       depthChargeLoad: unit.depthChargeLoad ?? 0,

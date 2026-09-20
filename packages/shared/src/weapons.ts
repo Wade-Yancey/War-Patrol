@@ -880,6 +880,7 @@ export function applyHealthDamage(unit: UnitState, damage: number): UnitState {
       eot: 'stop',
       activeSonarEnabled: false,
       periscopeRaised: false,
+      periscopeExposure: 0,
       plotStampTurns: 0,
       subsystems: { propulsion: 'disabled', sensors: 'disabled' },
     };
@@ -899,6 +900,7 @@ export function applyHealthDamage(unit: UnitState, damage: number): UnitState {
     eot: propulsionOut ? 'stop' : unit.eot,
     activeSonarEnabled: sensorsOut ? false : unit.activeSonarEnabled,
     periscopeRaised: sensorsOut ? false : unit.periscopeRaised,
+    periscopeExposure: sensorsOut ? 0 : unit.periscopeExposure,
     plotStampTurns: sensorsOut ? 0 : unit.plotStampTurns,
   };
 }

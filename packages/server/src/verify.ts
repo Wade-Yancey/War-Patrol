@@ -446,6 +446,7 @@ async function main() {
   check('sub periscope down by default', sss.periscopeOperational === false);
   check('sub periscope reason scope_down', sss.periscopeUnavailableReason === 'scope_down');
   check('sub periscope raised flag false', (sss.unit as Json).periscopeRaised === false);
+  check('sub periscope exposure zero when down', (sss.unit as Json).periscopeExposure === 0);
   check('sub periscope has contacts array', Array.isArray(sss.periscopeContacts));
   check(
     'sub periscope max range stub',
@@ -473,6 +474,11 @@ async function main() {
   );
   check('raise periscope on surface', raisePeri.status === 200);
   check('raise returns raised true', raisePeri.json.periscopeRaised === true);
+  check(
+    'raise defaults full exposure',
+    raisePeri.json.periscopeExposure === 1,
+    `got ${raisePeri.json.periscopeExposure}`,
+  );
 
   const periSurf = await api('GET', `/api/games/${gameId}/view`, undefined, subSensorsToken);
   const periSurfView = periSurf.json.view as Json;
@@ -581,6 +587,7 @@ async function main() {
   );
   check('lower periscope', lowerPeri.status === 200);
   check('lower resets plot stamp', lowerPeri.json.plotStampTurns === 0);
+  check('lower zeros exposure', lowerPeri.json.periscopeExposure === 0);
   const periDown = await api('GET', `/api/games/${gameId}/view`, undefined, subSensorsToken);
   const periDownView = periDown.json.view as Json;
   check('sub periscope blind when down', periDownView.periscopeOperational === false);
@@ -628,15 +635,17 @@ async function main() {
   const raiseAtPeri = await api(
     'POST',
     `/api/games/${gameId}/periscope`,
-    { raised: true },
+    { raised: true, exposure: 1 },
     subSensorsToken,
   );
   check('raise at periscope depth', raiseAtPeri.status === 200);
+  check('raise at peri sets exposure', raiseAtPeri.json.periscopeExposure === 1);
   const ddLookFeather = await api('GET', `/api/games/${gameId}/view`, undefined, radarToken);
   const ddFeatherView = ddLookFeather.json.view as Json;
   const featherContacts = (ddFeatherView.periscopeContacts as Array<Json>) ?? [];
   const feather = featherContacts.find((c) => c.kind === 'periscope');
-  // Probabilistic — may miss on this turn seed; if present, shape must be FoW feather.
+  // Deterministic — exposed mast in range always paints the feather.
+  check('DD lookout always sees exposed periscope feather', Boolean(feather));
   if (feather) {
     check(
       'DD lookout periscope feather FoW',
@@ -646,9 +655,22 @@ async function main() {
         typeof feather.rangeNm === 'number' &&
         !('name' in feather),
     );
-  } else {
-    check('DD lookout feather roll (optional miss ok)', true);
   }
+  // Peek exposure still raised → still visible (exposure is duration choice, not RNG).
+  const setPeek = await api(
+    'POST',
+    `/api/games/${gameId}/periscope`,
+    { raised: true, exposure: 0.2 },
+    subSensorsToken,
+  );
+  check('set peek exposure', setPeek.status === 200 && setPeek.json.periscopeExposure === 0.2);
+  const ddPeekFeather = await api('GET', `/api/games/${gameId}/view`, undefined, radarToken);
+  const peekFeathers =
+    ((ddPeekFeather.json.view as Json).periscopeContacts as Array<Json>) ?? [];
+  check(
+    'peek exposure still paints feather',
+    peekFeathers.some((c) => c.kind === 'periscope'),
+  );
   // Scope down → not spottable as feather.
   await api('POST', `/api/games/${gameId}/periscope`, { raised: false }, subSensorsToken);
   const ddNoFeather = await api('GET', `/api/games/${gameId}/view`, undefined, radarToken);

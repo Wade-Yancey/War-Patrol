@@ -17,7 +17,9 @@ import {
   hasLookoutSensor,
   canUseLookoutOptics,
   isPeriscopeDepthOk,
+  clampPeriscopeExposure,
   PERISCOPE_DEPTH_M,
+  PERISCOPE_EXPOSURE_DEFAULT,
   isTwoScreenStationLayout,
   normalizeHeading,
   normalizePositionForType,
@@ -120,6 +122,13 @@ function unitFromScenario(seed: Scenario['units'][number]): UnitState {
     activeSonarEnabled: Boolean(seed.activeSonarEnabled),
     periscopeRaised:
       identity.type === 'Submarine' ? Boolean(seed.periscopeRaised) : false,
+    periscopeExposure:
+      identity.type === 'Submarine' && seed.periscopeRaised
+        ? clampPeriscopeExposure(
+            seed.periscopeExposure ?? PERISCOPE_EXPOSURE_DEFAULT,
+            { allowZero: false },
+          )
+        : 0,
     plotStampTurns:
       identity.type === 'Submarine'
         ? Math.max(0, Math.floor(Number(seed.plotStampTurns) || 0))
@@ -247,6 +256,13 @@ function normalizeUnit(unit: UnitState): UnitState {
       : false,
     periscopeRaised:
       identity.type === 'Submarine' ? Boolean(unit.periscopeRaised) : false,
+    periscopeExposure:
+      identity.type === 'Submarine' && unit.periscopeRaised
+        ? clampPeriscopeExposure(
+            unit.periscopeExposure ?? PERISCOPE_EXPOSURE_DEFAULT,
+            { allowZero: false },
+          )
+        : 0,
     plotStampTurns:
       identity.type === 'Submarine'
         ? Math.max(0, Math.floor(Number(unit.plotStampTurns) || 0))
@@ -613,15 +629,19 @@ export class GameRuntime {
   }
 
   /**
-   * Immediate fleet-sub periscope raise/lower (Sensors lookout station).
-   * Lowering clears optics and resets plot stamp (no frozen bonus).
+   * Immediate fleet-sub periscope raise/lower + exposure (Sensors lookout station).
+   * Lowering clears optics, zeros exposure, and resets plot stamp (no frozen bonus).
    * Raising only allowed at/above periscope depth with healthy sensors.
+   * `exposure` is the fraction of the turn the mast is up (0–1); defaults to full
+   * when raising without an explicit value. Any exposure &gt; 0 makes the feather
+   * visible to DD lookout in range (deterministic — no spot roll).
    */
   setPeriscope(
     gameId: string,
     unitId: string,
     stationId: string,
     raised: boolean,
+    exposure?: number,
   ): GameSave {
     return this.touch(gameId, (save) => {
       const unit = save.units.find((u) => u.id === unitId);
@@ -657,8 +677,16 @@ export class GameRuntime {
           );
         }
         unit.periscopeRaised = true;
+        const nextExposure =
+          exposure !== undefined
+            ? clampPeriscopeExposure(exposure, { allowZero: false })
+            : unit.periscopeExposure > 0
+              ? clampPeriscopeExposure(unit.periscopeExposure, { allowZero: false })
+              : PERISCOPE_EXPOSURE_DEFAULT;
+        unit.periscopeExposure = nextExposure;
       } else {
         unit.periscopeRaised = false;
+        unit.periscopeExposure = 0;
         unit.plotStampTurns = 0;
       }
       return save;

@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import {
   EOT_LABELS,
   PERISCOPE_DEPTH_M,
+  PERISCOPE_EXPOSURE_PRESETS,
   SUBMARINE_MAX_DEPTH_M,
   conditionLabel,
   effectiveMaxSpeed,
@@ -445,12 +446,12 @@ export function StationPage() {
     }
   };
 
-  const togglePeriscope = async (raised: boolean) => {
+  const togglePeriscope = async (raised: boolean, exposure?: number) => {
     if (!token) return;
     setActionError(null);
     setPeriBusy(true);
     try {
-      await api.setPeriscope(gameId, token, raised);
+      await api.setPeriscope(gameId, token, raised, exposure);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Periscope toggle failed');
     } finally {
@@ -665,29 +666,68 @@ export function StationPage() {
                   </p>
                 </div>
                 {opticsVariant === 'periscope' && (
-                  <div className="sonar-toggle-row">
-                    <button
-                      type="button"
-                      className={vessel.unit.periscopeRaised ? 'primary' : undefined}
-                      disabled={
-                        periBusy ||
-                        vessel.periscopeUnavailableReason === 'no_sensor' ||
-                        vessel.periscopeUnavailableReason === 'sunk' ||
-                        vessel.periscopeUnavailableReason === 'sensors_disabled' ||
-                        (!vessel.unit.periscopeRaised &&
-                          (vessel.periscopeUnavailableReason === 'too_deep' ||
-                            vessel.unit.position.depth > PERISCOPE_DEPTH_M))
-                      }
-                      aria-pressed={Boolean(vessel.unit.periscopeRaised)}
-                      onClick={() => void togglePeriscope(!vessel.unit.periscopeRaised)}
-                    >
-                      {vessel.unit.periscopeRaised ? 'Periscope UP' : 'Periscope DOWN'}
-                    </button>
-                    <span className="mono muted">
-                      {vessel.unit.periscopeRaised
-                        ? `RAISED · stamp ${vessel.unit.plotStampTurns ?? 0}`
-                        : 'LOWERED · blind'}
-                    </span>
+                  <div className="stack" style={{ gap: '0.5rem' }}>
+                    <div className="sonar-toggle-row">
+                      <button
+                        type="button"
+                        className={vessel.unit.periscopeRaised ? 'primary' : undefined}
+                        disabled={
+                          periBusy ||
+                          vessel.periscopeUnavailableReason === 'no_sensor' ||
+                          vessel.periscopeUnavailableReason === 'sunk' ||
+                          vessel.periscopeUnavailableReason === 'sensors_disabled' ||
+                          (!vessel.unit.periscopeRaised &&
+                            (vessel.periscopeUnavailableReason === 'too_deep' ||
+                              vessel.unit.position.depth > PERISCOPE_DEPTH_M))
+                        }
+                        aria-pressed={Boolean(vessel.unit.periscopeRaised)}
+                        onClick={() =>
+                          void togglePeriscope(
+                            !vessel.unit.periscopeRaised,
+                            vessel.unit.periscopeRaised
+                              ? undefined
+                              : (vessel.unit.periscopeExposure || undefined),
+                          )
+                        }
+                      >
+                        {vessel.unit.periscopeRaised ? 'Periscope UP' : 'Periscope DOWN'}
+                      </button>
+                      <span className="mono muted">
+                        {vessel.unit.periscopeRaised
+                          ? `RAISED · expose ${Math.round((vessel.unit.periscopeExposure ?? 1) * 100)}% · stamp ${vessel.unit.plotStampTurns ?? 0}`
+                          : 'LOWERED · blind · not spottable'}
+                      </span>
+                    </div>
+                    {vessel.unit.periscopeRaised && (
+                      <div
+                        className="peri-exposure-row"
+                        role="group"
+                        aria-label="Mast exposure this turn"
+                      >
+                        <span className="mono muted peri-exposure-label">Exposure</span>
+                        {PERISCOPE_EXPOSURE_PRESETS.map((preset) => {
+                          const active =
+                            Math.abs(
+                              (vessel.unit.periscopeExposure ?? 1) - preset.exposure,
+                            ) < 0.03;
+                          return (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              className={active ? 'primary' : undefined}
+                              disabled={periBusy}
+                              aria-pressed={active}
+                              onClick={() => void togglePeriscope(true, preset.exposure)}
+                            >
+                              {preset.label}
+                            </button>
+                          );
+                        })}
+                        <span className="mono muted peri-exposure-hint">
+                          How long the mast is up this turn — lookouts see it while exposed
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
                 {vessel.periscopeOperational === false &&

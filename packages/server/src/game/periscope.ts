@@ -9,9 +9,6 @@ import {
   isPeriscopeRaised,
   isPeriscopeTargetable,
   isRaisedPeriscopeSpottable,
-  normalizeHeading,
-  periscopeSpotObservationError,
-  periscopeSpotProbability,
   relativeBearingDeg,
   resolvePeriscopeMaxRangeNm,
   resolveVesselIdentity,
@@ -39,8 +36,9 @@ export type PeriscopePicture = {
  * Subs: mast must be raised AND keel ≤ 18 m; sensors casualty still knocks
  * out the periscope. Scope down → optically blind (no contacts / stale data).
  * Surface ships (DD lookout): available whenever not sunk — lookout is immune
- * to sensors-subsystem combat damage. DD lookout can also spot raised enemy
- * periscope feathers (not full sub ID) with bearing/range error.
+ * to sensors-subsystem combat damage. DD lookout always sees raised enemy
+ * periscope feathers (exposure &gt; 0) in visual range — deterministic FoW,
+ * no spot roll. Spotted feathers use standard FoW coarsening only.
  */
 export function buildPeriscopeContacts(own: UnitState, save: GameSave): PeriscopePicture {
   const sensor = findLookoutSensor(own);
@@ -110,25 +108,19 @@ export function buildPeriscopeContacts(own: UnitState, save: GameSave): Periscop
       continue;
     }
 
-    // DD / ship lookout: chance to spot a raised periscope feather.
+    // DD / ship lookout: exposed enemy mast in range → feather always painted
+    // (operators watch the screen; no probability roll).
     if (own.type === 'Ship' && isRaisedPeriscopeSpottable(other)) {
       const { bearing, rangeNm } = bearingRangeNm(own.position, other.position);
       if (rangeNm > maxRangeNm || rangeNm <= 0) continue;
-      const p = periscopeSpotProbability(rangeNm, maxRangeNm);
-      const rollSeed = `${save.id}|${own.id}|${other.id}|peri-spot|${save.turn.number}`;
-      if (spotRng01(rollSeed) > p) continue;
-
-      const err = periscopeSpotObservationError(rollSeed);
-      const noisyBearing = normalizeHeading(bearing + err.bearingErrDeg);
-      const noisyRange = Math.max(0.1, rangeNm + err.rangeErrNm);
 
       contacts.push({
         id: `pf-${hashTrackId(own.id, other.id)}`,
         kind: 'periscope',
         relativeBearing: coarsenRelativeBearingDeg(
-          relativeBearingDeg(own.heading, noisyBearing),
+          relativeBearingDeg(own.heading, bearing),
         ),
-        rangeNm: coarsenPeriscopeRangeNm(noisyRange),
+        rangeNm: coarsenPeriscopeRangeNm(rangeNm),
         speedKn: 0,
         silhouetteClass: 'Fleet Submarine',
       });
@@ -140,19 +132,6 @@ export function buildPeriscopeContacts(own: UnitState, save: GameSave): Periscop
       Math.abs(a.relativeBearing) - Math.abs(b.relativeBearing) || a.rangeNm - b.rangeNm,
   );
   return { contacts, maxRangeNm, operational: true };
-}
-
-function spotRng01(seed: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < seed.length; i++) {
-    h ^= seed.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  let x = h >>> 0;
-  x ^= x << 13;
-  x ^= x >>> 17;
-  x ^= x << 5;
-  return (x >>> 0) / 4294967296;
 }
 
 function hashTrackId(ownId: string, otherId: string): string {

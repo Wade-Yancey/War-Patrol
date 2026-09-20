@@ -117,12 +117,19 @@ function PeriscopeScopeInner({
         />
       </div>
 
-      <div className="periscope-viewport" aria-label={viewportLabel}>
-        <div className="periscope-horizon" aria-hidden />
-        <div className="periscope-sea" aria-hidden />
+      <div
+        className={`periscope-viewport${blind ? ' periscope-viewport--blind' : ''}`}
+        aria-label={viewportLabel}
+      >
+        {!blind && (
+          <>
+            <div className="periscope-horizon" aria-hidden />
+            <div className="periscope-sea" aria-hidden />
+          </>
+        )}
 
         {blind ? (
-          <p className="periscope-empty mono muted">Periscope down — no visual</p>
+          <p className="periscope-empty mono periscope-empty--blind">Scope down</p>
         ) : sorted.length === 0 ? (
           <p className="periscope-empty mono muted">No visual contacts within {maxRangeNm} nm</p>
         ) : selected ? (
@@ -164,11 +171,14 @@ function PeriscopeScopeInner({
           </div>
         ) : null}
 
-        {/* Subtle CRT grain + scanlines — above optics, pointer-events none, low opacity. */}
-        <div className="periscope-crt-overlay" aria-hidden>
-          <div className="periscope-scanlines" />
-          <div className="periscope-grain" />
-        </div>
+        {/* Subtle CRT grain + scanlines — above optics, pointer-events none, low opacity.
+            Hidden when blind so the viewer stays solid black (no sky/sea / stale picture). */}
+        {!blind && (
+          <div className="periscope-crt-overlay" aria-hidden>
+            <div className="periscope-scanlines" />
+            <div className="periscope-grain" />
+          </div>
+        )}
       </div>
 
       <aside className="radar-side-panel periscope-side-panel">
