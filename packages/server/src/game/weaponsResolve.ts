@@ -238,6 +238,8 @@ export function resolveWeaponsForTurn(
 
   // Historical fish (hit / expired / duded) stay on the umpire GT map forever.
   const historicalFish = priorTorpedoes.filter((t) => t.status !== 'running');
+  // Historical DC markers (detonated / spent) stay on the umpire GT map forever (AAR).
+  const historicalCharges = priorDepthCharges.filter((c) => c.status !== 'sinking');
   let torpedoes: TorpedoTrack[] = [
     ...priorTorpedoes.filter((t) => t.status === 'running'),
     ...launchedFish,
@@ -434,16 +436,9 @@ export function resolveWeaponsForTurn(
     });
   }
 
-  // Keep every fish ever launched: running + newly terminal + prior historical trails.
+  // Keep every fish / DC ever launched: active + newly terminal + prior historical trails.
   const keptFish = [...historicalFish, ...torpedoes];
-  const keptCharges = [
-    ...depthCharges.filter((c) => c.status === 'sinking'),
-    ...depthCharges.filter(
-      (c) =>
-        (c.status === 'detonated' || c.status === 'spent') &&
-        c.launchedTurn >= turnNumber - 1,
-    ),
-  ];
+  const keptCharges = [...historicalCharges, ...depthCharges];
 
   const recentDetonations = [
     ...priorDetonations.filter((d) => d.turnNumber >= turnNumber - DETONATION_RETENTION_TURNS),

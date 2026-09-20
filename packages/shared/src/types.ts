@@ -454,6 +454,12 @@ export interface TurnSnapshot {
   turn: TurnState;
   /** In-game clock after this resolve (mirrors turn.gameTimeSeconds). */
   gameTimeSeconds: number;
+  /**
+   * Weapon tracks as of end-of-resolve (for umpire AAR scrubber).
+   * Older saves may omit these; treat missing as [].
+   */
+  torpedoes?: TorpedoTrack[];
+  depthCharges?: DepthChargeTrack[];
 }
 
 /** Lightweight lat/lon breadcrumb for umpire trails. */
@@ -619,6 +625,11 @@ export interface UmpireView {
   /** Chronological action / damage log (umpire only). */
   combatLog: CombatLogEntry[];
   historyTurnNumbers: number[];
+  /**
+   * End-of-turn snapshots for read-only AAR scrubbing on the umpire GT map.
+   * Does not mutate live state (unlike rollback).
+   */
+  historySnapshots: TurnSnapshot[];
   vesselLinks: Array<{
     unitId: string;
     name: string;

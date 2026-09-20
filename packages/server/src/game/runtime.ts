@@ -312,6 +312,8 @@ function normalizeSave(save: GameSave): GameSave {
         gameTimeSeconds: h.turn?.gameTimeSeconds ?? h.gameTimeSeconds ?? gameTimeSeconds,
       },
       units: h.units.map((u) => normalizeUnit(structuredClone(u))),
+      torpedoes: h.torpedoes ?? [],
+      depthCharges: h.depthCharges ?? [],
     })),
   };
 }

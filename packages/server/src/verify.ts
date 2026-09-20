@@ -2185,6 +2185,52 @@ async function main() {
       Array.isArray(hydro) && hydro.some((c) => c.kind === 'depth_charge'),
     );
 
+    // Persistent GT DC markers (like torpedo trails): spent charges survive later resolves.
+    const beforePersistView = await api('GET', `/api/games/${dcId}/view`, undefined, dcUTok);
+    const beforePersist = beforePersistView.json.view as {
+      depthCharges?: Array<{ id: string; status: string }>;
+      historySnapshots?: Array<{
+        turnNumber: number;
+        depthCharges?: Array<{ id: string }>;
+        units?: unknown[];
+      }>;
+    };
+    const spentIds = (beforePersist.depthCharges ?? [])
+      .filter((c) => c.status === 'spent' || c.status === 'detonated')
+      .map((c) => c.id);
+    check('spent DC markers present before extra turns', spentIds.length >= 1);
+    const snap0 = (beforePersist.historySnapshots ?? []).find((h) => h.turnNumber === 1);
+    check(
+      'history snapshot includes DC tracks for AAR',
+      Boolean(snap0 && (snap0.depthCharges?.length ?? 0) >= 1 && (snap0.units?.length ?? 0) >= 1),
+      `snap=${JSON.stringify(snap0 && { turn: snap0.turnNumber, dc: snap0.depthCharges?.length, units: snap0.units?.length })}`,
+    );
+    for (let i = 0; i < 3; i++) {
+      await api('POST', `/api/games/${dcId}/turn/lock`, {}, dcUTok);
+      await api('POST', `/api/games/${dcId}/turn/resolve`, {}, dcUTok);
+    }
+    const afterPersistView = await api('GET', `/api/games/${dcId}/view`, undefined, dcUTok);
+    const afterPersist = afterPersistView.json.view as {
+      depthCharges?: Array<{ id: string; status: string }>;
+      historySnapshots?: Array<{ turnNumber: number }>;
+      historyTurnNumbers?: number[];
+    };
+    check(
+      'spent DC markers persist on GT',
+      spentIds.every((id) =>
+        (afterPersist.depthCharges ?? []).some(
+          (c) => c.id === id && (c.status === 'spent' || c.status === 'detonated'),
+        ),
+      ),
+      `missing ${spentIds.filter((id) => !(afterPersist.depthCharges ?? []).some((c) => c.id === id)).join(',')}`,
+    );
+    check(
+      'AAR history snapshots accumulate',
+      (afterPersist.historySnapshots?.length ?? 0) >= 4 &&
+        (afterPersist.historyTurnNumbers?.length ?? 0) >= 4,
+      `snaps=${afterPersist.historySnapshots?.length} turns=${afterPersist.historyTurnNumbers?.length}`,
+    );
+
     check(
       'umpire combat log has entries',
       Array.isArray(umpireFull.combatLog) && (umpireFull.combatLog?.length ?? 0) > 0,
