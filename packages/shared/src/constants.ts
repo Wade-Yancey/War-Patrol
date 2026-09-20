@@ -122,3 +122,10 @@ export const PERISCOPE_MAX_RANGE_NM = 6;
  * Slightly past Gato test depth (~300 ft / 91 m); crush depth is not modeled.
  */
 export const SUBMARINE_MAX_DEPTH_M = 100;
+
+/**
+ * Fleet-boat dive / ascent rate (meters per in-game minute), positive-down change.
+ * Default 3-min turn → {@link SUBMARINE_DEPTH_RATE_M_PER_MIN} × 3 ≈ 45 m toward ordered depth.
+ * Crude playable stub — same rate up and down (emergency blow is just ordered 0 m).
+ */
+export const SUBMARINE_DEPTH_RATE_M_PER_MIN = 15;

@@ -114,7 +114,8 @@ export function DiveControls({
       </div>
 
       <p className="dive-caption muted mono">
-        Ordered depth rings up now; keel depth changes on turn resolve. Max {maxDepthM} m.
+        Ordered depth rings up now; keel depth approaches ordered over resolves. Max{' '}
+        {maxDepthM} m.
       </p>
     </div>
   );

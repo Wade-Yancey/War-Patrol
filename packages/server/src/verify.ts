@@ -13,6 +13,7 @@ import {
   CLASS_LENGTH_M,
   CLASS_MAX_SPEED_KNOTS,
   CLASS_SPEED_STEP_FRACTION,
+  SUBMARINE_DEPTH_RATE_M_PER_MIN,
   SUBMERGED_MAX_SPEED_KNOTS,
   bearingRangeNm,
   clampSpeedToMax,
@@ -26,6 +27,7 @@ import {
   periscopeSilhouetteUrl,
   silhouetteUrlForClass,
   snapWallDuration,
+  stepDepthTowardOrdered,
 } from '@war-patrol/shared';
 
 type Json = Record<string, unknown>;
@@ -101,6 +103,19 @@ async function main() {
   check('clampSpeedToMax caps high', clampSpeedToMax(99, 36) === 36);
   check('clampSpeedToMax caps reverse', clampSpeedToMax(-50, 36) === -36);
   check('submerged max is 9 kn', SUBMERGED_MAX_SPEED_KNOTS === 9);
+  check('dive rate is 15 m/min', SUBMARINE_DEPTH_RATE_M_PER_MIN === 15);
+  check(
+    'depth steps 45 m toward ordered in 3-min turn',
+    stepDepthTowardOrdered(0, 50, 180) === 45,
+  );
+  check(
+    'depth does not overshoot ordered',
+    stepDepthTowardOrdered(40, 50, 180) === 50,
+  );
+  check(
+    'ascent steps toward surface',
+    stepDepthTowardOrdered(90, 0, 180) === 45,
+  );
   check(
     'effectiveMaxSpeed surfaced hull',
     effectiveMaxSpeed({ type: 'Submarine', maxSpeed: 21, depth: 0 }) === 21,
@@ -969,7 +984,10 @@ async function main() {
   check('ordered course persists', blueAfter.orderedCourse === 45);
   check('heading turned toward ordered', blueAfter.heading !== blueBefore.heading || blueBefore.heading === 45);
   const redAfter = after.units.find((u) => u.id === 'ss-212')!;
-  check('sub depth applied on resolve', redAfter.position.depth === 50);
+  check(
+    'sub depth stepped toward ordered on resolve',
+    redAfter.position.depth === 45 && redAfter.orderedDepth === 50,
+  );
   check('sub orderedDepth persists after resolve', redAfter.orderedDepth === 50);
   check('game clock advanced 3 min', after.turn.gameTimeSeconds === 28800 + 180);
   check('history snapshot', after.history.length === 1);
@@ -1188,17 +1206,68 @@ async function main() {
   );
   await api('POST', `/api/games/${gameId}/turn/lock`, {}, umpireToken);
   await api('POST', `/api/games/${gameId}/turn/resolve`, {}, umpireToken);
+  const afterDeepDive1 = runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!;
   check(
-    'clamped depth applied on resolve',
+    'clamped depth stepped on first resolve',
+    afterDeepDive1.position.depth === 45 && afterDeepDive1.orderedDepth === 100,
+  );
+  await api('POST', `/api/games/${gameId}/turn/lock`, {}, umpireToken);
+  await api('POST', `/api/games/${gameId}/turn/resolve`, {}, umpireToken);
+  const afterDeepDive2 = runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!;
+  check(
+    'clamped depth stepped on second resolve',
+    afterDeepDive2.position.depth === 90 && afterDeepDive2.orderedDepth === 100,
+  );
+  await api('POST', `/api/games/${gameId}/turn/lock`, {}, umpireToken);
+  await api('POST', `/api/games/${gameId}/turn/resolve`, {}, umpireToken);
+  check(
+    'clamped depth reached ordered on third resolve',
     runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!.position.depth === 100,
   );
-  // Emergency blow → surface
+  // Emergency blow → surface (standing ordered 0; keel approaches over resolves)
   await api('POST', `/api/games/${gameId}/orders`, { depth: 0 }, redToken);
   await api('POST', `/api/games/${gameId}/turn/lock`, {}, umpireToken);
   await api('POST', `/api/games/${gameId}/turn/resolve`, {}, umpireToken);
   check(
-    'emergency blow / surface applied',
+    'emergency blow ascent first resolve',
+    runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!.position.depth === 55,
+  );
+  await api('POST', `/api/games/${gameId}/turn/lock`, {}, umpireToken);
+  await api('POST', `/api/games/${gameId}/turn/resolve`, {}, umpireToken);
+  check(
+    'emergency blow ascent second resolve',
+    runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!.position.depth === 10,
+  );
+  await api('POST', `/api/games/${gameId}/turn/lock`, {}, umpireToken);
+  await api('POST', `/api/games/${gameId}/turn/resolve`, {}, umpireToken);
+  check(
+    'emergency blow / surface reached ordered',
     runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!.position.depth === 0,
+  );
+
+  // Dive past periscope depth on resolve auto-lowers mast
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { position: { depth: 18 } },
+    umpireToken,
+  );
+  const raiseForDive = await api(
+    'POST',
+    `/api/games/${gameId}/periscope`,
+    { raised: true },
+    subSensorsToken,
+  );
+  check('raise before deep dive', raiseForDive.status === 200 && raiseForDive.json.periscopeRaised === true);
+  await api('POST', `/api/games/${gameId}/orders`, { depth: 50 }, redToken);
+  await api('POST', `/api/games/${gameId}/turn/lock`, {}, umpireToken);
+  await api('POST', `/api/games/${gameId}/turn/resolve`, {}, umpireToken);
+  const afterAutoLower = runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!;
+  check(
+    'dive past peri depth auto-lowers mast',
+    afterAutoLower.position.depth === 50 &&
+      afterAutoLower.periscopeRaised === false &&
+      afterAutoLower.periscopeExposure === 0,
   );
 
   // Speed clamped to class max
