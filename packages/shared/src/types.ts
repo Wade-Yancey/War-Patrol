@@ -327,8 +327,10 @@ export interface UnitState {
   periscopeRaised: boolean;
   /**
    * Fraction of the turn the mast is exposed while raised (0–1).
-   * Immediate Sensors control — scales DD lookout feather-spot chance.
-   * Forced to 0 when the mast is down. Surface ships ignore this field.
+   * Immediate Sensors control — player choice for how long the mast stays up.
+   * Any exposure &gt; 0 makes the feather visible to DD lookout in range
+   * (deterministic FoW; no spot roll). Forced to 0 when the mast is down.
+   * Surface ships ignore this field.
    */
   periscopeExposure: number;
   /**

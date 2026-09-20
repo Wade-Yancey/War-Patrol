@@ -724,7 +724,7 @@ export function StationPage() {
                           );
                         })}
                         <span className="mono muted peri-exposure-hint">
-                          Peek = hard to spot · Full = easier for lookouts
+                          How long the mast is up this turn — lookouts see it while exposed
                         </span>
                       </div>
                     )}

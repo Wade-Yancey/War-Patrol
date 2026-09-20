@@ -14,19 +14,14 @@ export const PERISCOPE_DEPTH_M: number =
   divePresetById('periscope')?.depthM ?? 18;
 
 /**
- * Base probability that a destroyer lookout notices a raised periscope
- * feather within visual range (before range falloff and exposure scale).
- */
-export const PERISCOPE_SPOT_BASE_P = 0.55;
-
-/**
  * Fraction of the turn the mast is exposed while raised (0–1).
- * Scales DD lookout feather-spot chance: brief peeks are hard to catch;
- * full-turn exposure is easier (still not guaranteed). Scope down → 0.
+ * Player choice for how long the stick is up (risk while raised).
+ * FoW feather detection is **deterministic**: any exposure &gt; 0 while
+ * raised + in lookout range paints the feather — no RNG. Scope down → 0.
  */
 export const PERISCOPE_EXPOSURE_MIN = 0.05;
 export const PERISCOPE_EXPOSURE_MAX = 1;
-/** Default when raising without an explicit exposure (full mast — old behavior). */
+/** Default when raising without an explicit exposure (full mast). */
 export const PERISCOPE_EXPOSURE_DEFAULT = 1;
 
 /** Named peek intensities for Sensors UI / orders labels. */
@@ -129,8 +124,9 @@ export function isPeriscopeRaised(
 
 /**
  * Submerged (or awash-but-hull-hidden) boat with mast up **and** exposure &gt; 0 —
- * DD lookout may spot a periscope feather, not a full hull silhouette.
- * Scope down / zero exposure → not spottable as a feather/stick.
+ * DD lookout **always** sees a periscope feather when in visual range
+ * (deterministic FoW — operators watch the screen; no spot roll).
+ * Scope down / zero exposure → not visible as a feather/stick.
  */
 export function isRaisedPeriscopeSpottable(
   unit: Pick<
@@ -147,24 +143,6 @@ export function isRaisedPeriscopeSpottable(
   // Mast only works at/above periscope depth.
   if (unit.position.depth > PERISCOPE_DEPTH_M) return false;
   return true;
-}
-
-/**
- * Chance a surface lookout notices a raised periscope at `rangeNm`.
- * Falls off toward max visual range, then scales by mast {@link exposure}
- * (0 = impossible, 1 = full base×range chance). Brief peeks are hard; long
- * time up is easier — never guaranteed (cap 0.85).
- */
-export function periscopeSpotProbability(
-  rangeNm: number,
-  maxRangeNm: number = PERISCOPE_MAX_RANGE_NM,
-  exposure: number = PERISCOPE_EXPOSURE_DEFAULT,
-): number {
-  const e = clampPeriscopeExposure(exposure);
-  if (e <= 0 || rangeNm <= 0 || rangeNm > maxRangeNm) return 0;
-  const proximity = 1 - rangeNm / maxRangeNm;
-  const rangeP = PERISCOPE_SPOT_BASE_P * (0.4 + 0.6 * proximity);
-  return clamp(rangeP * e, 0, 0.85);
 }
 
 /** Reset plot stamp (call whenever the scope is lowered). */

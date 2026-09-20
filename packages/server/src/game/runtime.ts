@@ -633,7 +633,8 @@ export class GameRuntime {
    * Lowering clears optics, zeros exposure, and resets plot stamp (no frozen bonus).
    * Raising only allowed at/above periscope depth with healthy sensors.
    * `exposure` is the fraction of the turn the mast is up (0–1); defaults to full
-   * when raising without an explicit value. Spot chance for DD lookout scales with it.
+   * when raising without an explicit value. Any exposure &gt; 0 makes the feather
+   * visible to DD lookout in range (deterministic — no spot roll).
    */
   setPeriscope(
     gameId: string,

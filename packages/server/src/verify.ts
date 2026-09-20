@@ -644,7 +644,8 @@ async function main() {
   const ddFeatherView = ddLookFeather.json.view as Json;
   const featherContacts = (ddFeatherView.periscopeContacts as Array<Json>) ?? [];
   const feather = featherContacts.find((c) => c.kind === 'periscope');
-  // Probabilistic — may miss on this turn seed; if present, shape must be FoW feather.
+  // Deterministic — exposed mast in range always paints the feather.
+  check('DD lookout always sees exposed periscope feather', Boolean(feather));
   if (feather) {
     check(
       'DD lookout periscope feather FoW',
@@ -654,10 +655,8 @@ async function main() {
         typeof feather.rangeNm === 'number' &&
         !('name' in feather),
     );
-  } else {
-    check('DD lookout feather roll (optional miss ok)', true);
   }
-  // Peek exposure still raised but lower spot chance — API accepts preset.
+  // Peek exposure still raised → still visible (exposure is duration choice, not RNG).
   const setPeek = await api(
     'POST',
     `/api/games/${gameId}/periscope`,
@@ -665,6 +664,13 @@ async function main() {
     subSensorsToken,
   );
   check('set peek exposure', setPeek.status === 200 && setPeek.json.periscopeExposure === 0.2);
+  const ddPeekFeather = await api('GET', `/api/games/${gameId}/view`, undefined, radarToken);
+  const peekFeathers =
+    ((ddPeekFeather.json.view as Json).periscopeContacts as Array<Json>) ?? [];
+  check(
+    'peek exposure still paints feather',
+    peekFeathers.some((c) => c.kind === 'periscope'),
+  );
   // Scope down → not spottable as feather.
   await api('POST', `/api/games/${gameId}/periscope`, { raised: false }, subSensorsToken);
   const ddNoFeather = await api('GET', `/api/games/${gameId}/view`, undefined, radarToken);
