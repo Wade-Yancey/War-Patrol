@@ -246,8 +246,8 @@ async function main() {
   );
   check('orderedDepth ship is 0', porter.orderedDepth === 0);
   check('game clock starts 08:00', (uv.turn as Json).gameTimeSeconds === 28800);
-  check('turn length 5 min', uv.turnLengthSeconds === 300);
-  check('order timer default 5 min', (uv.turn as Json).timerSeconds === 300);
+  check('turn length 3 min', uv.turnLengthSeconds === 180);
+  check('order timer default 3 min', (uv.turn as Json).timerSeconds === 180);
   check('trails present', Array.isArray(uv.trails) && (uv.trails as unknown[]).length === 2);
   check(
     'destroyer two-screen stations only',
@@ -860,9 +860,9 @@ async function main() {
   const redAfter = after.units.find((u) => u.id === 'ss-212')!;
   check('sub depth applied on resolve', redAfter.position.depth === 50);
   check('sub orderedDepth persists after resolve', redAfter.orderedDepth === 50);
-  check('game clock advanced 5 min', after.turn.gameTimeSeconds === 28800 + 300);
+  check('game clock advanced 3 min', after.turn.gameTimeSeconds === 28800 + 180);
   check('history snapshot', after.history.length === 1);
-  check('history stores gameTime', after.history[0]!.gameTimeSeconds === 28800 + 300);
+  check('history stores gameTime', after.history[0]!.gameTimeSeconds === 28800 + 180);
   const umpireAfter = await api('GET', `/api/games/${gameId}/view`, undefined, umpireToken);
   const trails = (umpireAfter.json.view as Json).trails as Array<{ unitId: string; points: unknown[] }>;
   const porterTrail = trails.find((t) => t.unitId === 'dd-101');
@@ -1468,6 +1468,108 @@ async function main() {
     );
     await api('DELETE', `/api/saves/${torpId}`);
 
+    // Persist trails + endurance: fish exhaust after max run and stay on GT across later turns.
+    {
+      const { advanceTorpedo, createTorpedoTrack, TORPEDO_DEFAULT_DEPTH_M, TORPEDO_MAX_RUN_NM } =
+        await import('@war-patrol/shared');
+      const fish0 = createTorpedoTrack({
+        id: 't-endurance',
+        firerUnitId: 'ss-212',
+        position: { lat: 34.37, lon: -120.0, depth: TORPEDO_DEFAULT_DEPTH_M },
+        heading: 0,
+        runDepthM: TORPEDO_DEFAULT_DEPTH_M,
+        launchedTurn: 1,
+        estimatedLengthM: 115,
+        estimatedSpeedKn: 14,
+      });
+      check('fish starts at max run', Math.abs(fish0.remainingRunNm - TORPEDO_MAX_RUN_NM) < 1e-9);
+      // One long step past max run → expired / exhausted.
+      const spent = advanceTorpedo(fish0, 3600);
+      check('fish exhausts after max run', spent.status === 'expired' && spent.remainingRunNm === 0);
+
+      const persistGame = await api('POST', '/api/games', {
+        scenarioId: 'torpedo-fire-test',
+        name: 'Verify Torpedo Persist',
+      });
+      check('persist scenario create', persistGame.status === 200);
+      const persistId = String(persistGame.json.gameId);
+      const persistUmp = await api('POST', `/api/games/${persistId}/auth/umpire`, {
+        password: 'umpire',
+      });
+      const persistUTok = String(persistUmp.json.token);
+      const persistSub = await api('POST', `/api/games/${persistId}/auth/vessel`, {
+        accessToken: 'gato-demo',
+        password: 'red',
+        stationId: 'controls',
+      });
+      const persistTok = String(persistSub.json.token);
+      // Park both hulls still; fire north into empty water so fish miss and run out.
+      await api(
+        'PATCH',
+        `/api/games/${persistId}/units/dd-101`,
+        { speed: 0, heading: 90, position: { lat: 34.36, lon: -119.95 } },
+        persistUTok,
+      );
+      await api(
+        'PATCH',
+        `/api/games/${persistId}/units/ss-212`,
+        { speed: 0, heading: 0, position: { lat: 34.37, lon: -120.0, depth: 18 } },
+        persistUTok,
+      );
+      await api(
+        'POST',
+        `/api/games/${persistId}/orders`,
+        {
+          eot: 'stop',
+          fireTorpedo: {
+            aimHeading: 0,
+            estimatedLengthM: 115,
+            estimatedSpeedKn: 0,
+            spreadCount: 1,
+            spreadDeg: 2,
+          },
+        },
+        persistTok,
+      );
+      await api('POST', `/api/games/${persistId}/turn/lock`, {}, persistUTok);
+      await api('POST', `/api/games/${persistId}/turn/resolve`, {}, persistUTok);
+      // ~2.3 nm/turn at 46 kn × 180 s; 4.5 nm exhausts within a few resolves.
+      let exhausted = false;
+      for (let i = 0; i < 5 && !exhausted; i++) {
+        const v = await api('GET', `/api/games/${persistId}/view`, undefined, persistUTok);
+        const fishList =
+          ((v.json.view as { torpedoes?: Array<{ status: string; id: string }> }).torpedoes) ??
+          [];
+        exhausted = fishList.some((f) => f.status === 'expired');
+        if (!exhausted) {
+          await api('POST', `/api/games/${persistId}/turn/lock`, {}, persistUTok);
+          await api('POST', `/api/games/${persistId}/turn/resolve`, {}, persistUTok);
+        }
+      }
+      check('fish reaches exhausted status', exhausted);
+      const beforeExtra = await api('GET', `/api/games/${persistId}/view`, undefined, persistUTok);
+      const beforeFish =
+        ((beforeExtra.json.view as { torpedoes?: Array<{ id: string; status: string }> })
+          .torpedoes) ?? [];
+      const expiredIds = beforeFish.filter((f) => f.status === 'expired').map((f) => f.id);
+      check('exhausted fish present before extra turns', expiredIds.length >= 1);
+      // Empty resolves — historical trails must remain.
+      for (let i = 0; i < 3; i++) {
+        await api('POST', `/api/games/${persistId}/turn/lock`, {}, persistUTok);
+        await api('POST', `/api/games/${persistId}/turn/resolve`, {}, persistUTok);
+      }
+      const afterExtra = await api('GET', `/api/games/${persistId}/view`, undefined, persistUTok);
+      const afterFish =
+        ((afterExtra.json.view as { torpedoes?: Array<{ id: string; status: string }> })
+          .torpedoes) ?? [];
+      check(
+        'exhausted fish persist on GT',
+        expiredIds.every((id) => afterFish.some((f) => f.id === id && f.status === 'expired')),
+        `missing ${expiredIds.filter((id) => !afterFish.some((f) => f.id === id)).join(',')}`,
+      );
+      await api('DELETE', `/api/saves/${persistId}`);
+    }
+
     // Hit-audio path on a fresh game: park Porter dead ahead, stop both, one fish → hit.
     // Firer + target Controls must get bridgeDetonations kind torpedo_hit (explosion.wav cue).
     const hitGame = await api('POST', '/api/games', {
@@ -1617,7 +1719,7 @@ async function main() {
     const charges = dcv.depthCharges ?? [];
     check('umpire has depth-charge tracks', charges.length >= 1);
     check('dc has launch origin', Boolean(charges[0]?.launchPosition));
-    // Sink rate 3.5 m/s × 300 s >> 50 m — should detonate same turn
+    // Sink rate 3.5 m/s × 180 s >> 50 m — should detonate same turn
     check(
       'dc detonated or spent same turn',
       charges.some((c) => c.status === 'spent' || c.status === 'detonated') ||

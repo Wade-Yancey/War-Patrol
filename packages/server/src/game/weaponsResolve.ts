@@ -224,6 +224,8 @@ export function resolveWeaponsForTurn(
     return next;
   });
 
+  // Historical fish (hit / expired / duded) stay on the umpire GT map forever.
+  const historicalFish = priorTorpedoes.filter((t) => t.status !== 'running');
   let torpedoes: TorpedoTrack[] = [
     ...priorTorpedoes.filter((t) => t.status === 'running'),
     ...launchedFish,
@@ -400,13 +402,8 @@ export function resolveWeaponsForTurn(
     });
   }
 
-  const keptFish = [
-    ...torpedoes.filter((t) => t.status === 'running'),
-    ...torpedoes.filter(
-      (t) =>
-        (t.status === 'hit' || t.status === 'expired') && t.launchedTurn >= turnNumber - 1,
-    ),
-  ];
+  // Keep every fish ever launched: running + newly terminal + prior historical trails.
+  const keptFish = [...historicalFish, ...torpedoes];
   const keptCharges = [
     ...depthCharges.filter((c) => c.status === 'sinking'),
     ...depthCharges.filter(
