@@ -1468,6 +1468,115 @@ async function main() {
     );
     await api('DELETE', `/api/saves/${torpId}`);
 
+    // Hit-audio path on a fresh game: park Porter dead ahead, stop both, one fish → hit.
+    // Firer + target Controls must get bridgeDetonations kind torpedo_hit (explosion.wav cue).
+    const hitGame = await api('POST', '/api/games', {
+      scenarioId: 'torpedo-fire-test',
+      name: 'Verify Torpedo Hit Audio',
+    });
+    check('torpedo hit-audio game create', hitGame.status === 200);
+    const hitId = String(hitGame.json.gameId);
+    const hitUmp = await api('POST', `/api/games/${hitId}/auth/umpire`, { password: 'umpire' });
+    const hitUTok = String(hitUmp.json.token);
+    const hitSub = await api('POST', `/api/games/${hitId}/auth/vessel`, {
+      accessToken: 'gato-demo',
+      password: 'red',
+      stationId: 'controls',
+    });
+    const hitTok = String(hitSub.json.token);
+    const hitDd = await api('POST', `/api/games/${hitId}/auth/vessel`, {
+      accessToken: 'porter-demo',
+      password: 'blue',
+      stationId: 'controls',
+    });
+    const hitDdTok = String(hitDd.json.token);
+    await api(
+      'PATCH',
+      `/api/games/${hitId}/units/dd-101`,
+      { speed: 0, heading: 90, position: { lat: 34.382, lon: -120.0 } },
+      hitUTok,
+    );
+    await api(
+      'PATCH',
+      `/api/games/${hitId}/units/ss-212`,
+      { speed: 0, heading: 0, position: { lat: 34.378, lon: -120.0, depth: 18 } },
+      hitUTok,
+    );
+    await api('POST', `/api/games/${hitId}/orders`, { eot: 'stop' }, hitDdTok);
+    let torpHit = false;
+    let hitAttempts = 0;
+    while (!torpHit && hitAttempts < 6) {
+      hitAttempts += 1;
+      await api(
+        'PATCH',
+        `/api/games/${hitId}/units/dd-101`,
+        { speed: 0, heading: 90, position: { lat: 34.382, lon: -120.0 } },
+        hitUTok,
+      );
+      await api(
+        'PATCH',
+        `/api/games/${hitId}/units/ss-212`,
+        { speed: 0, heading: 0, position: { lat: 34.378, lon: -120.0, depth: 18 } },
+        hitUTok,
+      );
+      await api('POST', `/api/games/${hitId}/orders`, { eot: 'stop' }, hitDdTok);
+      const hitFire = await api(
+        'POST',
+        `/api/games/${hitId}/orders`,
+        {
+          eot: 'stop',
+          fireTorpedo: {
+            aimHeading: 0,
+            estimatedLengthM: 115,
+            estimatedSpeedKn: 0,
+            spreadCount: 1,
+            spreadDeg: 2,
+          },
+        },
+        hitTok,
+      );
+      if (hitFire.status !== 200) break;
+      await api('POST', `/api/games/${hitId}/turn/lock`, {}, hitUTok);
+      await api('POST', `/api/games/${hitId}/turn/resolve`, {}, hitUTok);
+      const hitUmpView = await api('GET', `/api/games/${hitId}/view`, undefined, hitUTok);
+      const hitUv = hitUmpView.json.view as {
+        torpedoes?: Array<{ status: string }>;
+        recentDetonations?: Array<{ kind?: string }>;
+      };
+      torpHit =
+        (hitUv.torpedoes ?? []).some((f) => f.status === 'hit') ||
+        (hitUv.recentDetonations ?? []).some((d) => d.kind === 'torpedo_hit');
+    }
+    check('parked torpedo hit (audio cue path)', torpHit, `attempts=${hitAttempts}`);
+
+    const gatoHitView = await api('GET', `/api/games/${hitId}/view`, undefined, hitTok);
+    const gatoBridge = (
+      gatoHitView.json.view as {
+        bridgeDetonations?: Array<{ id: string; kind: string; rangeNm: number }>;
+      }
+    ).bridgeDetonations;
+    const gatoHits = (gatoBridge ?? []).filter((d) => d.kind === 'torpedo_hit');
+    check(
+      'firer Controls gets torpedo_hit bridge cue',
+      gatoHits.length >= 1,
+      `bridge=${JSON.stringify(gatoBridge)}`,
+    );
+
+    const porterHitView = await api('GET', `/api/games/${hitId}/view`, undefined, hitDdTok);
+    const porterBridge = (
+      porterHitView.json.view as {
+        bridgeDetonations?: Array<{ id: string; kind: string; rangeNm: number }>;
+      }
+    ).bridgeDetonations;
+    const porterHits = (porterBridge ?? []).filter((d) => d.kind === 'torpedo_hit');
+    check(
+      'target Controls gets torpedo_hit bridge cue',
+      porterHits.length >= 1,
+      `bridge=${JSON.stringify(porterBridge)}`,
+    );
+
+    await api('DELETE', `/api/saves/${hitId}`);
+
     const dcGame = await api('POST', '/api/games', {
       scenarioId: 'depth-charge-audio-test',
       name: 'Verify DC',

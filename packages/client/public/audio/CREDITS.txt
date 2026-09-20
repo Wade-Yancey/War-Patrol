@@ -18,3 +18,8 @@ License: CC0 / public domain
 Original: https://freesound.org/people/asuperiorpotato/sounds/619320/
 Local copy: controls-ambient-hum.wav
 Original filename: 619320__asuperiorpotato__facility-hum-ambience-loopable.wav
+
+Source: Torpedo-hit explosion (project media pack)
+License: as provided for War Patrol
+Local copy: explosion.wav
+Notes: Controls bridge speakers — firer + target, distance-attenuated.

@@ -44,8 +44,8 @@ import {
 } from '../audio/controlsAmbient';
 import {
   TORPEDO_HIT_CONTROLS_PEAK_GAIN,
+  loadTorpedoHitBuffer,
   playTorpedoHitSample,
-  synthesizeTorpedoHitBuffer,
 } from '../audio/torpedoHit';
 
 function tokenKey(gameId: string, accessToken: string, stationId: string) {
@@ -173,25 +173,48 @@ export function StationPage() {
     if (!pending.length) return;
     const ctx = await ensureBridgeAudioCtx();
     if (ctx.state !== 'running') return;
-    if (!bridgeAudioRef.current.buffer) {
-      bridgeAudioRef.current.buffer = await loadDepthChargeBuffer(ctx);
+
+    const needsDc = pending.some((e) => e.kind !== 'torpedo_hit');
+    const needsHit = pending.some((e) => e.kind === 'torpedo_hit');
+    // Load samples independently — a DC fetch failure must not block torpedo hits
+    // (and vice versa). Same unlock/queue pattern as the nearby-DC bridge fix.
+    if (needsDc && !bridgeAudioRef.current.buffer) {
+      try {
+        bridgeAudioRef.current.buffer = await loadDepthChargeBuffer(ctx);
+      } catch {
+        /* keep pending DC; unlock may retry */
+      }
     }
-    if (!bridgeAudioRef.current.torpedoHitBuffer) {
-      bridgeAudioRef.current.torpedoHitBuffer = synthesizeTorpedoHitBuffer(ctx);
+    if (needsHit && !bridgeAudioRef.current.torpedoHitBuffer) {
+      try {
+        bridgeAudioRef.current.torpedoHitBuffer = await loadTorpedoHitBuffer(ctx);
+      } catch {
+        /* keep pending hits; unlock may retry */
+      }
     }
+
     const dcBuffer = bridgeAudioRef.current.buffer;
     const hitBuffer = bridgeAudioRef.current.torpedoHitBuffer;
-    if (!dcBuffer || !hitBuffer) return;
     const still: Array<{ id: string; rangeNm: number; kind: 'depth_charge' | 'torpedo_hit' }> =
       [];
     for (const e of pending) {
       if (playedBridgeBlastRef.current.has(e.id)) continue;
       try {
         if (e.kind === 'torpedo_hit') {
+          if (!hitBuffer) {
+            still.push(e);
+            continue;
+          }
+          // Floor so distant firer/target still hear a clear blast, not a tick.
           const gain =
-            TORPEDO_HIT_CONTROLS_PEAK_GAIN * torpedoHitControlsGain(e.rangeNm);
+            TORPEDO_HIT_CONTROLS_PEAK_GAIN *
+            Math.max(0.35, torpedoHitControlsGain(e.rangeNm));
           playTorpedoHitSample(ctx, hitBuffer, ctx.destination, gain);
         } else {
+          if (!dcBuffer) {
+            still.push(e);
+            continue;
+          }
           const proximity = Math.max(0.15, 1 - e.rangeNm / 0.6);
           playDepthChargeSample(
             ctx,
