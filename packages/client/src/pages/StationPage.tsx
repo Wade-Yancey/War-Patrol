@@ -690,36 +690,38 @@ export function StationPage() {
                     </span>
                   </div>
                 )}
-                {vessel.periscopeOperational === false ? (
+                {vessel.periscopeOperational === false &&
+                vessel.periscopeUnavailableReason !== 'scope_down' ? (
                   <div className="radar-unavailable" role="status">
                     <p className="readout" style={{ margin: 0 }}>
-                      {vessel.periscopeUnavailableReason === 'scope_down'
-                        ? 'Periscope down — no visual'
-                        : vessel.periscopeUnavailableReason === 'too_deep'
-                          ? 'Periscope unavailable — too deep'
-                          : vessel.periscopeUnavailableReason === 'sunk'
-                            ? `${opticsTabLabel} unavailable — sunk/destroyed`
-                            : vessel.periscopeUnavailableReason === 'sensors_disabled'
-                              ? `${opticsTabLabel} unavailable — sensors disabled`
-                              : vessel.periscopeUnavailableReason === 'no_sensor'
-                                ? `${opticsTabLabel} unavailable — no sensor`
-                                : `${opticsTabLabel} unavailable`}
+                      {vessel.periscopeUnavailableReason === 'too_deep'
+                        ? 'Periscope unavailable — too deep'
+                        : vessel.periscopeUnavailableReason === 'sunk'
+                          ? `${opticsTabLabel} unavailable — sunk/destroyed`
+                          : vessel.periscopeUnavailableReason === 'sensors_disabled'
+                            ? `${opticsTabLabel} unavailable — sensors disabled`
+                            : vessel.periscopeUnavailableReason === 'no_sensor'
+                              ? `${opticsTabLabel} unavailable — no sensor`
+                              : `${opticsTabLabel} unavailable`}
                     </p>
                     <p className="muted" style={{ margin: '0.5rem 0 0', fontSize: '0.85rem' }}>
-                      {vessel.periscopeUnavailableReason === 'scope_down'
-                        ? 'Raise the mast to clear contacts and silhouettes. Torpedo fire remains available on Controls.'
-                        : vessel.periscopeUnavailableReason === 'too_deep'
-                          ? `Come up to periscope depth or shallower (≤ ${PERISCOPE_DEPTH_M} m) to raise optics.`
-                          : `This station has no usable ${opticsVariant === 'lookout' ? 'lookout' : 'periscope'} picture.`}
+                      {vessel.periscopeUnavailableReason === 'too_deep'
+                        ? `Come up to periscope depth or shallower (≤ ${PERISCOPE_DEPTH_M} m) to raise optics.`
+                        : `This station has no usable ${opticsVariant === 'lookout' ? 'lookout' : 'periscope'} picture.`}
                     </p>
                   </div>
                 ) : (
                   <>
                     <PeriscopeScope
-                      contacts={vessel.periscopeContacts ?? []}
+                      contacts={
+                        vessel.periscopeUnavailableReason === 'scope_down'
+                          ? []
+                          : (vessel.periscopeContacts ?? [])
+                      }
                       maxRangeNm={vessel.periscopeMaxRangeNm ?? 6}
                       ownHeading={vessel.unit.heading}
                       variant={opticsVariant}
+                      blind={vessel.periscopeUnavailableReason === 'scope_down'}
                     />
                     {(vessel.torpedoWakeCues?.length ?? 0) > 0 && (
                       <div className="wake-cues panel" role="status">
