@@ -2464,12 +2464,23 @@ label {
   touch-action: manipulation;
 }
 
-/* —— Periscope (sub Sensors) —— */
+/* —— Periscope / lookout optics —— desktop row: compass | viewer | contacts */
 .periscope-scope.radar-scope {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(11rem, 15rem);
+  grid-template-columns: auto minmax(0, 1fr) minmax(11rem, 15rem);
   gap: 0.85rem;
   align-items: stretch;
+  width: 100%;
+  max-width: 100%;
+}
+
+.periscope-compass-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  align-self: center;
 }
 
 .periscope-viewport {
@@ -2659,13 +2670,27 @@ label {
   flex: 0 0 auto;
 }
 
+.optics-bearing-compass-title {
+  margin: 0;
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-align: center;
+}
+
 .optics-bearing-compass-svg {
   display: block;
-  width: min(100%, 9.5rem);
+  /* Larger than the prior side-panel rose (~9.5rem) — left-column instrument. */
+  width: min(100%, 13.5rem);
   height: auto;
   aspect-ratio: 1 / 1;
   touch-action: manipulation;
   user-select: none;
+}
+
+@media (min-width: 900px) {
+  .optics-bearing-compass-svg {
+    width: min(100%, 15rem);
+  }
 }
 
 .optics-bearing-compass-needle {
@@ -2676,6 +2701,13 @@ label {
   .optics-bearing-compass-needle {
     transition: none;
   }
+}
+
+.optics-bearing-compass-readouts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  width: 100%;
 }
 
 .optics-bearing-compass-readout {
@@ -2704,7 +2736,15 @@ label {
   letter-spacing: 0.04em;
 }
 
-.optics-bearing-compass--empty .optics-bearing-compass-readout {
+.optics-bearing-compass-caption {
+  margin: 0;
+  max-width: 15rem;
+  font-size: 0.68rem;
+  line-height: 1.3;
+  text-align: center;
+}
+
+.optics-bearing-compass--empty .optics-bearing-compass-readouts .optics-bearing-compass-readout:last-child {
   opacity: 0.65;
 }
 
@@ -2758,12 +2798,28 @@ label {
   flex: 0 0 auto;
 }
 
-@media (max-width: 720px) {
+/* Narrow / tablet: stack so the CRT row does not crush. Desktop stays one row. */
+@media (max-width: 860px) {
   .periscope-scope.radar-scope {
     grid-template-columns: 1fr;
+    justify-items: stretch;
+  }
+
+  .periscope-compass-col {
+    order: 0;
+    width: 100%;
   }
 
   .periscope-viewport {
+    order: 1;
     min-height: 16rem;
+  }
+
+  .periscope-side-panel {
+    order: 2;
+  }
+
+  .optics-bearing-compass-svg {
+    width: min(100%, 12rem);
   }
 }

@@ -22,6 +22,10 @@ interface Props {
    * Only affects operator-facing labels in the optics CRT.
    */
   variant?: 'periscope' | 'lookout';
+  /**
+   * Scope-down / optically blind — clears viewer + contacts; compass stays idle.
+   */
+  blind?: boolean;
 }
 
 /** Intrinsic pixel size for the plate `<img>` (matches source PNG). */
@@ -57,8 +61,8 @@ function contactsKey(contacts: PeriscopeContact[]): string {
 }
 
 /**
- * Shared visual optics CRT — class-mapped silhouette PNG with alpha (left) +
- * anonymous Contact N list (right).
+ * Shared visual optics CRT — one desktop row:
+ * relative-bearing compass (left) · silhouette viewer (center) · contact table (right).
  *
  * Used for fleet-sub periscope and surface-ship lookout. Destroyer / ship
  * contacts → `destroyer.png`; Fleet Submarine contacts → `submarine.png`.
@@ -70,22 +74,22 @@ function PeriscopeScopeInner({
   maxRangeNm,
   ownHeading,
   variant = 'periscope',
+  blind = false,
 }: Props) {
-  const sorted = useMemo(
-    () =>
-      [...contacts].sort(
-        (a, b) =>
-          Math.abs(a.relativeBearing) - Math.abs(b.relativeBearing) || a.rangeNm - b.rangeNm,
-      ),
-    [contacts],
-  );
+  const sorted = useMemo(() => {
+    if (blind) return [];
+    return [...contacts].sort(
+      (a, b) =>
+        Math.abs(a.relativeBearing) - Math.abs(b.relativeBearing) || a.rangeNm - b.rangeNm,
+    );
+  }, [blind, contacts]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [imgFailed, setImgFailed] = useState(false);
 
   // Synchronous selection — no useEffect gap where contacts exist but img never mounts.
   const effectiveId =
-    selectedId != null && sorted.some((c) => c.id === selectedId)
+    !blind && selectedId != null && sorted.some((c) => c.id === selectedId)
       ? selectedId
       : (sorted[0]?.id ?? null);
 
@@ -104,11 +108,20 @@ function PeriscopeScopeInner({
 
   return (
     <div className="radar-scope radar-console periscope-scope">
+      <div className="periscope-compass-col">
+        <OpticsBearingCompass
+          relativeBearing={selected ? selected.relativeBearing : null}
+          ownHeading={ownHeading}
+        />
+      </div>
+
       <div className="periscope-viewport" aria-label={viewportLabel}>
         <div className="periscope-horizon" aria-hidden />
         <div className="periscope-sea" aria-hidden />
 
-        {sorted.length === 0 ? (
+        {blind ? (
+          <p className="periscope-empty mono muted">Periscope down — no visual</p>
+        ) : sorted.length === 0 ? (
           <p className="periscope-empty mono muted">No visual contacts within {maxRangeNm} nm</p>
         ) : selected ? (
           <div
@@ -157,15 +170,13 @@ function PeriscopeScopeInner({
       <aside className="radar-side-panel periscope-side-panel">
         <p className="mono muted" style={{ margin: 0, fontSize: '0.8rem' }}>
           VIS · {maxRangeNm} nm · HDG {String(Math.round(ownHeading) % 360).padStart(3, '0')}°
+          {blind ? ' · BLIND' : ''}
         </p>
-        <OpticsBearingCompass
-          relativeBearing={selected ? selected.relativeBearing : null}
-        />
         <div className="radar-contact-list">
           <h3 className="radar-contacts-heading">Contacts</h3>
           {sorted.length === 0 ? (
             <p className="muted mono" style={{ margin: 0, fontSize: '0.85rem' }}>
-              Clear
+              {blind ? 'Blind' : 'Clear'}
             </p>
           ) : (
             <ul className="sensor-contact-scroll">
@@ -200,7 +211,9 @@ function PeriscopeScopeInner({
           )}
         </div>
         <p className="periscope-caption muted">
-          Silhouette photo when a contact is selected. Range scales size (farther = smaller).
+          {blind
+            ? 'Mast lowered — raise to clear silhouettes and contacts. Compass idle.'
+            : 'Silhouette photo when a contact is selected. Range scales size (farther = smaller).'}
         </p>
       </aside>
     </div>
@@ -212,6 +225,7 @@ export const PeriscopeScope = memo(PeriscopeScopeInner, (prev, next) => {
     prev.maxRangeNm === next.maxRangeNm &&
     prev.ownHeading === next.ownHeading &&
     prev.variant === next.variant &&
+    prev.blind === next.blind &&
     contactsKey(prev.contacts) === contactsKey(next.contacts) &&
     prev.contacts.length === next.contacts.length &&
     prev.contacts.every((c, i) => {
