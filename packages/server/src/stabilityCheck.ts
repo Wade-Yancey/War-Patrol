@@ -28,7 +28,7 @@ import { runtime } from './game/runtime.js';
 type Json = Record<string, unknown>;
 
 const TURNS = 8;
-/** Max plausible displacement per turn (~flank destroyer over 5 min) + slack. */
+/** Max plausible displacement per turn (~flank destroyer over 3 min) + slack. */
 const MAX_TELEPORT_NM = 8;
 const POS_EPS = 1e-9;
 const HEADING_EPS = 1e-9;

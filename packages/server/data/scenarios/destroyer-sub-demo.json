@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "destroyer-sub-demo",
   "name": "Destroyer vs Submarine",
-  "description": "v1 demo: Fletcher destroyer vs Gato submarine (~3 nm apart so visual lookout/periscope has a contact at start). Each vessel has Controls + Sensors screens only. DD Sensors: radar + forward-cone active search sonar (toggle) + bridge lookout. Sub Sensors: radar (surfaced ≤5 m) / periscope (depth ≤18 m) / hydrophone (submerged >5 m) tabs. PvP. In-game clock advances 5 min per turn.",
+  "description": "v1 demo: Fletcher destroyer vs Gato submarine (~3 nm apart so visual lookout/periscope has a contact at start). Each vessel has Controls + Sensors screens only. DD Sensors: radar + forward-cone active search sonar (toggle) + bridge lookout. Sub Sensors: radar (surfaced ≤5 m) / periscope (depth ≤18 m) / hydrophone (submerged >5 m) tabs. PvP. In-game clock advances 3 min per turn.",
   "mode": "pvp",
   "operatingArea": {
     "minLat": 34.0,
@@ -11,8 +11,8 @@
     "maxLon": -119.0
   },
   "umpirePassword": "umpire",
-  "defaultTurnSeconds": 300,
-  "turnLengthSeconds": 300,
+  "defaultTurnSeconds": 180,
+  "turnLengthSeconds": 180,
   "startGameTimeSeconds": 28800,
   "units": [
     {

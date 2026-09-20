@@ -382,7 +382,7 @@ export interface Scenario {
   /** Wall-clock ordering-phase duration (seconds). */
   defaultTurnSeconds: number;
   /**
-   * In-game seconds advanced per resolved turn (default 300 = 5 min).
+   * In-game seconds advanced per resolved turn (default 180 = 3 min).
    * Used for movement kinematics and the scenario clock.
    */
   turnLengthSeconds?: number;

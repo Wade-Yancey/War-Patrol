@@ -1,8 +1,8 @@
 /** Schema version for Scenario and Save documents (ARCH-SM-03/08). */
 export const SCHEMA_VERSION = 1 as const;
 
-/** Default wall-clock seconds for an ordering phase (5 min — live-action pace). */
-export const DEFAULT_TURN_SECONDS = 300;
+/** Default wall-clock seconds for an ordering phase (3 min — live-action pace). */
+export const DEFAULT_TURN_SECONDS = 180;
 
 /** Umpire order-timer touch step (30 seconds). */
 export const TIMER_STEP_SECONDS = 30;
@@ -11,10 +11,10 @@ export const TIMER_STEP_SECONDS = 30;
 export const TIMER_EXTEND_SECONDS = 60;
 
 /**
- * Default in-game seconds advanced per resolved turn (Wade: 5 min for we-go ASW).
+ * Default in-game seconds advanced per resolved turn (Wade: 3 min for we-go ASW).
  * Scenario-configurable via `turnLengthSeconds`.
  */
-export const DEFAULT_TURN_LENGTH_SECONDS = 300;
+export const DEFAULT_TURN_LENGTH_SECONDS = 180;
 
 /**
  * Default scenario clock at turn 1 (seconds since midnight) — 08:00 local.

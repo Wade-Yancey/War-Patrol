@@ -455,7 +455,7 @@ function GroundTruthMapInner({
           : t.status === 'hit'
             ? 'FISH · HIT'
             : t.status === 'expired'
-              ? 'FISH · END'
+              ? 'FISH · EXHAUSTED'
               : `FISH · ${t.status.toUpperCase()}`;
       return {
         id: t.id,
@@ -952,7 +952,13 @@ function GroundTruthMapInner({
                     cx={f.tip.x}
                     cy={f.tip.y}
                     r={f.status === 'hit' ? 5 : 3.5}
-                    fill={f.status === 'hit' ? '#ff6a4a' : '#ffc857'}
+                    fill={
+                      f.status === 'hit'
+                        ? '#ff6a4a'
+                        : f.status === 'expired'
+                          ? '#a89060'
+                          : '#ffc857'
+                    }
                     stroke="#061a0e"
                     strokeWidth={1}
                   />
