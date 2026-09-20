@@ -31,6 +31,7 @@ import { getAuthToken, setAuthToken } from '../api/authStorage';
 import { useGameStream } from '../hooks/useGameStream';
 import { GroundTruthMap } from '../components/GroundTruthMap';
 import { CombatLogPanel } from '../components/CombatLogPanel';
+import { AarTurnScrubber } from '../components/AarTurnScrubber';
 import { PendingOrdersPanel } from '../components/PendingOrdersPanel';
 import { TurnStatus } from '../components/TurnStatus';
 import { CrtShell } from '../components/CrtShell';
@@ -67,6 +68,8 @@ export function UmpirePage() {
   const [dirty, setDirty] = useState(false);
   const [applyNote, setApplyNote] = useState<string | null>(null);
   const [rollbackTarget, setRollbackTarget] = useState<number | null>(null);
+  /** null = LIVE GT; number = read-only AAR review of that resolved turn. */
+  const [reviewTurn, setReviewTurn] = useState<number | null>(null);
 
   const { view, stateVersion, connected, error, refresh } = useGameStream({
     gameId,
@@ -78,6 +81,45 @@ export function UmpirePage() {
   const phase = umpire?.turn.phase;
   const isOpen = phase === 'open';
   const isLocked = phase === 'locked' || phase === 'awaiting_resolution';
+
+  // Drop review cursor if that snapshot vanished (rollback / new game).
+  useEffect(() => {
+    if (reviewTurn == null || !umpire) return;
+    const stillThere = (umpire.historySnapshots ?? []).some((h) => h.turnNumber === reviewTurn);
+    if (!stillThere) setReviewTurn(null);
+  }, [umpire, reviewTurn]);
+
+  const reviewSnapshot = useMemo(() => {
+    if (reviewTurn == null || !umpire) return null;
+    return (umpire.historySnapshots ?? []).find((h) => h.turnNumber === reviewTurn) ?? null;
+  }, [umpire, reviewTurn]);
+
+  /** Map / combat-log props: live umpire state, or frozen end-of-turn AAR snapshot. */
+  const gtDisplay = useMemo(() => {
+    if (!umpire) return null;
+    if (!reviewSnapshot) {
+      return {
+        units: umpire.units,
+        trails: umpire.trails,
+        torpedoes: umpire.torpedoes,
+        depthCharges: umpire.depthCharges,
+        combatLog: umpire.combatLog ?? [],
+        reviewing: false as const,
+      };
+    }
+    const turnN = reviewSnapshot.turnNumber;
+    return {
+      units: reviewSnapshot.units,
+      trails: umpire.trails.map((t) => ({
+        ...t,
+        points: t.points.filter((p) => p.turnNumber <= turnN),
+      })),
+      torpedoes: reviewSnapshot.torpedoes ?? [],
+      depthCharges: reviewSnapshot.depthCharges ?? [],
+      combatLog: (umpire.combatLog ?? []).filter((e) => e.turnNumber <= turnN),
+      reviewing: true as const,
+    };
+  }, [umpire, reviewSnapshot]);
 
   const selectedUnit = useMemo(
     () => umpire?.units.find((u) => u.id === editUnitId) ?? umpire?.units[0],
@@ -310,6 +352,9 @@ export function UmpirePage() {
                   <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
                     Full operating picture — zoom/pan, trails, weapons tracks, true-north compass,
                     optional sensor range bands (Ranges). Resolve here so the plot stays in view.
+                    {gtDisplay?.reviewing
+                      ? ' Map below is a read-only AAR snapshot — Resolve still advances LIVE.'
+                      : null}
                   </p>
                 </div>
                 <div className="umpire-gt-map-actions" role="group" aria-label="Turn advance">
@@ -331,23 +376,34 @@ export function UmpirePage() {
                     className="primary"
                     type="button"
                     disabled={busy}
+                    title={
+                      gtDisplay?.reviewing
+                        ? 'Advances the live game (not the review snapshot)'
+                        : undefined
+                    }
                     onClick={() => void run(() => api.turnResolve(gameId, token))}
                   >
                     Resolve &amp; advance
                   </button>
                 </div>
               </div>
+              <AarTurnScrubber
+                historySnapshots={umpire.historySnapshots ?? []}
+                liveTurnNumber={umpire.turn.number}
+                reviewTurn={reviewTurn}
+                onReviewTurn={setReviewTurn}
+              />
               <GroundTruthMap
                 area={umpire.operatingArea}
-                units={umpire.units}
-                trails={umpire.trails}
-                torpedoes={umpire.torpedoes}
-                depthCharges={umpire.depthCharges}
+                units={gtDisplay?.units ?? umpire.units}
+                trails={gtDisplay?.trails ?? umpire.trails}
+                torpedoes={gtDisplay?.torpedoes ?? umpire.torpedoes}
+                depthCharges={gtDisplay?.depthCharges ?? umpire.depthCharges}
               />
             </section>
 
             <section className="panel stack umpire-combat-log-panel" style={{ marginTop: '1rem' }}>
-              <CombatLogPanel entries={umpire.combatLog ?? []} />
+              <CombatLogPanel entries={gtDisplay?.combatLog ?? umpire.combatLog ?? []} />
             </section>
 
             <div className="umpire-controls" style={{ marginTop: '1rem' }}>

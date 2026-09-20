@@ -133,6 +133,16 @@ export function buildUmpireView(save: GameSave, sse: SseHub): UmpireView {
     recentDetonations: save.recentDetonations ?? [],
     combatLog: save.combatLog ?? [],
     historyTurnNumbers: save.history.map((h) => h.turnNumber),
+    historySnapshots: (save.history ?? []).map((h) => ({
+      turnNumber: h.turnNumber,
+      resolvedAt: h.resolvedAt,
+      stateVersion: h.stateVersion,
+      units: h.units,
+      turn: h.turn,
+      gameTimeSeconds: h.gameTimeSeconds ?? h.turn.gameTimeSeconds,
+      torpedoes: h.torpedoes ?? [],
+      depthCharges: h.depthCharges ?? [],
+    })),
     vesselLinks: save.units.map((u) => vesselLinkForUnit(save, u)),
     connections: sse.connectionSummary(save.id),
   };

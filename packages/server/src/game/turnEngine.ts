@@ -81,6 +81,8 @@ export function resolveTurn(save: GameSave): GameSave {
       gameTimeSeconds,
     },
     gameTimeSeconds,
+    torpedoes: structuredClone(weapons.torpedoes),
+    depthCharges: structuredClone(weapons.depthCharges),
   };
 
   const next: GameSave = {
@@ -299,6 +301,9 @@ export function rollbackToTurn(save: GameSave, turnNumber: number): GameSave {
     updatedAt: new Date().toISOString(),
     stateVersion: save.stateVersion + 1,
     units,
+    // Prefer weapon tracks snapshotted with the turn (AAR / post-persist saves).
+    torpedoes: structuredClone(snap.torpedoes ?? []),
+    depthCharges: structuredClone(snap.depthCharges ?? []),
     turn: {
       number: turnNumber + 1,
       phase: 'open',
