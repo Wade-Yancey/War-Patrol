@@ -105,21 +105,25 @@ export type DepthChargePattern = 'single' | 'pair' | 'pattern_3' | 'pattern_5';
 
 /** Pending torpedo shot for the current turn (fleet sub Controls). */
 export interface TorpedoFireOrder {
-  /** True heading of the spread center (gyro from player aim — not auto-solved). */
+  /**
+   * Player LOS / aim bearing to the estimated present target (true °).
+   * Combined with course/speed/range on resolve to compute the intercept
+   * fire heading — never auto-filled from sim truth.
+   */
   aimHeading: number;
   /**
    * Player-entered estimated target true course (degrees).
-   * Of-record solution input — never auto-filled from sim heading.
+   * Drives intercept lead with speed/range — never auto-filled from sim heading.
    */
   estimatedCourse: number;
   /**
    * Player-entered target speed estimate (knots).
-   * Of-record solution input — never auto-filled from sim speed.
+   * Drives intercept lead with course/range — never auto-filled from sim speed.
    */
   estimatedSpeedKn: number;
   /**
    * Player-entered estimated range to target (nautical miles).
-   * Of-record solution input — never auto-filled from sim range.
+   * Places the estimated present position along aim — never auto-filled from sim range.
    */
   estimatedRangeNm: number;
   /**
@@ -128,8 +132,9 @@ export interface TorpedoFireOrder {
    */
   spreadCount?: number;
   /**
-   * Angular spacing between adjacent fish (degrees). Centered on aimHeading.
-   * Ignored when spreadCount === 1. Omitted → default interval.
+   * Angular spacing between adjacent fish (degrees). Centered on the
+   * solution-derived fire heading. Ignored when spreadCount === 1.
+   * Omitted → default interval.
    */
   spreadDeg?: number;
 }
@@ -180,7 +185,11 @@ export interface TorpedoTrack {
   status: TorpedoStatus;
   /** Target unit id when status === hit. */
   hitUnitId?: string;
-  /** Snapshotted calculator estimates at launch (of-record; geometry hits ignore these). */
+  /**
+   * Snapshotted calculator estimates at launch (of-record).
+   * At fire time these drove the intercept fire heading; hit resolution
+   * itself is pure geometry against truth kinematics.
+   */
   estimatedCourse: number;
   estimatedSpeedKn: number;
   estimatedRangeNm: number;

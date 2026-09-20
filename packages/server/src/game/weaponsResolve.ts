@@ -26,6 +26,7 @@ import {
   resolveDepthChargeEffect,
   resolveTorpedoHit,
   segmentClosestPoint,
+  torpedoFireHeadingFromSolution,
   torpedoSpreadHeadings,
   truncateTorpedoAtHit,
   unitLengthBeam,
@@ -149,10 +150,18 @@ export function resolveWeaponsForTurn(
       const have = next.torpedoLoad ?? 0;
       const count = Math.min(want, have);
       const spacing = clampTorpedoSpreadDeg(fire.spreadDeg);
-      const headings = torpedoSpreadHeadings(fire.aimHeading, count, spacing);
       const estCourse = Number(fire.estimatedCourse) || 0;
       const estSpd = Number(fire.estimatedSpeedKn) || 0;
       const estRange = Number(fire.estimatedRangeNm) || 0;
+      // Intercept from player solution (aim + course/speed/range) — never sim truth.
+      const solution = torpedoFireHeadingFromSolution({
+        aimHeading: fire.aimHeading,
+        estimatedCourse: estCourse,
+        estimatedSpeedKn: estSpd,
+        estimatedRangeNm: estRange,
+      });
+      const fireHdg = solution.fireHeading;
+      const headings = torpedoSpreadHeadings(fireHdg, count, spacing);
       for (const hdg of headings) {
         const fish = createTorpedoTrack({
           id: `t-${nanoid(8)}`,
@@ -175,13 +184,15 @@ export function resolveWeaponsForTurn(
         count > 1
           ? ` spread ×${count} @${spacing}° · center `
           : ' ';
+      const aimLabel = String(Math.round(normalizeHeading(fire.aimHeading))).padStart(3, '0');
+      const fireLabel = String(Math.round(normalizeHeading(fireHdg))).padStart(3, '0');
       combatLogEntries.push(
         logLine({
           kind: 'torpedo_launch',
           turnNumber,
           gameTimeSeconds,
           actor: unit,
-          summary: `${unit.name} fired torpedo${fanLabel}HDG ${String(Math.round(normalizeHeading(fire.aimHeading))).padStart(3, '0')}° · ${count} fish`,
+          summary: `${unit.name} fired torpedo${fanLabel}FIRE ${fireLabel}° (aim ${aimLabel}°) · ${count} fish`,
         }),
       );
     }
