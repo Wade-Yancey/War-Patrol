@@ -1350,11 +1350,22 @@ label {
 
 .vessel-join-vessel-head {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.5rem 0.75rem;
+  gap: 0.5rem;
   margin-bottom: 0.55rem;
+}
+
+.vessel-join-vessel-identity {
+  min-width: 0;
+  width: 100%;
+}
+
+.vessel-join-vessel-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.55rem;
 }
 
 .vessel-join-vessel-name {

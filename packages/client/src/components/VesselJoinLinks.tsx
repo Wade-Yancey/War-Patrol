@@ -105,16 +105,20 @@ export function VesselJoinLinks({ vesselLinks, units, busy, onRotateToken }: Pro
           return (
             <article key={v.unitId} className="vessel-join-vessel">
               <div className="vessel-join-vessel-head">
-                <div>
-                  <div className="vessel-join-vessel-name">{v.name}</div>
+                <div className="vessel-join-vessel-identity">
+                  <div className="vessel-join-vessel-title">
+                    <span className="vessel-join-vessel-name">{v.name}</span>
+                    {unit ? (
+                      <span
+                        className={`side-badge side-badge--${unit.faction.toLowerCase()} vessel-faction-badge`}
+                      >
+                        {unit.faction}
+                      </span>
+                    ) : null}
+                  </div>
                   <div className="vessel-join-vessel-meta mono muted">
                     {unit ? (
                       <>
-                        <span
-                          className={`side-badge side-badge--${unit.faction.toLowerCase()} vessel-faction-badge`}
-                        >
-                          {unit.faction}
-                        </span>{' '}
                         {unit.type} · {unit.class}
                         {v.passwordProtected ? ' · password set' : ' · open'}
                       </>
