@@ -1,4 +1,7 @@
-import { SUBMARINE_MAX_DEPTH_M } from './constants.js';
+import {
+  SUBMARINE_DEPTH_RATE_M_PER_MIN,
+  SUBMARINE_MAX_DEPTH_M,
+} from './constants.js';
 
 /**
  * Named dive / depth presets for fleet submarines (WWII / early Cold War inspired).
@@ -66,4 +69,28 @@ export function divePresetById(id: DivePresetId): DivePreset | undefined {
 export function clampSubmarineDepth(depthM: number): number {
   if (!Number.isFinite(depthM)) return 0;
   return Math.max(0, Math.min(SUBMARINE_MAX_DEPTH_M, Math.round(depthM)));
+}
+
+/**
+ * Step keel depth toward ordered depth by at most `rateMPerMin × turnMinutes`.
+ * Does not overshoot the ordered set-point. Ships never call this.
+ */
+export function stepDepthTowardOrdered(
+  currentDepthM: number,
+  orderedDepthM: number,
+  turnLengthSeconds: number,
+  rateMPerMin: number = SUBMARINE_DEPTH_RATE_M_PER_MIN,
+): number {
+  const current = clampSubmarineDepth(currentDepthM);
+  const ordered = clampSubmarineDepth(orderedDepthM);
+  if (current === ordered) return current;
+
+  const minutes = Math.max(0, turnLengthSeconds) / 60;
+  const maxStep = Math.max(0, rateMPerMin) * minutes;
+  if (!(maxStep > 0)) return current;
+
+  if (current < ordered) {
+    return clampSubmarineDepth(Math.min(ordered, current + maxStep));
+  }
+  return clampSubmarineDepth(Math.max(ordered, current - maxStep));
 }

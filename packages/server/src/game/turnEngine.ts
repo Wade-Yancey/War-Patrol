@@ -16,6 +16,7 @@ import {
   resolveOrderedDepth,
   resolveSpeedStepFraction,
   resolveTurnLengthSeconds,
+  stepDepthTowardOrdered,
   stepSpeedTowardTarget,
   targetSpeedForUnit,
   type DepthChargeDropOrder,
@@ -101,7 +102,7 @@ export function resolveTurn(save: GameSave): GameSave {
 }
 
 /**
- * After depth snaps: force mast down when too deep; reset plot stamp on lower;
+ * After depth step: force mast down when too deep; reset plot stamp on lower;
  * accrue stamp turns while scope stays up with at least one visual contact.
  * v1 does not apply stamp as a hit/damage bonus (geometry-first only).
  */
@@ -158,12 +159,17 @@ function applyUnitOrders(
     orderedCourse = normalizeHeading(orders.course);
   }
 
-  // Depth order updates the standing set-point; actual depth snaps this resolve (v1 stub).
+  // Depth order updates the standing set-point; keel depth steps toward it this resolve.
   if (orders.depth !== undefined && unit.type === 'Submarine') {
     orderedDepth = clampSubmarineDepth(orders.depth);
   }
   if (unit.type === 'Submarine') {
-    position = { ...position, depth: orderedDepth };
+    const nextDepth = stepDepthTowardOrdered(
+      position.depth,
+      orderedDepth,
+      turnLengthSeconds,
+    );
+    position = { ...position, depth: nextDepth };
   } else {
     orderedDepth = 0;
     position = normalizePositionForType(unit.type, position);

@@ -276,8 +276,8 @@ export interface UnitState {
   /**
    * Ordered depth meters (positive down) — submarine standing set-point.
    * Ringed up immediately on Controls submit; actual {@link position}.depth
-   * snaps to this on turn resolve (v1 stub — no gradual dive rate yet).
-   * Ships/aircraft always 0.
+   * approaches this on each resolve at the fleet-boat dive/ascent rate
+   * (`SUBMARINE_DEPTH_RATE_M_PER_MIN`). Ships/aircraft always 0.
    */
   orderedDepth: number;
   /** Speed in knots (signed: negative = reverse). */
