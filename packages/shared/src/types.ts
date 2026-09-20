@@ -814,7 +814,8 @@ export interface PeriscopeContact {
    * Hull class for silhouette mapping only
    * (Destroyer → destroyer.png, Fleet Submarine → submarine.png).
    * Not a side/name; other classes fall back to the destroyer plate.
-   * Periscope feathers use Fleet Submarine plate + PERISCOPE label in UI.
+   * Periscope feathers (`kind: 'periscope'`) use a stick/feather SVG in the
+   * optics viewer, not a hull plate — `silhouetteClass` is FoW metadata only.
    */
   silhouetteClass: HullClass;
 }

@@ -11,6 +11,7 @@ import {
   formatRelBearing,
   OpticsBearingCompass,
 } from './OpticsBearingCompass';
+import { PeriscopeFeatherSvg } from './PeriscopeFeatherSvg';
 
 interface Props {
   contacts: PeriscopeContact[];
@@ -65,7 +66,8 @@ function contactsKey(contacts: PeriscopeContact[]): string {
  * relative-bearing compass (left) · silhouette viewer (center) · contact table (right).
  *
  * Used for fleet-sub periscope and surface-ship lookout. Destroyer / ship
- * contacts → `destroyer.png`; Fleet Submarine contacts → `submarine.png`.
+ * contacts → `destroyer.png`; Fleet Submarine hull contacts → `submarine.png`.
+ * DD lookout periscope feathers (`kind: 'periscope'`) → stick/feather SVG (not a hull plate).
  * Unknown classes fall back to the destroyer plate. CRT grain/scanline overlay
  * sits above the optics without hiding alpha.
  */
@@ -128,7 +130,9 @@ function PeriscopeScopeInner({
             className="periscope-selected"
             style={{ ['--peri-scale' as string]: String(scale) }}
           >
-            {imgFailed ? (
+            {isFeather ? (
+              <PeriscopeFeatherSvg className="periscope-feather" />
+            ) : imgFailed ? (
               <p className="periscope-img-error mono" role="alert">
                 Silhouette failed to load
               </p>
@@ -213,7 +217,7 @@ function PeriscopeScopeInner({
         <p className="periscope-caption muted">
           {blind
             ? 'Mast lowered — raise to clear silhouettes and contacts. Compass idle.'
-            : 'Silhouette photo when a contact is selected. Range scales size (farther = smaller).'}
+            : 'Hull silhouette or periscope feather when selected. Range scales size (farther = smaller).'}
         </p>
       </aside>
     </div>
