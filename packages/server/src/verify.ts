@@ -1451,6 +1451,7 @@ async function main() {
       truncateTorpedoAtHit,
       createTorpedoTrack,
       torpedoSpreadHeadings,
+      torpedoFireHeadingFromSolution,
       TORPEDO_DEFAULT_DEPTH_M,
       TORPEDO_HIT_DAMAGE,
     } = await import('@war-patrol/shared');
@@ -1472,6 +1473,29 @@ async function main() {
     );
     const fan = torpedoSpreadHeadings(0, 3, 2).map((h) => Math.round(h));
     check('spread 3×2° headings', fan[0] === 358 && fan[1] === 0 && fan[2] === 2);
+
+    // Solution-driven intercept: estimates (not truth) set the fire heading.
+    const stationarySol = torpedoFireHeadingFromSolution({
+      aimHeading: 0,
+      estimatedCourse: 90,
+      estimatedSpeedKn: 0,
+      estimatedRangeNm: 1.5,
+    });
+    check(
+      'stationary solution fire = aim',
+      Math.abs(stationarySol.fireHeading - 0) < 0.01 && stationarySol.solvable,
+    );
+    const beamSol = torpedoFireHeadingFromSolution({
+      aimHeading: 0,
+      estimatedCourse: 90,
+      estimatedSpeedKn: 14,
+      estimatedRangeNm: 1.5,
+    });
+    check(
+      'beam solution lead ~18°',
+      beamSol.solvable && beamSol.fireHeading > 16 && beamSol.fireHeading < 20,
+      `fire=${beamSol.fireHeading}`,
+    );
     const roll = resolveTorpedoHit({
       missDistanceM: 5,
       fishHeading: 0,
@@ -1568,6 +1592,7 @@ async function main() {
       stationId: 'controls',
     });
     const torpTok = String(torpSub.json.token);
+    // Beam-aspect solution: aim north, est course E @ 14 kn / 1.5 nm → fire ~18°.
     const fire = await api('POST', `/api/games/${torpId}/orders`, {
       fireTorpedo: {
         aimHeading: 0,
@@ -1593,9 +1618,17 @@ async function main() {
       Boolean(fish[0]?.launchPosition) && Array.isArray(fish[0]?.path) && (fish[0]!.path!.length >= 1),
     );
     const headings = [...new Set(fish.map((f) => Math.round(((f.heading ?? 0) % 360) + 360) % 360))];
+    const expectedFan = torpedoSpreadHeadings(beamSol.fireHeading, 3, 2).map((h) =>
+      Math.round(((h % 360) + 360) % 360),
+    );
     check(
-      'spread fan headings',
-      headings.includes(0) && headings.includes(2) && headings.includes(358),
+      'spread fan follows solution fire heading',
+      expectedFan.every((h) => headings.includes(h)),
+      `got ${headings.join(',')} want ${expectedFan.join(',')}`,
+    );
+    check(
+      'fish not raw aim (solution lead)',
+      !headings.includes(0) || expectedFan.includes(0),
       `got ${headings.join(',')}`,
     );
     await api('DELETE', `/api/saves/${torpId}`);
@@ -1704,8 +1737,100 @@ async function main() {
       await api('DELETE', `/api/saves/${persistId}`);
     }
 
+    // Wrong solution → miss: parked DD dead ahead; bogus lead from course/speed estimates
+    // steers fish off the LOS so geometry never contacts.
+    {
+      const missGame = await api('POST', '/api/games', {
+        scenarioId: 'torpedo-fire-test',
+        name: 'Verify Torpedo Wrong Solution Miss',
+      });
+      check('wrong-solution game create', missGame.status === 200);
+      const missId = String(missGame.json.gameId);
+      const missUmp = await api('POST', `/api/games/${missId}/auth/umpire`, { password: 'umpire' });
+      const missUTok = String(missUmp.json.token);
+      const missSub = await api('POST', `/api/games/${missId}/auth/vessel`, {
+        accessToken: 'gato-demo',
+        password: 'red',
+        stationId: 'controls',
+      });
+      const missTok = String(missSub.json.token);
+      const missDd = await api('POST', `/api/games/${missId}/auth/vessel`, {
+        accessToken: 'porter-demo',
+        password: 'blue',
+        stationId: 'controls',
+      });
+      const missDdTok = String(missDd.json.token);
+      await api(
+        'PATCH',
+        `/api/games/${missId}/units/dd-101`,
+        { speed: 0, heading: 90, position: { lat: 34.382, lon: -120.0 } },
+        missUTok,
+      );
+      await api(
+        'PATCH',
+        `/api/games/${missId}/units/ss-212`,
+        { speed: 0, heading: 0, position: { lat: 34.378, lon: -120.0, depth: 18 } },
+        missUTok,
+      );
+      await api('POST', `/api/games/${missId}/orders`, { eot: 'stop' }, missDdTok);
+      // Aim true north (LOS) but invent a fast eastbound target → large lead away from hull.
+      const wrongSol = torpedoFireHeadingFromSolution({
+        aimHeading: 0,
+        estimatedCourse: 90,
+        estimatedSpeedKn: 28,
+        estimatedRangeNm: 0.24,
+      });
+      check(
+        'wrong solution produces lead off LOS',
+        wrongSol.solvable && Math.abs(wrongSol.fireHeading) > 10,
+        `fire=${wrongSol.fireHeading}`,
+      );
+      await api(
+        'POST',
+        `/api/games/${missId}/orders`,
+        {
+          eot: 'stop',
+          fireTorpedo: {
+            aimHeading: 0,
+            estimatedCourse: 90,
+            estimatedSpeedKn: 28,
+            estimatedRangeNm: 0.24,
+            spreadCount: 1,
+            spreadDeg: 2,
+          },
+        },
+        missTok,
+      );
+      await api('POST', `/api/games/${missId}/turn/lock`, {}, missUTok);
+      await api('POST', `/api/games/${missId}/turn/resolve`, {}, missUTok);
+      let sawHit = false;
+      let sawExpired = false;
+      for (let i = 0; i < 6 && !sawHit && !sawExpired; i++) {
+        const v = await api('GET', `/api/games/${missId}/view`, undefined, missUTok);
+        const list =
+          ((v.json.view as { torpedoes?: Array<{ status: string; heading?: number }> }).torpedoes) ??
+          [];
+        sawHit = list.some((f) => f.status === 'hit' || f.status === 'duded');
+        sawExpired = list.some((f) => f.status === 'expired');
+        if (i === 0 && list[0]) {
+          check(
+            'wrong-solution fish ran lead heading',
+            Math.abs((list[0].heading ?? 0) - wrongSol.fireHeading) < 1,
+            `hdg=${list[0].heading} want≈${wrongSol.fireHeading}`,
+          );
+        }
+        if (!sawHit && !sawExpired) {
+          await api('POST', `/api/games/${missId}/turn/lock`, {}, missUTok);
+          await api('POST', `/api/games/${missId}/turn/resolve`, {}, missUTok);
+        }
+      }
+      check('wrong solution misses parked target', !sawHit, `hit=${sawHit} expired=${sawExpired}`);
+      await api('DELETE', `/api/saves/${missId}`);
+    }
+
     // Hit-audio path on a fresh game: park Porter dead ahead, stop both, one fish → hit.
     // Firer + target Controls must get bridgeDetonations kind torpedo_hit (explosion.wav cue).
+    // Correct stationary solution (speed 0) → fire heading = aim → geometry hit.
     const hitGame = await api('POST', '/api/games', {
       scenarioId: 'torpedo-fire-test',
       name: 'Verify Torpedo Hit Audio',

@@ -5,6 +5,7 @@ import {
   TORPEDO_SPREAD_DEFAULT_DEG,
   TORPEDO_SPREAD_MAX_COUNT,
   TORPEDO_SPREAD_MAX_DEG,
+  torpedoFireHeadingFromSolution,
   type TorpedoFireOrder,
   type TorpedoTrack,
 } from '@war-patrol/shared';
@@ -23,7 +24,8 @@ interface Props {
 /**
  * Torpedo firing calculator — all solution inputs are operator-entered.
  * Never auto-fills true course/speed/range from the sim (optics + judgment).
- * Fish run geometrically on aim heading; estimates are of-record only in v1.
+ * Aim = LOS bearing; course/speed/range compute the intercept fire heading
+ * that fish actually run. Wrong lead → miss; correct solution → geometry hit.
  * Run depth is fixed in sim (shallow anti-surface default) — not operator-set.
  * Supports single shot or angular fan spreads (multiple tracked fish).
  * Fire is allowed with the periscope down.
@@ -56,7 +58,15 @@ export function TorpedoCalculator({
     () => pending?.spreadDeg ?? TORPEDO_SPREAD_DEFAULT_DEG,
   );
 
-  const gyro = ((aimHeading - ownHeading + 540) % 360) - 180;
+  const solution = torpedoFireHeadingFromSolution({
+    aimHeading,
+    estimatedCourse,
+    estimatedSpeedKn,
+    estimatedRangeNm,
+  });
+  const fireHeading = solution.fireHeading;
+  const gyro = ((fireHeading - ownHeading + 540) % 360) - 180;
+  const lead = ((fireHeading - aimHeading + 540) % 360) - 180;
   const maxCount = Math.max(1, Math.min(TORPEDO_SPREAD_MAX_COUNT, torpedoLoad || 1));
   const effectiveCount = Math.min(spreadCount, maxCount);
   const loadBlocked = torpedoLoad <= 0;
@@ -66,14 +76,15 @@ export function TorpedoCalculator({
       <div className="controls-section-head">
         <h2>Torpedo calculator</h2>
         <p className="muted controls-section-blurb">
-          Enter aim + target estimates from optics — nothing is auto-filled from truth.
-          Hits are geometric (hull breadth). Load {torpedoLoad} fish · Mk14-ish{' '}
-          {TORPEDO_SPEED_KN} kn / {TORPEDO_MAX_RUN_NM} nm. Fire allowed with scope down.
+          Enter aim (LOS) + target estimates from optics — nothing is auto-filled from
+          truth. Fish run the computed intercept from your solution. Hits are geometric
+          (hull breadth). Load {torpedoLoad} fish · Mk14-ish {TORPEDO_SPEED_KN} kn /{' '}
+          {TORPEDO_MAX_RUN_NM} nm. Fire allowed with scope down.
         </p>
       </div>
 
       <TouchNumber
-        label="Aim heading (true)"
+        label="Aim / LOS bearing (true)"
         value={aimHeading}
         onChange={setAimHeading}
         min={0}
@@ -85,11 +96,15 @@ export function TorpedoCalculator({
         format={(v) => `${String(v).padStart(3, '0')}°`}
       />
       <p className="mono muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-        Gyro vs own HDG {String(Math.round(ownHeading)).padStart(3, '0')}° →{' '}
+        Fire HDG {String(Math.round(fireHeading)).padStart(3, '0')}°
+        {solution.solvable
+          ? ` · lead ${lead >= 0 ? '+' : ''}${Math.round(lead)}°`
+          : ' · no intercept (aim)'}{' '}
+        · gyro vs own HDG {String(Math.round(ownHeading)).padStart(3, '0')}° →{' '}
         {gyro >= 0 ? '+' : ''}
         {Math.round(gyro)}°
         {effectiveCount > 1
-          ? ` · fan ×${effectiveCount} @${spreadDeg}° (center aim)`
+          ? ` · fan ×${effectiveCount} @${spreadDeg}° (center fire)`
           : ''}
       </p>
 
@@ -181,6 +196,18 @@ export function TorpedoCalculator({
             : ''}{' '}
           · tgt {String(Math.round(pending.estimatedCourse)).padStart(3, '0')}° ·{' '}
           {Math.round(pending.estimatedSpeedKn)}kn · {pending.estimatedRangeNm.toFixed(1)}nm
+          {' → fire '}
+          {String(
+            Math.round(
+              torpedoFireHeadingFromSolution({
+                aimHeading: pending.aimHeading,
+                estimatedCourse: pending.estimatedCourse,
+                estimatedSpeedKn: pending.estimatedSpeedKn,
+                estimatedRangeNm: pending.estimatedRangeNm,
+              }).fireHeading,
+            ),
+          ).padStart(3, '0')}
+          °
         </p>
       )}
 

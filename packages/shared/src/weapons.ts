@@ -4,6 +4,8 @@
  * Torpedo hits are geometry-first: closest approach within a hull-breadth
  * gate using real length/beam. Aspect softens damage and adds a small warhead
  * dud chance — not the old 5–50% “did you hit” RNG table.
+ * Fire headings come from the player's entered TDC solution (aim + course /
+ * speed / range intercept) — never auto-filled from sim truth.
  * See docs/simulation-physics.md in the project store.
  */
 import {
@@ -272,19 +274,110 @@ export function clampTorpedoSpreadDeg(raw: unknown): number {
 }
 
 /**
- * True headings for a fan centered on `aimHeading`.
- * Odd counts put one fish on the aim axis; even counts straddle it.
+ * True headings for a fan centered on `centerHeading` (usually the
+ * solution-derived fire heading, not raw LOS aim).
+ * Odd counts put one fish on the center axis; even counts straddle it.
  */
 export function torpedoSpreadHeadings(
-  aimHeading: number,
+  centerHeading: number,
   count: number,
   spreadDeg: number,
 ): number[] {
   const n = clampTorpedoSpreadCount(count);
   const spacing = clampTorpedoSpreadDeg(spreadDeg);
-  if (n <= 1) return [normalizeHeading(aimHeading)];
-  const start = aimHeading - ((n - 1) / 2) * spacing;
+  if (n <= 1) return [normalizeHeading(centerHeading)];
+  const start = centerHeading - ((n - 1) / 2) * spacing;
   return Array.from({ length: n }, (_, i) => normalizeHeading(start + i * spacing));
+}
+
+export type TorpedoSolutionInput = {
+  /** Player LOS / aim bearing to the estimated present target position (true °). */
+  aimHeading: number;
+  /** Player-estimated target true course (°). */
+  estimatedCourse: number;
+  /** Player-estimated target speed (kn). */
+  estimatedSpeedKn: number;
+  /** Player-estimated range to target (nm). */
+  estimatedRangeNm: number;
+  /** Fish speed (kn). Defaults to {@link TORPEDO_SPEED_KN}. */
+  torpedoSpeedKn?: number;
+};
+
+export type TorpedoSolutionResult = {
+  /** Constant-speed intercept fire heading (true °) from the entered solution. */
+  fireHeading: number;
+  /** Time-to-intercept (s) under the entered estimates, or 0 if unsolvable. */
+  interceptSec: number;
+  /** False when geometry has no positive intercept (falls back to aim). */
+  solvable: boolean;
+};
+
+/**
+ * Compute the fire heading that would intercept a target under the player's
+ * entered solution — never using sim truth.
+ *
+ * Aim = LOS bearing to the estimated present position; range places that point
+ * along the aim; course/speed give estimated target motion. Constant fish speed
+ * collision course (quadratic intercept). Wrong estimates → wrong lead → miss.
+ * Stationary / zero-speed estimates → fire heading equals aim.
+ * Unsolvable geometry (no positive root) falls back to aim.
+ */
+export function torpedoFireHeadingFromSolution(
+  input: TorpedoSolutionInput,
+): TorpedoSolutionResult {
+  const aim = normalizeHeading(input.aimHeading);
+  const rangeNm = Math.max(0, Number(input.estimatedRangeNm) || 0);
+  const tgtSpeedKn = Math.max(0, Number(input.estimatedSpeedKn) || 0);
+  const fishKn = Math.max(1, Number(input.torpedoSpeedKn) || TORPEDO_SPEED_KN);
+  const course = normalizeHeading(input.estimatedCourse);
+
+  if (rangeNm <= 0) {
+    return { fireHeading: aim, interceptSec: 0, solvable: false };
+  }
+
+  const rangeM = rangeNm * METERS_PER_NM;
+  const aimRad = (aim * Math.PI) / 180;
+  const rEast = rangeM * Math.sin(aimRad);
+  const rNorth = rangeM * Math.cos(aimRad);
+
+  const vtMps = tgtSpeedKn * KNOTS_TO_MPS;
+  const courseRad = (course * Math.PI) / 180;
+  const vtEast = vtMps * Math.sin(courseRad);
+  const vtNorth = vtMps * Math.cos(courseRad);
+
+  const vfMps = fishKn * KNOTS_TO_MPS;
+  const a = vtMps * vtMps - vfMps * vfMps;
+  const b = 2 * (rEast * vtEast + rNorth * vtNorth);
+  const c = rangeM * rangeM;
+
+  const times: number[] = [];
+  if (Math.abs(a) < 1e-9) {
+    // Linear: B t + C = 0
+    if (Math.abs(b) > 1e-9) {
+      const t = -c / b;
+      if (t > 1e-6) times.push(t);
+    }
+  } else {
+    const disc = b * b - 4 * a * c;
+    if (disc >= 0) {
+      const sqrt = Math.sqrt(disc);
+      const t1 = (-b - sqrt) / (2 * a);
+      const t2 = (-b + sqrt) / (2 * a);
+      if (t1 > 1e-6) times.push(t1);
+      if (t2 > 1e-6) times.push(t2);
+    }
+  }
+
+  if (times.length === 0) {
+    return { fireHeading: aim, interceptSec: 0, solvable: false };
+  }
+
+  times.sort((x, y) => x - y);
+  const t = times[0]!;
+  const vfEast = rEast / t + vtEast;
+  const vfNorth = rNorth / t + vtNorth;
+  const fireHeading = normalizeHeading((Math.atan2(vfEast, vfNorth) * 180) / Math.PI);
+  return { fireHeading, interceptSec: t, solvable: true };
 }
 
 export function defaultTorpedoLoad(unit: Pick<UnitState, 'class' | 'type'>): number {
