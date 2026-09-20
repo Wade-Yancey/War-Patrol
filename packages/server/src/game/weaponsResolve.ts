@@ -7,7 +7,6 @@ import {
   WEAPON_SUBSTEPS,
   advanceDepthCharge,
   advanceTorpedo,
-  TORPEDO_HIT_DAMAGE,
   applyHealthDamage,
   canDropDepthCharges,
   canFireTorpedo,
@@ -151,8 +150,9 @@ export function resolveWeaponsForTurn(
       const count = Math.min(want, have);
       const spacing = clampTorpedoSpreadDeg(fire.spreadDeg);
       const headings = torpedoSpreadHeadings(fire.aimHeading, count, spacing);
-      const estLen = Number(fire.estimatedLengthM) || 0;
+      const estCourse = Number(fire.estimatedCourse) || 0;
       const estSpd = Number(fire.estimatedSpeedKn) || 0;
+      const estRange = Number(fire.estimatedRangeNm) || 0;
       for (const hdg of headings) {
         const fish = createTorpedoTrack({
           id: `t-${nanoid(8)}`,
@@ -164,8 +164,9 @@ export function resolveWeaponsForTurn(
           heading: normalizeHeading(hdg),
           runDepthM,
           launchedTurn: turnNumber,
-          estimatedLengthM: estLen,
+          estimatedCourse: estCourse,
           estimatedSpeedKn: estSpd,
+          estimatedRangeNm: estRange,
         });
         launchedFish.push(fish);
       }
@@ -267,23 +268,43 @@ export function resolveWeaponsForTurn(
           target.type === 'Ship' || target.position.depth <= RADAR_SURFACE_DEPTH_M
             ? advanced.runDepthM <= 8
             : Math.abs(advanced.runDepthM - target.position.depth) <= 6;
-        const { lengthM } = unitLengthBeam(target);
+        const { lengthM, beamM } = unitLengthBeam(target);
         const roll = resolveTorpedoHit({
           missDistanceM: closest.missM,
           fishHeading: advanced.heading,
           targetHeading: target.heading,
           trueLengthM: lengthM,
-          trueSpeedKn: target.speed,
-          estimatedLengthM: advanced.estimatedLengthM,
-          estimatedSpeedKn: advanced.estimatedSpeedKn,
+          trueBeamM: beamM,
           depthOk,
           seed: `${fish.id}|${uid}|${turnNumber}|${step}`,
         });
+        if (roll.dud) {
+          const truncated = truncateTorpedoAtHit(
+            fish,
+            advanced,
+            before,
+            closest,
+            uid,
+            'duded',
+          );
+          combatLogEntries.push(
+            logLine({
+              kind: 'torpedo_expired',
+              turnNumber,
+              gameTimeSeconds,
+              actor: unitMap.get(fish.firerUnitId),
+              target,
+              summary: `Torpedo DUD on ${target.name} (aspect ${roll.aspectDeg.toFixed(0)}° · dud ${roll.dudPct.toFixed(0)}%)`,
+            }),
+          );
+          return truncated;
+        }
         if (roll.hit) {
-          const damaged = applyHealthDamage(target, TORPEDO_HIT_DAMAGE);
+          const damage = roll.damage;
+          const damaged = applyHealthDamage(target, damage);
           units = units.map((u) => (u.id === uid ? damaged : u));
           unitMap.set(uid, damaged);
-          const truncated = truncateTorpedoAtHit(fish, advanced, before, closest, uid);
+          const truncated = truncateTorpedoAtHit(fish, advanced, before, closest, uid, 'hit');
           newDetonations.push(
             makeDetonationEvent({
               id: `thit-${fish.id}`,
@@ -301,8 +322,8 @@ export function resolveWeaponsForTurn(
               gameTimeSeconds,
               actor: unitMap.get(fish.firerUnitId),
               target: damaged,
-              damage: TORPEDO_HIT_DAMAGE,
-              summary: `Torpedo HIT ${target.name} (−${TORPEDO_HIT_DAMAGE} HP · aspect ${roll.aspectDeg.toFixed(0)}° · p=${roll.hitPct.toFixed(0)}%)`,
+              damage,
+              summary: `Torpedo HIT ${target.name} (−${damage} HP · aspect ${roll.aspectDeg.toFixed(0)}° · gate ${roll.hitGateM.toFixed(0)} m)`,
             }),
           );
           combatLogEntries.push(

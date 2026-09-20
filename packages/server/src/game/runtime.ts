@@ -14,6 +14,10 @@ import {
   defaultTorpedoLoad,
   effectiveMaxSpeed,
   hasActiveSonarSensor,
+  hasLookoutSensor,
+  canUseLookoutOptics,
+  isPeriscopeDepthOk,
+  PERISCOPE_DEPTH_M,
   isTwoScreenStationLayout,
   normalizeHeading,
   normalizePositionForType,
@@ -114,6 +118,12 @@ function unitFromScenario(seed: Scenario['units'][number]): UnitState {
     radarSignature,
     sensors: seed.sensors ? seed.sensors.map((s) => ({ ...s })) : defaultSensors(identity.class),
     activeSonarEnabled: Boolean(seed.activeSonarEnabled),
+    periscopeRaised:
+      identity.type === 'Submarine' ? Boolean(seed.periscopeRaised) : false,
+    plotStampTurns:
+      identity.type === 'Submarine'
+        ? Math.max(0, Math.floor(Number(seed.plotStampTurns) || 0))
+        : 0,
     torpedoLoad:
       typeof seed.torpedoLoad === 'number'
         ? Math.max(0, Math.floor(seed.torpedoLoad))
@@ -235,6 +245,12 @@ function normalizeUnit(unit: UnitState): UnitState {
     activeSonarEnabled: hasActiveSonarSensor({ sensors })
       ? Boolean(unit.activeSonarEnabled)
       : false,
+    periscopeRaised:
+      identity.type === 'Submarine' ? Boolean(unit.periscopeRaised) : false,
+    plotStampTurns:
+      identity.type === 'Submarine'
+        ? Math.max(0, Math.floor(Number(unit.plotStampTurns) || 0))
+        : 0,
     torpedoLoad:
       typeof unit.torpedoLoad === 'number'
         ? Math.max(0, Math.floor(unit.torpedoLoad))
@@ -592,6 +608,59 @@ export class GameRuntime {
         throw Object.assign(new Error('No active sonar set installed'), { statusCode: 400 });
       }
       unit.activeSonarEnabled = Boolean(enabled);
+      return save;
+    });
+  }
+
+  /**
+   * Immediate fleet-sub periscope raise/lower (Sensors lookout station).
+   * Lowering clears optics and resets plot stamp (no frozen bonus).
+   * Raising only allowed at/above periscope depth with healthy sensors.
+   */
+  setPeriscope(
+    gameId: string,
+    unitId: string,
+    stationId: string,
+    raised: boolean,
+  ): GameSave {
+    return this.touch(gameId, (save) => {
+      const unit = save.units.find((u) => u.id === unitId);
+      if (!unit) throw Object.assign(new Error('Unit not found'), { statusCode: 404 });
+      const station = unit.stations.find((s) => s.id === stationId);
+      if (!station) throw Object.assign(new Error('Station not found'), { statusCode: 404 });
+      if (!station.capabilities.includes('lookout')) {
+        throw Object.assign(new Error('Station cannot control periscope'), { statusCode: 403 });
+      }
+      if (unit.type !== 'Submarine') {
+        throw Object.assign(new Error('Only submarines have a periscope mast'), { statusCode: 400 });
+      }
+      if (!hasLookoutSensor(unit)) {
+        throw Object.assign(new Error('No periscope set installed'), { statusCode: 400 });
+      }
+      const opticsOk = canUseLookoutOptics(unit);
+      if (!opticsOk.ok) {
+        throw Object.assign(
+          new Error(
+            opticsOk.reason === 'sunk'
+              ? 'Unit sunk — periscope offline'
+              : 'Sensors disabled — periscope offline',
+          ),
+          { statusCode: 400 },
+        );
+      }
+      if (raised) {
+        const depthOk = isPeriscopeDepthOk(unit);
+        if (!depthOk.ok) {
+          throw Object.assign(
+            new Error(`Too deep to raise periscope (≤ ${PERISCOPE_DEPTH_M} m)`),
+            { statusCode: 400 },
+          );
+        }
+        unit.periscopeRaised = true;
+      } else {
+        unit.periscopeRaised = false;
+        unit.plotStampTurns = 0;
+      }
       return save;
     });
   }

@@ -297,8 +297,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       depth?: number;
       fireTorpedo?: {
         aimHeading: number;
-        estimatedLengthM: number;
+        estimatedCourse: number;
         estimatedSpeedKn: number;
+        estimatedRangeNm: number;
         spreadCount?: number;
         spreadDeg?: number;
       } | null;
@@ -347,6 +348,35 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         ok: true,
         stateVersion: save.stateVersion,
         activeSonarEnabled: Boolean(unit?.activeSonarEnabled),
+      };
+    } catch (err) {
+      const e = httpError(err);
+      return reply.code(e.statusCode).send({ error: e.message });
+    }
+  });
+
+  app.post<{
+    Params: { gameId: string };
+    Body: { raised: boolean };
+  }>('/api/games/:gameId/periscope', async (request, reply) => {
+    try {
+      const session = requireSession(request, request.params.gameId);
+      if (session.role !== 'vessel' || !session.unitId || !session.stationId) {
+        return reply.code(403).send({ error: 'Vessel station session required' });
+      }
+      const raised = Boolean(request.body?.raised);
+      const save = runtime.setPeriscope(
+        session.gameId,
+        session.unitId,
+        session.stationId,
+        raised,
+      );
+      const unit = save.units.find((u) => u.id === session.unitId);
+      return {
+        ok: true,
+        stateVersion: save.stateVersion,
+        periscopeRaised: Boolean(unit?.periscopeRaised),
+        plotStampTurns: unit?.plotStampTurns ?? 0,
       };
     } catch (err) {
       const e = httpError(err);

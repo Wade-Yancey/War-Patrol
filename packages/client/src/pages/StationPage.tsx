@@ -70,6 +70,7 @@ export function StationPage() {
   const [sensorTab, setSensorTab] = useState<SensorTab | null>(null);
   const [controlsTab, setControlsTab] = useState<ControlsTab>('helm');
   const [sonarBusy, setSonarBusy] = useState(false);
+  const [periBusy, setPeriBusy] = useState(false);
 
   const { view, stateVersion, connected, error } = useGameStream({
     gameId,
@@ -444,6 +445,19 @@ export function StationPage() {
     }
   };
 
+  const togglePeriscope = async (raised: boolean) => {
+    if (!token) return;
+    setActionError(null);
+    setPeriBusy(true);
+    try {
+      await api.setPeriscope(gameId, token, raised);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Periscope toggle failed');
+    } finally {
+      setPeriBusy(false);
+    }
+  };
+
   if (!token) {
     return (
       <CrtShell>
@@ -627,38 +641,76 @@ export function StationPage() {
                   </h2>
                   <p className="muted radar-station-blurb">
                     Short-range silhouettes only — relative bearing and approximate speed.
-                    {vessel.periscopeOperational
-                      ? opticsVariant === 'lookout'
+                    {opticsVariant === 'lookout'
+                      ? vessel.periscopeOperational
                         ? ` Visual · ${vessel.periscopeMaxRangeNm ?? 6} nm · bridge lookout.`
-                        : ` Visual · ${vessel.periscopeMaxRangeNm ?? 6} nm · usable depth ≤ ${PERISCOPE_DEPTH_M} m.`
-                      : vessel.periscopeUnavailableReason === 'too_deep'
-                        ? ` Depth ≤ ${PERISCOPE_DEPTH_M} m (periscope / surface) required.`
                         : vessel.periscopeUnavailableReason === 'no_sensor'
-                          ? ' No lookout/periscope set installed.'
+                          ? ' No lookout set installed.'
                           : vessel.periscopeUnavailableReason === 'sunk'
                             ? ' Set offline — unit sunk/destroyed.'
-                            : vessel.periscopeUnavailableReason === 'sensors_disabled'
-                              ? ' Sensors disabled.'
-                              : ''}
+                            : ''
+                      : vessel.periscopeOperational
+                        ? ` Visual · ${vessel.periscopeMaxRangeNm ?? 6} nm · mast UP · depth ≤ ${PERISCOPE_DEPTH_M} m.`
+                        : vessel.periscopeUnavailableReason === 'scope_down'
+                          ? ' Mast DOWN — optically blind. Raise to see.'
+                          : vessel.periscopeUnavailableReason === 'too_deep'
+                            ? ` Depth ≤ ${PERISCOPE_DEPTH_M} m (periscope / surface) required.`
+                            : vessel.periscopeUnavailableReason === 'no_sensor'
+                              ? ' No lookout/periscope set installed.'
+                              : vessel.periscopeUnavailableReason === 'sunk'
+                                ? ' Set offline — unit sunk/destroyed.'
+                                : vessel.periscopeUnavailableReason === 'sensors_disabled'
+                                  ? ' Sensors disabled.'
+                                  : ''}
                   </p>
                 </div>
+                {opticsVariant === 'periscope' && (
+                  <div className="sonar-toggle-row">
+                    <button
+                      type="button"
+                      className={vessel.unit.periscopeRaised ? 'primary' : undefined}
+                      disabled={
+                        periBusy ||
+                        vessel.periscopeUnavailableReason === 'no_sensor' ||
+                        vessel.periscopeUnavailableReason === 'sunk' ||
+                        vessel.periscopeUnavailableReason === 'sensors_disabled' ||
+                        (!vessel.unit.periscopeRaised &&
+                          (vessel.periscopeUnavailableReason === 'too_deep' ||
+                            vessel.unit.position.depth > PERISCOPE_DEPTH_M))
+                      }
+                      aria-pressed={Boolean(vessel.unit.periscopeRaised)}
+                      onClick={() => void togglePeriscope(!vessel.unit.periscopeRaised)}
+                    >
+                      {vessel.unit.periscopeRaised ? 'Periscope UP' : 'Periscope DOWN'}
+                    </button>
+                    <span className="mono muted">
+                      {vessel.unit.periscopeRaised
+                        ? `RAISED · stamp ${vessel.unit.plotStampTurns ?? 0}`
+                        : 'LOWERED · blind'}
+                    </span>
+                  </div>
+                )}
                 {vessel.periscopeOperational === false ? (
                   <div className="radar-unavailable" role="status">
                     <p className="readout" style={{ margin: 0 }}>
-                      {vessel.periscopeUnavailableReason === 'too_deep'
-                        ? 'Periscope unavailable — too deep'
-                        : vessel.periscopeUnavailableReason === 'sunk'
-                          ? `${opticsTabLabel} unavailable — sunk/destroyed`
-                          : vessel.periscopeUnavailableReason === 'sensors_disabled'
-                            ? `${opticsTabLabel} unavailable — sensors disabled`
-                            : vessel.periscopeUnavailableReason === 'no_sensor'
-                              ? `${opticsTabLabel} unavailable — no sensor`
-                              : `${opticsTabLabel} unavailable`}
+                      {vessel.periscopeUnavailableReason === 'scope_down'
+                        ? 'Periscope down — no visual'
+                        : vessel.periscopeUnavailableReason === 'too_deep'
+                          ? 'Periscope unavailable — too deep'
+                          : vessel.periscopeUnavailableReason === 'sunk'
+                            ? `${opticsTabLabel} unavailable — sunk/destroyed`
+                            : vessel.periscopeUnavailableReason === 'sensors_disabled'
+                              ? `${opticsTabLabel} unavailable — sensors disabled`
+                              : vessel.periscopeUnavailableReason === 'no_sensor'
+                                ? `${opticsTabLabel} unavailable — no sensor`
+                                : `${opticsTabLabel} unavailable`}
                     </p>
                     <p className="muted" style={{ margin: '0.5rem 0 0', fontSize: '0.85rem' }}>
-                      {vessel.periscopeUnavailableReason === 'too_deep'
-                        ? `Come up to periscope depth or shallower (≤ ${PERISCOPE_DEPTH_M} m) to raise optics.`
-                        : `This station has no usable ${opticsVariant === 'lookout' ? 'lookout' : 'periscope'} picture.`}
+                      {vessel.periscopeUnavailableReason === 'scope_down'
+                        ? 'Raise the mast to clear contacts and silhouettes. Torpedo fire remains available on Controls.'
+                        : vessel.periscopeUnavailableReason === 'too_deep'
+                          ? `Come up to periscope depth or shallower (≤ ${PERISCOPE_DEPTH_M} m) to raise optics.`
+                          : `This station has no usable ${opticsVariant === 'lookout' ? 'lookout' : 'periscope'} picture.`}
                     </p>
                   </div>
                 ) : (

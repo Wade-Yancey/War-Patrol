@@ -51,8 +51,12 @@ function formatRelBearing(rel: number): string {
   return `${String(abs).padStart(3, '0')}° ${side}`;
 }
 
+function contactKindLabel(c: PeriscopeContact): string {
+  return c.kind === 'periscope' ? 'PERISCOPE' : `Contact`;
+}
+
 function contactsKey(contacts: PeriscopeContact[]): string {
-  return contacts.map((c) => c.id).join('|');
+  return contacts.map((c) => `${c.id}:${c.kind ?? 'hull'}`).join('|');
 }
 
 /**
@@ -95,6 +99,7 @@ function PeriscopeScopeInner({
   const scale = selected ? Math.max(periscopeSilhouetteScale(selected.rangeNm, maxRangeNm), 0.55) : 1;
   const viewportLabel =
     variant === 'lookout' ? 'Lookout visual contact' : 'Periscope visual contact';
+  const isFeather = selected?.kind === 'periscope';
 
   const plateClass = selected?.silhouetteClass;
   const plateSrc = silhouetteSrcForClass(plateClass);
@@ -133,10 +138,14 @@ function PeriscopeScopeInner({
               />
             )}
             <div className="periscope-readouts mono">
-              <span className="readout">Contact {selectedLabelN}</span>
+              <span className="readout">
+                {isFeather
+                  ? 'PERISCOPE'
+                  : `Contact ${selectedLabelN}`}
+              </span>
               <span>{formatRelBearing(selected.relativeBearing)}</span>
               <span className="muted">~{selected.rangeNm.toFixed(1)} nm</span>
-              <span className="muted">~{selected.speedKn} kn</span>
+              {!isFeather && <span className="muted">~{selected.speedKn} kn</span>}
             </div>
           </div>
         ) : null}
@@ -173,11 +182,15 @@ function PeriscopeScopeInner({
                         setSelectedId(c.id);
                       }}
                     >
-                      <span className="readout">Contact {i + 1}</span>
+                      <span className="readout">
+                        {c.kind === 'periscope'
+                          ? 'PERISCOPE'
+                          : `${contactKindLabel(c)} ${i + 1}`}
+                      </span>
                       <span className="radar-contact-meta">
                         <span>{formatRelBearing(c.relativeBearing)}</span>
                         <span>~{c.rangeNm.toFixed(1)} nm</span>
-                        <span>~{c.speedKn} kn</span>
+                        {c.kind !== 'periscope' && <span>~{c.speedKn} kn</span>}
                       </span>
                     </button>
                   </li>
@@ -209,7 +222,8 @@ export const PeriscopeScope = memo(PeriscopeScopeInner, (prev, next) => {
         c.relativeBearing === o.relativeBearing &&
         c.rangeNm === o.rangeNm &&
         c.speedKn === o.speedKn &&
-        c.silhouetteClass === o.silhouetteClass
+        c.silhouetteClass === o.silhouetteClass &&
+        (c.kind ?? 'hull') === (o.kind ?? 'hull')
       );
     })
   );

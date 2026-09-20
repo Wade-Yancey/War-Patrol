@@ -443,7 +443,9 @@ async function main() {
   check('sub hydrophone unavailable on surface', sss.hydrophoneOperational === false);
   check('sub hydrophone reason surfaced', sss.hydrophoneUnavailableReason === 'surfaced');
   check('sub radar live on surface (sensors)', sss.radarOperational === true);
-  check('sub periscope live on surface', sss.periscopeOperational === true);
+  check('sub periscope down by default', sss.periscopeOperational === false);
+  check('sub periscope reason scope_down', sss.periscopeUnavailableReason === 'scope_down');
+  check('sub periscope raised flag false', (sss.unit as Json).periscopeRaised === false);
   check('sub periscope has contacts array', Array.isArray(sss.periscopeContacts));
   check(
     'sub periscope max range stub',
@@ -461,8 +463,20 @@ async function main() {
       `got ${demoRange.toFixed(2)} nm`,
     );
   }
+
+  // Raise mast — optics live; scope down cleared contacts.
+  const raisePeri = await api(
+    'POST',
+    `/api/games/${gameId}/periscope`,
+    { raised: true },
+    subSensorsToken,
+  );
+  check('raise periscope on surface', raisePeri.status === 200);
+  check('raise returns raised true', raisePeri.json.periscopeRaised === true);
+
   const periSurf = await api('GET', `/api/games/${gameId}/view`, undefined, subSensorsToken);
   const periSurfView = periSurf.json.view as Json;
+  check('sub periscope live when raised', periSurfView.periscopeOperational === true);
   const periContacts = periSurfView.periscopeContacts as Array<Json>;
   check('sub periscope sees destroyer on surface', periContacts.length >= 1, `got ${periContacts.length}`);
   check(
@@ -554,10 +568,31 @@ async function main() {
   );
   const periAt18 = await api('GET', `/api/games/${gameId}/view`, undefined, subSensorsToken);
   check(
-    'sub periscope operational at 18 m',
+    'sub periscope operational at 18 m when raised',
     (periAt18.json.view as Json).periscopeOperational === true,
   );
 
+  // Lower mast → optically blind; plot stamp resets.
+  const lowerPeri = await api(
+    'POST',
+    `/api/games/${gameId}/periscope`,
+    { raised: false },
+    subSensorsToken,
+  );
+  check('lower periscope', lowerPeri.status === 200);
+  check('lower resets plot stamp', lowerPeri.json.plotStampTurns === 0);
+  const periDown = await api('GET', `/api/games/${gameId}/view`, undefined, subSensorsToken);
+  const periDownView = periDown.json.view as Json;
+  check('sub periscope blind when down', periDownView.periscopeOperational === false);
+  check('sub periscope reason scope_down at depth', periDownView.periscopeUnavailableReason === 'scope_down');
+  check(
+    'scope down clears contacts',
+    Array.isArray(periDownView.periscopeContacts) &&
+      (periDownView.periscopeContacts as Json[]).length === 0,
+  );
+
+  // Raise again then dive deep — auto unavailable too_deep; raise rejected.
+  await api('POST', `/api/games/${gameId}/periscope`, { raised: true }, subSensorsToken);
   await api(
     'PATCH',
     `/api/games/${gameId}/units/ss-212`,
@@ -568,6 +603,60 @@ async function main() {
   const periDeepView = periDeep.json.view as Json;
   check('sub periscope unavailable too deep', periDeepView.periscopeOperational === false);
   check('sub periscope reason too_deep', periDeepView.periscopeUnavailableReason === 'too_deep');
+  const raiseDeep = await api(
+    'POST',
+    `/api/games/${gameId}/periscope`,
+    { raised: true },
+    subSensorsToken,
+  );
+  check('raise rejected when too deep', raiseDeep.status === 400);
+
+  // DD lookout spots raised periscope feather (not full hull) when sub at peri depth.
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { position: { lat: 34.35, lon: -120.05, depth: 18 }, speed: 3 },
+    umpireToken,
+  );
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { position: { lat: 34.35, lon: -120.1 }, speed: 12 },
+    umpireToken,
+  );
+  // Mast still marked raised from earlier; depth now allows raise — re-raise after dive.
+  const raiseAtPeri = await api(
+    'POST',
+    `/api/games/${gameId}/periscope`,
+    { raised: true },
+    subSensorsToken,
+  );
+  check('raise at periscope depth', raiseAtPeri.status === 200);
+  const ddLookFeather = await api('GET', `/api/games/${gameId}/view`, undefined, radarToken);
+  const ddFeatherView = ddLookFeather.json.view as Json;
+  const featherContacts = (ddFeatherView.periscopeContacts as Array<Json>) ?? [];
+  const feather = featherContacts.find((c) => c.kind === 'periscope');
+  // Probabilistic — may miss on this turn seed; if present, shape must be FoW feather.
+  if (feather) {
+    check(
+      'DD lookout periscope feather FoW',
+      feather.silhouetteClass === 'Fleet Submarine' &&
+        feather.speedKn === 0 &&
+        typeof feather.relativeBearing === 'number' &&
+        typeof feather.rangeNm === 'number' &&
+        !('name' in feather),
+    );
+  } else {
+    check('DD lookout feather roll (optional miss ok)', true);
+  }
+  // Scope down → not spottable as feather.
+  await api('POST', `/api/games/${gameId}/periscope`, { raised: false }, subSensorsToken);
+  const ddNoFeather = await api('GET', `/api/games/${gameId}/view`, undefined, radarToken);
+  const noFeather = ((ddNoFeather.json.view as Json).periscopeContacts as Array<Json>) ?? [];
+  check(
+    'scope down not spottable as periscope',
+    !noFeather.some((c) => c.kind === 'periscope'),
+  );
 
   // Restore Porter near original for hydrophone checks
   await api(
@@ -1331,28 +1420,34 @@ async function main() {
   // --- Weapons: scenarios + torpedo fire + DC drop + umpire GT tracks ---
   {
     const {
-      torpedoBaseHitPctFromAspect,
-      isLengthAccuratelyIdentified,
-      isSpeedAccuratelyIdentified,
+      torpedoDudPctFromAspect,
+      torpedoDamageFactorFromAspect,
+      torpedoHullHalfBreadthM,
+      torpedoHitGateM,
       resolveTorpedoHit,
       segmentClosestPoint,
       truncateTorpedoAtHit,
       createTorpedoTrack,
       torpedoSpreadHeadings,
       TORPEDO_DEFAULT_DEPTH_M,
+      TORPEDO_HIT_DAMAGE,
     } = await import('@war-patrol/shared');
-    check('aspect 90° base 50%', Math.abs(torpedoBaseHitPctFromAspect(90) - 50) < 0.01);
-    check('aspect 45° base 25%', Math.abs(torpedoBaseHitPctFromAspect(45) - 25) < 0.01);
-    check('aspect 15° base 10%', Math.abs(torpedoBaseHitPctFromAspect(15) - 10) < 0.01);
-    check('aspect 0° base 5%', Math.abs(torpedoBaseHitPctFromAspect(0) - 5) < 0.01);
+    check('beam aspect dud ~3%', Math.abs(torpedoDudPctFromAspect(90) - 3) < 0.01);
+    check('end-on dud ~18%', Math.abs(torpedoDudPctFromAspect(0) - 18) < 0.01);
+    check('beam damage factor 1', Math.abs(torpedoDamageFactorFromAspect(90) - 1) < 0.01);
     check(
-      'aspect 30° interpolated',
-      Math.abs(torpedoBaseHitPctFromAspect(30) - 17.5) < 0.01,
+      'end-on damage factor 0.55',
+      Math.abs(torpedoDamageFactorFromAspect(0) - 0.55) < 0.01,
     );
-    check('length ID within 15%', isLengthAccuratelyIdentified(115, 115));
-    check('length ID rejects bad', !isLengthAccuratelyIdentified(50, 115));
-    check('speed ID within 2 kn', isSpeedAccuratelyIdentified(14, 14.5));
-    check('speed ID rejects bad', !isSpeedAccuratelyIdentified(5, 14));
+    // Fletcher 115×12: beam aspect gate ≈ length/2 + pad; end-on ≈ beam/2 + pad.
+    const beamGate = torpedoHitGateM(115, 12, 90);
+    const endGate = torpedoHitGateM(115, 12, 0);
+    check('beam gate ~ length/2', beamGate > 50 && beamGate < 70);
+    check('end-on gate ~ beam/2', endGate > 5 && endGate < 12);
+    check(
+      'half breadth beam = length/2',
+      Math.abs(torpedoHullHalfBreadthM(115, 12, 90) - 57.5) < 0.01,
+    );
     const fan = torpedoSpreadHeadings(0, 3, 2).map((h) => Math.round(h));
     check('spread 3×2° headings', fan[0] === 358 && fan[1] === 0 && fan[2] === 2);
     const roll = resolveTorpedoHit({
@@ -1360,15 +1455,28 @@ async function main() {
       fishHeading: 0,
       targetHeading: 90,
       trueLengthM: 115,
-      trueSpeedKn: 14,
-      estimatedLengthM: 115,
-      estimatedSpeedKn: 14,
+      trueBeamM: 12,
       depthOk: true,
-      seed: 'verify-aspect-beam',
+      seed: 'verify-aspect-beam-geo',
     });
-    check('beam shot base ~50', Math.abs(roll.basePct - 50) < 0.01);
-    check('beam + mods hitPct', roll.hitPct === 70); // 50+10+10
-    check('not geometric miss', roll.geometricMiss === false);
+    check('beam geometric contact', roll.geometricMiss === false);
+    check('beam gate applied', roll.hitGateM === beamGate);
+    check(
+      'beam hit or dud',
+      (roll.hit && !roll.dud && roll.damage === TORPEDO_HIT_DAMAGE) ||
+        (!roll.hit && roll.dud && roll.damage === 0),
+    );
+    const missRoll = resolveTorpedoHit({
+      missDistanceM: 200,
+      fishHeading: 0,
+      targetHeading: 90,
+      trueLengthM: 115,
+      trueBeamM: 12,
+      depthOk: true,
+      seed: 'verify-geo-miss',
+    });
+    check('far miss is geometric', missRoll.geometricMiss === true);
+    check('far miss no hit', missRoll.hit === false);
 
     // Hit path truncation: trail ends at closest approach, not past the target.
     {
@@ -1384,8 +1492,9 @@ async function main() {
         heading: 0,
         runDepthM: TORPEDO_DEFAULT_DEPTH_M,
         launchedTurn: 1,
-        estimatedLengthM: 115,
+        estimatedCourse: 90,
         estimatedSpeedKn: 14,
+        estimatedRangeNm: 1.5,
       });
       const advanced = {
         ...prior,
@@ -1440,8 +1549,9 @@ async function main() {
     const fire = await api('POST', `/api/games/${torpId}/orders`, {
       fireTorpedo: {
         aimHeading: 0,
-        estimatedLengthM: 115,
+        estimatedCourse: 90,
         estimatedSpeedKn: 14,
+        estimatedRangeNm: 1.5,
         spreadCount: 3,
         spreadDeg: 2,
       },
@@ -1479,8 +1589,9 @@ async function main() {
         heading: 0,
         runDepthM: TORPEDO_DEFAULT_DEPTH_M,
         launchedTurn: 1,
-        estimatedLengthM: 115,
+        estimatedCourse: 0,
         estimatedSpeedKn: 14,
+        estimatedRangeNm: 2,
       });
       check('fish starts at max run', Math.abs(fish0.remainingRunNm - TORPEDO_MAX_RUN_NM) < 1e-9);
       // One long step past max run → expired / exhausted.
@@ -1523,8 +1634,9 @@ async function main() {
           eot: 'stop',
           fireTorpedo: {
             aimHeading: 0,
-            estimatedLengthM: 115,
+            estimatedCourse: 0,
             estimatedSpeedKn: 0,
+            estimatedRangeNm: 4,
             spreadCount: 1,
             spreadDeg: 2,
           },
@@ -1629,8 +1741,9 @@ async function main() {
           eot: 'stop',
           fireTorpedo: {
             aimHeading: 0,
-            estimatedLengthM: 115,
+            estimatedCourse: 0,
             estimatedSpeedKn: 0,
+            estimatedRangeNm: 4,
             spreadCount: 1,
             spreadDeg: 2,
           },

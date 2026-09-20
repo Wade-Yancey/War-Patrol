@@ -1,8 +1,23 @@
-import { PERISCOPE_MAX_RANGE_NM } from './constants.js';
+import { PERISCOPE_MAX_RANGE_NM, RADAR_SURFACE_DEPTH_M } from './constants.js';
 import { divePresetById } from './dive.js';
+import { clamp } from './geo.js';
 import { shortestBearingDelta } from './hydrophone.js';
 import type { HullClass, SensorDef, UnitState } from './types.js';
 import { canUseSensors, isHullClass, resolveVesselIdentity } from './vessel.js';
+
+/** Local 0–1 hash — avoids circular import with weapons.ts. */
+function periRng01(seed: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  let x = h >>> 0;
+  x ^= x << 13;
+  x ^= x >>> 17;
+  x ^= x << 5;
+  return (x >>> 0) / 4294967296;
+}
 
 /**
  * Max keel depth (m) at which fleet-sub periscope optics are usable.
@@ -11,6 +26,18 @@ import { canUseSensors, isHullClass, resolveVesselIdentity } from './vessel.js';
  */
 export const PERISCOPE_DEPTH_M: number =
   divePresetById('periscope')?.depthM ?? 18;
+
+/**
+ * Base probability that a destroyer lookout notices a raised periscope
+ * feather within visual range (before range falloff).
+ */
+export const PERISCOPE_SPOT_BASE_P = 0.55;
+
+/** Max absolute bearing error (degrees) applied before FoW coarsening. */
+export const PERISCOPE_SPOT_BEARING_ERR_DEG = 12;
+
+/** Max absolute range error (nm) applied before FoW coarsening. */
+export const PERISCOPE_SPOT_RANGE_ERR_NM = 0.5;
 
 /** Own-ship lookout / periscope set, if installed. */
 export function findLookoutSensor(unit: Pick<UnitState, 'sensors'>): SensorDef | undefined {
@@ -52,17 +79,81 @@ export function isPeriscopeDepthOk(
 }
 
 /**
- * Targets visible through the periscope stub:
+ * Targets visible as full hull silhouettes through periscope / lookout:
  * waterborne hulls that are not sunk; submerged submarines are hidden
  * (depth &gt; radar surface band). Aircraft skipped for v1.
+ *
+ * Raised periscope feathers on submerged boats are handled separately via
+ * {@link isRaisedPeriscopeSpottable}.
  */
 export function isPeriscopeTargetable(
   unit: Pick<UnitState, 'type' | 'condition' | 'position'>,
 ): boolean {
   if (unit.condition === 'sunk') return false;
   if (unit.type === 'Aircraft') return false;
-  if (unit.type === 'Submarine' && unit.position.depth > 5) return false;
+  if (unit.type === 'Submarine' && unit.position.depth > RADAR_SURFACE_DEPTH_M) {
+    return false;
+  }
   return true;
+}
+
+/** True when this unit is a fleet sub with the mast raised. */
+export function isPeriscopeRaised(
+  unit: Pick<UnitState, 'type' | 'periscopeRaised'>,
+): boolean {
+  return unit.type === 'Submarine' && Boolean(unit.periscopeRaised);
+}
+
+/**
+ * Submerged (or awash-but-hull-hidden) boat with mast up — DD lookout may
+ * spot a periscope feather, not a full hull silhouette.
+ * Scope down → not spottable as a feather/stick.
+ */
+export function isRaisedPeriscopeSpottable(
+  unit: Pick<UnitState, 'type' | 'condition' | 'position' | 'periscopeRaised'>,
+): boolean {
+  if (unit.condition === 'sunk') return false;
+  if (unit.type !== 'Submarine') return false;
+  if (!unit.periscopeRaised) return false;
+  // Hull already visible as a silhouette — no separate feather contact.
+  if (unit.position.depth <= RADAR_SURFACE_DEPTH_M) return false;
+  // Mast only works at/above periscope depth.
+  if (unit.position.depth > PERISCOPE_DEPTH_M) return false;
+  return true;
+}
+
+/**
+ * Chance a surface lookout notices a raised periscope at `rangeNm`.
+ * Falls off toward max visual range.
+ */
+export function periscopeSpotProbability(
+  rangeNm: number,
+  maxRangeNm: number = PERISCOPE_MAX_RANGE_NM,
+): number {
+  if (rangeNm <= 0 || rangeNm > maxRangeNm) return 0;
+  const proximity = 1 - rangeNm / maxRangeNm;
+  return clamp(PERISCOPE_SPOT_BASE_P * (0.4 + 0.6 * proximity), 0, 0.85);
+}
+
+/**
+ * Deterministic bearing/range observation error for a periscope feather sighting.
+ * Applied before FoW coarsening — never truth-perfect.
+ */
+export function periscopeSpotObservationError(seed: string): {
+  bearingErrDeg: number;
+  rangeErrNm: number;
+} {
+  const u1 = periRng01(`${seed}|brg`);
+  const u2 = periRng01(`${seed}|rng`);
+  return {
+    bearingErrDeg: (u1 * 2 - 1) * PERISCOPE_SPOT_BEARING_ERR_DEG,
+    rangeErrNm: (u2 * 2 - 1) * PERISCOPE_SPOT_RANGE_ERR_NM,
+  };
+}
+
+/** Reset plot stamp (call whenever the scope is lowered). */
+export function resetPlotStamp<T extends { plotStampTurns?: number }>(unit: T): T {
+  return { ...unit, plotStampTurns: 0 };
 }
 
 /** Relative bearing deg (−180, 180] from own heading to true contact bearing. */

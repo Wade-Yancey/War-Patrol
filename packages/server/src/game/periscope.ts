@@ -6,7 +6,12 @@ import {
   coarsenRelativeBearingDeg,
   findLookoutSensor,
   isPeriscopeDepthOk,
+  isPeriscopeRaised,
   isPeriscopeTargetable,
+  isRaisedPeriscopeSpottable,
+  normalizeHeading,
+  periscopeSpotObservationError,
+  periscopeSpotProbability,
   relativeBearingDeg,
   resolvePeriscopeMaxRangeNm,
   resolveVesselIdentity,
@@ -20,18 +25,22 @@ export type PeriscopePicture = {
   contacts: PeriscopeContact[];
   maxRangeNm: number;
   operational: boolean;
-  unavailableReason?: 'no_sensor' | 'sunk' | 'sensors_disabled' | 'too_deep';
+  unavailableReason?:
+    | 'no_sensor'
+    | 'sunk'
+    | 'sensors_disabled'
+    | 'too_deep'
+    | 'scope_down';
 };
 
 /**
  * Server-authoritative periscope / lookout picture (visual stub).
  *
- * Subs: available at/above periscope depth (keel ≤ 18 m); sensors subsystem
- * can still knock out the periscope.
+ * Subs: mast must be raised AND keel ≤ 18 m; sensors casualty still knocks
+ * out the periscope. Scope down → optically blind (no contacts / stale data).
  * Surface ships (DD lookout): available whenever not sunk — lookout is immune
- * to sensors-subsystem combat damage.
- * Short visual range only. Contacts: relative bearing, coarsened range/speed,
- * silhouette class — own ship excluded.
+ * to sensors-subsystem combat damage. DD lookout can also spot raised enemy
+ * periscope feathers (not full sub ID) with bearing/range error.
  */
 export function buildPeriscopeContacts(own: UnitState, save: GameSave): PeriscopePicture {
   const sensor = findLookoutSensor(own);
@@ -66,27 +75,64 @@ export function buildPeriscopeContacts(own: UnitState, save: GameSave): Periscop
     };
   }
 
+  // Fleet-sub mast toggle — surface lookout has no mast.
+  if (own.type === 'Submarine' && !isPeriscopeRaised(own)) {
+    return {
+      contacts: [],
+      maxRangeNm,
+      operational: false,
+      unavailableReason: 'scope_down',
+    };
+  }
+
   const contacts: PeriscopeContact[] = [];
 
   for (const other of save.units) {
     if (other.id === own.id) continue;
-    if (!isPeriscopeTargetable(other)) continue;
 
-    const { bearing, rangeNm } = bearingRangeNm(own.position, other.position);
-    if (rangeNm > maxRangeNm || rangeNm <= 0) continue;
+    if (isPeriscopeTargetable(other)) {
+      const { bearing, rangeNm } = bearingRangeNm(own.position, other.position);
+      if (rangeNm > maxRangeNm || rangeNm <= 0) continue;
 
-    const { class: silhouetteClass } = resolveVesselIdentity({
-      type: other.type,
-      class: other.class,
-    });
+      const { class: silhouetteClass } = resolveVesselIdentity({
+        type: other.type,
+        class: other.class,
+      });
 
-    contacts.push({
-      id: `p-${hashTrackId(own.id, other.id)}`,
-      relativeBearing: coarsenRelativeBearingDeg(relativeBearingDeg(own.heading, bearing)),
-      rangeNm: coarsenPeriscopeRangeNm(rangeNm),
-      speedKn: coarsenPeriscopeSpeedKn(other.speed),
-      silhouetteClass: silhouetteClass as HullClass,
-    });
+      contacts.push({
+        id: `p-${hashTrackId(own.id, other.id)}`,
+        kind: 'hull',
+        relativeBearing: coarsenRelativeBearingDeg(relativeBearingDeg(own.heading, bearing)),
+        rangeNm: coarsenPeriscopeRangeNm(rangeNm),
+        speedKn: coarsenPeriscopeSpeedKn(other.speed),
+        silhouetteClass: silhouetteClass as HullClass,
+      });
+      continue;
+    }
+
+    // DD / ship lookout: chance to spot a raised periscope feather.
+    if (own.type === 'Ship' && isRaisedPeriscopeSpottable(other)) {
+      const { bearing, rangeNm } = bearingRangeNm(own.position, other.position);
+      if (rangeNm > maxRangeNm || rangeNm <= 0) continue;
+      const p = periscopeSpotProbability(rangeNm, maxRangeNm);
+      const rollSeed = `${save.id}|${own.id}|${other.id}|peri-spot|${save.turn.number}`;
+      if (spotRng01(rollSeed) > p) continue;
+
+      const err = periscopeSpotObservationError(rollSeed);
+      const noisyBearing = normalizeHeading(bearing + err.bearingErrDeg);
+      const noisyRange = Math.max(0.1, rangeNm + err.rangeErrNm);
+
+      contacts.push({
+        id: `pf-${hashTrackId(own.id, other.id)}`,
+        kind: 'periscope',
+        relativeBearing: coarsenRelativeBearingDeg(
+          relativeBearingDeg(own.heading, noisyBearing),
+        ),
+        rangeNm: coarsenPeriscopeRangeNm(noisyRange),
+        speedKn: 0,
+        silhouetteClass: 'Fleet Submarine',
+      });
+    }
   }
 
   contacts.sort(
@@ -94,6 +140,19 @@ export function buildPeriscopeContacts(own: UnitState, save: GameSave): Periscop
       Math.abs(a.relativeBearing) - Math.abs(b.relativeBearing) || a.rangeNm - b.rangeNm,
   );
   return { contacts, maxRangeNm, operational: true };
+}
+
+function spotRng01(seed: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  let x = h >>> 0;
+  x ^= x << 13;
+  x ^= x >>> 17;
+  x ^= x << 5;
+  return (x >>> 0) / 4294967296;
 }
 
 function hashTrackId(ownId: string, otherId: string): string {

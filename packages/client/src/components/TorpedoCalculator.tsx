@@ -22,9 +22,11 @@ interface Props {
 
 /**
  * Torpedo firing calculator — all solution inputs are operator-entered.
- * Never auto-fills true length/speed from the sim (recognition manual + optics).
+ * Never auto-fills true course/speed/range from the sim (optics + judgment).
+ * Fish run geometrically on aim heading; estimates are of-record only in v1.
  * Run depth is fixed in sim (shallow anti-surface default) — not operator-set.
  * Supports single shot or angular fan spreads (multiple tracked fish).
+ * Fire is allowed with the periscope down.
  */
 export function TorpedoCalculator({
   ownHeading,
@@ -38,11 +40,14 @@ export function TorpedoCalculator({
   const [aimHeading, setAimHeading] = useState(
     () => Math.round(pending?.aimHeading ?? ownHeading),
   );
-  const [estimatedLengthM, setEstimatedLengthM] = useState(
-    () => pending?.estimatedLengthM ?? 0,
+  const [estimatedCourse, setEstimatedCourse] = useState(
+    () => Math.round(pending?.estimatedCourse ?? 0),
   );
   const [estimatedSpeedKn, setEstimatedSpeedKn] = useState(
     () => pending?.estimatedSpeedKn ?? 0,
+  );
+  const [estimatedRangeNm, setEstimatedRangeNm] = useState(
+    () => pending?.estimatedRangeNm ?? 0,
   );
   const [spreadCount, setSpreadCount] = useState(
     () => pending?.spreadCount ?? 1,
@@ -61,8 +66,9 @@ export function TorpedoCalculator({
       <div className="controls-section-head">
         <h2>Torpedo calculator</h2>
         <p className="muted controls-section-blurb">
-          Enter estimates from recognition manual + optics — nothing is auto-filled from truth.
-          Load {torpedoLoad} fish · Mk14-ish {TORPEDO_SPEED_KN} kn / {TORPEDO_MAX_RUN_NM} nm.
+          Enter aim + target estimates from optics — nothing is auto-filled from truth.
+          Hits are geometric (hull breadth). Load {torpedoLoad} fish · Mk14-ish{' '}
+          {TORPEDO_SPEED_KN} kn / {TORPEDO_MAX_RUN_NM} nm. Fire allowed with scope down.
         </p>
       </div>
 
@@ -88,14 +94,16 @@ export function TorpedoCalculator({
       </p>
 
       <TouchNumber
-        label="Est. target length (manual)"
-        value={estimatedLengthM}
-        onChange={setEstimatedLengthM}
+        label="Est. target course"
+        value={estimatedCourse}
+        onChange={setEstimatedCourse}
         min={0}
-        max={400}
-        step={5}
-        unit="m"
+        max={359}
+        step={1}
+        wrap
+        unit="°"
         disabled={disabled || loadBlocked}
+        format={(v) => `${String(v).padStart(3, '0')}°`}
       />
       <TouchNumber
         label="Est. target speed"
@@ -105,6 +113,16 @@ export function TorpedoCalculator({
         max={50}
         step={1}
         unit="kn"
+        disabled={disabled || loadBlocked}
+      />
+      <TouchNumber
+        label="Est. range"
+        value={estimatedRangeNm}
+        onChange={setEstimatedRangeNm}
+        min={0}
+        max={8}
+        step={0.1}
+        unit="nm"
         disabled={disabled || loadBlocked}
       />
 
@@ -133,12 +151,13 @@ export function TorpedoCalculator({
         <button
           className="primary"
           type="button"
-          disabled={disabled || loadBlocked || estimatedLengthM <= 0}
+          disabled={disabled || loadBlocked || estimatedRangeNm <= 0}
           onClick={() =>
             onSubmit({
               aimHeading,
-              estimatedLengthM,
+              estimatedCourse,
               estimatedSpeedKn,
+              estimatedRangeNm,
               spreadCount: effectiveCount,
               spreadDeg,
             })
@@ -160,7 +179,8 @@ export function TorpedoCalculator({
           {pending.spreadCount && pending.spreadCount > 1
             ? ` · ×${pending.spreadCount}@${pending.spreadDeg ?? 0}°`
             : ''}{' '}
-          · L{Math.round(pending.estimatedLengthM)}m · {Math.round(pending.estimatedSpeedKn)}kn
+          · tgt {String(Math.round(pending.estimatedCourse)).padStart(3, '0')}° ·{' '}
+          {Math.round(pending.estimatedSpeedKn)}kn · {pending.estimatedRangeNm.toFixed(1)}nm
         </p>
       )}
 
@@ -181,4 +201,4 @@ export function TorpedoCalculator({
       )}
     </section>
   );
-};
+}
