@@ -184,6 +184,8 @@ export function buildVesselView(
       radarSignature: unit.radarSignature,
       stations: unit.stations,
       activeSonarEnabled: Boolean(unit.activeSonarEnabled),
+      periscopeRaised: Boolean(unit.periscopeRaised),
+      plotStampTurns: unit.plotStampTurns ?? 0,
       torpedoLoad: unit.torpedoLoad ?? 0,
       depthChargeLoad: unit.depthChargeLoad ?? 0,
     },
@@ -253,8 +255,11 @@ export function buildVesselView(
     if (peri.unavailableReason) {
       view.periscopeUnavailableReason = peri.unavailableReason;
     }
-    const wakes = buildTorpedoWakeCues(unit, save);
-    if (wakes.length) view.torpedoWakeCues = wakes;
+    // Scope down → no visual FoW at all (including wake cues).
+    if (peri.operational) {
+      const wakes = buildTorpedoWakeCues(unit, save);
+      if (wakes.length) view.torpedoWakeCues = wakes;
+    }
   }
 
   return view;

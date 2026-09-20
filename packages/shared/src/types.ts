@@ -108,16 +108,20 @@ export interface TorpedoFireOrder {
   /** True heading of the spread center (gyro from player aim — not auto-solved). */
   aimHeading: number;
   /**
-   * Player-entered target length estimate (meters).
-   * Compared to sim truth for the +10% “length accurately identified” modifier.
-   * Never auto-filled from lengthM.
+   * Player-entered estimated target true course (degrees).
+   * Of-record solution input — never auto-filled from sim heading.
    */
-  estimatedLengthM: number;
+  estimatedCourse: number;
   /**
    * Player-entered target speed estimate (knots).
-   * Compared to |truth speed| for the +10% speed-ID modifier.
+   * Of-record solution input — never auto-filled from sim speed.
    */
   estimatedSpeedKn: number;
+  /**
+   * Player-entered estimated range to target (nautical miles).
+   * Of-record solution input — never auto-filled from sim range.
+   */
+  estimatedRangeNm: number;
   /**
    * Number of fish in the spread (1 = single shot). Consumes that many from load.
    * Omitted → 1. Clamped to available tubes / load on resolve.
@@ -176,9 +180,10 @@ export interface TorpedoTrack {
   status: TorpedoStatus;
   /** Target unit id when status === hit. */
   hitUnitId?: string;
-  /** Snapshotted calculator estimates at launch (for hit resolution). */
-  estimatedLengthM: number;
+  /** Snapshotted calculator estimates at launch (of-record; geometry hits ignore these). */
+  estimatedCourse: number;
   estimatedSpeedKn: number;
+  estimatedRangeNm: number;
   /**
    * Breadcrumb positions along the run (launch → current/end).
    * Umpire GT map polyline; includes launch as first point.
@@ -315,6 +320,19 @@ export interface UnitState {
    */
   activeSonarEnabled: boolean;
   /**
+   * Fleet-sub periscope mast toggle (immediate, Sensors station).
+   * When false the boat is optically blind even at periscope depth.
+   * Surface ships ignore this field (bridge lookout has no mast).
+   */
+  periscopeRaised: boolean;
+  /**
+   * Consecutive resolved turns the periscope stayed up with a held visual contact.
+   * Resets to 0 whenever the scope is lowered (no frozen plot bonus).
+   * v1: stamp is tracked for FoW / future solution quality — geometry hits do not
+   * yet apply a plot-quality damage/hit bonus.
+   */
+  plotStampTurns: number;
+  /**
    * Ready torpedoes remaining (fleet subs). 0 for non-torpedo hulls.
    * Consumed when a fire order launches on resolve.
    */
@@ -365,6 +383,10 @@ export interface ScenarioUnitSeed {
   sensors?: SensorDef[];
   /** Optional seed for destroyer active sonar toggle (default false). */
   activeSonarEnabled?: boolean;
+  /** Optional seed for fleet-sub periscope raised (default false). */
+  periscopeRaised?: boolean;
+  /** Optional seed for plot stamp turns (default 0). */
+  plotStampTurns?: number;
   /** Optional ready torpedo count (fleet subs). */
   torpedoLoad?: number;
   /** Optional ready depth-charge count (destroyers). */
@@ -650,6 +672,8 @@ export interface VesselView {
     | 'radarSignature'
     | 'stations'
     | 'activeSonarEnabled'
+    | 'periscopeRaised'
+    | 'plotStampTurns'
     | 'torpedoLoad'
     | 'depthChargeLoad'
   >;
@@ -730,10 +754,15 @@ export interface VesselView {
   periscopeContacts?: PeriscopeContact[];
   /** Configured max periscope visual range (nm). */
   periscopeMaxRangeNm?: number;
-  /** False when optics cannot see (too deep / sunk / sensors disabled / no set). */
+  /** False when optics cannot see (too deep / scope down / sunk / sensors disabled / no set). */
   periscopeOperational?: boolean;
   /** Operator-facing reason when periscopeOperational is false. */
-  periscopeUnavailableReason?: 'no_sensor' | 'sunk' | 'sensors_disabled' | 'too_deep';
+  periscopeUnavailableReason?:
+    | 'no_sensor'
+    | 'sunk'
+    | 'sensors_disabled'
+    | 'too_deep'
+    | 'scope_down';
   /**
    * Own-ship damage events (hits / casualties on this hull only).
    * Controls Damage report — FoW; never the enemy damage board.
@@ -761,11 +790,17 @@ export interface HydrophoneContact {
 }
 
 /**
- * Periscope visual contact — silhouette + coarsened readouts only.
+ * Periscope / lookout visual contact — silhouette + coarsened readouts only.
  * `silhouetteClass` selects the side-profile asset (identity implied by image only).
+ * `kind: 'periscope'` is a DD lookout feather/stick sighting — not a full sub ID.
  */
 export interface PeriscopeContact {
   id: string;
+  /**
+   * `hull` = normal surface silhouette contact.
+   * `periscope` = destroyer lookout spotted a raised periscope mast (FoW feather).
+   */
+  kind?: 'hull' | 'periscope';
   /**
    * Relative bearing degrees (−180, 180], coarsened (e.g. 5° steps).
    * Bow = 0; starboard positive; port negative.
@@ -773,12 +808,13 @@ export interface PeriscopeContact {
   relativeBearing: number;
   /** Approximate range in nautical miles (coarsened). */
   rangeNm: number;
-  /** Approximate absolute speed in knots (coarsened). */
+  /** Approximate absolute speed in knots (coarsened). Always 0 for periscope feathers. */
   speedKn: number;
   /**
    * Hull class for silhouette mapping only
    * (Destroyer → destroyer.png, Fleet Submarine → submarine.png).
    * Not a side/name; other classes fall back to the destroyer plate.
+   * Periscope feathers use Fleet Submarine plate + PERISCOPE label in UI.
    */
   silhouetteClass: HullClass;
 }

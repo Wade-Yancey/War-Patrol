@@ -1,5 +1,6 @@
 import {
   KNOTS_TO_MPS,
+  PERISCOPE_DEPTH_M,
   canMakeWay,
   clamp,
   clampDepthChargeSetting,
@@ -25,6 +26,7 @@ import {
   type UnitOrders,
   type UnitState,
 } from '@war-patrol/shared';
+import { buildPeriscopeContacts } from './periscope.js';
 import { resolveWeaponsForTurn, appendCombatLog } from './weaponsResolve.js';
 
 /** Apply simultaneous helm/EOT/depth/weapons orders and advance kinematics + tracks. */
@@ -42,8 +44,11 @@ export function resolveTurn(save: GameSave): GameSave {
   // Kinematics first (orders still present for weapon launch snapshot).
   const movedUnits = save.units.map((unit) => applyUnitOrders(unit, turnLength, false));
 
+  // Periscope auto-lower when too deep; plot stamp accrue/reset (no frozen bonus).
+  const stampedUnits = applyPeriscopePlotStamps(movedUnits, save);
+
   const weapons = resolveWeaponsForTurn(
-    movedUnits,
+    stampedUnits,
     save.torpedoes ?? [],
     save.depthCharges ?? [],
     save.recentDetonations ?? [],
@@ -93,6 +98,31 @@ export function resolveTurn(save: GameSave): GameSave {
   };
 
   return next;
+}
+
+/**
+ * After depth snaps: force mast down when too deep; reset plot stamp on lower;
+ * accrue stamp turns while scope stays up with at least one visual contact.
+ * v1 does not apply stamp as a hit/damage bonus (geometry-first only).
+ */
+function applyPeriscopePlotStamps(units: UnitState[], save: GameSave): UnitState[] {
+  const probeSave: GameSave = { ...save, units };
+  return units.map((unit) => {
+    if (unit.type !== 'Submarine') {
+      return { ...unit, periscopeRaised: false, plotStampTurns: 0 };
+    }
+    if (unit.position.depth > PERISCOPE_DEPTH_M) {
+      return { ...unit, periscopeRaised: false, plotStampTurns: 0 };
+    }
+    if (!unit.periscopeRaised) {
+      return { ...unit, plotStampTurns: 0 };
+    }
+    const pic = buildPeriscopeContacts(unit, probeSave);
+    if (pic.operational && pic.contacts.length > 0) {
+      return { ...unit, plotStampTurns: (unit.plotStampTurns ?? 0) + 1 };
+    }
+    return unit;
+  });
 }
 
 /**
@@ -232,8 +262,9 @@ export function mergeOrders(
   } else if (patch.fireTorpedo) {
     next.fireTorpedo = {
       aimHeading: normalizeHeading(patch.fireTorpedo.aimHeading),
-      estimatedLengthM: Math.max(0, Number(patch.fireTorpedo.estimatedLengthM) || 0),
+      estimatedCourse: normalizeHeading(patch.fireTorpedo.estimatedCourse),
       estimatedSpeedKn: Math.max(0, Number(patch.fireTorpedo.estimatedSpeedKn) || 0),
+      estimatedRangeNm: Math.max(0, Number(patch.fireTorpedo.estimatedRangeNm) || 0),
       spreadCount: clampTorpedoSpreadCount(patch.fireTorpedo.spreadCount),
       spreadDeg: clampTorpedoSpreadDeg(patch.fireTorpedo.spreadDeg),
     };

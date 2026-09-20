@@ -1,8 +1,9 @@
 /**
  * Torpedo + depth-charge combat model (v1).
  *
- * Hit resolution is RNG with geometric gates + additive identification
- * modifiers — not continuous hydrodynamic physics.
+ * Torpedo hits are geometry-first: closest approach within a hull-breadth
+ * gate using real length/beam. Aspect softens damage and adds a small warhead
+ * dud chance — not the old 5–50% “did you hit” RNG table.
  * See docs/simulation-physics.md in the project store.
  */
 import {
@@ -56,44 +57,45 @@ export const TORPEDO_SPREAD_MAX_DEG = 8;
 export const TORPEDO_SPREAD_DEFAULT_DEG = 2;
 
 /**
- * Horizontal miss distance (m) inside which a hit roll is attempted.
- * Outside this gate the fish misses geometrically (no RNG).
+ * Horizontal miss distance (m) inside which a geometric hit is possible
+ * is derived from hull length/beam via {@link torpedoHullHalfBreadthM}.
+ * This constant is a small pad added to the projected half-breadth.
+ */
+export const TORPEDO_HIT_GATE_PAD_M = 2;
+
+/**
+ * @deprecated Fixed 90 m gate removed — use beam/length half-breadth.
+ * Kept as a wide upper clamp so absurd dims cannot inflate the gate.
  */
 export const TORPEDO_HIT_GATE_M = 90;
 
-/** Damage applied on a successful torpedo hit (health points). */
+/** Base damage applied on a successful (non-dud) torpedo hit (health points). */
 export const TORPEDO_HIT_DAMAGE = 45;
 
 /**
- * Aspect → base hit % (track angle off target's bow-stern axis).
- * 90° = full beam (best); 0° = end-on (worst). Interpolate between knots.
+ * Aspect → warhead dud % (track angle off target's bow-stern axis).
+ * 90° = full beam (lowest dud); 0° = end-on (highest dud). Interpolate.
  */
-export const TORPEDO_ASPECT_BASE_TABLE: ReadonlyArray<{ angleDeg: number; hitPct: number }> = [
-  { angleDeg: 0, hitPct: 5 },
-  { angleDeg: 15, hitPct: 10 },
-  { angleDeg: 45, hitPct: 25 },
-  { angleDeg: 90, hitPct: 50 },
+export const TORPEDO_ASPECT_DUD_TABLE: ReadonlyArray<{ angleDeg: number; dudPct: number }> = [
+  { angleDeg: 0, dudPct: 18 },
+  { angleDeg: 15, dudPct: 12 },
+  { angleDeg: 45, dudPct: 6 },
+  { angleDeg: 90, dudPct: 3 },
 ];
 
-/** Additive % when estimated length is within tolerance of truth. */
-export const TORPEDO_MOD_LENGTH_ACCURATE_PCT = 10;
-
-/** Additive % when estimated speed is within tolerance of truth. */
-export const TORPEDO_MOD_SPEED_ACCURATE_PCT = 10;
-
 /**
- * Length estimate is "accurate" when |est − truth| / truth ≤ this fraction
- * (or absolute ≤ TORPEDO_LENGTH_ABS_TOL_M for short hulls).
+ * Aspect → damage factor vs {@link TORPEDO_HIT_DAMAGE}.
+ * End-on glancing hits do less; beam shots apply full warhead.
  */
-export const TORPEDO_LENGTH_REL_TOL = 0.15;
-
-/** Absolute length tolerance (m) floor — e.g. ±12 m. */
-export const TORPEDO_LENGTH_ABS_TOL_M = 12;
-
-/**
- * Speed estimate is "accurate" when |est − truth| ≤ this many knots.
- */
-export const TORPEDO_SPEED_ABS_TOL_KN = 2;
+export const TORPEDO_ASPECT_DAMAGE_TABLE: ReadonlyArray<{
+  angleDeg: number;
+  damageFactor: number;
+}> = [
+  { angleDeg: 0, damageFactor: 0.55 },
+  { angleDeg: 15, damageFactor: 0.7 },
+  { angleDeg: 45, damageFactor: 0.88 },
+  { angleDeg: 90, damageFactor: 1 },
+];
 
 /**
  * Max range (nm) for Controls torpedo-hit explosion cue attenuation.
@@ -335,42 +337,69 @@ export function torpedoAspectAngleDeg(fishHeading: number, targetHeading: number
 }
 
 /**
- * Interpolate base hit % from the aspect table.
- * Angle is track-vs-bow/stern axis in [0, 90]°.
+ * Projected half-breadth (m) of a rectangular hull vs an approaching track.
+ * aspectDeg 0 = end-on (narrow → beam/2); 90 = beam aspect (length/2).
  */
-export function torpedoBaseHitPctFromAspect(aspectDeg: number): number {
+export function torpedoHullHalfBreadthM(
+  lengthM: number,
+  beamM: number,
+  aspectDeg: number,
+): number {
+  const len = Math.max(1, lengthM);
+  const beam = Math.max(1, beamM);
+  const a = (clamp(aspectDeg, 0, 90) * Math.PI) / 180;
+  return (beam / 2) * Math.cos(a) + (len / 2) * Math.sin(a);
+}
+
+/** Geometric hit gate = projected half-breadth + pad, capped. */
+export function torpedoHitGateM(lengthM: number, beamM: number, aspectDeg: number): number {
+  const half = torpedoHullHalfBreadthM(lengthM, beamM, aspectDeg);
+  return Math.min(TORPEDO_HIT_GATE_M, half + TORPEDO_HIT_GATE_PAD_M);
+}
+
+function interpolateAspectTable(
+  aspectDeg: number,
+  table: ReadonlyArray<{ angleDeg: number; value: number }>,
+): number {
   const a = clamp(aspectDeg, 0, 90);
-  const table = TORPEDO_ASPECT_BASE_TABLE;
   for (let i = 0; i < table.length - 1; i++) {
     const lo = table[i]!;
     const hi = table[i + 1]!;
     if (a >= lo.angleDeg && a <= hi.angleDeg) {
       const t = (a - lo.angleDeg) / (hi.angleDeg - lo.angleDeg || 1);
-      return lo.hitPct + t * (hi.hitPct - lo.hitPct);
+      return lo.value + t * (hi.value - lo.value);
     }
   }
-  return table[table.length - 1]!.hitPct;
+  return table[table.length - 1]!.value;
 }
 
-/** True when player length estimate is within documented tolerance of truth. */
-export function isLengthAccuratelyIdentified(
-  estimatedLengthM: number,
-  trueLengthM: number,
-): boolean {
-  if (!Number.isFinite(estimatedLengthM) || estimatedLengthM <= 0) return false;
-  if (!Number.isFinite(trueLengthM) || trueLengthM <= 0) return false;
-  const err = Math.abs(estimatedLengthM - trueLengthM);
-  const tol = Math.max(TORPEDO_LENGTH_ABS_TOL_M, trueLengthM * TORPEDO_LENGTH_REL_TOL);
-  return err <= tol;
+/** Interpolate warhead dud % from the aspect table. */
+export function torpedoDudPctFromAspect(aspectDeg: number): number {
+  return interpolateAspectTable(
+    aspectDeg,
+    TORPEDO_ASPECT_DUD_TABLE.map((r) => ({ angleDeg: r.angleDeg, value: r.dudPct })),
+  );
 }
 
-/** True when player speed estimate is within ±TORPEDO_SPEED_ABS_TOL_KN of |truth|. */
-export function isSpeedAccuratelyIdentified(
-  estimatedSpeedKn: number,
-  trueSpeedKn: number,
-): boolean {
-  if (!Number.isFinite(estimatedSpeedKn) || estimatedSpeedKn < 0) return false;
-  return Math.abs(estimatedSpeedKn - Math.abs(trueSpeedKn)) <= TORPEDO_SPEED_ABS_TOL_KN;
+/** Interpolate damage factor (0–1) from the aspect table. */
+export function torpedoDamageFactorFromAspect(aspectDeg: number): number {
+  return interpolateAspectTable(
+    aspectDeg,
+    TORPEDO_ASPECT_DAMAGE_TABLE.map((r) => ({
+      angleDeg: r.angleDeg,
+      value: r.damageFactor,
+    })),
+  );
+}
+
+/**
+ * @deprecated Old RNG aspect→hit% table removed. Prefer {@link torpedoDudPctFromAspect}.
+ * Returns a legacy-shaped value for any residual callers (beam ≈ 50).
+ */
+export function torpedoBaseHitPctFromAspect(aspectDeg: number): number {
+  // Map inverse of dud table into a rough “legacy hit feel” for tests migrating off.
+  const dud = torpedoDudPctFromAspect(aspectDeg);
+  return clamp(100 - dud * 4, 5, 50);
 }
 
 export type TorpedoHitRollInput = {
@@ -380,68 +409,78 @@ export type TorpedoHitRollInput = {
   targetHeading: number;
   /** True target length (sim) — never shown to players. */
   trueLengthM: number;
-  /** True |speed| (sim). */
-  trueSpeedKn: number;
-  /** Player calculator estimate (m). */
-  estimatedLengthM: number;
-  /** Player calculator estimate (kn). */
-  estimatedSpeedKn: number;
+  /** True target beam (sim). */
+  trueBeamM: number;
   /** Fish run depth vs target keel — surface targets need shallow fish. */
   depthOk: boolean;
   seed: string;
 };
 
 export type TorpedoHitRollResult = {
+  /** True geometric contact that detonated (damage applied). */
   hit: boolean;
-  hitPct: number;
-  basePct: number;
+  /** Geometric contact but warhead dud — no damage. */
+  dud: boolean;
+  /** HP to apply when hit && !dud. */
+  damage: number;
   aspectDeg: number;
-  lengthAccurate: boolean;
-  speedAccurate: boolean;
+  dudPct: number;
+  halfBreadthM: number;
+  hitGateM: number;
   geometricMiss: boolean;
 };
 
 /**
- * Resolve one fish vs one target: geometric gate, then aspect base + additive mods.
- * Final hit % clamped to [0, 95] (never quite certain).
+ * Resolve one fish vs one target: geometry gate from hull dims, then aspect
+ * dud roll. Successful hits scale damage by aspect (end-on softens).
  */
 export function resolveTorpedoHit(input: TorpedoHitRollInput): TorpedoHitRollResult {
   const aspectDeg = torpedoAspectAngleDeg(input.fishHeading, input.targetHeading);
-  const basePct = torpedoBaseHitPctFromAspect(aspectDeg);
-  const lengthAccurate = isLengthAccuratelyIdentified(
-    input.estimatedLengthM,
+  const halfBreadthM = torpedoHullHalfBreadthM(
     input.trueLengthM,
+    input.trueBeamM,
+    aspectDeg,
   );
-  const speedAccurate = isSpeedAccuratelyIdentified(
-    input.estimatedSpeedKn,
-    input.trueSpeedKn,
-  );
+  const hitGateM = torpedoHitGateM(input.trueLengthM, input.trueBeamM, aspectDeg);
+  const dudPct = torpedoDudPctFromAspect(aspectDeg);
+  const damageFactor = torpedoDamageFactorFromAspect(aspectDeg);
+  const damage = Math.max(1, Math.round(TORPEDO_HIT_DAMAGE * damageFactor));
 
-  if (!input.depthOk || input.missDistanceM > TORPEDO_HIT_GATE_M) {
+  if (!input.depthOk || input.missDistanceM > hitGateM) {
     return {
       hit: false,
-      hitPct: 0,
-      basePct,
+      dud: false,
+      damage: 0,
       aspectDeg,
-      lengthAccurate,
-      speedAccurate,
+      dudPct,
+      halfBreadthM,
+      hitGateM,
       geometricMiss: true,
     };
   }
 
-  let hitPct = basePct;
-  if (lengthAccurate) hitPct += TORPEDO_MOD_LENGTH_ACCURATE_PCT;
-  if (speedAccurate) hitPct += TORPEDO_MOD_SPEED_ACCURATE_PCT;
-  hitPct = clamp(hitPct, 0, 95);
-
   const roll = weaponRng01(input.seed) * 100;
+  if (roll < dudPct) {
+    return {
+      hit: false,
+      dud: true,
+      damage: 0,
+      aspectDeg,
+      dudPct,
+      halfBreadthM,
+      hitGateM,
+      geometricMiss: false,
+    };
+  }
+
   return {
-    hit: roll < hitPct,
-    hitPct,
-    basePct,
+    hit: true,
+    dud: false,
+    damage,
     aspectDeg,
-    lengthAccurate,
-    speedAccurate,
+    dudPct,
+    halfBreadthM,
+    hitGateM,
     geometricMiss: false,
   };
 }
@@ -532,8 +571,9 @@ export function createTorpedoTrack(opts: {
   heading: number;
   runDepthM: number;
   launchedTurn: number;
-  estimatedLengthM: number;
+  estimatedCourse: number;
   estimatedSpeedKn: number;
+  estimatedRangeNm: number;
 }): TorpedoTrack {
   const launch = {
     lat: opts.position.lat,
@@ -551,8 +591,9 @@ export function createTorpedoTrack(opts: {
     runDepthM: clampTorpedoDepth(opts.runDepthM),
     launchedTurn: opts.launchedTurn,
     status: 'running',
-    estimatedLengthM: opts.estimatedLengthM,
-    estimatedSpeedKn: opts.estimatedSpeedKn,
+    estimatedCourse: normalizeHeading(opts.estimatedCourse),
+    estimatedSpeedKn: Math.max(0, opts.estimatedSpeedKn),
+    estimatedRangeNm: Math.max(0, opts.estimatedRangeNm),
     path: [{ lat: launch.lat, lon: launch.lon }],
   };
 }
@@ -775,8 +816,8 @@ export function segmentClosestMissM(
 }
 
 /**
- * Snap a fish track to the hit point on its last advance segment and truncate
- * the GT path so the trail ends at the collision (does not continue past).
+ * Snap a fish track to the hit (or dud contact) point on its last advance
+ * segment and truncate the GT path so the trail ends at the collision.
  */
 export function truncateTorpedoAtHit(
   prior: TorpedoTrack,
@@ -784,6 +825,7 @@ export function truncateTorpedoAtHit(
   before: LatLonDepth,
   hitPoint: { lat: number; lon: number },
   hitUnitId: string,
+  status: 'hit' | 'duded' = 'hit',
 ): TorpedoTrack {
   const priorPath = prior.path?.length
     ? prior.path
@@ -797,7 +839,7 @@ export function truncateTorpedoAtHit(
   const remainingRunNm = Math.max(0, prior.remainingRunNm - traveledM / METERS_PER_NM);
   return {
     ...advanced,
-    status: 'hit',
+    status,
     hitUnitId,
     position: { lat: hitPoint.lat, lon: hitPoint.lon, depth: advanced.runDepthM },
     remainingRunNm,
@@ -837,6 +879,8 @@ export function applyHealthDamage(unit: UnitState, damage: number): UnitState {
       speed: 0,
       eot: 'stop',
       activeSonarEnabled: false,
+      periscopeRaised: false,
+      plotStampTurns: 0,
       subsystems: { propulsion: 'disabled', sensors: 'disabled' },
     };
   }
@@ -854,6 +898,8 @@ export function applyHealthDamage(unit: UnitState, damage: number): UnitState {
     speed: propulsionOut ? 0 : unit.speed,
     eot: propulsionOut ? 'stop' : unit.eot,
     activeSonarEnabled: sensorsOut ? false : unit.activeSonarEnabled,
+    periscopeRaised: sensorsOut ? false : unit.periscopeRaised,
+    plotStampTurns: sensorsOut ? 0 : unit.plotStampTurns,
   };
 }
 

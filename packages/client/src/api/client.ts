@@ -80,8 +80,9 @@ export const api = {
       depth?: number;
       fireTorpedo?: {
         aimHeading: number;
-        estimatedLengthM: number;
+        estimatedCourse: number;
         estimatedSpeedKn: number;
+        estimatedRangeNm: number;
         spreadCount?: number;
         spreadDeg?: number;
       } | null;
@@ -105,6 +106,17 @@ export const api = {
         body: JSON.stringify({ enabled }),
       },
     ),
+  setPeriscope: (gameId: string, token: string, raised: boolean) =>
+    request<{
+      ok: boolean;
+      stateVersion: number;
+      periscopeRaised: boolean;
+      plotStampTurns: number;
+    }>(`/api/games/${gameId}/periscope`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ raised }),
+    }),
   turnTimer: (gameId: string, token: string, seconds: number) =>
     request(`/api/games/${gameId}/turn/timer`, {
       method: 'POST',
