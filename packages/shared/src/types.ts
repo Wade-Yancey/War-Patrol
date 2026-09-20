@@ -326,6 +326,12 @@ export interface UnitState {
    */
   periscopeRaised: boolean;
   /**
+   * Fraction of the turn the mast is exposed while raised (0–1).
+   * Immediate Sensors control — scales DD lookout feather-spot chance.
+   * Forced to 0 when the mast is down. Surface ships ignore this field.
+   */
+  periscopeExposure: number;
+  /**
    * Consecutive resolved turns the periscope stayed up with a held visual contact.
    * Resets to 0 whenever the scope is lowered (no frozen plot bonus).
    * v1: stamp is tracked for FoW / future solution quality — geometry hits do not
@@ -385,6 +391,8 @@ export interface ScenarioUnitSeed {
   activeSonarEnabled?: boolean;
   /** Optional seed for fleet-sub periscope raised (default false). */
   periscopeRaised?: boolean;
+  /** Optional seed for mast exposure fraction 0–1 while raised (default 1 when raised). */
+  periscopeExposure?: number;
   /** Optional seed for plot stamp turns (default 0). */
   plotStampTurns?: number;
   /** Optional ready torpedo count (fleet subs). */
@@ -673,6 +681,7 @@ export interface VesselView {
     | 'stations'
     | 'activeSonarEnabled'
     | 'periscopeRaised'
+    | 'periscopeExposure'
     | 'plotStampTurns'
     | 'torpedoLoad'
     | 'depthChargeLoad'

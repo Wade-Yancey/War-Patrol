@@ -357,7 +357,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.post<{
     Params: { gameId: string };
-    Body: { raised: boolean };
+    Body: { raised: boolean; exposure?: number };
   }>('/api/games/:gameId/periscope', async (request, reply) => {
     try {
       const session = requireSession(request, request.params.gameId);
@@ -365,17 +365,27 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(403).send({ error: 'Vessel station session required' });
       }
       const raised = Boolean(request.body?.raised);
+      const exposureRaw = request.body?.exposure;
+      const exposure =
+        exposureRaw === undefined || exposureRaw === null
+          ? undefined
+          : Number(exposureRaw);
+      if (exposure !== undefined && !Number.isFinite(exposure)) {
+        return reply.code(400).send({ error: 'exposure must be a number 0–1' });
+      }
       const save = runtime.setPeriscope(
         session.gameId,
         session.unitId,
         session.stationId,
         raised,
+        exposure,
       );
       const unit = save.units.find((u) => u.id === session.unitId);
       return {
         ok: true,
         stateVersion: save.stateVersion,
         periscopeRaised: Boolean(unit?.periscopeRaised),
+        periscopeExposure: unit?.periscopeExposure ?? 0,
         plotStampTurns: unit?.plotStampTurns ?? 0,
       };
     } catch (err) {

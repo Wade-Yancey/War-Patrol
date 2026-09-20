@@ -109,13 +109,13 @@ function applyPeriscopePlotStamps(units: UnitState[], save: GameSave): UnitState
   const probeSave: GameSave = { ...save, units };
   return units.map((unit) => {
     if (unit.type !== 'Submarine') {
-      return { ...unit, periscopeRaised: false, plotStampTurns: 0 };
+      return { ...unit, periscopeRaised: false, periscopeExposure: 0, plotStampTurns: 0 };
     }
     if (unit.position.depth > PERISCOPE_DEPTH_M) {
-      return { ...unit, periscopeRaised: false, plotStampTurns: 0 };
+      return { ...unit, periscopeRaised: false, periscopeExposure: 0, plotStampTurns: 0 };
     }
     if (!unit.periscopeRaised) {
-      return { ...unit, plotStampTurns: 0 };
+      return { ...unit, periscopeExposure: 0, plotStampTurns: 0 };
     }
     const pic = buildPeriscopeContacts(unit, probeSave);
     if (pic.operational && pic.contacts.length > 0) {

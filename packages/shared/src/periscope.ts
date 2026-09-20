@@ -5,20 +5,6 @@ import { shortestBearingDelta } from './hydrophone.js';
 import type { HullClass, SensorDef, UnitState } from './types.js';
 import { canUseSensors, isHullClass, resolveVesselIdentity } from './vessel.js';
 
-/** Local 0–1 hash — avoids circular import with weapons.ts. */
-function periRng01(seed: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < seed.length; i++) {
-    h ^= seed.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  let x = h >>> 0;
-  x ^= x << 13;
-  x ^= x >>> 17;
-  x ^= x << 5;
-  return (x >>> 0) / 4294967296;
-}
-
 /**
  * Max keel depth (m) at which fleet-sub periscope optics are usable.
  * Aligns with the Periscope dive preset (18 m / ~60 ft).
@@ -29,15 +15,52 @@ export const PERISCOPE_DEPTH_M: number =
 
 /**
  * Base probability that a destroyer lookout notices a raised periscope
- * feather within visual range (before range falloff).
+ * feather within visual range (before range falloff and exposure scale).
  */
 export const PERISCOPE_SPOT_BASE_P = 0.55;
 
-/** Max absolute bearing error (degrees) applied before FoW coarsening. */
-export const PERISCOPE_SPOT_BEARING_ERR_DEG = 12;
+/**
+ * Fraction of the turn the mast is exposed while raised (0–1).
+ * Scales DD lookout feather-spot chance: brief peeks are hard to catch;
+ * full-turn exposure is easier (still not guaranteed). Scope down → 0.
+ */
+export const PERISCOPE_EXPOSURE_MIN = 0.05;
+export const PERISCOPE_EXPOSURE_MAX = 1;
+/** Default when raising without an explicit exposure (full mast — old behavior). */
+export const PERISCOPE_EXPOSURE_DEFAULT = 1;
 
-/** Max absolute range error (nm) applied before FoW coarsening. */
-export const PERISCOPE_SPOT_RANGE_ERR_NM = 0.5;
+/** Named peek intensities for Sensors UI / orders labels. */
+export const PERISCOPE_EXPOSURE_PRESETS = [
+  { id: 'peek', label: 'Peek', exposure: 0.2 },
+  { id: 'brief', label: 'Brief', exposure: 0.4 },
+  { id: 'half', label: 'Half', exposure: 0.65 },
+  { id: 'full', label: 'Full', exposure: 1 },
+] as const;
+
+export type PeriscopeExposurePresetId =
+  (typeof PERISCOPE_EXPOSURE_PRESETS)[number]['id'];
+
+/**
+ * Clamp / coerce a player exposure order to a finite 0–1 fraction.
+ * Values at/below 0 → 0 (not spottable). Raised mast uses ≥ {@link PERISCOPE_EXPOSURE_MIN}.
+ */
+export function clampPeriscopeExposure(
+  value: unknown,
+  opts?: { allowZero?: boolean },
+): number {
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  const lo = opts?.allowZero === false ? PERISCOPE_EXPOSURE_MIN : 0;
+  return clamp(n, lo, PERISCOPE_EXPOSURE_MAX);
+}
+
+/** Effective exposure for spotting: 0 when mast is down. */
+export function effectivePeriscopeExposure(
+  unit: Pick<UnitState, 'type' | 'periscopeRaised' | 'periscopeExposure'>,
+): number {
+  if (unit.type !== 'Submarine' || !unit.periscopeRaised) return 0;
+  return clampPeriscopeExposure(unit.periscopeExposure ?? PERISCOPE_EXPOSURE_DEFAULT);
+}
 
 /** Own-ship lookout / periscope set, if installed. */
 export function findLookoutSensor(unit: Pick<UnitState, 'sensors'>): SensorDef | undefined {
@@ -105,16 +128,20 @@ export function isPeriscopeRaised(
 }
 
 /**
- * Submerged (or awash-but-hull-hidden) boat with mast up — DD lookout may
- * spot a periscope feather, not a full hull silhouette.
- * Scope down → not spottable as a feather/stick.
+ * Submerged (or awash-but-hull-hidden) boat with mast up **and** exposure &gt; 0 —
+ * DD lookout may spot a periscope feather, not a full hull silhouette.
+ * Scope down / zero exposure → not spottable as a feather/stick.
  */
 export function isRaisedPeriscopeSpottable(
-  unit: Pick<UnitState, 'type' | 'condition' | 'position' | 'periscopeRaised'>,
+  unit: Pick<
+    UnitState,
+    'type' | 'condition' | 'position' | 'periscopeRaised' | 'periscopeExposure'
+  >,
 ): boolean {
   if (unit.condition === 'sunk') return false;
   if (unit.type !== 'Submarine') return false;
   if (!unit.periscopeRaised) return false;
+  if (effectivePeriscopeExposure(unit) <= 0) return false;
   // Hull already visible as a silhouette — no separate feather contact.
   if (unit.position.depth <= RADAR_SURFACE_DEPTH_M) return false;
   // Mast only works at/above periscope depth.
@@ -124,31 +151,20 @@ export function isRaisedPeriscopeSpottable(
 
 /**
  * Chance a surface lookout notices a raised periscope at `rangeNm`.
- * Falls off toward max visual range.
+ * Falls off toward max visual range, then scales by mast {@link exposure}
+ * (0 = impossible, 1 = full base×range chance). Brief peeks are hard; long
+ * time up is easier — never guaranteed (cap 0.85).
  */
 export function periscopeSpotProbability(
   rangeNm: number,
   maxRangeNm: number = PERISCOPE_MAX_RANGE_NM,
+  exposure: number = PERISCOPE_EXPOSURE_DEFAULT,
 ): number {
-  if (rangeNm <= 0 || rangeNm > maxRangeNm) return 0;
+  const e = clampPeriscopeExposure(exposure);
+  if (e <= 0 || rangeNm <= 0 || rangeNm > maxRangeNm) return 0;
   const proximity = 1 - rangeNm / maxRangeNm;
-  return clamp(PERISCOPE_SPOT_BASE_P * (0.4 + 0.6 * proximity), 0, 0.85);
-}
-
-/**
- * Deterministic bearing/range observation error for a periscope feather sighting.
- * Applied before FoW coarsening — never truth-perfect.
- */
-export function periscopeSpotObservationError(seed: string): {
-  bearingErrDeg: number;
-  rangeErrNm: number;
-} {
-  const u1 = periRng01(`${seed}|brg`);
-  const u2 = periRng01(`${seed}|rng`);
-  return {
-    bearingErrDeg: (u1 * 2 - 1) * PERISCOPE_SPOT_BEARING_ERR_DEG,
-    rangeErrNm: (u2 * 2 - 1) * PERISCOPE_SPOT_RANGE_ERR_NM,
-  };
+  const rangeP = PERISCOPE_SPOT_BASE_P * (0.4 + 0.6 * proximity);
+  return clamp(rangeP * e, 0, 0.85);
 }
 
 /** Reset plot stamp (call whenever the scope is lowered). */
