@@ -2649,6 +2649,65 @@ label {
   min-height: 0;
 }
 
+/* Optics relative-bearing compass (lookout / periscope) — CRT phosphor, bow-up */
+.optics-bearing-compass {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  flex: 0 0 auto;
+}
+
+.optics-bearing-compass-svg {
+  display: block;
+  width: min(100%, 9.5rem);
+  height: auto;
+  aspect-ratio: 1 / 1;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+.optics-bearing-compass-needle {
+  transition: transform 0.4s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .optics-bearing-compass-needle {
+    transition: none;
+  }
+}
+
+.optics-bearing-compass-readout {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.2rem 0.35rem;
+  font-size: 0.82rem;
+  color: var(--phosphor);
+  background: color-mix(in srgb, var(--bg-crt) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--phosphor-dim) 40%, transparent);
+}
+
+.optics-bearing-compass-key {
+  font-family: var(--font-display);
+  font-size: 0.65rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--phosphor-dim);
+}
+
+.optics-bearing-compass-val {
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+}
+
+.optics-bearing-compass--empty .optics-bearing-compass-readout {
+  opacity: 0.65;
+}
+
 .periscope-side-panel .radar-contact-list {
   flex: 1 1 auto;
   min-height: 0;

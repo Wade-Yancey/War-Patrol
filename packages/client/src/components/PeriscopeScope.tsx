@@ -7,6 +7,10 @@ import {
 /** Vite-bundled PNGs (alpha) — guaranteed in the client graph (not fragile public-path strings). */
 import destroyerSilhouettePng from '../assets/silhouettes/destroyer.png';
 import submarineSilhouettePng from '../assets/silhouettes/submarine.png';
+import {
+  formatRelBearing,
+  OpticsBearingCompass,
+} from './OpticsBearingCompass';
 
 interface Props {
   contacts: PeriscopeContact[];
@@ -42,13 +46,6 @@ function silhouetteSrcForClass(hullClass: HullClass | string | undefined): strin
 
 function silhouetteAlt(hullClass: HullClass | string | undefined): string {
   return hullClass === 'Fleet Submarine' ? 'Submarine silhouette' : 'Destroyer silhouette';
-}
-
-function formatRelBearing(rel: number): string {
-  if (rel === 0) return '000° rel';
-  const abs = Math.abs(rel);
-  const side = rel > 0 ? 'stbd' : 'port';
-  return `${String(abs).padStart(3, '0')}° ${side}`;
 }
 
 function contactKindLabel(c: PeriscopeContact): string {
@@ -161,6 +158,9 @@ function PeriscopeScopeInner({
         <p className="mono muted" style={{ margin: 0, fontSize: '0.8rem' }}>
           VIS · {maxRangeNm} nm · HDG {String(Math.round(ownHeading) % 360).padStart(3, '0')}°
         </p>
+        <OpticsBearingCompass
+          relativeBearing={selected ? selected.relativeBearing : null}
+        />
         <div className="radar-contact-list">
           <h3 className="radar-contacts-heading">Contacts</h3>
           {sorted.length === 0 ? (
