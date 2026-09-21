@@ -79,6 +79,7 @@ export const api = {
       eot?: EotSetting;
       depth?: number;
       fireTorpedo?: {
+        room?: 'forward' | 'aft';
         aimHeading: number;
         estimatedCourse: number;
         estimatedSpeedKn: number;
@@ -118,6 +119,34 @@ export const api = {
       method: 'POST',
       token,
       body: JSON.stringify({ raised }),
+    }),
+  startTorpedoReload: (gameId: string, token: string, room: 'forward' | 'aft') =>
+    request<{ ok: boolean; stateVersion: number }>(`/api/games/${gameId}/torpedo-reload`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ room }),
+    }),
+  startDepthChargeReload: (gameId: string, token: string) =>
+    request<{ ok: boolean; stateVersion: number }>(
+      `/api/games/${gameId}/depth-charge-reload`,
+      {
+        method: 'POST',
+        token,
+        body: '{}',
+      },
+    ),
+  rearmUnit: (gameId: string, token: string, unitId: string) =>
+    request<{
+      ok: boolean;
+      stateVersion: number;
+      torpedoLoad: number;
+      torpedoForward: number;
+      torpedoAft: number;
+      depthChargeLoad: number;
+    }>(`/api/games/${gameId}/units/${unitId}/rearm`, {
+      method: 'POST',
+      token,
+      body: '{}',
     }),
   turnTimer: (gameId: string, token: string, seconds: number) =>
     request(`/api/games/${gameId}/turn/timer`, {

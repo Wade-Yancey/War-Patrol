@@ -27,6 +27,7 @@ import type {
   DepthChargeTrack,
   LatLonDepth,
   OwnDamageEvent,
+  TorpedoRoomId,
   TorpedoTrack,
   UnitState,
   WeaponDetonationEvent,
@@ -47,8 +48,24 @@ export const TORPEDO_DEFAULT_DEPTH_M = 3;
 export const TORPEDO_MIN_DEPTH_M = 1;
 export const TORPEDO_MAX_DEPTH_M = 25;
 
-/** Fleet-sub ready fish at scenario start (bow tubes only for v1). */
-export const FLEET_SUB_TORPEDO_LOAD = 6;
+/** Fleet-sub forward torpedo room capacity (bow tubes / ready fish). */
+export const FLEET_SUB_TORPEDO_FORWARD = 6;
+
+/** Fleet-sub aft torpedo room capacity (stern tubes / ready fish). */
+export const FLEET_SUB_TORPEDO_AFT = 4;
+
+/**
+ * Total fleet-sub fish at full rearm (forward + aft).
+ * Finite magazines — depleted on fire; umpire rearm restores full rooms.
+ */
+export const FLEET_SUB_TORPEDO_LOAD = FLEET_SUB_TORPEDO_FORWARD + FLEET_SUB_TORPEDO_AFT;
+
+/**
+ * Resolved turns after the player presses Reload before that room can fire again.
+ * At default 3-min in-game turns ≈ **15 in-game minutes** (~several wall-clock
+ * minutes of live ordering). Deliberately slow for physical-tube live events.
+ */
+export const TORPEDO_RELOAD_TURNS = 5;
 
 /** Max fish in one queued spread order. */
 export const TORPEDO_SPREAD_MAX_COUNT = 4;
@@ -159,8 +176,14 @@ export const DEPTH_CHARGE_DEFAULT_DEPTH_M = 50;
 export const DEPTH_CHARGE_MIN_DEPTH_M = 15;
 export const DEPTH_CHARGE_MAX_DEPTH_M = 90;
 
-/** Fletcher-class ready rack load for demo (doubled from the original 12). */
+/** Fletcher-class ready rack capacity (finite magazine; depletes per charge dropped). */
 export const DESTROYER_DEPTH_CHARGE_LOAD = 24;
+
+/**
+ * Resolved turns after the player presses Reload before the DC rack can drop again.
+ * Matches {@link TORPEDO_RELOAD_TURNS} — ~15 in-game minutes at default 3-min turns.
+ */
+export const DEPTH_CHARGE_RELOAD_TURNS = TORPEDO_RELOAD_TURNS;
 
 /**
  * Base effect % at zero horizontal miss + perfect depth match (single charge).
@@ -450,11 +473,32 @@ export function torpedoFireHeadingFromSolution(
   return { fireHeading, interceptSec: t, solvable: true };
 }
 
+export function isFleetSubTorpedoHull(
+  unit: Pick<UnitState, 'type' | 'class'>,
+): boolean {
+  return unit.class === 'Fleet Submarine' || unit.type === 'Submarine';
+}
+
+export function torpedoRoomCapacity(room: TorpedoRoomId): number {
+  return room === 'forward' ? FLEET_SUB_TORPEDO_FORWARD : FLEET_SUB_TORPEDO_AFT;
+}
+
+export function normalizeTorpedoRoomId(raw: unknown): TorpedoRoomId {
+  return raw === 'aft' ? 'aft' : 'forward';
+}
+
+/** Full forward/aft magazines for a fleet sub (or zeros for non-torpedo hulls). */
+export function defaultTorpedoRooms(
+  unit: Pick<UnitState, 'class' | 'type'>,
+): { forward: number; aft: number } {
+  if (!isFleetSubTorpedoHull(unit)) return { forward: 0, aft: 0 };
+  return { forward: FLEET_SUB_TORPEDO_FORWARD, aft: FLEET_SUB_TORPEDO_AFT };
+}
+
+/** @deprecated Prefer {@link defaultTorpedoRooms}; kept as total-fish default. */
 export function defaultTorpedoLoad(unit: Pick<UnitState, 'class' | 'type'>): number {
-  if (unit.class === 'Fleet Submarine' || unit.type === 'Submarine') {
-    return FLEET_SUB_TORPEDO_LOAD;
-  }
-  return 0;
+  const rooms = defaultTorpedoRooms(unit);
+  return rooms.forward + rooms.aft;
 }
 
 export function defaultDepthChargeLoad(unit: Pick<UnitState, 'class' | 'type'>): number {
@@ -462,20 +506,425 @@ export function defaultDepthChargeLoad(unit: Pick<UnitState, 'class' | 'type'>):
   return 0;
 }
 
-export function canFireTorpedo(
-  unit: Pick<UnitState, 'type' | 'class' | 'condition' | 'torpedoLoad'>,
+export function torpedoRoomReady(
+  unit: Pick<
+    UnitState,
+    | 'torpedoForward'
+    | 'torpedoAft'
+    | 'torpedoForwardAwaitingReload'
+    | 'torpedoAftAwaitingReload'
+    | 'torpedoForwardReloadTurnsRemaining'
+    | 'torpedoAftReloadTurnsRemaining'
+  >,
+  room: TorpedoRoomId,
+): number {
+  return room === 'forward' ? unit.torpedoForward ?? 0 : unit.torpedoAft ?? 0;
+}
+
+export function torpedoRoomAwaitingReload(
+  unit: Pick<UnitState, 'torpedoForwardAwaitingReload' | 'torpedoAftAwaitingReload'>,
+  room: TorpedoRoomId,
+): boolean {
+  return room === 'forward'
+    ? Boolean(unit.torpedoForwardAwaitingReload)
+    : Boolean(unit.torpedoAftAwaitingReload);
+}
+
+export function torpedoRoomReloadTurnsRemaining(
+  unit: Pick<
+    UnitState,
+    'torpedoForwardReloadTurnsRemaining' | 'torpedoAftReloadTurnsRemaining'
+  >,
+  room: TorpedoRoomId,
+): number {
+  const n =
+    room === 'forward'
+      ? unit.torpedoForwardReloadTurnsRemaining
+      : unit.torpedoAftReloadTurnsRemaining;
+  return Math.max(0, Math.floor(Number(n) || 0));
+}
+
+/** True when the room has fish and is not waiting on / mid reload. */
+export function canFireTorpedoFromRoom(
+  unit: Pick<
+    UnitState,
+    | 'type'
+    | 'class'
+    | 'condition'
+    | 'torpedoForward'
+    | 'torpedoAft'
+    | 'torpedoForwardAwaitingReload'
+    | 'torpedoAftAwaitingReload'
+    | 'torpedoForwardReloadTurnsRemaining'
+    | 'torpedoAftReloadTurnsRemaining'
+    | 'torpedoLoad'
+  >,
+  room: TorpedoRoomId = 'forward',
 ): boolean {
   if (unit.condition === 'sunk') return false;
-  if (unit.type !== 'Submarine' && unit.class !== 'Fleet Submarine') return false;
-  return (unit.torpedoLoad ?? 0) > 0;
+  if (!isFleetSubTorpedoHull(unit)) return false;
+  if (torpedoRoomAwaitingReload(unit, room)) return false;
+  if (torpedoRoomReloadTurnsRemaining(unit, room) > 0) return false;
+  return torpedoRoomReady(unit, room) > 0;
+}
+
+export function canFireTorpedo(
+  unit: Pick<
+    UnitState,
+    | 'type'
+    | 'class'
+    | 'condition'
+    | 'torpedoForward'
+    | 'torpedoAft'
+    | 'torpedoForwardAwaitingReload'
+    | 'torpedoAftAwaitingReload'
+    | 'torpedoForwardReloadTurnsRemaining'
+    | 'torpedoAftReloadTurnsRemaining'
+    | 'torpedoLoad'
+  >,
+): boolean {
+  return canFireTorpedoFromRoom(unit, 'forward') || canFireTorpedoFromRoom(unit, 'aft');
+}
+
+/**
+ * Migrate legacy single `torpedoLoad` / missing room fields onto forward+aft.
+ * New fleet subs without seeds get full rooms (6+4). Legacy load-only seeds
+ * put fish in forward first, then aft.
+ */
+export function resolveTorpedoMagazineState(
+  unit: Pick<UnitState, 'class' | 'type'> &
+    Partial<
+      Pick<
+        UnitState,
+        | 'torpedoLoad'
+        | 'torpedoForward'
+        | 'torpedoAft'
+        | 'torpedoForwardAwaitingReload'
+        | 'torpedoAftAwaitingReload'
+        | 'torpedoForwardReloadTurnsRemaining'
+        | 'torpedoAftReloadTurnsRemaining'
+      >
+    >,
+): Pick<
+  UnitState,
+  | 'torpedoForward'
+  | 'torpedoAft'
+  | 'torpedoLoad'
+  | 'torpedoForwardAwaitingReload'
+  | 'torpedoAftAwaitingReload'
+  | 'torpedoForwardReloadTurnsRemaining'
+  | 'torpedoAftReloadTurnsRemaining'
+> {
+  if (!isFleetSubTorpedoHull(unit)) {
+    return {
+      torpedoForward: 0,
+      torpedoAft: 0,
+      torpedoLoad: 0,
+      torpedoForwardAwaitingReload: false,
+      torpedoAftAwaitingReload: false,
+      torpedoForwardReloadTurnsRemaining: 0,
+      torpedoAftReloadTurnsRemaining: 0,
+    };
+  }
+
+  const hasForward = typeof unit.torpedoForward === 'number';
+  const hasAft = typeof unit.torpedoAft === 'number';
+  let forward: number;
+  let aft: number;
+  if (hasForward || hasAft) {
+    forward = Math.max(0, Math.floor(Number(unit.torpedoForward) || 0));
+    aft = Math.max(0, Math.floor(Number(unit.torpedoAft) || 0));
+  } else if (typeof unit.torpedoLoad === 'number') {
+    const load = Math.max(0, Math.floor(unit.torpedoLoad));
+    forward = Math.min(FLEET_SUB_TORPEDO_FORWARD, load);
+    aft = Math.min(FLEET_SUB_TORPEDO_AFT, Math.max(0, load - forward));
+  } else {
+    const rooms = defaultTorpedoRooms(unit);
+    forward = rooms.forward;
+    aft = rooms.aft;
+  }
+
+  forward = Math.min(FLEET_SUB_TORPEDO_FORWARD, forward);
+  aft = Math.min(FLEET_SUB_TORPEDO_AFT, aft);
+
+  return {
+    torpedoForward: forward,
+    torpedoAft: aft,
+    torpedoLoad: forward + aft,
+    torpedoForwardAwaitingReload: Boolean(unit.torpedoForwardAwaitingReload),
+    torpedoAftAwaitingReload: Boolean(unit.torpedoAftAwaitingReload),
+    torpedoForwardReloadTurnsRemaining: Math.max(
+      0,
+      Math.floor(Number(unit.torpedoForwardReloadTurnsRemaining) || 0),
+    ),
+    torpedoAftReloadTurnsRemaining: Math.max(
+      0,
+      Math.floor(Number(unit.torpedoAftReloadTurnsRemaining) || 0),
+    ),
+  };
+}
+
+/** Consume fish from a room and mark it awaiting player reload. */
+export function consumeTorpedoRoom(
+  unit: UnitState,
+  room: TorpedoRoomId,
+  count: number,
+): UnitState {
+  const n = Math.max(0, Math.floor(count));
+  if (n <= 0) return unit;
+  if (room === 'forward') {
+    const have = unit.torpedoForward ?? 0;
+    const next = Math.max(0, have - n);
+    return {
+      ...unit,
+      torpedoForward: next,
+      torpedoLoad: next + (unit.torpedoAft ?? 0),
+      torpedoForwardAwaitingReload: true,
+    };
+  }
+  const have = unit.torpedoAft ?? 0;
+  const next = Math.max(0, have - n);
+  return {
+    ...unit,
+    torpedoAft: next,
+    torpedoLoad: (unit.torpedoForward ?? 0) + next,
+    torpedoAftAwaitingReload: true,
+  };
+}
+
+/**
+ * Start a reload cycle for a room (player pressed Reload).
+ * Requires the room to be awaiting reload and not already counting down.
+ */
+export function startTorpedoRoomReload(
+  unit: UnitState,
+  room: TorpedoRoomId,
+): { ok: true; unit: UnitState } | { ok: false; error: string } {
+  if (!isFleetSubTorpedoHull(unit)) {
+    return { ok: false, error: 'Only submarines have torpedo rooms' };
+  }
+  if (unit.condition === 'sunk') {
+    return { ok: false, error: 'Unit sunk — torpedo rooms offline' };
+  }
+  if (!torpedoRoomAwaitingReload(unit, room)) {
+    return { ok: false, error: 'Room is not awaiting reload' };
+  }
+  if (torpedoRoomReloadTurnsRemaining(unit, room) > 0) {
+    return { ok: false, error: 'Reload already in progress' };
+  }
+  if (room === 'forward') {
+    return {
+      ok: true,
+      unit: {
+        ...unit,
+        torpedoForwardReloadTurnsRemaining: TORPEDO_RELOAD_TURNS,
+      },
+    };
+  }
+  return {
+    ok: true,
+    unit: {
+      ...unit,
+      torpedoAftReloadTurnsRemaining: TORPEDO_RELOAD_TURNS,
+    },
+  };
+}
+
+/** Tick reload countdowns once per resolve; clear awaiting when a cycle finishes. */
+export function advanceTorpedoRoomReloads(unit: UnitState): UnitState {
+  if (!isFleetSubTorpedoHull(unit)) return unit;
+  let next = unit;
+
+  const fwdTurns = torpedoRoomReloadTurnsRemaining(unit, 'forward');
+  if (fwdTurns > 0) {
+    const remaining = fwdTurns - 1;
+    next = {
+      ...next,
+      torpedoForwardReloadTurnsRemaining: remaining,
+      ...(remaining === 0 ? { torpedoForwardAwaitingReload: false } : {}),
+    };
+  }
+
+  const aftTurns = torpedoRoomReloadTurnsRemaining(next, 'aft');
+  if (aftTurns > 0) {
+    const remaining = aftTurns - 1;
+    next = {
+      ...next,
+      torpedoAftReloadTurnsRemaining: remaining,
+      ...(remaining === 0 ? { torpedoAftAwaitingReload: false } : {}),
+    };
+  }
+
+  return next;
+}
+
+/** Umpire fiat: full forward + aft magazines; clear reload state. */
+export function rearmTorpedoRooms(unit: UnitState): UnitState {
+  if (!isFleetSubTorpedoHull(unit)) {
+    return {
+      ...unit,
+      torpedoForward: 0,
+      torpedoAft: 0,
+      torpedoLoad: 0,
+      torpedoForwardAwaitingReload: false,
+      torpedoAftAwaitingReload: false,
+      torpedoForwardReloadTurnsRemaining: 0,
+      torpedoAftReloadTurnsRemaining: 0,
+    };
+  }
+  const rooms = defaultTorpedoRooms(unit);
+  return {
+    ...unit,
+    torpedoForward: rooms.forward,
+    torpedoAft: rooms.aft,
+    torpedoLoad: rooms.forward + rooms.aft,
+    torpedoForwardAwaitingReload: false,
+    torpedoAftAwaitingReload: false,
+    torpedoForwardReloadTurnsRemaining: 0,
+    torpedoAftReloadTurnsRemaining: 0,
+  };
+}
+
+export function isDestroyerDcHull(unit: Pick<UnitState, 'class'>): boolean {
+  return unit.class === 'Destroyer';
+}
+
+/** Normalize DC rack + reload fields (defaults full rack for destroyers). */
+export function resolveDepthChargeMagazineState(
+  unit: Pick<UnitState, 'class' | 'type'> &
+    Partial<
+      Pick<
+        UnitState,
+        | 'depthChargeLoad'
+        | 'depthChargeAwaitingReload'
+        | 'depthChargeReloadTurnsRemaining'
+      >
+    >,
+): Pick<
+  UnitState,
+  'depthChargeLoad' | 'depthChargeAwaitingReload' | 'depthChargeReloadTurnsRemaining'
+> {
+  if (!isDestroyerDcHull(unit)) {
+    return {
+      depthChargeLoad: 0,
+      depthChargeAwaitingReload: false,
+      depthChargeReloadTurnsRemaining: 0,
+    };
+  }
+  const load =
+    typeof unit.depthChargeLoad === 'number'
+      ? Math.min(
+          DESTROYER_DEPTH_CHARGE_LOAD,
+          Math.max(0, Math.floor(unit.depthChargeLoad)),
+        )
+      : DESTROYER_DEPTH_CHARGE_LOAD;
+  return {
+    depthChargeLoad: load,
+    depthChargeAwaitingReload: Boolean(unit.depthChargeAwaitingReload),
+    depthChargeReloadTurnsRemaining: Math.max(
+      0,
+      Math.floor(Number(unit.depthChargeReloadTurnsRemaining) || 0),
+    ),
+  };
 }
 
 export function canDropDepthCharges(
-  unit: Pick<UnitState, 'type' | 'class' | 'condition' | 'depthChargeLoad'>,
+  unit: Pick<
+    UnitState,
+    | 'type'
+    | 'class'
+    | 'condition'
+    | 'depthChargeLoad'
+    | 'depthChargeAwaitingReload'
+    | 'depthChargeReloadTurnsRemaining'
+  >,
 ): boolean {
   if (unit.condition === 'sunk') return false;
-  if (unit.class !== 'Destroyer') return false;
+  if (!isDestroyerDcHull(unit)) return false;
+  if (unit.depthChargeAwaitingReload) return false;
+  if ((unit.depthChargeReloadTurnsRemaining ?? 0) > 0) return false;
   return (unit.depthChargeLoad ?? 0) > 0;
+}
+
+/** Consume rack charges and mark awaiting player reload. */
+export function consumeDepthChargeRack(unit: UnitState, count: number): UnitState {
+  const n = Math.max(0, Math.floor(count));
+  if (n <= 0) return unit;
+  const next = Math.max(0, (unit.depthChargeLoad ?? 0) - n);
+  return {
+    ...unit,
+    depthChargeLoad: next,
+    depthChargeAwaitingReload: true,
+  };
+}
+
+export function startDepthChargeReload(
+  unit: UnitState,
+): { ok: true; unit: UnitState } | { ok: false; error: string } {
+  if (!isDestroyerDcHull(unit)) {
+    return { ok: false, error: 'Only destroyers have depth-charge racks' };
+  }
+  if (unit.condition === 'sunk') {
+    return { ok: false, error: 'Unit sunk — depth-charge rack offline' };
+  }
+  if (!unit.depthChargeAwaitingReload) {
+    return { ok: false, error: 'Rack is not awaiting reload' };
+  }
+  if ((unit.depthChargeReloadTurnsRemaining ?? 0) > 0) {
+    return { ok: false, error: 'Reload already in progress' };
+  }
+  return {
+    ok: true,
+    unit: {
+      ...unit,
+      depthChargeReloadTurnsRemaining: DEPTH_CHARGE_RELOAD_TURNS,
+    },
+  };
+}
+
+export function advanceDepthChargeReloads(unit: UnitState): UnitState {
+  if (!isDestroyerDcHull(unit)) return unit;
+  const turns = Math.max(0, Math.floor(Number(unit.depthChargeReloadTurnsRemaining) || 0));
+  if (turns <= 0) return unit;
+  const remaining = turns - 1;
+  return {
+    ...unit,
+    depthChargeReloadTurnsRemaining: remaining,
+    ...(remaining === 0 ? { depthChargeAwaitingReload: false } : {}),
+  };
+}
+
+/** Umpire fiat: full DC rack; clear reload state. */
+export function rearmDepthChargeRack(unit: UnitState): UnitState {
+  if (!isDestroyerDcHull(unit)) {
+    return {
+      ...unit,
+      depthChargeLoad: 0,
+      depthChargeAwaitingReload: false,
+      depthChargeReloadTurnsRemaining: 0,
+    };
+  }
+  return {
+    ...unit,
+    depthChargeLoad: DESTROYER_DEPTH_CHARGE_LOAD,
+    depthChargeAwaitingReload: false,
+    depthChargeReloadTurnsRemaining: 0,
+  };
+}
+
+/**
+ * Umpire one-click rearm: restores class-appropriate magazines
+ * (torpedo rooms and/or DC rack) and clears reload timers.
+ */
+export function rearmUnitWeapons(unit: UnitState): UnitState {
+  let next = rearmTorpedoRooms(unit);
+  next = rearmDepthChargeRack(next);
+  return next;
+}
+
+/** Tick all weapon reload countdowns once per resolve. */
+export function advanceWeaponReloads(unit: UnitState): UnitState {
+  return advanceDepthChargeReloads(advanceTorpedoRoomReloads(unit));
 }
 
 /** Deterministic 0–1 from string seed. */

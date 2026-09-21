@@ -10,7 +10,7 @@ import {
   applyHealthDamageResult,
   healthDamageApplied,
   canDropDepthCharges,
-  canFireTorpedo,
+  canFireTorpedoFromRoom,
   clampDepthChargeSetting,
   clampTorpedoSpreadCount,
   clampTorpedoSpreadDeg,
@@ -27,6 +27,7 @@ import {
   torpedoHitAudioDelaySec,
   normalizeDepthChargePattern,
   normalizeHeading,
+  normalizeTorpedoRoomId,
   recordTorpedoClosestApproach,
   resolveDepthChargeEffect,
   resolveTorpedoHit,
@@ -35,6 +36,10 @@ import {
   torpedoSpreadHeadings,
   truncateTorpedoAtHit,
   unitLengthBeam,
+  advanceWeaponReloads,
+  consumeTorpedoRoom,
+  consumeDepthChargeRack,
+  torpedoRoomReady,
   type CasualtyEffect,
   type CombatLogEntry,
   type CombatLogKind,
@@ -139,14 +144,18 @@ export function resolveWeaponsForTurn(
   const launchedCharges: DepthChargeTrack[] = [];
 
   units = units.map((unit) => {
-    let next = unit;
+    let next = advanceWeaponReloads(unit);
     const orders = unit.orders;
 
-    if (orders.fireTorpedo && canFireTorpedo(unit)) {
+    if (
+      orders.fireTorpedo &&
+      canFireTorpedoFromRoom(next, normalizeTorpedoRoomId(orders.fireTorpedo.room))
+    ) {
       const fire = orders.fireTorpedo;
+      const room = normalizeTorpedoRoomId(fire.room);
       const runDepthM = TORPEDO_DEFAULT_DEPTH_M;
       const want = clampTorpedoSpreadCount(fire.spreadCount);
-      const have = next.torpedoLoad ?? 0;
+      const have = torpedoRoomReady(next, room);
       const count = Math.min(want, have);
       const spacing = clampTorpedoSpreadDeg(fire.spreadDeg);
       const estCourse = Number(fire.estimatedCourse) || 0;
@@ -180,11 +189,12 @@ export function resolveWeaponsForTurn(
         });
         launchedFish.push(fish);
       }
-      next = { ...next, torpedoLoad: Math.max(0, have - count) };
+      next = consumeTorpedoRoom(next, room, count);
       const fanLabel =
         count > 1
           ? ` spread ×${count} @${spacing}° · center `
           : ' ';
+      const roomLabel = room === 'aft' ? 'aft' : 'fwd';
       const aimLabel = String(Math.round(normalizeHeading(fire.aimHeading))).padStart(3, '0');
       const fireLabel = String(Math.round(normalizeHeading(fireHdg))).padStart(3, '0');
       combatLogEntries.push(
@@ -193,12 +203,12 @@ export function resolveWeaponsForTurn(
           turnNumber,
           gameTimeSeconds,
           actor: unit,
-          summary: `${unit.name} fired torpedo${fanLabel}FIRE ${fireLabel}° (aim ${aimLabel}°) · ${count} fish`,
+          summary: `${unit.name} fired torpedo${fanLabel}FIRE ${fireLabel}° (aim ${aimLabel}°) · ${count} fish · ${roomLabel}`,
         }),
       );
     }
 
-    if (orders.dropDepthCharges && canDropDepthCharges(unit)) {
+    if (orders.dropDepthCharges && canDropDepthCharges(next)) {
       const drop = orders.dropDepthCharges;
       const pattern = normalizeDepthChargePattern(drop.pattern);
       const need = depthChargePatternCount(pattern);
@@ -217,7 +227,7 @@ export function resolveWeaponsForTurn(
           launchedTurn: turnNumber,
         });
         launchedCharges.push(...tracks);
-        next = { ...next, depthChargeLoad: have - need };
+        next = consumeDepthChargeRack(next, need);
         combatLogEntries.push(
           logLine({
             kind: 'depth_charge_drop',

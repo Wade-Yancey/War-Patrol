@@ -1191,6 +1191,40 @@ export function UmpirePage() {
                         </div>
                       </div>
 
+                      {(selectedUnit.class === 'Fleet Submarine' ||
+                        selectedUnit.class === 'Destroyer' ||
+                        selectedUnit.type === 'Submarine') && (
+                        <div className="unit-edit-group">
+                          <h3>Ordnance rearm</h3>
+                          <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
+                            Live-event fiat after physical tube / rack load. Instantly restores
+                            full magazines for this hull (fwd 6 + aft 4 fish and/or DC rack 24)
+                            and clears reload timers. Players cannot self-rearm.
+                          </p>
+                          <p className="mono muted" style={{ margin: 0, fontSize: '0.8rem' }}>
+                            Now:{' '}
+                            {selectedUnit.class === 'Destroyer'
+                              ? `DC ${selectedUnit.depthChargeLoad ?? 0}`
+                              : `FWD ${selectedUnit.torpedoForward ?? 0} · AFT ${selectedUnit.torpedoAft ?? 0}`}
+                          </p>
+                          <div className="control-actions">
+                            <button
+                              className="primary"
+                              type="button"
+                              disabled={busy}
+                              onClick={() =>
+                                void run(
+                                  () => api.rearmUnit(gameId, token, selectedUnit.id),
+                                  'Rearmed',
+                                )
+                              }
+                            >
+                              Rearm magazines
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="unit-edit-group">
                         <h3>Access</h3>
                         <label>

@@ -10,8 +10,16 @@ import {
   defaultRadarSignature,
   defaultSensors,
   defaultTwoScreenStations,
-  defaultDepthChargeLoad,
-  defaultTorpedoLoad,
+  resolveTorpedoMagazineState,
+  resolveDepthChargeMagazineState,
+  rearmUnitWeapons,
+  startTorpedoRoomReload,
+  startDepthChargeReload as beginDepthChargeRackReload,
+  normalizeTorpedoRoomId,
+  canFireTorpedoFromRoom,
+  canDropDepthCharges,
+  torpedoRoomReady,
+  type TorpedoRoomId,
   effectiveMaxSpeed,
   hasActiveSonarSensor,
   hasLookoutSensor,
@@ -138,14 +146,16 @@ function unitFromScenario(seed: Scenario['units'][number]): UnitState {
       identity.type === 'Submarine'
         ? Math.max(0, Math.floor(Number(seed.plotStampTurns) || 0))
         : 0,
-    torpedoLoad:
-      typeof seed.torpedoLoad === 'number'
-        ? Math.max(0, Math.floor(seed.torpedoLoad))
-        : defaultTorpedoLoad(identity),
-    depthChargeLoad:
-      typeof seed.depthChargeLoad === 'number'
-        ? Math.max(0, Math.floor(seed.depthChargeLoad))
-        : defaultDepthChargeLoad(identity),
+    ...resolveTorpedoMagazineState({
+      ...identity,
+      torpedoLoad: seed.torpedoLoad,
+      torpedoForward: seed.torpedoForward,
+      torpedoAft: seed.torpedoAft,
+    }),
+    ...resolveDepthChargeMagazineState({
+      ...identity,
+      depthChargeLoad: seed.depthChargeLoad,
+    }),
   });
 }
 
@@ -274,14 +284,8 @@ function normalizeUnit(unit: UnitState): UnitState {
       identity.type === 'Submarine'
         ? Math.max(0, Math.floor(Number(unit.plotStampTurns) || 0))
         : 0,
-    torpedoLoad:
-      typeof unit.torpedoLoad === 'number'
-        ? Math.max(0, Math.floor(unit.torpedoLoad))
-        : defaultTorpedoLoad(identity),
-    depthChargeLoad:
-      typeof unit.depthChargeLoad === 'number'
-        ? Math.max(0, Math.floor(unit.depthChargeLoad))
-        : defaultDepthChargeLoad(identity),
+    ...resolveTorpedoMagazineState(unit),
+    ...resolveDepthChargeMagazineState(unit),
     ...(contactBook ? { contactBook } : {}),
   };
 }
@@ -596,8 +600,18 @@ export class GameRuntime {
         if (unit.type !== 'Submarine') {
           throw Object.assign(new Error('Only submarines can fire torpedoes'), { statusCode: 400 });
         }
-        if ((unit.torpedoLoad ?? 0) <= 0) {
-          throw Object.assign(new Error('No torpedoes remaining'), { statusCode: 400 });
+        const room = normalizeTorpedoRoomId(patch.fireTorpedo.room);
+        if (!canFireTorpedoFromRoom(unit, room)) {
+          const have = torpedoRoomReady(unit, room);
+          if (have <= 0) {
+            throw Object.assign(new Error(`No torpedoes remaining in ${room} room`), {
+              statusCode: 400,
+            });
+          }
+          throw Object.assign(
+            new Error(`${room} room awaiting reload — press Reload and wait`),
+            { statusCode: 400 },
+          );
         }
         if (!(Number(patch.fireTorpedo.estimatedLengthM) > 0)) {
           throw Object.assign(new Error('Target length estimate required'), { statusCode: 400 });
@@ -606,7 +620,7 @@ export class GameRuntime {
           throw Object.assign(new Error('Target range estimate required'), { statusCode: 400 });
         }
         const want = Math.max(1, Math.floor(Number(patch.fireTorpedo.spreadCount) || 1));
-        if (want > (unit.torpedoLoad ?? 0)) {
+        if (want > torpedoRoomReady(unit, room)) {
           throw Object.assign(new Error('Not enough torpedoes for that spread'), {
             statusCode: 400,
           });
@@ -621,8 +635,14 @@ export class GameRuntime {
             statusCode: 400,
           });
         }
-        if ((unit.depthChargeLoad ?? 0) <= 0) {
-          throw Object.assign(new Error('No depth charges remaining'), { statusCode: 400 });
+        if (!canDropDepthCharges(unit)) {
+          if ((unit.depthChargeLoad ?? 0) <= 0) {
+            throw Object.assign(new Error('No depth charges remaining'), { statusCode: 400 });
+          }
+          throw Object.assign(
+            new Error('Depth-charge rack awaiting reload — press Reload and wait'),
+            { statusCode: 400 },
+          );
         }
       }
 
@@ -740,6 +760,76 @@ export class GameRuntime {
         unit.periscopeExposure = 0;
         unit.plotStampTurns = 0;
       }
+      return save;
+    });
+  }
+
+  /**
+   * Immediate Controls action: start a torpedo-room reload countdown after a salvo.
+   * Completes over {@link TORPEDO_RELOAD_TURNS} resolves — not an instant rearm.
+   */
+  startTorpedoReload(
+    gameId: string,
+    unitId: string,
+    stationId: string,
+    room: TorpedoRoomId,
+  ): GameSave {
+    return this.touch(gameId, (save) => {
+      const idx = save.units.findIndex((u) => u.id === unitId);
+      if (idx < 0) throw Object.assign(new Error('Unit not found'), { statusCode: 404 });
+      const unit = save.units[idx]!;
+      const station = unit.stations.find((s) => s.id === stationId);
+      if (!station) throw Object.assign(new Error('Station not found'), { statusCode: 404 });
+      if (
+        !station.capabilities.includes('weapons') &&
+        !station.capabilities.includes('torpedo')
+      ) {
+        throw Object.assign(new Error('Station cannot reload torpedoes'), { statusCode: 403 });
+      }
+      const result = startTorpedoRoomReload(unit, normalizeTorpedoRoomId(room));
+      if (!result.ok) {
+        throw Object.assign(new Error(result.error), { statusCode: 400 });
+      }
+      save.units[idx] = result.unit;
+      return save;
+    });
+  }
+
+  /**
+   * Immediate Controls action: start a depth-charge rack reload countdown after a drop.
+   */
+  startDepthChargeReload(
+    gameId: string,
+    unitId: string,
+    stationId: string,
+  ): GameSave {
+    return this.touch(gameId, (save) => {
+      const idx = save.units.findIndex((u) => u.id === unitId);
+      if (idx < 0) throw Object.assign(new Error('Unit not found'), { statusCode: 404 });
+      const unit = save.units[idx]!;
+      const station = unit.stations.find((s) => s.id === stationId);
+      if (!station) throw Object.assign(new Error('Station not found'), { statusCode: 404 });
+      if (!station.capabilities.includes('weapons')) {
+        throw Object.assign(new Error('Station cannot reload depth charges'), { statusCode: 403 });
+      }
+      const result = beginDepthChargeRackReload(unit);
+      if (!result.ok) {
+        throw Object.assign(new Error(result.error), { statusCode: 400 });
+      }
+      save.units[idx] = result.unit;
+      return save;
+    });
+  }
+
+  /**
+   * Umpire one-click rearm: full torpedo rooms and/or DC rack for the hull class.
+   * Immediate — for live events after physical tube / rack loading.
+   */
+  rearmUnit(gameId: string, unitId: string): GameSave {
+    return this.touch(gameId, (save) => {
+      const idx = save.units.findIndex((u) => u.id === unitId);
+      if (idx < 0) throw Object.assign(new Error('Unit not found'), { statusCode: 404 });
+      save.units[idx] = rearmUnitWeapons(save.units[idx]!);
       return save;
     });
   }

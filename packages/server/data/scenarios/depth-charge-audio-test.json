@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "depth-charge-audio-test",
   "name": "Depth-charge / audio test",
-  "description": "Close-range ASW drill: Fletcher steams slowly over a submerged Gato (~0.2 nm). Depth-charge pattern trails along the move; hydrophone DC WAV + Controls bridge audio on BOTH hulls when blasts are within ~1.5 nm (range to blast — not only the dropper). Passwords: umpire / blue / red (same tokens as demo).",
+  "description": "Close-range ASW drill: Fletcher steams slowly over a submerged Gato (~0.2 nm). Depth-charge pattern trails along the move; hydrophone DC WAV + Controls bridge audio on BOTH hulls when blasts are within ~1.5 nm (range to blast \u2014 not only the dropper). Passwords: umpire / blue / red (same tokens as demo).",
   "mode": "pvp",
   "operatingArea": {
     "minLat": 34.35,
@@ -23,7 +23,11 @@
       "classId": "fletcher-class",
       "type": "Ship",
       "class": "Destroyer",
-      "position": { "lat": 34.4, "lon": -120.0, "depth": 0 },
+      "position": {
+        "lat": 34.4,
+        "lon": -120.0,
+        "depth": 0
+      },
       "heading": 0,
       "speed": 4,
       "eot": "ahead_1",
@@ -37,20 +41,38 @@
       "activeSonarEnabled": true,
       "depthChargeLoad": 24,
       "sensors": [
-        { "kind": "radar", "maxRangeNm": 25 },
-        { "kind": "active_sonar", "maxRangeNm": 8 },
-        { "kind": "lookout", "maxRangeNm": 6 }
+        {
+          "kind": "radar",
+          "maxRangeNm": 25
+        },
+        {
+          "kind": "active_sonar",
+          "maxRangeNm": 8
+        },
+        {
+          "kind": "lookout",
+          "maxRangeNm": 6
+        }
       ],
       "stations": [
         {
           "id": "controls",
           "name": "Controls",
-          "capabilities": ["helm", "engineering", "plot", "weapons"]
+          "capabilities": [
+            "helm",
+            "engineering",
+            "plot",
+            "weapons"
+          ]
         },
         {
           "id": "sensors",
           "name": "Sensors",
-          "capabilities": ["radar", "active_sonar", "lookout"]
+          "capabilities": [
+            "radar",
+            "active_sonar",
+            "lookout"
+          ]
         }
       ]
     },
@@ -62,7 +84,11 @@
       "classId": "gato-class",
       "type": "Submarine",
       "class": "Fleet Submarine",
-      "position": { "lat": 34.4035, "lon": -120.0, "depth": 50 },
+      "position": {
+        "lat": 34.4035,
+        "lon": -120.0,
+        "depth": 50
+      },
       "orderedDepth": 50,
       "heading": 270,
       "speed": 2,
@@ -74,22 +100,40 @@
       "lengthM": 95,
       "beamM": 8.3,
       "radarSignature": "small",
-      "torpedoLoad": 6,
       "sensors": [
-        { "kind": "radar", "maxRangeNm": 25 },
-        { "kind": "hydrophone", "maxRangeNm": 30 },
-        { "kind": "lookout", "maxRangeNm": 6 }
+        {
+          "kind": "radar",
+          "maxRangeNm": 25
+        },
+        {
+          "kind": "hydrophone",
+          "maxRangeNm": 30
+        },
+        {
+          "kind": "lookout",
+          "maxRangeNm": 6
+        }
       ],
       "stations": [
         {
           "id": "controls",
           "name": "Controls",
-          "capabilities": ["helm", "engineering", "plot", "weapons", "torpedo"]
+          "capabilities": [
+            "helm",
+            "engineering",
+            "plot",
+            "weapons",
+            "torpedo"
+          ]
         },
         {
           "id": "sensors",
           "name": "Sensors",
-          "capabilities": ["radar", "hydrophone", "lookout"]
+          "capabilities": [
+            "radar",
+            "hydrophone",
+            "lookout"
+          ]
         }
       ]
     }

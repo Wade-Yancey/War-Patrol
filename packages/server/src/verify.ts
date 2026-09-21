@@ -2642,9 +2642,29 @@ async function main() {
       stationId: 'controls',
     });
     const torpTok = String(torpSub.json.token);
+    // Magazines: full rooms at start (6 fwd / 4 aft).
+    {
+      const magView = await api('GET', `/api/games/${torpId}/view`, undefined, torpTok);
+      const magUnit = (magView.json.view as {
+        unit?: {
+          torpedoForward?: number;
+          torpedoAft?: number;
+          torpedoLoad?: number;
+          torpedoForwardAwaitingReload?: boolean;
+        };
+      }).unit;
+      check(
+        'fleet sub starts with full rooms 6+4',
+        magUnit?.torpedoForward === 6 &&
+          magUnit?.torpedoAft === 4 &&
+          magUnit?.torpedoLoad === 10 &&
+          !magUnit?.torpedoForwardAwaitingReload,
+      );
+    }
     // Beam-aspect solution: aim north, est course E @ 14 kn / 1.5 nm → fire ~18°.
     const fire = await api('POST', `/api/games/${torpId}/orders`, {
       fireTorpedo: {
+        room: 'forward',
         aimHeading: 0,
         estimatedCourse: 90,
         estimatedSpeedKn: 14,
@@ -2682,6 +2702,104 @@ async function main() {
       !headings.includes(0) || expectedFan.includes(0),
       `got ${headings.join(',')}`,
     );
+
+    // Magazines deplete; reload delay; umpire rearm.
+    {
+      const afterFire = await api('GET', `/api/games/${torpId}/view`, undefined, torpTok);
+      const afterUnit = (afterFire.json.view as {
+        unit?: {
+          torpedoForward?: number;
+          torpedoAft?: number;
+          torpedoForwardAwaitingReload?: boolean;
+          torpedoForwardReloadTurnsRemaining?: number;
+        };
+      }).unit;
+      check(
+        'forward room depleted by spread',
+        afterUnit?.torpedoForward === 3 && afterUnit?.torpedoAft === 4,
+        `fwd=${afterUnit?.torpedoForward} aft=${afterUnit?.torpedoAft}`,
+      );
+      check(
+        'forward awaiting reload after fire',
+        afterUnit?.torpedoForwardAwaitingReload === true &&
+          (afterUnit?.torpedoForwardReloadTurnsRemaining ?? 0) === 0,
+      );
+      const blocked = await api(
+        'POST',
+        `/api/games/${torpId}/orders`,
+        {
+          fireTorpedo: {
+            room: 'forward',
+            aimHeading: 0,
+            estimatedCourse: 90,
+            estimatedSpeedKn: 14,
+            estimatedRangeNm: 1.5,
+            estimatedLengthM: 115,
+            spreadCount: 1,
+          },
+        },
+        torpTok,
+      );
+      check('cannot fire forward while awaiting reload', blocked.status === 400);
+      const aftOk = await api(
+        'POST',
+        `/api/games/${torpId}/orders`,
+        {
+          fireTorpedo: {
+            room: 'aft',
+            aimHeading: 0,
+            estimatedCourse: 90,
+            estimatedSpeedKn: 14,
+            estimatedRangeNm: 1.5,
+            estimatedLengthM: 115,
+            spreadCount: 1,
+          },
+        },
+        torpTok,
+      );
+      check('aft room still fireable independently', aftOk.status === 200);
+      await api('POST', `/api/games/${torpId}/orders`, { fireTorpedo: null }, torpTok);
+
+      const reloadStart = await api(
+        'POST',
+        `/api/games/${torpId}/torpedo-reload`,
+        { room: 'forward' },
+        torpTok,
+      );
+      check('start forward reload', reloadStart.status === 200);
+      check(
+        'reload countdown set to 5',
+        (reloadStart.json as { torpedoForwardReloadTurnsRemaining?: number })
+          .torpedoForwardReloadTurnsRemaining === 5,
+      );
+      for (let i = 0; i < 5; i++) {
+        await api('POST', `/api/games/${torpId}/turn/lock`, {}, torpUTok);
+        await api('POST', `/api/games/${torpId}/turn/resolve`, {}, torpUTok);
+      }
+      const afterReload = await api('GET', `/api/games/${torpId}/view`, undefined, torpTok);
+      const reloaded = (afterReload.json.view as {
+        unit?: {
+          torpedoForward?: number;
+          torpedoForwardAwaitingReload?: boolean;
+          torpedoForwardReloadTurnsRemaining?: number;
+        };
+      }).unit;
+      check(
+        'forward reload completes after 5 turns',
+        reloaded?.torpedoForwardAwaitingReload === false &&
+          (reloaded?.torpedoForwardReloadTurnsRemaining ?? 0) === 0 &&
+          reloaded?.torpedoForward === 3,
+      );
+
+      const rearm = await api('POST', `/api/games/${torpId}/units/ss-212/rearm`, {}, torpUTok);
+      check('umpire rearm torpedoes', rearm.status === 200);
+      check(
+        'rearm restores full 6+4',
+        (rearm.json as { torpedoForward?: number; torpedoAft?: number }).torpedoForward === 6 &&
+          (rearm.json as { torpedoAft?: number }).torpedoAft === 4,
+      );
+    }
+
     await api('DELETE', `/api/saves/${torpId}`);
 
     // Persist trails + endurance: fish exhaust after max run and stay on GT across later turns.
@@ -2966,6 +3084,7 @@ async function main() {
     let hitAttempts = 0;
     while (!torpHit && hitAttempts < 6) {
       hitAttempts += 1;
+      await api('POST', `/api/games/${hitId}/units/ss-212/rearm`, {}, hitUTok);
       await api(
         'PATCH',
         `/api/games/${hitId}/units/dd-101`,
@@ -2985,6 +3104,7 @@ async function main() {
         {
           eot: 'stop',
           fireTorpedo: {
+            room: 'forward',
             aimHeading: 0,
             estimatedCourse: 0,
             estimatedSpeedKn: 0,
@@ -3063,6 +3183,45 @@ async function main() {
     // May need multiple resolves for sink — force short path by resolving once then checking tracks
     const dcRes = await api('POST', `/api/games/${dcId}/turn/resolve`, {}, dcUTok);
     check('resolve dc turn', dcRes.status === 200);
+
+    // Finite rack depletes; reload delay; umpire rearm.
+    {
+      const rackView = await api('GET', `/api/games/${dcId}/view`, undefined, dcTok);
+      const rackUnit = (rackView.json.view as {
+        unit?: {
+          depthChargeLoad?: number;
+          depthChargeAwaitingReload?: boolean;
+          depthChargeReloadTurnsRemaining?: number;
+        };
+      }).unit;
+      check(
+        'DC rack depleted by pattern_3 (6)',
+        rackUnit?.depthChargeLoad === 18 && rackUnit?.depthChargeAwaitingReload === true,
+        `load=${rackUnit?.depthChargeLoad} awaiting=${rackUnit?.depthChargeAwaitingReload}`,
+      );
+      const blockedDc = await api(
+        'POST',
+        `/api/games/${dcId}/orders`,
+        { dropDepthCharges: { pattern: 'single', depthSettingM: 50 } },
+        dcTok,
+      );
+      check('cannot drop while awaiting DC reload', blockedDc.status === 400);
+      const dcReload = await api(
+        'POST',
+        `/api/games/${dcId}/depth-charge-reload`,
+        {},
+        dcTok,
+      );
+      check('start DC rack reload', dcReload.status === 200);
+      check(
+        'DC reload countdown 5',
+        (dcReload.json as { depthChargeReloadTurnsRemaining?: number })
+          .depthChargeReloadTurnsRemaining === 5,
+      );
+      // Reload completion + rearm use a dedicated game below so this game's
+      // detonation retention / along-track geometry stay intact for audio checks.
+    }
+
     const dcView = await api('GET', `/api/games/${dcId}/view`, undefined, dcUTok);
     const dcv = dcView.json.view as {
       depthCharges?: Array<{
@@ -3197,6 +3356,14 @@ async function main() {
     );
 
     // Hydrophone on sub Sensors also lists depth_charge contacts in range.
+    // Restore sensors if the pattern stunned them — hydrophone path is independent of damage.
+    await api(
+      'PATCH',
+      `/api/games/${dcId}/units/ss-212`,
+      { subsystems: { sensors: 'intact', propulsion: 'intact' }, condition: 'afloat', health: 100 },
+      dcUTok,
+    );
+
     const gatoSens = await api('POST', `/api/games/${dcId}/auth/vessel`, {
       accessToken: 'gato-demo',
       password: 'red',
@@ -3267,6 +3434,60 @@ async function main() {
     );
 
     await api('DELETE', `/api/saves/${dcId}`);
+
+    // Dedicated DC reload-completion / rearm game (keeps audio game's detonations intact).
+    {
+      const reloadGame = await api('POST', '/api/games', {
+        scenarioId: 'depth-charge-audio-test',
+        name: 'Verify DC Reload',
+      });
+      check('dc reload game create', reloadGame.status === 200);
+      const reloadId = String(reloadGame.json.gameId);
+      const reloadUmp = await api('POST', `/api/games/${reloadId}/auth/umpire`, {
+        password: 'umpire',
+      });
+      const reloadUTok = String(reloadUmp.json.token);
+      const reloadDd = await api('POST', `/api/games/${reloadId}/auth/vessel`, {
+        accessToken: 'porter-demo',
+        password: 'blue',
+        stationId: 'controls',
+      });
+      const reloadTok = String(reloadDd.json.token);
+      await api(
+        'POST',
+        `/api/games/${reloadId}/orders`,
+        { dropDepthCharges: { pattern: 'single', depthSettingM: 50 } },
+        reloadTok,
+      );
+      await api('POST', `/api/games/${reloadId}/turn/lock`, {}, reloadUTok);
+      await api('POST', `/api/games/${reloadId}/turn/resolve`, {}, reloadUTok);
+      await api('POST', `/api/games/${reloadId}/depth-charge-reload`, {}, reloadTok);
+      for (let i = 0; i < 5; i++) {
+        await api('POST', `/api/games/${reloadId}/turn/lock`, {}, reloadUTok);
+        await api('POST', `/api/games/${reloadId}/turn/resolve`, {}, reloadUTok);
+      }
+      const afterDcReload = await api('GET', `/api/games/${reloadId}/view`, undefined, reloadTok);
+      const afterRack = (afterDcReload.json.view as {
+        unit?: { depthChargeAwaitingReload?: boolean; depthChargeLoad?: number };
+      }).unit;
+      check(
+        'DC reload completes after 5 turns',
+        afterRack?.depthChargeAwaitingReload === false && afterRack?.depthChargeLoad === 23,
+        `load=${afterRack?.depthChargeLoad} awaiting=${afterRack?.depthChargeAwaitingReload}`,
+      );
+      const dcRearm = await api(
+        'POST',
+        `/api/games/${reloadId}/units/dd-101/rearm`,
+        {},
+        reloadUTok,
+      );
+      check('umpire rearm DC rack', dcRearm.status === 200);
+      check(
+        'DC rearm restores 24',
+        (dcRearm.json as { depthChargeLoad?: number }).depthChargeLoad === 24,
+      );
+      await api('DELETE', `/api/saves/${reloadId}`);
+    }
   }
 
   // Ground-truth multi-turn stability (separate game; cleans up its save)

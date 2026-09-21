@@ -299,6 +299,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       eot?: EotSetting;
       depth?: number;
       fireTorpedo?: {
+        room?: 'forward' | 'aft';
         aimHeading: number;
         estimatedCourse: number;
         estimatedSpeedKn: number;
@@ -397,6 +398,68 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(e.statusCode).send({ error: e.message });
     }
   });
+
+  app.post<{
+    Params: { gameId: string };
+    Body: { room?: string };
+  }>('/api/games/:gameId/torpedo-reload', async (request, reply) => {
+    try {
+      const session = requireSession(request, request.params.gameId);
+      if (session.role !== 'vessel' || !session.unitId || !session.stationId) {
+        return reply.code(403).send({ error: 'Vessel station session required' });
+      }
+      const room = request.body?.room === 'aft' ? 'aft' : 'forward';
+      const save = runtime.startTorpedoReload(
+        session.gameId,
+        session.unitId,
+        session.stationId,
+        room,
+      );
+      const unit = save.units.find((u) => u.id === session.unitId);
+      return {
+        ok: true,
+        stateVersion: save.stateVersion,
+        room,
+        torpedoForward: unit?.torpedoForward ?? 0,
+        torpedoAft: unit?.torpedoAft ?? 0,
+        torpedoForwardAwaitingReload: Boolean(unit?.torpedoForwardAwaitingReload),
+        torpedoAftAwaitingReload: Boolean(unit?.torpedoAftAwaitingReload),
+        torpedoForwardReloadTurnsRemaining: unit?.torpedoForwardReloadTurnsRemaining ?? 0,
+        torpedoAftReloadTurnsRemaining: unit?.torpedoAftReloadTurnsRemaining ?? 0,
+      };
+    } catch (err) {
+      const e = httpError(err);
+      return reply.code(e.statusCode).send({ error: e.message });
+    }
+  });
+
+  app.post<{ Params: { gameId: string } }>(
+    '/api/games/:gameId/depth-charge-reload',
+    async (request, reply) => {
+      try {
+        const session = requireSession(request, request.params.gameId);
+        if (session.role !== 'vessel' || !session.unitId || !session.stationId) {
+          return reply.code(403).send({ error: 'Vessel station session required' });
+        }
+        const save = runtime.startDepthChargeReload(
+          session.gameId,
+          session.unitId,
+          session.stationId,
+        );
+        const unit = save.units.find((u) => u.id === session.unitId);
+        return {
+          ok: true,
+          stateVersion: save.stateVersion,
+          depthChargeLoad: unit?.depthChargeLoad ?? 0,
+          depthChargeAwaitingReload: Boolean(unit?.depthChargeAwaitingReload),
+          depthChargeReloadTurnsRemaining: unit?.depthChargeReloadTurnsRemaining ?? 0,
+        };
+      } catch (err) {
+        const e = httpError(err);
+        return reply.code(e.statusCode).send({ error: e.message });
+      }
+    },
+  );
 
   // --- Umpire turn controls ---
   app.post<{ Params: { gameId: string }; Body: { seconds: number } }>(
@@ -610,6 +673,28 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         const save = runtime.rotateAccessToken(request.params.gameId, request.params.unitId);
         const unit = save.units.find((u) => u.id === request.params.unitId);
         return { accessToken: unit?.accessToken, stateVersion: save.stateVersion };
+      } catch (err) {
+        const e = httpError(err);
+        return reply.code(e.statusCode).send({ error: e.message });
+      }
+    },
+  );
+
+  app.post<{ Params: { gameId: string; unitId: string } }>(
+    '/api/games/:gameId/units/:unitId/rearm',
+    async (request, reply) => {
+      try {
+        requireUmpire(request, request.params.gameId);
+        const save = runtime.rearmUnit(request.params.gameId, request.params.unitId);
+        const unit = save.units.find((u) => u.id === request.params.unitId);
+        return {
+          ok: true,
+          stateVersion: save.stateVersion,
+          torpedoLoad: unit?.torpedoLoad ?? 0,
+          torpedoForward: unit?.torpedoForward ?? 0,
+          torpedoAft: unit?.torpedoAft ?? 0,
+          depthChargeLoad: unit?.depthChargeLoad ?? 0,
+        };
       } catch (err) {
         const e = httpError(err);
         return reply.code(e.statusCode).send({ error: e.message });
