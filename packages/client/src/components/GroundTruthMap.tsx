@@ -12,9 +12,11 @@ import {
   METERS_PER_NM,
   RADAR_MAX_RANGE_NM,
   clamp,
+  formatTorpedoMissTrackLabel,
   metersPerDegLon,
   normalizeHeading,
   projectToUv,
+  torpedoMissNearestContactName,
   unprojectFromUv,
 } from '@war-patrol/shared';
 
@@ -203,7 +205,7 @@ function weaponsSignature(
   const t = (torpedoes ?? [])
     .map(
       (f) =>
-        `${f.id}:${f.status}:${f.position.lat.toFixed(5)},${f.position.lon.toFixed(5)}:${(f.path ?? []).length}`,
+        `${f.id}:${f.status}:${f.position.lat.toFixed(5)},${f.position.lon.toFixed(5)}:${(f.path ?? []).length}:${f.closestApproachM ?? ''}:${f.closestApproachUnitId ?? ''}:${f.closestApproachUnitName ?? ''}`,
     )
     .join('|');
   const d = (depthCharges ?? [])
@@ -449,13 +451,17 @@ function GroundTruthMapInner({
       const hRad = ((normalizeHeading(t.heading) - 90) * Math.PI) / 180;
       // Heading pip only while running — hit/expired tip stops at end position.
       const tipLen = t.status === 'running' ? 10 : 0;
+      const nearestName = torpedoMissNearestContactName(t, units);
       const statusLabel =
         t.status === 'running'
           ? `FISH · ${t.remainingRunNm.toFixed(1)}NM`
           : t.status === 'hit'
             ? 'FISH · HIT'
             : t.status === 'expired'
-              ? 'FISH · EXHAUSTED'
+              ? formatTorpedoMissTrackLabel({
+                  closestApproachM: t.closestApproachM,
+                  targetName: nearestName,
+                })
               : `FISH · ${t.status.toUpperCase()}`;
       return {
         id: t.id,
@@ -527,7 +533,7 @@ function GroundTruthMapInner({
       });
 
     return { fish, charges, dropTrails };
-  }, [torpedoes, depthCharges, view, unitAccentById]);
+  }, [torpedoes, depthCharges, view, unitAccentById, units]);
 
   const markers = useMemo(
     () =>

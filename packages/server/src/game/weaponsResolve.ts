@@ -281,6 +281,7 @@ export function resolveWeaponsForTurn(
           ? {
               closestApproachM: fish.closestApproachM,
               closestApproachUnitId: fish.closestApproachUnitId,
+              closestApproachUnitName: fish.closestApproachUnitName,
             }
           : {}),
       };
@@ -289,7 +290,8 @@ export function resolveWeaponsForTurn(
         if (uid === fish.firerUnitId) continue;
         if (!isTorpedoTarget(target)) continue;
         const closest = segmentClosestPoint(before, advanced.position, target.position);
-        advanced = recordTorpedoClosestApproach(advanced, closest.missM, uid);
+        // CPA is always vs nearest eligible contact (not the aimed solution target).
+        advanced = recordTorpedoClosestApproach(advanced, closest.missM, uid, target.name);
 
         // Exhausted fish still update CPA on the last segment, then log miss.
         if (advanced.status !== 'running') continue;
@@ -391,6 +393,7 @@ export function resolveWeaponsForTurn(
           advanced.closestApproachUnitId != null
             ? unitMap.get(advanced.closestApproachUnitId)
             : undefined;
+        const nearestName = cpaTarget?.name ?? advanced.closestApproachUnitName;
         combatLogEntries.push(
           logLine({
             kind: 'torpedo_miss',
@@ -400,7 +403,7 @@ export function resolveWeaponsForTurn(
             target: cpaTarget,
             summary: formatTorpedoMissLogSummary({
               firerName: nameOf(fish.firerUnitId),
-              targetName: cpaTarget?.name,
+              targetName: nearestName,
               closestApproachM: advanced.closestApproachM,
             }),
           }),

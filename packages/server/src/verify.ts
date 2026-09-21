@@ -1748,14 +1748,18 @@ async function main() {
       trueBearingFromRelative,
       relativeBearingDeg,
       recordTorpedoClosestApproach,
+      nearestTorpedoApproachOnSegment,
       formatTorpedoMissDistance,
       formatTorpedoMissLogSummary,
+      formatTorpedoMissTrackLabel,
+      torpedoMissNearestContactName,
       torpedoMissBand,
       RECOGNITION_MANUAL_ENTRIES,
       TORPEDO_DEFAULT_DEPTH_M,
       TORPEDO_HIT_DAMAGE,
       TORPEDO_NEAR_MISS_M,
       METERS_PER_NAVAL_YARD,
+      METERS_PER_DEG_LAT,
     } = await import('@war-patrol/shared');
     check('beam aspect dud ~3%', Math.abs(torpedoDudPctFromAspect(90) - 3) < 0.01);
     check('end-on dud ~18%', Math.abs(torpedoDudPctFromAspect(0) - 18) < 0.01);
@@ -1855,6 +1859,21 @@ async function main() {
       'miss log without CPA is exhaust fallback',
       formatTorpedoMissLogSummary({ firerName: 'Gato' }).includes('exhausted run'),
     );
+    check(
+      'GT miss label names nearest contact',
+      formatTorpedoMissTrackLabel({
+        closestApproachM: 200,
+        targetName: 'USS Platte',
+      }) === 'FISH · MISS USS Platte 200m (FAR)',
+    );
+    check(
+      'GT miss label near band',
+      formatTorpedoMissTrackLabel({ closestApproachM: 80, targetName: 'Porter' }).includes('(NEAR)'),
+    );
+    check(
+      'GT miss label without CPA stays exhausted',
+      formatTorpedoMissTrackLabel({}) === 'FISH · EXHAUSTED',
+    );
     {
       const fish0 = createTorpedoTrack({
         id: 'cpa-test',
@@ -1868,14 +1887,100 @@ async function main() {
         estimatedRangeNm: 1,
         estimatedLengthM: 115,
       });
-      const closer = recordTorpedoClosestApproach(fish0, 80, 'dd-101');
-      const farther = recordTorpedoClosestApproach(closer, 120, 'dd-other');
-      const nearer = recordTorpedoClosestApproach(farther, 40, 'dd-near');
+      const closer = recordTorpedoClosestApproach(fish0, 80, 'dd-101', 'Porter');
+      const farther = recordTorpedoClosestApproach(closer, 120, 'dd-other', 'Farragut');
+      const nearer = recordTorpedoClosestApproach(farther, 40, 'dd-near', 'Maury');
       check('CPA keeps closer approach', closer.closestApproachM === 80);
       check('CPA ignores farther approach', farther.closestApproachM === 80);
       check(
         'CPA updates to nearer target',
-        nearer.closestApproachM === 40 && nearer.closestApproachUnitId === 'dd-near',
+        nearer.closestApproachM === 40 &&
+          nearer.closestApproachUnitId === 'dd-near' &&
+          nearer.closestApproachUnitName === 'Maury',
+      );
+      check(
+        'CPA name prefers snapshotted nearest',
+        torpedoMissNearestContactName(nearer) === 'Maury',
+      );
+    }
+    {
+      // Platte @ ~200 m north of track; Neosho ~6000 m east — nearest must be Platte.
+      const from = { lat: 34.4, lon: -120.0, depth: 3 };
+      const to = { lat: 34.4 + 2000 / METERS_PER_DEG_LAT, lon: -120.0, depth: 3 };
+      const platte = {
+        id: 'ao-24',
+        name: 'USS Platte',
+        type: 'Ship' as const,
+        class: 'Oiler',
+        side: 'blue' as const,
+        faction: 'Blue' as const,
+        position: { lat: 34.4, lon: -120.0 + 200 / (METERS_PER_DEG_LAT * Math.cos((34.4 * Math.PI) / 180)), depth: 0 },
+        heading: 90,
+        speed: 12,
+        eot: 'ahead_standard' as const,
+        health: 100,
+        maxSpeed: 18,
+        condition: 'afloat' as const,
+        subsystems: { propulsion: 'intact' as const, sensors: 'intact' as const },
+      };
+      const neosho = {
+        ...platte,
+        id: 'ao-23',
+        name: 'USS Neosho',
+        position: {
+          lat: 34.4,
+          lon: -120.0 + 6000 / (METERS_PER_DEG_LAT * Math.cos((34.4 * Math.PI) / 180)),
+          depth: 0,
+        },
+      };
+      const nearest = nearestTorpedoApproachOnSegment(from, to, [neosho, platte], 'ss-212');
+      check(
+        'nearest CPA picks Platte over Neosho',
+        !!nearest &&
+          nearest.unitId === 'ao-24' &&
+          nearest.unitName === 'USS Platte' &&
+          nearest.missM < 250 &&
+          nearest.missM > 150,
+        nearest
+          ? `id=${nearest.unitId} miss=${nearest.missM.toFixed(1)}`
+          : 'no nearest',
+      );
+      const fishNear = recordTorpedoClosestApproach(
+        createTorpedoTrack({
+          id: 'cpa-platte',
+          firerUnitId: 'ss-212',
+          position: from,
+          heading: 0,
+          runDepthM: TORPEDO_DEFAULT_DEPTH_M,
+          launchedTurn: 1,
+          estimatedCourse: 90,
+          estimatedSpeedKn: 0,
+          estimatedRangeNm: 1.5,
+          estimatedLengthM: 169,
+        }),
+        nearest!.missM,
+        nearest!.unitId,
+        nearest!.unitName,
+      );
+      const afterFar = recordTorpedoClosestApproach(fishNear, 6000, 'ao-23', 'USS Neosho');
+      check(
+        'accumulated CPA stays on Platte not Neosho',
+        afterFar.closestApproachUnitId === 'ao-24' &&
+          afterFar.closestApproachUnitName === 'USS Platte' &&
+          (afterFar.closestApproachM ?? 9999) < 250,
+      );
+      check(
+        'miss log names Platte not Neosho',
+        formatTorpedoMissLogSummary({
+          firerName: 'Gato',
+          targetName: afterFar.closestApproachUnitName,
+          closestApproachM: afterFar.closestApproachM,
+        }).includes('MISSED USS Platte') &&
+          !formatTorpedoMissLogSummary({
+            firerName: 'Gato',
+            targetName: afterFar.closestApproachUnitName,
+            closestApproachM: afterFar.closestApproachM,
+          }).includes('Neosho'),
       );
     }
 
@@ -2507,6 +2612,36 @@ async function main() {
             /CPA \d+ m \(\d+ yd\)/.test(missLine.summary),
           missLine?.summary ?? 'no torpedo_miss line',
         );
+        if (missLine) {
+          const missFish =
+            (
+              (missView.json.view as {
+                torpedoes?: Array<{
+                  status: string;
+                  closestApproachM?: number;
+                  closestApproachUnitId?: string;
+                  closestApproachUnitName?: string;
+                }>;
+              }).torpedoes
+            ) ?? [];
+          const expired = missFish.find((f) => f.status === 'expired');
+          check(
+            'expired fish stores nearest-contact CPA fields',
+            !!expired &&
+              expired.closestApproachM != null &&
+              !!expired.closestApproachUnitId &&
+              !!expired.closestApproachUnitName,
+            expired
+              ? `cpa=${expired.closestApproachM} id=${expired.closestApproachUnitId} name=${expired.closestApproachUnitName}`
+              : 'no expired fish',
+          );
+          check(
+            'miss log names stored nearest contact',
+            !!expired?.closestApproachUnitName &&
+              missLine.summary.includes(expired.closestApproachUnitName),
+            missLine.summary,
+          );
+        }
       }
       await api('DELETE', `/api/saves/${missId}`);
     }
