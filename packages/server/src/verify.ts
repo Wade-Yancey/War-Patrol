@@ -1867,6 +1867,11 @@ async function main() {
       createTorpedoTrack,
       torpedoSpreadHeadings,
       torpedoFireHeadingFromSolution,
+      checkTorpedoOrderArc,
+      isTorpedoFireHeadingInRoomArc,
+      torpedoRoomGyroAngleDeg,
+      TORPEDO_FORWARD_ARC_HALF_DEG,
+      TORPEDO_AFT_ARC_HALF_DEG,
       trueBearingFromRelative,
       relativeBearingDeg,
       recordTorpedoClosestApproach,
@@ -2356,6 +2361,66 @@ async function main() {
       beamSol.solvable && beamSol.fireHeading > 16 && beamSol.fireHeading < 20,
       `fire=${beamSol.fireHeading}`,
     );
+    check(
+      'forward arc half-angle 45°',
+      TORPEDO_FORWARD_ARC_HALF_DEG === 45 && TORPEDO_AFT_ARC_HALF_DEG === 45,
+    );
+    check(
+      'forward dead-ahead in arc',
+      isTorpedoFireHeadingInRoomArc(0, 0, 'forward'),
+    );
+    check(
+      'forward +45° on edge in arc',
+      isTorpedoFireHeadingInRoomArc(0, 45, 'forward'),
+    );
+    check(
+      'forward +46° outside arc',
+      !isTorpedoFireHeadingInRoomArc(0, 46, 'forward'),
+    );
+    check(
+      'aft dead-astern in arc',
+      isTorpedoFireHeadingInRoomArc(0, 180, 'aft'),
+    );
+    check(
+      'aft ahead shot outside arc',
+      !isTorpedoFireHeadingInRoomArc(0, 0, 'aft'),
+    );
+    check(
+      'aft tube gyro 0 at stern',
+      Math.abs(torpedoRoomGyroAngleDeg(90, 270, 'aft')) < 0.01,
+    );
+    {
+      const aftOk = checkTorpedoOrderArc({
+        ownHeadingDeg: 0,
+        room: 'aft',
+        aimHeading: 180,
+        estimatedCourse: 90,
+        estimatedSpeedKn: 0,
+        estimatedRangeNm: 1,
+        spreadCount: 1,
+      });
+      check('aft stationary aim astern in arc', aftOk.ok && Math.abs(aftOk.gyroDeg) < 0.01);
+      const fwdBeam = checkTorpedoOrderArc({
+        ownHeadingDeg: 0,
+        room: 'forward',
+        aimHeading: 0,
+        estimatedCourse: 90,
+        estimatedSpeedKn: 14,
+        estimatedRangeNm: 1.5,
+        spreadCount: 3,
+        spreadDeg: 2,
+      });
+      check('forward beam solution fan in arc', fwdBeam.ok);
+      const aftBad = checkTorpedoOrderArc({
+        ownHeadingDeg: 0,
+        room: 'aft',
+        aimHeading: 0,
+        estimatedCourse: 90,
+        estimatedSpeedKn: 0,
+        estimatedRangeNm: 1,
+      });
+      check('aft aim ahead rejected by arc check', !aftBad.ok);
+    }
     // Optics-style relative aim → true: port contact must not fire starboard.
     const ownHdg0 = 0;
     const portRel = -90;
@@ -2817,9 +2882,9 @@ async function main() {
         {
           fireTorpedo: {
             room: 'aft',
-            aimHeading: 0,
+            aimHeading: 180,
             estimatedCourse: 90,
-            estimatedSpeedKn: 14,
+            estimatedSpeedKn: 0,
             estimatedRangeNm: 1.5,
             estimatedLengthM: 115,
             spreadCount: 1,
@@ -2868,6 +2933,57 @@ async function main() {
         (rearm.json as { torpedoForward?: number; torpedoAft?: number }).torpedoForward === 6 &&
           (rearm.json as { torpedoAft?: number }).torpedoAft === 4,
       );
+
+      // Firing arcs: aft ahead rejected; aft astern accepted; forward abeam rejected.
+      const aftAheadReject = await api(
+        'POST',
+        `/api/games/${torpId}/orders`,
+        {
+          fireTorpedo: {
+            room: 'aft',
+            aimHeading: 0,
+            estimatedCourse: 90,
+            estimatedSpeedKn: 0,
+            estimatedRangeNm: 1.5,
+            estimatedLengthM: 115,
+          },
+        },
+        torpTok,
+      );
+      check('reject aft fire ahead of bow', aftAheadReject.status === 400);
+      const fwdAbeamReject = await api(
+        'POST',
+        `/api/games/${torpId}/orders`,
+        {
+          fireTorpedo: {
+            room: 'forward',
+            aimHeading: 90,
+            estimatedCourse: 0,
+            estimatedSpeedKn: 0,
+            estimatedRangeNm: 1.5,
+            estimatedLengthM: 115,
+          },
+        },
+        torpTok,
+      );
+      check('reject forward fire abeam', fwdAbeamReject.status === 400);
+      const aftAsternOk = await api(
+        'POST',
+        `/api/games/${torpId}/orders`,
+        {
+          fireTorpedo: {
+            room: 'aft',
+            aimHeading: 180,
+            estimatedCourse: 90,
+            estimatedSpeedKn: 0,
+            estimatedRangeNm: 1.5,
+            estimatedLengthM: 115,
+          },
+        },
+        torpTok,
+      );
+      check('queue aft fire astern', aftAsternOk.status === 200);
+      await api('POST', `/api/games/${torpId}/orders`, { fireTorpedo: null }, torpTok);
     }
 
     await api('DELETE', `/api/saves/${torpId}`);

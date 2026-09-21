@@ -19,6 +19,8 @@ import {
   canFireTorpedoFromRoom,
   canDropDepthCharges,
   torpedoRoomReady,
+  checkTorpedoOrderArc,
+  formatTorpedoArcRejectMessage,
   type TorpedoRoomId,
   effectiveMaxSpeed,
   hasActiveSonarSensor,
@@ -642,6 +644,21 @@ export class GameRuntime {
         const want = Math.max(1, Math.floor(Number(patch.fireTorpedo.spreadCount) || 1));
         if (want > torpedoRoomReady(unit, room)) {
           throw Object.assign(new Error('Not enough torpedoes for that spread'), {
+            statusCode: 400,
+          });
+        }
+        const arc = checkTorpedoOrderArc({
+          ownHeadingDeg: unit.heading,
+          room,
+          aimHeading: Number(patch.fireTorpedo.aimHeading) || 0,
+          estimatedCourse: Number(patch.fireTorpedo.estimatedCourse) || 0,
+          estimatedSpeedKn: Number(patch.fireTorpedo.estimatedSpeedKn) || 0,
+          estimatedRangeNm: Number(patch.fireTorpedo.estimatedRangeNm) || 0,
+          spreadCount: want,
+          spreadDeg: patch.fireTorpedo.spreadDeg,
+        });
+        if (!arc.ok) {
+          throw Object.assign(new Error(formatTorpedoArcRejectMessage(arc)), {
             statusCode: 400,
           });
         }

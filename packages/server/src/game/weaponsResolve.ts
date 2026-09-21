@@ -32,8 +32,8 @@ import {
   resolveDepthChargeEffect,
   resolveTorpedoHit,
   segmentClosestPoint,
-  torpedoFireHeadingFromSolution,
-  torpedoSpreadHeadings,
+  checkTorpedoOrderArc,
+  formatTorpedoArcRejectMessage,
   truncateTorpedoAtHit,
   unitLengthBeam,
   advanceWeaponReloads,
@@ -163,49 +163,66 @@ export function resolveWeaponsForTurn(
       const estRange = Number(fire.estimatedRangeNm) || 0;
       const estLen = Number(fire.estimatedLengthM) || 0;
       // Intercept from player solution (aim + course/speed/range) — never sim truth.
-      const solution = torpedoFireHeadingFromSolution({
+      // Arc uses post-kinematics heading (tubes point with the hull at launch).
+      const arc = checkTorpedoOrderArc({
+        ownHeadingDeg: unit.heading,
+        room,
         aimHeading: fire.aimHeading,
         estimatedCourse: estCourse,
         estimatedSpeedKn: estSpd,
         estimatedRangeNm: estRange,
+        spreadCount: count,
+        spreadDeg: spacing,
       });
-      const fireHdg = solution.fireHeading;
-      const headings = torpedoSpreadHeadings(fireHdg, count, spacing);
-      for (const hdg of headings) {
-        const fish = createTorpedoTrack({
-          id: `t-${nanoid(8)}`,
-          firerUnitId: unit.id,
-          position: {
-            ...unit.position,
-            depth: runDepthM,
-          },
-          heading: normalizeHeading(hdg),
-          runDepthM,
-          launchedTurn: turnNumber,
-          estimatedCourse: estCourse,
-          estimatedSpeedKn: estSpd,
-          estimatedRangeNm: estRange,
-          estimatedLengthM: estLen,
-        });
-        launchedFish.push(fish);
+      if (!arc.ok) {
+        combatLogEntries.push(
+          logLine({
+            kind: 'torpedo_launch',
+            turnNumber,
+            gameTimeSeconds,
+            actor: unit,
+            summary: `${unit.name} torpedo order blocked — ${formatTorpedoArcRejectMessage(arc)}`,
+          }),
+        );
+      } else {
+        const fireHdg = arc.fireHeading;
+        const headings = arc.headings;
+        for (const hdg of headings) {
+          const fish = createTorpedoTrack({
+            id: `t-${nanoid(8)}`,
+            firerUnitId: unit.id,
+            position: {
+              ...unit.position,
+              depth: runDepthM,
+            },
+            heading: normalizeHeading(hdg),
+            runDepthM,
+            launchedTurn: turnNumber,
+            estimatedCourse: estCourse,
+            estimatedSpeedKn: estSpd,
+            estimatedRangeNm: estRange,
+            estimatedLengthM: estLen,
+          });
+          launchedFish.push(fish);
+        }
+        next = consumeTorpedoRoom(next, room, count);
+        const fanLabel =
+          count > 1
+            ? ` spread ×${count} @${spacing}° · center `
+            : ' ';
+        const roomLabel = room === 'aft' ? 'aft' : 'fwd';
+        const aimLabel = String(Math.round(normalizeHeading(fire.aimHeading))).padStart(3, '0');
+        const fireLabel = String(Math.round(normalizeHeading(fireHdg))).padStart(3, '0');
+        combatLogEntries.push(
+          logLine({
+            kind: 'torpedo_launch',
+            turnNumber,
+            gameTimeSeconds,
+            actor: unit,
+            summary: `${unit.name} fired torpedo${fanLabel}FIRE ${fireLabel}° (aim ${aimLabel}°) · ${count} fish · ${roomLabel}`,
+          }),
+        );
       }
-      next = consumeTorpedoRoom(next, room, count);
-      const fanLabel =
-        count > 1
-          ? ` spread ×${count} @${spacing}° · center `
-          : ' ';
-      const roomLabel = room === 'aft' ? 'aft' : 'fwd';
-      const aimLabel = String(Math.round(normalizeHeading(fire.aimHeading))).padStart(3, '0');
-      const fireLabel = String(Math.round(normalizeHeading(fireHdg))).padStart(3, '0');
-      combatLogEntries.push(
-        logLine({
-          kind: 'torpedo_launch',
-          turnNumber,
-          gameTimeSeconds,
-          actor: unit,
-          summary: `${unit.name} fired torpedo${fanLabel}FIRE ${fireLabel}° (aim ${aimLabel}°) · ${count} fish · ${roomLabel}`,
-        }),
-      );
     }
 
     if (orders.dropDepthCharges && canDropDepthCharges(next)) {

@@ -3,14 +3,19 @@ import {
   FLEET_SUB_TORPEDO_AFT,
   FLEET_SUB_TORPEDO_FORWARD,
   RECOGNITION_MANUAL_ENTRIES,
+  TORPEDO_AFT_ARC_HALF_DEG,
+  TORPEDO_FORWARD_ARC_HALF_DEG,
   TORPEDO_MAX_RUN_NM,
   TORPEDO_RELOAD_TURNS,
   TORPEDO_SPEED_KN,
   TORPEDO_SPREAD_DEFAULT_DEG,
   TORPEDO_SPREAD_MAX_COUNT,
   TORPEDO_SPREAD_MAX_DEG,
+  checkTorpedoOrderArc,
+  formatTorpedoArcRejectMessage,
   relativeBearingDeg,
   torpedoFireHeadingFromSolution,
+  torpedoRoomArcHalfDeg,
   trueBearingFromRelative,
   type TorpedoFireOrder,
   type TorpedoRoomId,
@@ -133,13 +138,29 @@ export function TorpedoCalculator({
     estimatedRangeNm,
   });
   const fireHeading = solution.fireHeading;
-  const gyro = ((fireHeading - ownHeading + 540) % 360) - 180;
   const lead = ((fireHeading - aimTrue + 540) % 360) - 180;
   const maxCount = Math.max(1, Math.min(TORPEDO_SPREAD_MAX_COUNT, selected.ready || 1));
   const effectiveCount = Math.min(spreadCount, maxCount);
   const loadBlocked = !roomCanFire(selected);
+  const arcHalf = torpedoRoomArcHalfDeg(room);
+  const arcCheck = checkTorpedoOrderArc({
+    ownHeadingDeg: ownHeading,
+    room,
+    aimHeading: aimTrue,
+    estimatedCourse,
+    estimatedSpeedKn,
+    estimatedRangeNm,
+    spreadCount: effectiveCount,
+    spreadDeg,
+  });
+  const gyro = arcCheck.gyroDeg;
+  const arcBlocked = !arcCheck.ok;
   const canQueue =
-    !disabled && !loadBlocked && estimatedRangeNm > 0 && estimatedLengthM > 0;
+    !disabled &&
+    !loadBlocked &&
+    !arcBlocked &&
+    estimatedRangeNm > 0 &&
+    estimatedLengthM > 0;
 
   return (
     <section className="panel stack controls-weapons-panel">
@@ -150,9 +171,10 @@ export function TorpedoCalculator({
           compass. Enter target true course (not AOB), speed, range, and OA length from the
           recognition manual — wrong length shrinks the hit window. Fish run the computed
           intercept. Finite rooms: forward {FLEET_SUB_TORPEDO_FORWARD} / aft{' '}
-          {FLEET_SUB_TORPEDO_AFT}. After a salvo press Reload ({TORPEDO_RELOAD_TURNS} turns
-          before that room can fire again). Mk14-ish {TORPEDO_SPEED_KN} kn /{' '}
-          {TORPEDO_MAX_RUN_NM} nm. Fire allowed with scope down.
+          {FLEET_SUB_TORPEDO_AFT}. Bow tubes ±{TORPEDO_FORWARD_ARC_HALF_DEG}° ahead; stern
+          tubes ±{TORPEDO_AFT_ARC_HALF_DEG}° astern (gyro vs own HDG). After a salvo press
+          Reload ({TORPEDO_RELOAD_TURNS} turns before that room can fire again). Mk14-ish{' '}
+          {TORPEDO_SPEED_KN} kn / {TORPEDO_MAX_RUN_NM} nm. Fire allowed with scope down.
         </p>
       </div>
 
@@ -179,6 +201,10 @@ export function TorpedoCalculator({
         <p className="mono muted" style={{ margin: '0.35rem 0 0', fontSize: '0.8rem' }}>
           FWD {roomStatus(forward, FLEET_SUB_TORPEDO_FORWARD)} · AFT{' '}
           {roomStatus(aft, FLEET_SUB_TORPEDO_AFT)}
+        </p>
+        <p className="mono muted" style={{ margin: '0.25rem 0 0', fontSize: '0.8rem' }}>
+          {room === 'aft' ? 'Aft' : 'Forward'} arc ±{arcHalf}°{' '}
+          {room === 'aft' ? 'astern' : 'ahead'} (gyro must stay inside cone)
         </p>
       </fieldset>
 
@@ -236,11 +262,19 @@ export function TorpedoCalculator({
         {solution.solvable
           ? ` · lead ${lead >= 0 ? '+' : ''}${Math.round(lead)}°`
           : ' · no intercept (aim)'}{' '}
-        · gyro {gyro >= 0 ? '+' : ''}
-        {Math.round(gyro)}°
+        · tube gyro {gyro >= 0 ? '+' : ''}
+        {Math.round(gyro)}° (vs {room === 'aft' ? 'stern' : 'bow'})
         {effectiveCount > 1
           ? ` · fan ×${effectiveCount} @${spreadDeg}° (center fire)`
           : ''}
+        {' · '}
+        {arcBlocked ? (
+          <span style={{ color: 'var(--warn, #c45c26)' }}>
+            OUT OF ARC ({formatTorpedoArcRejectMessage(arcCheck)})
+          </span>
+        ) : (
+          <span>in arc ±{arcHalf}°</span>
+        )}
       </p>
 
       <TouchNumber
@@ -410,6 +444,13 @@ export function TorpedoCalculator({
       {loadBlocked && (
         <p className="mono muted" style={{ margin: 0 }}>
           Selected room: {roomStatus(selected, capacity)}
+        </p>
+      )}
+
+      {arcBlocked && !loadBlocked && (
+        <p className="mono muted" style={{ margin: 0 }}>
+          Cannot queue — {formatTorpedoArcRejectMessage(arcCheck)}. Switch room or change aim /
+          solution lead.
         </p>
       )}
 
