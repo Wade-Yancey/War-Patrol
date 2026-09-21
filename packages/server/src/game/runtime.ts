@@ -662,6 +662,8 @@ export class GameRuntime {
             statusCode: 400,
           });
         }
+        // Fresh in-arc order supersedes any earlier blocked-salvo notice.
+        delete unit.torpedoArcBlock;
       }
       if (patch.dropDepthCharges !== undefined && patch.dropDepthCharges !== null) {
         if (!station.capabilities.includes('weapons')) {

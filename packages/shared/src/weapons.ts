@@ -28,6 +28,7 @@ import type {
   DepthChargeTrack,
   LatLonDepth,
   OwnDamageEvent,
+  TorpedoArcBlock,
   TorpedoRoomId,
   TorpedoTrack,
   UnitState,
@@ -604,6 +605,33 @@ export function formatTorpedoArcRejectMessage(check: TorpedoArcCheckResult): str
   const roomLabel = check.room === 'aft' ? 'aft (stern)' : 'forward (bow)';
   const gyro = `${check.gyroDeg >= 0 ? '+' : ''}${Math.round(check.gyroDeg)}°`;
   return `${roomLabel} arc ±${check.halfDeg}° — gyro ${gyro} outside cone`;
+}
+
+/** Snapshot an out-of-arc resolve so the firing crew can be told next turn. */
+export function buildTorpedoArcBlock(
+  check: TorpedoArcCheckResult,
+  turnNumber: number,
+  ownHeadingDeg: number,
+): TorpedoArcBlock {
+  return {
+    turnNumber,
+    room: check.room,
+    gyroDeg: check.gyroDeg,
+    halfDeg: check.halfDeg,
+    ownHeadingDeg: normalizeHeading(ownHeadingDeg),
+  };
+}
+
+/** Controls notice for a salvo that never left the tubes (no fish expended). */
+export function formatTorpedoArcBlockNotice(block: TorpedoArcBlock): string {
+  const roomLabel = block.room === 'aft' ? 'Aft' : 'Forward';
+  const axis = block.room === 'aft' ? 'stern' : 'bow';
+  const gyro = `${block.gyroDeg >= 0 ? '+' : ''}${Math.round(block.gyroDeg)}°`;
+  const hdg = String(Math.round(block.ownHeadingDeg)).padStart(3, '0');
+  return (
+    `Turn ${block.turnNumber}: ${roomLabel} salvo did not launch — hull on ${hdg}° put ` +
+    `gyro ${gyro} outside the ±${block.halfDeg}° ${axis} arc. No fish expended.`
+  );
 }
 
 /** Full forward/aft magazines for a fleet sub (or zeros for non-torpedo hulls). */
