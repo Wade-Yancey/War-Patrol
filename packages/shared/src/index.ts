@@ -11,6 +11,7 @@ export * from './periscope.js';
 export * from './contactBook.js';
 export * from './stations.js';
 export * from './turning.js';
+export * from './kinematics.js';
 export * from './time.js';
 export * from './vessel.js';
 export * from './performance.js';

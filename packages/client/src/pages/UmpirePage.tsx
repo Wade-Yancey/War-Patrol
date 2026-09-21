@@ -402,6 +402,8 @@ export function UmpirePage() {
                 trails={gtDisplay?.trails ?? umpire.trails}
                 torpedoes={gtDisplay?.torpedoes ?? umpire.torpedoes}
                 depthCharges={gtDisplay?.depthCharges ?? umpire.depthCharges}
+                turnLengthSeconds={umpire.turnLengthSeconds}
+                showMovePrediction={!gtDisplay?.reviewing}
               />
             </section>
 
