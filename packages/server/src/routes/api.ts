@@ -300,6 +300,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         estimatedCourse: number;
         estimatedSpeedKn: number;
         estimatedRangeNm: number;
+        estimatedLengthM: number;
         spreadCount?: number;
         spreadDeg?: number;
       } | null;

@@ -566,6 +566,12 @@ export class GameRuntime {
         if ((unit.torpedoLoad ?? 0) <= 0) {
           throw Object.assign(new Error('No torpedoes remaining'), { statusCode: 400 });
         }
+        if (!(Number(patch.fireTorpedo.estimatedLengthM) > 0)) {
+          throw Object.assign(new Error('Target length estimate required'), { statusCode: 400 });
+        }
+        if (!(Number(patch.fireTorpedo.estimatedRangeNm) > 0)) {
+          throw Object.assign(new Error('Target range estimate required'), { statusCode: 400 });
+        }
         const want = Math.max(1, Math.floor(Number(patch.fireTorpedo.spreadCount) || 1));
         if (want > (unit.torpedoLoad ?? 0)) {
           throw Object.assign(new Error('Not enough torpedoes for that spread'), {

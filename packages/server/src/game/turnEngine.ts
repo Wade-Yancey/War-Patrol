@@ -273,6 +273,7 @@ export function mergeOrders(
       estimatedCourse: normalizeHeading(patch.fireTorpedo.estimatedCourse),
       estimatedSpeedKn: Math.max(0, Number(patch.fireTorpedo.estimatedSpeedKn) || 0),
       estimatedRangeNm: Math.max(0, Number(patch.fireTorpedo.estimatedRangeNm) || 0),
+      estimatedLengthM: Math.max(0, Number(patch.fireTorpedo.estimatedLengthM) || 0),
       spreadCount: clampTorpedoSpreadCount(patch.fireTorpedo.spreadCount),
       spreadDeg: clampTorpedoSpreadDeg(patch.fireTorpedo.spreadDeg),
     };

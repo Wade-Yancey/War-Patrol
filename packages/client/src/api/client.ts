@@ -83,6 +83,7 @@ export const api = {
         estimatedCourse: number;
         estimatedSpeedKn: number;
         estimatedRangeNm: number;
+        estimatedLengthM: number;
         spreadCount?: number;
         spreadDeg?: number;
       } | null;

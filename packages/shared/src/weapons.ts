@@ -2,8 +2,9 @@
  * Torpedo + depth-charge combat model (v1).
  *
  * Torpedo hits are geometry-first: closest approach within a hull-breadth
- * gate using real length/beam. Aspect softens damage and adds a small warhead
- * dud chance — not the old 5–50% “did you hit” RNG table.
+ * gate using real length/beam, then scaled by how accurately the operator
+ * identified target length (recognition manual). Aspect softens damage and
+ * adds a small warhead dud chance — not the old 5–50% “did you hit” RNG table.
  * Fire headings come from the player's entered TDC solution (aim + course /
  * speed / range intercept) — never auto-filled from sim truth.
  * See docs/simulation-physics.md in the project store.
@@ -70,6 +71,18 @@ export const TORPEDO_HIT_GATE_PAD_M = 2;
  * Kept as a wide upper clamp so absurd dims cannot inflate the gate.
  */
 export const TORPEDO_HIT_GATE_M = 90;
+
+/**
+ * Length-ID full credit: relative error |est−true|/true within this fraction
+ * keeps the full geometric hit gate (recognition-manual class lengths match).
+ */
+export const TORPEDO_LENGTH_ID_FULL_FRAC = 0.1;
+
+/**
+ * Length-ID zero credit: relative error at or above this collapses the
+ * effective hit gate to 0 (wrong ID → miss even on geometric contact).
+ */
+export const TORPEDO_LENGTH_ID_ZERO_FRAC = 0.4;
 
 /** Base damage applied on a successful (non-dud) torpedo hit (health points). */
 export const TORPEDO_HIT_DAMAGE = 45;
@@ -453,6 +466,38 @@ export function torpedoHitGateM(lengthM: number, beamM: number, aspectDeg: numbe
   return Math.min(TORPEDO_HIT_GATE_M, half + TORPEDO_HIT_GATE_PAD_M);
 }
 
+/**
+ * How accurately the operator's length estimate matches true OA length.
+ * Returns 0–1 scale applied to the true geometric hit gate.
+ * Symmetric: over- and under-estimates both shrink the intercept chord.
+ * Perfect / within {@link TORPEDO_LENGTH_ID_FULL_FRAC} → 1;
+ * at/above {@link TORPEDO_LENGTH_ID_ZERO_FRAC} → 0.
+ */
+export function torpedoLengthIdScale(estimatedLengthM: number, trueLengthM: number): number {
+  const truth = Math.max(1, trueLengthM);
+  const est = Math.max(0, Number(estimatedLengthM) || 0);
+  if (est <= 0) return 0;
+  const relErr = Math.abs(est - truth) / truth;
+  if (relErr <= TORPEDO_LENGTH_ID_FULL_FRAC) return 1;
+  if (relErr >= TORPEDO_LENGTH_ID_ZERO_FRAC) return 0;
+  const span = TORPEDO_LENGTH_ID_ZERO_FRAC - TORPEDO_LENGTH_ID_FULL_FRAC;
+  return 1 - (relErr - TORPEDO_LENGTH_ID_FULL_FRAC) / span;
+}
+
+/**
+ * Effective hit gate after length identification quality.
+ * Longer true targets still present a larger chord; wrong length shrinks it.
+ */
+export function torpedoEffectiveHitGateM(
+  trueLengthM: number,
+  trueBeamM: number,
+  aspectDeg: number,
+  estimatedLengthM: number,
+): number {
+  const trueGate = torpedoHitGateM(trueLengthM, trueBeamM, aspectDeg);
+  return trueGate * torpedoLengthIdScale(estimatedLengthM, trueLengthM);
+}
+
 function interpolateAspectTable(
   aspectDeg: number,
   table: ReadonlyArray<{ angleDeg: number; value: number }>,
@@ -507,6 +552,11 @@ export type TorpedoHitRollInput = {
   trueLengthM: number;
   /** True target beam (sim). */
   trueBeamM: number;
+  /**
+   * Operator length estimate from the TDC / recognition manual (m).
+   * Scales the true geometric gate — wrong ID shrinks the intercept chord.
+   */
+  estimatedLengthM: number;
   /** Fish run depth vs target keel — surface targets need shallow fish. */
   depthOk: boolean;
   seed: string;
@@ -522,13 +572,19 @@ export type TorpedoHitRollResult = {
   aspectDeg: number;
   dudPct: number;
   halfBreadthM: number;
+  /** True hull gate before length-ID scale. */
+  trueHitGateM: number;
+  /** Effective gate after length-ID scale (used for the miss check). */
   hitGateM: number;
+  /** 0–1 length identification quality. */
+  lengthIdScale: number;
   geometricMiss: boolean;
 };
 
 /**
- * Resolve one fish vs one target: geometry gate from hull dims, then aspect
- * dud roll. Successful hits scale damage by aspect (end-on softens).
+ * Resolve one fish vs one target: geometry gate from hull dims, scaled by
+ * length-ID quality, then aspect dud roll. Successful hits scale damage by
+ * aspect (end-on softens).
  */
 export function resolveTorpedoHit(input: TorpedoHitRollInput): TorpedoHitRollResult {
   const aspectDeg = torpedoAspectAngleDeg(input.fishHeading, input.targetHeading);
@@ -537,7 +593,9 @@ export function resolveTorpedoHit(input: TorpedoHitRollInput): TorpedoHitRollRes
     input.trueBeamM,
     aspectDeg,
   );
-  const hitGateM = torpedoHitGateM(input.trueLengthM, input.trueBeamM, aspectDeg);
+  const trueHitGateM = torpedoHitGateM(input.trueLengthM, input.trueBeamM, aspectDeg);
+  const lengthIdScale = torpedoLengthIdScale(input.estimatedLengthM, input.trueLengthM);
+  const hitGateM = trueHitGateM * lengthIdScale;
   const dudPct = torpedoDudPctFromAspect(aspectDeg);
   const damageFactor = torpedoDamageFactorFromAspect(aspectDeg);
   const damage = Math.max(1, Math.round(TORPEDO_HIT_DAMAGE * damageFactor));
@@ -550,7 +608,9 @@ export function resolveTorpedoHit(input: TorpedoHitRollInput): TorpedoHitRollRes
       aspectDeg,
       dudPct,
       halfBreadthM,
+      trueHitGateM,
       hitGateM,
+      lengthIdScale,
       geometricMiss: true,
     };
   }
@@ -564,7 +624,9 @@ export function resolveTorpedoHit(input: TorpedoHitRollInput): TorpedoHitRollRes
       aspectDeg,
       dudPct,
       halfBreadthM,
+      trueHitGateM,
       hitGateM,
+      lengthIdScale,
       geometricMiss: false,
     };
   }
@@ -576,7 +638,9 @@ export function resolveTorpedoHit(input: TorpedoHitRollInput): TorpedoHitRollRes
     aspectDeg,
     dudPct,
     halfBreadthM,
+    trueHitGateM,
     hitGateM,
+    lengthIdScale,
     geometricMiss: false,
   };
 }
@@ -670,6 +734,7 @@ export function createTorpedoTrack(opts: {
   estimatedCourse: number;
   estimatedSpeedKn: number;
   estimatedRangeNm: number;
+  estimatedLengthM: number;
 }): TorpedoTrack {
   const launch = {
     lat: opts.position.lat,
@@ -690,6 +755,7 @@ export function createTorpedoTrack(opts: {
     estimatedCourse: normalizeHeading(opts.estimatedCourse),
     estimatedSpeedKn: Math.max(0, opts.estimatedSpeedKn),
     estimatedRangeNm: Math.max(0, opts.estimatedRangeNm),
+    estimatedLengthM: Math.max(0, opts.estimatedLengthM),
     path: [{ lat: launch.lat, lon: launch.lon }],
   };
 }

@@ -153,6 +153,7 @@ export function resolveWeaponsForTurn(
       const estCourse = Number(fire.estimatedCourse) || 0;
       const estSpd = Number(fire.estimatedSpeedKn) || 0;
       const estRange = Number(fire.estimatedRangeNm) || 0;
+      const estLen = Number(fire.estimatedLengthM) || 0;
       // Intercept from player solution (aim + course/speed/range) — never sim truth.
       const solution = torpedoFireHeadingFromSolution({
         aimHeading: fire.aimHeading,
@@ -176,6 +177,7 @@ export function resolveWeaponsForTurn(
           estimatedCourse: estCourse,
           estimatedSpeedKn: estSpd,
           estimatedRangeNm: estRange,
+          estimatedLengthM: estLen,
         });
         launchedFish.push(fish);
       }
@@ -288,6 +290,7 @@ export function resolveWeaponsForTurn(
           targetHeading: target.heading,
           trueLengthM: lengthM,
           trueBeamM: beamM,
+          estimatedLengthM: fish.estimatedLengthM,
           depthOk,
           seed: `${fish.id}|${uid}|${turnNumber}|${step}`,
         });
@@ -336,7 +339,7 @@ export function resolveWeaponsForTurn(
               actor: unitMap.get(fish.firerUnitId),
               target: damaged,
               damage,
-              summary: `Torpedo HIT ${target.name} (−${damage} HP · aspect ${roll.aspectDeg.toFixed(0)}° · gate ${roll.hitGateM.toFixed(0)} m)`,
+              summary: `Torpedo HIT ${target.name} (−${damage} HP · aspect ${roll.aspectDeg.toFixed(0)}° · gate ${roll.hitGateM.toFixed(0)} m · L-ID ${(roll.lengthIdScale * 100).toFixed(0)}%)`,
             }),
           );
           combatLogEntries.push(
