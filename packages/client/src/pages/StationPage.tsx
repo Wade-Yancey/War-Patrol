@@ -16,6 +16,7 @@ import {
   formatPendingOrdersSummary,
   hasPendingOrders,
   isRadarSurfaced,
+  TORPEDO_HIT_AUDIO_MAX_DELAY_SEC,
   torpedoHitControlsGain,
   type DepthChargeDropOrder,
   type EotSetting,
@@ -309,7 +310,7 @@ export function StationPage() {
           const gain =
             TORPEDO_HIT_CONTROLS_PEAK_GAIN *
             Math.max(0.35, torpedoHitControlsGain(e.rangeNm));
-          // Arrival offset into the resolved turn — not at the resolve click.
+          // Compressed presentation delay (≤ TORPEDO_HIT_AUDIO_MAX_DELAY_SEC).
           const whenSec = Math.max(0, e.audioDelaySec ?? 0);
           playTorpedoHitSample(ctx, hitBuffer, ctx.destination, gain, { whenSec });
           scheduleDamageRevealRef.current(e.id, whenSec);
@@ -1377,9 +1378,10 @@ export function StationPage() {
                   evenly across ~{DEPTH_CHARGE_AUDIO_SPREAD_SEC / 60} minutes (not stacked),
                   each at its own range volume. Own-ship Damage report lines (and hull readout
                   on that tab) appear with each blast cue — not all at once on resolve.
-                  Torpedo hits play the explosion for both firer and target Controls when the
-                  fish reaches the target (offset into the resolved turn), attenuated by range,
-                  and the Damage report for that hit waits for the same cue. Submarine Controls also
+                  Torpedo hits play the explosion for both firer and target Controls on a
+                  compressed run timeline (scaled into ≤{TORPEDO_HIT_AUDIO_MAX_DELAY_SEC} s —
+                  not the full wall-clock intercept), attenuated by range, and the Damage
+                  report for that hit waits for the same cue. Submarine Controls also
                   hear occasional hull creaks while submerged (depth &gt; {RADAR_SURFACE_DEPTH_M}{' '}
                   m), denser toward test depth and <em>super frequent</em> near crush (~
                   {SUBMARINE_CREAK_INTERVAL_SHALLOW_SEC} s mean near the surface band down to ~

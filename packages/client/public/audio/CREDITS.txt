@@ -28,7 +28,8 @@ License: as provided for War Patrol (user sample)
 Original: https://freesound.org/people/sieuamthanh/sounds/546958/
 Local copy: explosion.wav
 Original filename: 546958__sieuamthanh__nolonduoinuoc2.wav
-Notes: Controls bridge speakers — firer + target, distance-attenuated.
+Notes: Controls bridge speakers — firer + target, distance-attenuated;
+hit SFX delay is compressed into ≤90 s (presentation only).
 
 Source: Stereotypical sinking submarine sound (NO REVERB) by Ubehag (Freesound #232021)
 License: CC0 / public domain

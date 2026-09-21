@@ -32,8 +32,8 @@ export type SyncedDamagePresentation = {
  * Sim / vessel health stay at resolve-time truth; only presentation is held.
  * Entries without a live `bridgeDetonations` cue (or no `sourceDetonationId`)
  * reveal immediately. DC cues use the stagger `whenSec`; torpedo-hit cues use
- * `audioDelaySec` (arrival inside the resolved turn). Umpire Action log is
- * untouched.
+ * `audioDelaySec` (compressed presentation delay from intercept fraction —
+ * ≤ `TORPEDO_HIT_AUDIO_MAX_DELAY_SEC`). Umpire Action log is untouched.
  *
  * Reveals are scheduled from live `bridgeDetonations` (Sensors + Controls) and
  * again from Controls audio flush — first schedule wins (idempotent).

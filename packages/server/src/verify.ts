@@ -1800,9 +1800,11 @@ async function main() {
       RECOGNITION_MANUAL_ENTRIES,
       TORPEDO_DEFAULT_DEPTH_M,
       TORPEDO_HIT_DAMAGE,
+      TORPEDO_HIT_AUDIO_MAX_DELAY_SEC,
       TORPEDO_NEAR_MISS_M,
       METERS_PER_NAVAL_YARD,
       METERS_PER_DEG_LAT,
+      torpedoHitAudioDelaySec,
     } = await import('@war-patrol/shared');
     check('beam aspect dud ~3%', Math.abs(torpedoDudPctFromAspect(90) - 3) < 0.01);
     check('end-on dud ~18%', Math.abs(torpedoDudPctFromAspect(0) - 18) < 0.01);
@@ -1810,6 +1812,22 @@ async function main() {
     check(
       'end-on damage factor 0.55',
       Math.abs(torpedoDamageFactorFromAspect(0) - 0.55) < 0.01,
+    );
+    check('torpedo hit audio max delay 90s', TORPEDO_HIT_AUDIO_MAX_DELAY_SEC === 90);
+    // Mid-turn hit on a 180 s turn: scale into 90 s window → 45 s (not 90).
+    check(
+      'torpedo audio delay scales into 90s window',
+      Math.abs(torpedoHitAudioDelaySec(5, 0, 180) - 45) < 0.01,
+    );
+    // End of turn on 180 s → capped at 90 s.
+    check(
+      'torpedo audio delay caps at max window',
+      Math.abs(torpedoHitAudioDelaySec(9, 1, 180) - 90) < 0.01,
+    );
+    // Short turns unchanged (no stretch).
+    check(
+      'torpedo audio delay preserves short turns',
+      Math.abs(torpedoHitAudioDelaySec(5, 0, 60) - 30) < 0.01,
     );
     // Fletcher 115×12: beam aspect gate ≈ length/2 + pad; end-on ≈ beam/2 + pad.
     const beamGate = torpedoHitGateM(115, 12, 90);

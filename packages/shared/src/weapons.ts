@@ -131,6 +131,16 @@ export const TORPEDO_ASPECT_DAMAGE_TABLE: ReadonlyArray<{
 export const TORPEDO_HIT_CONTROLS_REF_NM = 4;
 
 /**
+ * Max wall-clock seconds for player-facing torpedo-hit SFX + Damage reveal.
+ * Real intercept time within the turn can be up to `turnLengthSeconds` (often
+ * 180 s); presentation scales proportionally into this window so long fish
+ * runs do not make players wait the full intercept. Sim / GT tracks and
+ * umpire Action log stay on resolve-time truth. Aligns with the DC stagger
+ * dramatic window (~1½ min).
+ */
+export const TORPEDO_HIT_AUDIO_MAX_DELAY_SEC = 90;
+
+/**
  * Umpire “near miss” band: horizontal CPA (track → target center) at or
  * below this many meters. Farther approaches are logged as far misses.
  * ~110 yd — inside a couple of ship lengths for destroyer/cruiser targets.
@@ -1296,9 +1306,17 @@ export function unitLengthBeam(unit: UnitState): { lengthM: number; beamM: numbe
 
 /**
  * Wall-clock delay (seconds) from turn resolve until a torpedo-hit explosion
- * should be heard. The fish is advanced in {@link WEAPON_SUBSTEPS} slices of
- * the turn; `stepIndex` is the slice that scored the hit and `segmentT` is the
- * fraction along that slice (0 = start, 1 = end) where the track met the target.
+ * should be heard (and the matching Damage-tab line revealed).
+ *
+ * The fish is advanced in {@link WEAPON_SUBSTEPS} slices of the turn;
+ * `stepIndex` is the slice that scored the hit and `segmentT` is the fraction
+ * along that slice (0 = start, 1 = end) where the track met the target.
+ *
+ * **Compression rule:** relative arrival within the turn is preserved, then
+ * scaled into `min(turnLengthSeconds, {@link TORPEDO_HIT_AUDIO_MAX_DELAY_SEC})`
+ * so a hit at fraction `f` of a 180 s turn plays at `f × 90` s, not `f × 180` s.
+ * Turns shorter than the cap are unchanged. This delay is presentation-only —
+ * kinematics, GT tracks, and umpire logs use the real resolve timing.
  */
 export function torpedoHitAudioDelaySec(
   stepIndex: number,
@@ -1310,7 +1328,8 @@ export function torpedoHitAudioDelaySec(
   const step = Math.max(0, Math.min(steps - 1, Math.floor(stepIndex)));
   const t = Math.max(0, Math.min(1, Number.isFinite(segmentT) ? segmentT : 0));
   const turn = Math.max(0, Number.isFinite(turnLengthSeconds) ? turnLengthSeconds : 0);
-  return ((step + t) / steps) * turn;
+  const windowSec = Math.min(turn, TORPEDO_HIT_AUDIO_MAX_DELAY_SEC);
+  return ((step + t) / steps) * windowSec;
 }
 
 export function makeDetonationEvent(opts: {
