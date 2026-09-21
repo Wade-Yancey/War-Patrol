@@ -1873,6 +1873,16 @@ label {
   user-select: none;
 }
 
+.helm-compass--interactive .helm-compass-svg {
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.helm-compass--disabled .helm-compass-svg {
+  cursor: not-allowed;
+  opacity: 0.85;
+}
+
 .helm-compass-needle {
   transition: transform 0.45s ease-out;
 }

@@ -1282,7 +1282,8 @@ export function StationPage() {
                 <div className="controls-section-head">
                   <h2>Helm</h2>
                   <p className="muted controls-section-blurb">
-                    Gyro compass dominates — set course with the dial controls, then submit.
+                    Gyro compass dominates — click or drag the rose to set course, or use the
+                    dial, then submit.
                   </p>
                 </div>
                 {canHelm && (
@@ -1291,6 +1292,8 @@ export function StationPage() {
                       heading={vessel.unit.heading}
                       orderedCourse={vessel.unit.orderedCourse}
                       draftCourse={course}
+                      onDraftCourseChange={setCourse}
+                      disabled={!vessel.canSubmitOrders}
                       turnRate={vessel.unit.turnRate}
                     />
                     <TouchNumber

@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useRef, useState, type PointerEvent } from 'react';
 import { normalizeHeading, shortestBearingDelta } from '@war-patrol/shared';
 import { useContinuousAngle } from '../hooks/useContinuousAngle';
 import {
@@ -22,15 +22,43 @@ interface Props {
    * only when it differs from the ordered course.
    */
   draftCourse?: number;
+  /** Click / drag the rose to update draft course (degrees true, 0–359). */
+  onDraftCourseChange?: (courseDeg: number) => void;
+  /** When true, dial clicks do not change draft course. */
+  disabled?: boolean;
   /** Optional turn rate caption (°/min). */
   turnRate?: number;
+}
+
+function bearingFromPointer(
+  clientX: number,
+  clientY: number,
+  rect: DOMRect,
+): number {
+  const x = clientX - rect.left - rect.width / 2;
+  const y = clientY - rect.top - rect.height / 2;
+  const deg = (Math.atan2(x, -y) * 180) / Math.PI;
+  return normalizeHeading(Math.round(deg));
 }
 
 /**
  * CRT gyro-style compass for the helmsman: north-up rose with distinct
  * heading needle and ordered-course bug. Live unit state only — no fake data.
+ * Click or drag the rose to set the draft (SET) course, same pattern as the
+ * hydrophone listen dial.
  */
-function HelmCompassInner({ heading, orderedCourse, draftCourse, turnRate }: Props) {
+function HelmCompassInner({
+  heading,
+  orderedCourse,
+  draftCourse,
+  onDraftCourseChange,
+  disabled = false,
+  turnRate,
+}: Props) {
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const interactive = Boolean(onDraftCourseChange) && !disabled;
+
   const hdg = normalizeHeading(heading);
   const crs = normalizeHeading(orderedCourse);
   const draft =
@@ -48,18 +76,58 @@ function HelmCompassInner({ heading, orderedCourse, draftCourse, turnRate }: Pro
       ? String(Math.round(draft)).padStart(3, '0')
       : null;
 
+  const applyPointerBearing = (clientX: number, clientY: number) => {
+    if (!interactive || !onDraftCourseChange) return;
+    const el = svgRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    onDraftCourseChange(bearingFromPointer(clientX, clientY, rect));
+  };
+
+  const onPointerDown = (e: PointerEvent<SVGSVGElement>) => {
+    if (!interactive || e.button !== 0) return;
+    const el = svgRef.current;
+    if (!el) return;
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    setDragging(true);
+    applyPointerBearing(e.clientX, e.clientY);
+  };
+
+  const onPointerMove = (e: PointerEvent<SVGSVGElement>) => {
+    if (!dragging) return;
+    applyPointerBearing(e.clientX, e.clientY);
+  };
+
+  const onPointerUp = (e: PointerEvent<SVGSVGElement>) => {
+    const el = svgRef.current;
+    if (el?.hasPointerCapture(e.pointerId)) {
+      el.releasePointerCapture(e.pointerId);
+    }
+    setDragging(false);
+  };
+
+  const clickHint = interactive ? ' Click dial to set course.' : '';
+
   return (
     <div
-      className="helm-compass"
-      role="img"
-      aria-label={`Compass: heading ${hdgLabel} degrees, ordered course ${crsLabel} degrees${
-        draftLabel ? `, set ${draftLabel} degrees` : ''
+      className={`helm-compass${interactive ? ' helm-compass--interactive' : ''}${
+        disabled ? ' helm-compass--disabled' : ''
       }`}
     >
       <svg
+        ref={svgRef}
         className="helm-compass-svg"
         viewBox={`0 0 ${COMPASS_SIZE} ${COMPASS_SIZE}`}
         preserveAspectRatio="xMidYMid meet"
+        role="img"
+        aria-label={`Compass: heading ${hdgLabel} degrees, ordered course ${crsLabel} degrees${
+          draftLabel ? `, set ${draftLabel} degrees` : ''
+        }.${clickHint}`}
+        onPointerDown={interactive ? onPointerDown : undefined}
+        onPointerMove={interactive ? onPointerMove : undefined}
+        onPointerUp={interactive ? onPointerUp : undefined}
+        onPointerCancel={interactive ? onPointerUp : undefined}
       >
         <CrtCompassRoseFace>
           {/* Ordered course — dashed needle + rim chevron. */}
