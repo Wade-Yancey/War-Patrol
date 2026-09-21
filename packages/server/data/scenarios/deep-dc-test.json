@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "id": "deep-dc-test",
+  "name": "Deep depth-charge test",
+  "description": "ASW drill at deep keel: Fletcher nearly overhead a Gato at the Deep dive preset (90 m / ~300 ft). Same lat/lon start — horizontal miss ≈ 0 for DC pattern drops; set fuse ~90 m to match. Exercises submerged hull creaks + DC hydrophone/Controls audio. Passwords: umpire / blue / red (same tokens as demo).",
+  "mode": "pvp",
+  "operatingArea": {
+    "minLat": 34.35,
+    "maxLat": 34.45,
+    "minLon": -120.08,
+    "maxLon": -119.92
+  },
+  "umpirePassword": "umpire",
+  "defaultTurnSeconds": 180,
+  "turnLengthSeconds": 180,
+  "startGameTimeSeconds": 28800,
+  "units": [
+    {
+      "id": "dd-101",
+      "name": "USS Porter",
+      "side": "blue",
+      "faction": "Blue",
+      "classId": "fletcher-class",
+      "type": "Ship",
+      "class": "Destroyer",
+      "position": { "lat": 34.4, "lon": -120.0, "depth": 0 },
+      "heading": 0,
+      "speed": 4,
+      "eot": "ahead_1",
+      "accessToken": "porter-demo",
+      "password": "blue",
+      "health": 100,
+      "maxSpeed": 36,
+      "lengthM": 115,
+      "beamM": 12,
+      "radarSignature": "medium",
+      "activeSonarEnabled": true,
+      "depthChargeLoad": 12,
+      "sensors": [
+        { "kind": "radar", "maxRangeNm": 25 },
+        { "kind": "active_sonar", "maxRangeNm": 8 },
+        { "kind": "lookout", "maxRangeNm": 6 }
+      ],
+      "stations": [
+        {
+          "id": "controls",
+          "name": "Controls",
+          "capabilities": ["helm", "engineering", "plot", "weapons"]
+        },
+        {
+          "id": "sensors",
+          "name": "Sensors",
+          "capabilities": ["radar", "active_sonar", "lookout"]
+        }
+      ]
+    },
+    {
+      "id": "ss-212",
+      "name": "USS Gato",
+      "side": "red",
+      "faction": "Red",
+      "classId": "gato-class",
+      "type": "Submarine",
+      "class": "Fleet Submarine",
+      "position": { "lat": 34.4, "lon": -120.0, "depth": 90 },
+      "orderedDepth": 90,
+      "heading": 270,
+      "speed": 2,
+      "eot": "ahead_1",
+      "accessToken": "gato-demo",
+      "password": "red",
+      "health": 100,
+      "maxSpeed": 21,
+      "lengthM": 95,
+      "beamM": 8.3,
+      "radarSignature": "small",
+      "torpedoLoad": 6,
+      "sensors": [
+        { "kind": "radar", "maxRangeNm": 25 },
+        { "kind": "hydrophone", "maxRangeNm": 30 },
+        { "kind": "lookout", "maxRangeNm": 6 }
+      ],
+      "stations": [
+        {
+          "id": "controls",
+          "name": "Controls",
+          "capabilities": ["helm", "engineering", "plot", "weapons", "torpedo"]
+        },
+        {
+          "id": "sensors",
+          "name": "Sensors",
+          "capabilities": ["radar", "hydrophone", "lookout"]
+        }
+      ]
+    }
+  ]
+}
