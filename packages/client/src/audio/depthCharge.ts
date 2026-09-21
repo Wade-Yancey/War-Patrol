@@ -50,18 +50,22 @@ export function depthChargeBatchWhenSecById(
  *
  * - Silent at / beyond {@link DEPTH_CHARGE_CONTROLS_AUDIBLE_NM} (server also
  *   filters bridge cues past this radius).
- * - Cubic falloff: `t = 1 - range / rMax`, factor = `t³` — near/far contrast
- *   is obvious (half-range ≈ 1/8 loudness); edge-of-nearby is near-silent.
+ * - Quintic falloff: `t = 1 - range / rMax`, factor = `t⁵` — wider near/far
+ *   dynamic range than the prior cubic (`t³`): close blasts stay near peak,
+ *   mid/far drop faster (half-range ≈ 1/32 loudness vs cubic’s ≈ 1/8).
  * Applied **per charge** (each pattern member uses its own `rangeNm`).
  *
- * Peak playback gain = {@link DEPTH_CHARGE_CONTROLS_GAIN} × this factor.
+ * Peak playback gain = {@link DEPTH_CHARGE_CONTROLS_GAIN} × this factor
+ * (peak kept at 0.98 to avoid GainNode clipping on hot sample peaks).
  */
 export function depthChargeControlsGain(rangeNm: number): number {
   const r = Math.max(0, rangeNm);
   const rMax = DEPTH_CHARGE_CONTROLS_AUDIBLE_NM;
   if (!(rMax > 0) || r >= rMax) return 0;
   const t = 1 - r / rMax;
-  return t * t * t;
+  // t⁵ — steeper than cubic so quiets are quieter while near stays loud.
+  const t2 = t * t;
+  return t2 * t2 * t;
 }
 
 /** Peak gain for hydrophone-heard detonation given range×beam gain in [0, 1]. */
