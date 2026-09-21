@@ -377,6 +377,15 @@ export interface UnitState {
    * Consumed when a drop pattern launches on resolve.
    */
   depthChargeLoad: number;
+  /**
+   * Own-ship FoW contact designation book (Contact N).
+   * Keys are target unit ids — umpire/GT only; never copied onto vessel views.
+   * Vessel clients see only {@link RadarContact.labelN} / {@link PeriscopeContact.labelN}.
+   */
+  contactBook?: {
+    nextLabel: number;
+    byTargetId: Record<string, number>;
+  };
 }
 
 export interface ScenarioUnitSeed {
@@ -676,6 +685,11 @@ export interface UmpireView {
 export interface RadarContact {
   /** Opaque track id (stable while held). */
   id: string;
+  /**
+   * Stable Contact N for this hull (first-detection order on own ship).
+   * Shared across radar / active sonar / periscope — not a display-list index.
+   */
+  labelN: number;
   /** True bearing degrees (0–360). */
   bearing: number;
   /** Slant/surface range in nautical miles. */
@@ -846,6 +860,12 @@ export interface HydrophoneContact {
  */
 export interface PeriscopeContact {
   id: string;
+  /**
+   * Stable Contact N for this hull (first-detection order on own ship).
+   * Shared with radar / active sonar — not a display-list index.
+   * Periscope feathers use the same label as the submerged hull when known.
+   */
+  labelN: number;
   /**
    * `hull` = normal surface silhouette contact.
    * `periscope` = destroyer lookout spotted a raised periscope mast (FoW feather).

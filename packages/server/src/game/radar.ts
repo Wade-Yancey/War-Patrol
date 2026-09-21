@@ -5,6 +5,7 @@ import {
   bearingRangeNm,
   canUseSensors,
   defaultRadarSignature,
+  ensureContactLabel,
   findRadarSensor,
   isRadarSurfaced,
   isRadarTargetable,
@@ -80,6 +81,7 @@ export function buildRadarContacts(own: UnitState, save: GameSave): RadarPicture
 
     contacts.push({
       id: `r-${hashTrackId(own.id, other.id)}`,
+      labelN: ensureContactLabel(own, other.id),
       bearing: Math.round(bearing * 10) / 10,
       rangeNm: Math.round(rangeNm * 100) / 100,
       strength: Math.round(strength * 100) / 100,
@@ -87,7 +89,7 @@ export function buildRadarContacts(own: UnitState, save: GameSave): RadarPicture
     });
   }
 
-  // Bearing order — operator reads Contact 1…N as raw sensor indices.
+  // Bearing order for the table — Contact N comes from the designation book, not index.
   contacts.sort((a, b) => a.bearing - b.bearing || a.rangeNm - b.rangeNm);
   return { contacts, maxRangeNm, operational: true };
 }

@@ -19,7 +19,9 @@ import {
   clampSpeedToMax,
   editMaxSpeedForClass,
   effectiveMaxSpeed,
+  ensureContactLabel,
   formatWallDuration,
+  normalizeContactBook,
   parseWallDuration,
   resolveBeamM,
   resolveLengthM,
@@ -29,6 +31,8 @@ import {
   snapWallDuration,
   stepDepthTowardOrdered,
 } from '@war-patrol/shared';
+import { buildPeriscopeContacts } from './game/periscope.js';
+import { buildRadarContacts } from './game/radar.js';
 
 type Json = Record<string, unknown>;
 
@@ -50,6 +54,18 @@ async function main() {
   check('parseWallDuration bare minutes', parseWallDuration('3') === 180);
   check('parseWallDuration mm:ss', parseWallDuration('3:30') === 210);
   check('snapWallDuration 30s', snapWallDuration(200, 30) === 210);
+
+  {
+    const host: { contactBook?: { nextLabel: number; byTargetId: Record<string, number> } } = {};
+    check('ensureContactLabel assigns Contact 1', ensureContactLabel(host, 't-a') === 1);
+    check('ensureContactLabel assigns Contact 2', ensureContactLabel(host, 't-b') === 2);
+    check('ensureContactLabel keeps Contact 1', ensureContactLabel(host, 't-a') === 1);
+    check(
+      'normalizeContactBook preserves labels',
+      normalizeContactBook(host.contactBook)?.byTargetId['t-b'] === 2 &&
+        normalizeContactBook(host.contactBook)?.nextLabel === 3,
+    );
+  }
 
   check('class max Destroyer 36', CLASS_MAX_SPEED_KNOTS.Destroyer === 36);
   check('class max Fleet Submarine 20', CLASS_MAX_SPEED_KNOTS['Fleet Submarine'] === 20);
@@ -225,6 +241,11 @@ async function main() {
     `got ${String(contacts[0].signature)}`,
   );
   check('radar contact signature is small (surfaced sub)', contacts[0].signature === 'small');
+  check(
+    'radar contact has stable labelN',
+    typeof contacts[0].labelN === 'number' && (contacts[0].labelN as number) >= 1,
+    `got ${String(contacts[0].labelN)}`,
+  );
   check('radar has max range', typeof rv.radarMaxRangeNm === 'number' && (rv.radarMaxRangeNm as number) > 0);
   const porter = (uv.units as Json[]).find((u) => u.id === 'dd-101')!;
   const gato = (uv.units as Json[]).find((u) => u.id === 'ss-212')!;
@@ -514,6 +535,20 @@ async function main() {
       !('faction' in periContacts[0]) &&
       !('position' in periContacts[0]),
   );
+  check(
+    'periscope contact has stable labelN',
+    typeof periContacts[0].labelN === 'number' && (periContacts[0].labelN as number) >= 1,
+  );
+  {
+    const radarOnSurf = periSurfView.radarContacts as Array<Json>;
+    check(
+      'radar+periscope share Contact N for same hull',
+      Array.isArray(radarOnSurf) &&
+        radarOnSurf.length >= 1 &&
+        radarOnSurf[0].labelN === periContacts[0].labelN,
+      `radar=${String(radarOnSurf?.[0]?.labelN)} peri=${String(periContacts[0].labelN)}`,
+    );
+  }
   check(
     'destroyer silhouette asset path',
     silhouetteUrlForClass('Destroyer') === '/silhouettes/destroyer.png',
@@ -1871,6 +1906,95 @@ async function main() {
         stationId: 'sensors',
       });
       check('cimarron convoy gato sensors join', convoySensors.status === 200);
+      const convoySensTok = String(convoySensors.json.token);
+
+      // Surface + raise mast so radar and periscope both paint the oiler column.
+      await api(
+        'PATCH',
+        `/api/games/${convoyId}/units/ss-212`,
+        { position: { lat: 34.37504, lon: -120.0, depth: 0 } },
+        convoyUTok,
+      );
+      const raiseConvoyPeri = await api(
+        'POST',
+        `/api/games/${convoyId}/periscope`,
+        { raised: true },
+        convoySensTok,
+      );
+      check('cimarron convoy raise periscope', raiseConvoyPeri.status === 200);
+
+      const saveBefore = runtime.requireGame(convoyId);
+      const gatoBefore = saveBefore.units.find((u) => u.id === 'ss-212')!;
+      const periBefore = buildPeriscopeContacts(gatoBefore, saveBefore);
+      const radarBefore = buildRadarContacts(gatoBefore, saveBefore);
+      check(
+        'cimarron peri paints multiple oilers',
+        periBefore.contacts.length >= 2,
+        `got ${periBefore.contacts.length}`,
+      );
+      check(
+        'cimarron radar paints multiple oilers',
+        radarBefore.contacts.length >= 2,
+        `got ${radarBefore.contacts.length}`,
+      );
+
+      const periLabelById = new Map(periBefore.contacts.map((c) => [c.id, c.labelN]));
+      const radarLabelByTarget = new Map(
+        radarBefore.contacts.map((c) => {
+          // Match radar↔peri via shared designation book on gato (same labelN).
+          return [c.labelN, c.id] as const;
+        }),
+      );
+      for (const pc of periBefore.contacts) {
+        check(
+          `cimarron radar shares peri labelN ${pc.labelN}`,
+          radarLabelByTarget.has(pc.labelN),
+        );
+      }
+
+      // Sort-by-range display order must not renumber: swap nearest/farthest oilers.
+      const oilersLive = saveBefore.units.filter((u) => u.class === 'Oiler');
+      const withRange = oilersLive
+        .map((u) => ({
+          u,
+          rangeNm: bearingRangeNm(gatoBefore.position, u.position).rangeNm,
+        }))
+        .sort((a, b) => a.rangeNm - b.rangeNm);
+      check('cimarron has ranged oilers', withRange.length >= 2);
+      const nearest = withRange[0]!.u;
+      const farthest = withRange[withRange.length - 1]!.u;
+      const nearPos = { ...nearest.position };
+      const farPos = { ...farthest.position };
+      await api(
+        'PATCH',
+        `/api/games/${convoyId}/units/${nearest.id}`,
+        { position: { lat: farPos.lat, lon: farPos.lon, depth: 0 } },
+        convoyUTok,
+      );
+      await api(
+        'PATCH',
+        `/api/games/${convoyId}/units/${farthest.id}`,
+        { position: { lat: nearPos.lat, lon: nearPos.lon, depth: 0 } },
+        convoyUTok,
+      );
+
+      const saveAfter = runtime.requireGame(convoyId);
+      const gatoAfter = saveAfter.units.find((u) => u.id === 'ss-212')!;
+      const periAfter = buildPeriscopeContacts(gatoAfter, saveAfter);
+      for (const c of periAfter.contacts) {
+        const prev = periLabelById.get(c.id);
+        check(
+          `cimarron peri labelN stable after range swap (${c.id})`,
+          prev === c.labelN,
+          `before=${String(prev)} after=${c.labelN}`,
+        );
+      }
+      // Display list may reorder, but Contact N is not the list index.
+      const sortedByRange = [...periAfter.contacts].sort((a, b) => a.rangeNm - b.rangeNm);
+      check(
+        'cimarron Contact N not equal to range-sort index',
+        sortedByRange.some((c, i) => c.labelN !== i + 1) || sortedByRange.length < 2,
+      );
     }
 
     const torpGame = await api('POST', '/api/games', {

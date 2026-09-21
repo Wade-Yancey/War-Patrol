@@ -8,6 +8,7 @@ export * from './radar.js';
 export * from './hydrophone.js';
 export * from './activeSonar.js';
 export * from './periscope.js';
+export * from './contactBook.js';
 export * from './stations.js';
 export * from './turning.js';
 export * from './time.js';
