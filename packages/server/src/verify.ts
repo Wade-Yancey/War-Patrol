@@ -1212,6 +1212,28 @@ async function main() {
   const porterTrail = trails.find((t) => t.unitId === 'dd-101');
   check('trail has origin + post-resolve', Boolean(porterTrail && porterTrail.points.length >= 2));
 
+  // Concurrent resolve must serialize per game (no overlapping stale overwrite).
+  // After the first lands in `open`, the second force-resolves from open → +2 turns.
+  await api('POST', `/api/games/${gameId}/turn/lock`, {}, umpireToken);
+  const turnBeforeRace = runtime.requireGame(gameId).turn.number;
+  const historyBeforeRace = runtime.requireGame(gameId).history.length;
+  const [raceA, raceB] = await Promise.all([
+    api('POST', `/api/games/${gameId}/turn/resolve`, {}, umpireToken),
+    api('POST', `/api/games/${gameId}/turn/resolve`, {}, umpireToken),
+  ]);
+  check('concurrent resolve A ok', raceA.status === 200);
+  check('concurrent resolve B ok', raceB.status === 200);
+  const afterRace = runtime.requireGame(gameId);
+  check(
+    'concurrent resolve serializes both advances',
+    afterRace.turn.number === turnBeforeRace + 2,
+    `before=${turnBeforeRace} after=${afterRace.turn.number}`,
+  );
+  check(
+    'concurrent resolve history consistent',
+    afterRace.history.length === historyBeforeRace + 2,
+  );
+
   await Promise.race([
     ssePromise,
     new Promise((r) => setTimeout(r, 2000)),
