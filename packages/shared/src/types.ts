@@ -917,6 +917,7 @@ export interface PeriscopeContact {
   /**
    * Approximate true course degrees [0, 360), coarsened (15° bands).
    * Visual estimate from hull aspect — not exact GT heading.
+   * Used with relative bearing to mirror bow-right silhouette plates for port AOB.
    * Omitted for periscope feathers (`kind: 'periscope'`).
    */
   courseDeg?: number;

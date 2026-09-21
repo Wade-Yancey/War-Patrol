@@ -1,5 +1,6 @@
 import { memo, useMemo, useState } from 'react';
 import {
+  periscopeSilhouetteFlipX,
   periscopeSilhouetteScale,
   type HullClass,
   type PeriscopeContact,
@@ -117,6 +118,11 @@ function PeriscopeScopeInner({
   const plateClass = selected?.silhouetteClass;
   const plateSrc = silhouetteSrcForClass(plateClass);
   const plateSize = SILHOUETTE_SIZE[plateClass ?? ''] ?? SILHOUETTE_SIZE.Destroyer;
+  // Bow-right plates: flip for port AOB so the bow faces the observed aspect.
+  const flipPlate =
+    !isFeather &&
+    selected != null &&
+    periscopeSilhouetteFlipX(ownHeading, selected.relativeBearing, selected.courseDeg);
 
   return (
     <div className="radar-scope radar-console periscope-scope">
@@ -156,7 +162,7 @@ function PeriscopeScopeInner({
             ) : (
               <img
                 key={plateSrc}
-                className="periscope-silhouette"
+                className={`periscope-silhouette${flipPlate ? ' periscope-silhouette--flip' : ''}`}
                 src={plateSrc}
                 alt={silhouetteAlt(plateClass)}
                 width={plateSize.width}
@@ -247,7 +253,7 @@ function PeriscopeScopeInner({
         <p className="periscope-caption muted">
           {blind
             ? 'Mast lowered — raise to clear silhouettes and contacts. Compass idle.'
-            : 'Hull silhouette or periscope feather when selected. Range scales size (farther = smaller).'}
+            : 'Hull silhouette or periscope feather when selected. Range scales size; bow-right plates flip for port aspect.'}
         </p>
       </aside>
     </div>

@@ -41,6 +41,7 @@ import {
   resolveMaxSpeed,
   rollSubmarineImplosion,
   periscopeSilhouetteUrl,
+  periscopeSilhouetteFlipX,
   silhouetteUrlForClass,
   snapWallDuration,
   stepDepthTowardOrdered,
@@ -697,6 +698,31 @@ async function main() {
       periscopeSilhouetteUrl('Oiler') === '/silhouettes/oiler.png' &&
       periscopeSilhouetteUrl(undefined) === '/silhouettes/destroyer.png' &&
       periscopeSilhouetteUrl('Merchant') === '/silhouettes/destroyer.png',
+  );
+  // Bow-right plates: starboard AOB unflipped; port AOB flipped. Own HDG north.
+  // Target eastbound (090°) dead ahead (rel 0): observer is south of target → stbd aspect.
+  check(
+    'silhouette flip: stbd beam ahead of eastbound → no flip',
+    periscopeSilhouetteFlipX(0, 0, 90) === false,
+  );
+  // Target westbound (270°) dead ahead: observer is south → port aspect.
+  check(
+    'silhouette flip: port beam ahead of westbound → flip',
+    periscopeSilhouetteFlipX(0, 0, 270) === true,
+  );
+  // Target northbound, contact to starboard (rel +90, true 090): observer west of target → port.
+  check(
+    'silhouette flip: northbound target to stbd → port aspect flip',
+    periscopeSilhouetteFlipX(0, 90, 0) === true,
+  );
+  // Same geometry from south heading: rel −90 → true 090, still port aspect.
+  check(
+    'silhouette flip: same LOS from HDG 180 → still flip',
+    periscopeSilhouetteFlipX(180, -90, 0) === true,
+  );
+  check(
+    'silhouette flip: missing course (feather) → no flip',
+    periscopeSilhouetteFlipX(0, 45, undefined) === false,
   );
   {
     const here = path.dirname(fileURLToPath(import.meta.url));
