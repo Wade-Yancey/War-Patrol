@@ -616,7 +616,9 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
             {listening ? 'Stop listening' : 'Start listening'}
           </button>
           <div className="hydrophone-fine">
-            <span className="hydrophone-key">Train · hold · {BEARING_NUDGE_DEG}°</span>
+            <span className="crt-console-key hydrophone-key">
+              Train · hold · {BEARING_NUDGE_DEG}°
+            </span>
             <div className="hydrophone-fine-row">
               <button
                 type="button"

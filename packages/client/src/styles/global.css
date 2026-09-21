@@ -843,7 +843,6 @@ label {
   font-size: clamp(1.55rem, 4.5vw, 2.1rem);
 }
 
-.radar-station-panel,
 .station-instrument-panel {
   margin-top: 0;
   padding: 0.4rem 0.45rem 0.55rem;
@@ -851,7 +850,6 @@ label {
   box-sizing: border-box;
 }
 
-.radar-station-panel.stack,
 .station-instrument-panel.stack {
   /* Override generic .stack full-bleed feel so the PPI / dial row can hug. */
   align-items: stretch;
@@ -868,7 +866,6 @@ label {
   justify-content: center;
 }
 
-.radar-station-head,
 .station-instrument-head {
   display: flex;
   flex-wrap: wrap;
@@ -877,12 +874,10 @@ label {
   margin-bottom: 0.15rem;
 }
 
-.radar-station-head h2,
 .station-instrument-head h2 {
   margin: 0;
 }
 
-.radar-station-blurb,
 .station-instrument-blurb {
   margin: 0;
   font-size: 0.85rem;
@@ -1079,12 +1074,10 @@ label {
     padding: 0.25rem 0.65rem 0.35rem;
   }
 
-  .radar-station-blurb,
   .station-instrument-blurb {
     display: none;
   }
 
-  .radar-station-panel,
   .station-instrument-panel {
     padding: 0.25rem 0.2rem 0.4rem;
     border-color: transparent;
@@ -1868,7 +1861,7 @@ label {
   margin-top: 0.2rem;
 }
 
-/* Helmsman gyro + shared CRT console readouts (hydrophone / helm) */
+/* Shared CRT console readouts (hydrophone / helm / dive / status strips) */
 .crt-console-readouts {
   display: flex;
   flex-direction: column;
@@ -1885,7 +1878,8 @@ label {
   gap: 0.35rem;
 }
 
-.crt-console-key {
+.crt-console-key,
+.controls-status-key {
   font-family: var(--font-display);
   font-size: var(--crt-console-key-size);
   letter-spacing: 0.12em;
@@ -2027,22 +2021,8 @@ label {
   margin: 0 auto;
 }
 
-.controls-section-head {
-  /* Prefer .station-instrument-head row layout when both classes are present. */
-  gap: 0.2rem;
-}
-
-.controls-section-head h2 {
-  margin: 0;
-}
-
-.controls-section-blurb {
-  margin: 0;
-  font-size: 0.85rem;
-  line-height: 1.35;
-}
-
-/* Helm uses shared .crt-console dial dominance — no one-off size caps */
+/* Controls panel heads/blurbs use the shared .station-instrument-* chrome, and
+   Helm uses shared .crt-console dial dominance — no one-off size caps. */
 
 .controls-bridge-dc-alert {
   display: flex;
@@ -2096,11 +2076,8 @@ label {
   min-width: 0;
 }
 
+/* Type from .crt-console-key; status strips read a touch brighter than aux. */
 .controls-status-key {
-  font-family: var(--font-display);
-  font-size: var(--crt-console-key-size);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--phosphor);
   opacity: 0.75;
 }
@@ -2273,30 +2250,10 @@ label {
   width: 100%;
 }
 
-.dive-readouts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.65rem 1.1rem;
-  justify-content: center;
-}
-
-.dive-readout {
-  display: flex;
-  align-items: baseline;
-  gap: 0.4rem;
-}
-
+/* Layout / type from .crt-console-readouts — dive keys run a touch dimmer. */
 .dive-key {
-  font-family: var(--font-display);
-  font-size: var(--crt-console-key-size);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--phosphor-dim);
+  min-width: 4.4rem;
   opacity: 0.8;
-}
-
-.dive-val {
-  font-size: var(--crt-console-val-size);
 }
 
 .dive-ok {
@@ -2429,12 +2386,7 @@ label {
   opacity: 0.85;
 }
 
-.dive-caption {
-  margin: 0;
-  font-size: 0.75rem;
-  text-align: center;
-  line-height: 1.35;
-}
+/* Caption type / alignment from .crt-console-caption */
 
 /* CRT console — dial left, aux right; dial scale matches radar (hydrophone + helm). */
 .crt-console.radar-scope {

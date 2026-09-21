@@ -200,9 +200,9 @@ export function TorpedoCalculator({
 
   return (
     <section className="panel stack controls-weapons-panel station-instrument-panel">
-      <div className="station-instrument-head controls-section-head">
+      <div className="station-instrument-head">
         <h2>Torpedo calculator</h2>
-        <p className="muted station-instrument-blurb controls-section-blurb">
+        <p className="muted station-instrument-blurb">
           Aim uses the same relative bearing as optics (bow 0 · stbd + · port −) — not true
           compass. Enter target true course (not AOB), speed, range, and OA length from the
           recognition manual — wrong length shrinks the hit window. Fish run the computed

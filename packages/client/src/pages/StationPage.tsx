@@ -864,10 +864,10 @@ export function StationPage() {
             {canRadar &&
               (activeTab === 'radar' ||
                 (!canHydrophone && !canActiveSonar && !canPeriscope)) && (
-              <section className="panel stack radar-station-panel station-instrument-panel">
-                <div className="radar-station-head">
+              <section className="panel stack station-instrument-panel">
+                <div className="station-instrument-head">
                   <h2>Radar · PPI</h2>
-                  <p className="muted radar-station-blurb">
+                  <p className="muted station-instrument-blurb">
                     Call contacts by true bearing on the rim. Raw sensor picture only — no friend/foe identity.
                     {vessel.radarUnavailableReason === 'submerged'
                       ? ''
@@ -918,12 +918,12 @@ export function StationPage() {
             )}
 
             {canPeriscope && activeTab === 'periscope' && (
-              <section className="panel stack radar-station-panel station-instrument-panel">
-                <div className="radar-station-head">
+              <section className="panel stack station-instrument-panel">
+                <div className="station-instrument-head">
                   <h2>
                     {opticsVariant === 'lookout' ? 'Lookout · Visual' : 'Periscope · Visual'}
                   </h2>
-                  <p className="muted radar-station-blurb">
+                  <p className="muted station-instrument-blurb">
                     Short-range silhouettes only — relative bearing and approximate speed.
                     {opticsVariant === 'lookout'
                       ? vessel.periscopeOperational
@@ -1035,10 +1035,10 @@ export function StationPage() {
             )}
 
             {canHydrophone && activeTab === 'hydrophone' && (
-              <section className="panel stack radar-station-panel station-instrument-panel">
-                <div className="radar-station-head">
+              <section className="panel stack station-instrument-panel">
+                <div className="station-instrument-head">
                   <h2>Hydrophone · Bearing listen</h2>
-                  <p className="muted radar-station-blurb">
+                  <p className="muted station-instrument-blurb">
                     Train the needle by ear — no visual contacts. Underway propellers, active-sonar
                     pings, and depth-charge detonations; volume falls with range and misalignment.
                     {vessel.hydrophoneOperational
@@ -1084,10 +1084,10 @@ export function StationPage() {
             )}
 
             {canActiveSonar && activeTab === 'sonar' && (
-              <section className="panel stack radar-station-panel station-instrument-panel">
-                <div className="radar-station-head">
+              <section className="panel stack station-instrument-panel">
+                <div className="station-instrument-head">
                   <h2>Active search sonar</h2>
-                  <p className="muted radar-station-blurb">
+                  <p className="muted station-instrument-blurb">
                     Forward cone only (±{vessel.sonarHalfAngleDeg ?? 30}° about heading). Toggle search to
                     ping and paint anonymous contacts inside the cone.
                     {vessel.sonarMaxRangeNm ? ` Max ${vessel.sonarMaxRangeNm} nm.` : ''}
@@ -1306,9 +1306,9 @@ export function StationPage() {
 
             {controlsTab === 'helm' && (
               <section className="panel stack controls-helm-panel station-instrument-panel">
-                <div className="station-instrument-head controls-section-head">
+                <div className="station-instrument-head">
                   <h2>Helm</h2>
-                  <p className="muted station-instrument-blurb controls-section-blurb">
+                  <p className="muted station-instrument-blurb">
                     Gyro compass dominates — click or drag the rose to set course, or use the
                     dial, then submit.
                   </p>
@@ -1351,9 +1351,9 @@ export function StationPage() {
 
             {controlsTab === 'dive' && canHelm && vessel.unit.type === 'Submarine' && (
               <section className="panel stack controls-dive-panel station-instrument-panel">
-                <div className="station-instrument-head controls-section-head">
+                <div className="station-instrument-head">
                   <h2>Dive plane</h2>
-                  <p className="muted station-instrument-blurb controls-section-blurb">
+                  <p className="muted station-instrument-blurb">
                     Coarse {SUBMARINE_DEPTH_ORDER_STEP_M} m dial — presets and band marks (patrol /
                     test / crush). You may order past crush; that risks implosion.
                   </p>
@@ -1453,9 +1453,9 @@ export function StationPage() {
               <>
                 {canEot && (
                   <section className="panel stack controls-eot-panel station-instrument-panel">
-                    <div className="station-instrument-head controls-section-head">
+                    <div className="station-instrument-head">
                       <h2>Engine orders</h2>
-                      <p className="muted station-instrument-blurb controls-section-blurb">
+                      <p className="muted station-instrument-blurb">
                         Ring up a bell — acknowledged on resolve; hull speed ramps.
                       </p>
                     </div>
@@ -1476,40 +1476,6 @@ export function StationPage() {
                     </div>
                   </section>
                 )}
-
-                <section className="panel stack station-turn-panel">
-                  <h2>Turn</h2>
-                  <TurnStatus turn={vessel.turn} turnLengthSeconds={vessel.turnLengthSeconds} />
-                  {hasPendingOrders(vessel.unit.orders) ? (
-                    <div className="orders-of-record" role="status">
-                      <span className="status-pill open">Of record</span>
-                      <span className="mono readout">
-                        {formatPendingOrdersSummary(vessel.unit.orders)}
-                      </span>
-                      {vessel.unit.orders.updatedByStationId && (
-                        <span className="mono muted">via {vessel.unit.orders.updatedByStationId}</span>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="muted mono" style={{ margin: 0, fontSize: '0.85rem' }}>
-                      No pending orders filed for this turn.
-                    </p>
-                  )}
-                  {!vessel.canSubmitOrders && (
-                    <p className="muted" style={{ margin: 0 }}>
-                      Ordering closed for this phase or this station cannot submit.
-                    </p>
-                  )}
-                  {vessel.stationConnections.some((c) => c.count > 1) && (
-                    <p className="mono" style={{ margin: 0, color: 'var(--accent-strong)' }}>
-                      Multi-connection: last write wins —{' '}
-                      {vessel.stationConnections
-                        .filter((c) => c.count > 0)
-                        .map((c) => `${c.stationId}×${c.count}`)
-                        .join(', ')}
-                    </p>
-                  )}
-                </section>
 
                 <details className="panel controls-ownship-details">
                   <summary>Own ship details</summary>
@@ -1612,6 +1578,41 @@ export function StationPage() {
               </>
             )}
 
+            {/* Turn status under the instrument — same placement as Sensors */}
+
+            <section className="panel stack station-turn-panel">
+              <h2>Turn</h2>
+              <TurnStatus turn={vessel.turn} turnLengthSeconds={vessel.turnLengthSeconds} />
+              {hasPendingOrders(vessel.unit.orders) ? (
+                <div className="orders-of-record" role="status">
+                  <span className="status-pill open">Of record</span>
+                  <span className="mono readout">
+                    {formatPendingOrdersSummary(vessel.unit.orders)}
+                  </span>
+                  {vessel.unit.orders.updatedByStationId && (
+                    <span className="mono muted">via {vessel.unit.orders.updatedByStationId}</span>
+                  )}
+                </div>
+              ) : (
+                <p className="muted mono" style={{ margin: 0, fontSize: '0.85rem' }}>
+                  No pending orders filed for this turn.
+                </p>
+              )}
+              {!vessel.canSubmitOrders && (
+                <p className="muted" style={{ margin: 0 }}>
+                  Ordering closed for this phase or this station cannot submit.
+                </p>
+              )}
+              {vessel.stationConnections.some((c) => c.count > 1) && (
+                <p className="mono" style={{ margin: 0, color: 'var(--accent-strong)' }}>
+                  Multi-connection: last write wins —{' '}
+                  {vessel.stationConnections
+                    .filter((c) => c.count > 0)
+                    .map((c) => `${c.stationId}×${c.count}`)
+                    .join(', ')}
+                </p>
+              )}
+            </section>
           </div>
         )}
       </div>
