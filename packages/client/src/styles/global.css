@@ -336,6 +336,39 @@ label {
   margin: 0 0 0.5rem;
 }
 
+/* Own-ship sunk popup — CRT dialog over station shell (Controls + Sensors). */
+.sunk-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: rgba(1, 8, 5, 0.72);
+}
+
+.sunk-modal {
+  width: min(26rem, 100%);
+  margin: 0;
+  box-shadow: 0 0 0 1px rgba(224, 112, 80, 0.25);
+}
+
+.sunk-modal-eyebrow {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #ff8a6a;
+}
+
+.sunk-modal-title {
+  margin: 0 !important;
+  color: #ffc8b8 !important;
+  font-size: clamp(1.15rem, 3.5vw, 1.45rem) !important;
+  letter-spacing: 0.1em !important;
+}
+
 .confirm-warning p:last-child {
   margin-bottom: 0;
 }

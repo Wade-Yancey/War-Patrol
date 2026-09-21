@@ -38,6 +38,7 @@ import { TorpedoCalculator } from '../components/TorpedoCalculator';
 import { DepthChargeControls } from '../components/DepthChargeControls';
 import { DamageReportPanel } from '../components/DamageReportPanel';
 import { useAudioSyncedDamageReport } from '../hooks/useAudioSyncedDamageReport';
+import { resolveSunkCause, SunkModal } from '../components/SunkModal';
 import {
   DEPTH_CHARGE_AUDIO_SPREAD_SEC,
   DEPTH_CHARGE_CONTROLS_GAIN,
@@ -92,6 +93,9 @@ export function StationPage() {
   const [controlsTab, setControlsTab] = useState<ControlsTab>('helm');
   const [sonarBusy, setSonarBusy] = useState(false);
   const [periBusy, setPeriBusy] = useState(false);
+  /** Own-ship sunk popup — open until Acknowledge; reset if hull returns afloat. */
+  const [sunkModalOpen, setSunkModalOpen] = useState(false);
+  const sunkModalAckedRef = useRef(false);
 
   const { view, stateVersion, connected, error } = useGameStream({
     gameId,
@@ -536,6 +540,38 @@ export function StationPage() {
     };
   }, [onControlsBridge, vessel, vessel?.bridgeDetonations, vessel?.stateVersion]);
 
+  // Own-ship sunk popup on Controls + Sensors (not umpire). Light delay when a
+  // Controls bridge blast cue is present so the killing one-shot can start first.
+  const ownShipSunk = vessel?.unit.condition === 'sunk';
+  const sunkCause = useMemo(
+    () => resolveSunkCause(vessel?.ownDamageLog),
+    [vessel?.ownDamageLog],
+  );
+  useEffect(() => {
+    if (!vessel || !ownShipSunk) {
+      sunkModalAckedRef.current = false;
+      setSunkModalOpen(false);
+      return;
+    }
+    if (sunkModalAckedRef.current) return;
+
+    const waitForBlast =
+      onControlsBridge &&
+      sunkCause !== 'implosion' &&
+      (vessel.bridgeDetonations?.length ?? 0) > 0;
+    // First DC/torpedo one-shot is scheduled at whenSec=0; short beat so audio leads.
+    const delayMs = waitForBlast ? 650 : 0;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      if (!cancelled && !sunkModalAckedRef.current) setSunkModalOpen(true);
+    }, delayMs);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+    // Deliberately omit full `vessel` — SSE ticks must not restart the delay.
+  }, [ownShipSunk, vessel?.unit.id, onControlsBridge, sunkCause]);
+
   // Sub Sensors: pick a sensible default tab from depth; follow depth-band changes.
   // Do not depend on the whole vessel object — mast raise/lower updates must
   // not re-run this and kick the operator off Periscope.
@@ -723,6 +759,18 @@ export function StationPage() {
         </header>
 
         {(error || actionError) && <p className="error">{error || actionError}</p>}
+
+        {vessel && sunkModalOpen && (
+          <SunkModal
+            vesselName={vessel.unit.name}
+            vesselType={vessel.unit.type}
+            cause={sunkCause}
+            onAcknowledge={() => {
+              sunkModalAckedRef.current = true;
+              setSunkModalOpen(false);
+            }}
+          />
+        )}
 
         {vessel && isSensors && (
           <>
