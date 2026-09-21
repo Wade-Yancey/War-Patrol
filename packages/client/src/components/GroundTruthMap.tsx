@@ -8,6 +8,7 @@ import type {
   UnitTrail,
 } from '@war-patrol/shared';
 import {
+  DEFAULT_TURN_LENGTH_SECONDS,
   METERS_PER_DEG_LAT,
   METERS_PER_NM,
   RADAR_MAX_RANGE_NM,
@@ -15,7 +16,9 @@ import {
   formatTorpedoMissTrackLabel,
   metersPerDegLon,
   normalizeHeading,
+  predictUnitMovePath,
   projectToUv,
+  resolveTurnLengthSeconds,
   torpedoMissNearestContactName,
   unprojectFromUv,
 } from '@war-patrol/shared';
@@ -29,6 +32,16 @@ interface Props {
   torpedoes?: TorpedoTrack[];
   /** Full-truth depth-charge tracks (drop → sink/detonate). */
   depthCharges?: DepthChargeTrack[];
+  /**
+   * In-game seconds per resolve — used for entire-turn move prediction.
+   * Defaults to scenario default when omitted.
+   */
+  turnLengthSeconds?: number;
+  /**
+   * When false, hide end-of-turn move prediction (e.g. AAR review of a past turn).
+   * Default true on live umpire GT.
+   */
+  showMovePrediction?: boolean;
 }
 
 const SIDE_COLORS: Record<string, string> = {
@@ -183,7 +196,7 @@ function unitsSignature(units: UnitState[]): string {
   return units
     .map(
       (u) =>
-        `${u.id}:${u.position.lat.toFixed(5)},${u.position.lon.toFixed(5)},${u.heading.toFixed(1)},${normalizeHeading(u.orderedCourse ?? u.heading).toFixed(1)},${u.speed.toFixed(1)},${u.position.depth.toFixed(0)},${u.type},${u.class},${u.name},${u.faction},${u.condition},${u.subsystems?.propulsion},${u.subsystems?.sensors},${u.flightLevel ?? ''},${sensorsSignature(u)}`,
+        `${u.id}:${u.position.lat.toFixed(5)},${u.position.lon.toFixed(5)},${u.heading.toFixed(1)},${normalizeHeading(u.orderedCourse ?? u.heading).toFixed(1)},${u.speed.toFixed(1)},${u.eot},${u.orders?.course ?? ''},${u.orders?.eot ?? ''},${u.orders?.depth ?? ''},${u.orderedDepth?.toFixed?.(0) ?? u.orderedDepth},${u.position.depth.toFixed(0)},${u.turnRate},${u.maxSpeed},${u.type},${u.class},${u.name},${u.faction},${u.condition},${u.subsystems?.propulsion},${u.subsystems?.sensors},${u.flightLevel ?? ''},${sensorsSignature(u)}`,
     )
     .join('|');
 }
@@ -318,10 +331,16 @@ function GroundTruthMapInner({
   trails = [],
   torpedoes = [],
   depthCharges = [],
+  turnLengthSeconds = DEFAULT_TURN_LENGTH_SECONDS,
+  showMovePrediction = true,
 }: Props) {
   const unitIds = useMemo(() => [...units.map((u) => u.id)].sort().join(','), [units]);
   const areaKey = useMemo(() => areaSignature(area), [area]);
   const baseView = useMemo(() => fitUnitsView(units, area), [units, area]);
+  const turnLen = useMemo(
+    () => resolveTurnLengthSeconds(turnLengthSeconds),
+    [turnLengthSeconds],
+  );
   const trailByUnit = useMemo(() => {
     const map = new Map<string, UnitTrail>();
     for (const t of trails) map.set(t.unitId, t);
@@ -535,6 +554,55 @@ function GroundTruthMapInner({
     return { fish, charges, dropTrails };
   }, [torpedoes, depthCharges, view, unitAccentById, units]);
 
+  /**
+   * Entire intended move for this resolve — helm turn + EOT speed over turn length,
+   * then one track segment to the predicted end position (matches turnEngine).
+   */
+  const movePredictions = useMemo(() => {
+    if (!showMovePrediction) return [];
+    return units
+      .map((unit) => {
+        const path = predictUnitMovePath(unit, turnLen);
+        if (!path || path.length < 2) return null;
+        const color = unitAccent(unit);
+        const pts = path.map((p) => {
+          const { u, v } = projectToUv(p.lat, p.lon, view);
+          return { x: u * W, y: v * H, u, v };
+        });
+        const anyOn = pts.some((p) => p.u >= -0.08 && p.u <= 1.08 && p.v >= -0.08 && p.v <= 1.08);
+        if (!anyOn) return null;
+        const end = pts[pts.length - 1]!;
+        const start = pts[0]!;
+        return {
+          id: unit.id,
+          color,
+          points: pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '),
+          endX: end.x,
+          endY: end.y,
+          /** Screen delta of the move — keep labels off the predicted track tip. */
+          outboundDx: end.x - start.x,
+        };
+      })
+      .filter(
+        (
+          x,
+        ): x is {
+          id: string;
+          color: string;
+          points: string;
+          endX: number;
+          endY: number;
+          outboundDx: number;
+        } => Boolean(x),
+      );
+  }, [units, view, turnLen, showMovePrediction]);
+
+  const moveOutboundDx = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const m of movePredictions) map.set(m.id, m.outboundDx);
+    return map;
+  }, [movePredictions]);
+
   const markers = useMemo(
     () =>
       units.map((unit) => {
@@ -545,21 +613,19 @@ function GroundTruthMapInner({
         const heading = normalizeHeading(unit.heading);
         const ordered = normalizeHeading(unit.orderedCourse ?? unit.heading);
         const hRad = ((heading - 90) * Math.PI) / 180;
-        const oRad = ((ordered - 90) * Math.PI) / 180;
         const tipLen = clamp(14 + zoom * 2, 14, 22);
-        const courseLen = tipLen + 10;
-        const courseDelta = Math.abs(((ordered - heading + 540) % 360) - 180);
-        const showOrdered = courseDelta > 0.5;
         /**
          * Keep unit name/stats clear of the icon (r=8) + CRT label halo and the
-         * heading/course pip: prefer the side opposite the steer tip; when the tip
-         * is nearly N/S, fall back to the prior trail-inbound flip.
+         * heading pip / predicted-move tip: prefer the side opposite the move;
+         * when nearly N/S, fall back to prior trail-inbound flip.
          */
-        const steerRad = showOrdered ? oRad : hRad;
-        const pipDx = Math.cos(steerRad);
+        const outboundDx = moveOutboundDx.get(unit.id);
         const inboundDx = trailInboundDx.get(unit.id);
+        const pipDx = Math.cos(hRad);
         let flipLeft = false;
-        if (Math.abs(pipDx) >= 0.3) {
+        if (outboundDx != null && Math.abs(outboundDx) >= 0.5) {
+          flipLeft = outboundDx > 0;
+        } else if (Math.abs(pipDx) >= 0.3) {
           flipLeft = pipDx > 0;
         } else if (inboundDx != null && inboundDx < -0.5) {
           flipLeft = true;
@@ -574,9 +640,6 @@ function GroundTruthMapInner({
           color,
           tipX: x + Math.cos(hRad) * tipLen,
           tipY: y + Math.sin(hRad) * tipLen,
-          courseX: x + Math.cos(oRad) * courseLen,
-          courseY: y + Math.sin(oRad) * courseLen,
-          showOrdered,
           labelDx: flipLeft ? -labelClear : labelClear,
           labelAnchor: flipLeft ? ('end' as const) : ('start' as const),
           /** Side block — not parked on the icon crown so the pip stays readable. */
@@ -601,7 +664,7 @@ function GroundTruthMapInner({
           onPlot: u >= -0.05 && u <= 1.05 && v >= -0.05 && v <= 1.05,
         };
       }),
-    [units, view, zoom, trailInboundDx],
+    [units, view, zoom, trailInboundDx, moveOutboundDx],
   );
 
   /**
@@ -877,7 +940,7 @@ function GroundTruthMapInner({
           </g>
 
           <text x={12} y={18} fill="#5a9a68" fontSize={10} fontFamily="IBM Plex Mono, monospace">
-            GROUND TRUTH · LAT/LON · {GRID_STEP_DEG}° GRID · TRAILS · WEAPONS · TRUE N
+            GROUND TRUTH · LAT/LON · {GRID_STEP_DEG}° GRID · TRAILS · INTENDED MOVE · WEAPONS · TRUE N
             {showSensorRanges ? ' · RANGES' : ''}
           </text>
 
@@ -913,6 +976,33 @@ function GroundTruthMapInner({
               strokeLinecap="round"
             />
           ))}
+
+          {/* Entire intended move this resolve (helm + EOT over turn length) */}
+          <g className="map-move-predictions" pointerEvents="none">
+            {movePredictions.map((m) => (
+              <g key={`move-${m.id}`}>
+                <polyline
+                  points={m.points}
+                  fill="none"
+                  stroke={m.color}
+                  strokeWidth={1.5}
+                  strokeOpacity={0.7}
+                  strokeDasharray="5 4"
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+                <circle
+                  cx={m.endX}
+                  cy={m.endY}
+                  r={3}
+                  fill="none"
+                  stroke={m.color}
+                  strokeWidth={1.25}
+                  strokeOpacity={0.85}
+                />
+              </g>
+            ))}
+          </g>
 
           {/* Weapon tracks — launch origin → path → tip/detonation (umpire full truth) */}
           <g className="map-weapon-tracks" pointerEvents="none">
@@ -1097,19 +1187,6 @@ function GroundTruthMapInner({
                   strokeOpacity={m.sunk ? 0.35 : 1}
                 />
                 <circle cx={m.x} cy={m.y} r={3} fill={m.color} opacity={m.sunk ? 0.35 : 1} />
-                {m.showOrdered && (
-                  <line
-                    x1={m.x}
-                    y1={m.y}
-                    x2={m.courseX}
-                    y2={m.courseY}
-                    stroke={m.color}
-                    strokeWidth={1.25}
-                    strokeOpacity={0.55}
-                    strokeDasharray="4 3"
-                    strokeLinecap="square"
-                  />
-                )}
                 <line
                   x1={m.x}
                   y1={m.y}
@@ -1249,6 +1326,8 @@ export const GroundTruthMap = memo(GroundTruthMapInner, (prev, next) => {
   ) {
     return false;
   }
+  if (prev.turnLengthSeconds !== next.turnLengthSeconds) return false;
+  if ((prev.showMovePrediction !== false) !== (next.showMovePrediction !== false)) return false;
   if (trailsSignature(prev.trails) !== trailsSignature(next.trails)) return false;
   if (
     weaponsSignature(prev.torpedoes, prev.depthCharges) !==
