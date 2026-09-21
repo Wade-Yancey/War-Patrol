@@ -14,8 +14,9 @@ export const PERISCOPE_DEPTH_M: number =
   divePresetById('periscope')?.depthM ?? 20;
 
 /**
- * Fraction of the turn the mast is exposed while raised (0–1).
- * Player choice for how long the stick is up (risk while raised).
+ * Internal mast-up fraction (0–1). Operators do not choose this — the mast
+ * is binary (raised or lowered) in real time. Raise defaults to
+ * {@link PERISCOPE_EXPOSURE_DEFAULT}; lower forces 0.
  * FoW feather detection is **deterministic**: any exposure &gt; 0 while
  * raised + in lookout range paints the feather — no RNG. Scope down → 0.
  */
@@ -23,17 +24,6 @@ export const PERISCOPE_EXPOSURE_MIN = 0.05;
 export const PERISCOPE_EXPOSURE_MAX = 1;
 /** Default when raising without an explicit exposure (full mast). */
 export const PERISCOPE_EXPOSURE_DEFAULT = 1;
-
-/** Named peek intensities for Sensors UI / orders labels. */
-export const PERISCOPE_EXPOSURE_PRESETS = [
-  { id: 'peek', label: 'Peek', exposure: 0.2 },
-  { id: 'brief', label: 'Brief', exposure: 0.4 },
-  { id: 'half', label: 'Half', exposure: 0.65 },
-  { id: 'full', label: 'Full', exposure: 1 },
-] as const;
-
-export type PeriscopeExposurePresetId =
-  (typeof PERISCOPE_EXPOSURE_PRESETS)[number]['id'];
 
 /**
  * Clamp / coerce a player exposure order to a finite 0–1 fraction.
