@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ACTIVE_SONAR_PING_INTERVAL_SEC,
+  formatActiveSonarEstimatedDepth,
   type RadarContact,
 } from '@war-patrol/shared';
 import {
@@ -36,7 +37,7 @@ function contactsKey(contacts: RadarContact[]): string {
   return contacts
     .map(
       (c) =>
-        `${c.id}:${c.bearing.toFixed(1)}:${c.rangeNm.toFixed(2)}:${c.strength}:${c.signature}`,
+        `${c.id}:${c.bearing.toFixed(1)}:${c.rangeNm.toFixed(2)}:${c.strength}:${c.signature}:${c.estimatedDepthM ?? ''}`,
     )
     .join('|');
 }
@@ -377,6 +378,11 @@ function ActiveSonarScopeInner({
                     <span>{String(Math.round(c.bearing)).padStart(3, '0')}°</span>
                     <span>{c.rangeNm.toFixed(1)} nm</span>
                     <span>{c.signature}</span>
+                    {c.estimatedDepthM != null && (
+                      <span title="Coarse sonar depth estimate — not exact keel depth">
+                        {formatActiveSonarEstimatedDepth(c.estimatedDepthM)}
+                      </span>
+                    )}
                   </div>
                 </li>
               ))}
