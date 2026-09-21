@@ -42,6 +42,7 @@ import {
   type GameSave,
   type HullClass,
   type Scenario,
+  type TurnSnapshot,
   type UnitState,
 } from '@war-patrol/shared';
 import * as store from '../store/fileStore.js';
@@ -317,7 +318,7 @@ function normalizeSave(save: GameSave): GameSave {
   const history = (save.history ?? []).map((h) => normalizeSnapshot(h, gameTimeSeconds));
   const torpedoes = save.torpedoes ?? [];
   const depthCharges = save.depthCharges ?? [];
-  let openingSnapshot = save.openingSnapshot
+  let openingSnapshot: TurnSnapshot | undefined = save.openingSnapshot
     ? normalizeSnapshot(save.openingSnapshot, gameTimeSeconds)
     : undefined;
   // Still at the start: record it so a later rollback to turn 1 can undo the first resolve.
