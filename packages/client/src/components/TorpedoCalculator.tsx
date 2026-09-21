@@ -5,7 +5,10 @@ import {
   TORPEDO_SPREAD_DEFAULT_DEG,
   TORPEDO_SPREAD_MAX_COUNT,
   TORPEDO_SPREAD_MAX_DEG,
+  formatRelativeBearingLabel,
+  relativeBearingDeg,
   torpedoFireHeadingFromSolution,
+  trueBearingFromRelative,
   type TorpedoFireOrder,
   type TorpedoTrack,
 } from '@war-patrol/shared';
@@ -21,14 +24,35 @@ interface Props {
   onClear?: () => void;
 }
 
+function normalizeRelAim(rel: number): number {
+  // Match relativeBearingDeg range (−180, 180].
+  return relativeBearingDeg(0, rel);
+}
+
+function formatAimRel(rel: number): string {
+  return formatRelativeBearingLabel(normalizeRelAim(rel));
+}
+
+function parseAimRel(raw: string): number | null {
+  const s = raw.trim().toLowerCase();
+  const m = s.match(/(-?\d+)/);
+  if (!m) return null;
+  let n = Number(m[1]);
+  if (!Number.isFinite(n)) return null;
+  if (/\bport\b/.test(s) && n > 0) n = -n;
+  if (/\b(stbd|starboard)\b/.test(s)) n = Math.abs(n);
+  return normalizeRelAim(n);
+}
+
 /**
  * Torpedo firing calculator — all solution inputs are operator-entered.
  * Never auto-fills true course/speed/range from the sim (optics + judgment).
- * Aim = LOS bearing; course/speed/range compute the intercept fire heading
- * that fish actually run. Wrong lead → miss; correct solution → geometry hit.
- * Run depth is fixed in sim (shallow anti-surface default) — not operator-set.
- * Supports single shot or angular fan spreads (multiple tracked fish).
- * Fire is allowed with the periscope down.
+ *
+ * Aim is entered as **relative bearing** (same language as optics: bow / port /
+ * stbd). That avoids the common mix-up of pasting `000° rel` into a true-bearing
+ * field (which aims reciprocal when own HDG is ~180°). Relative aim converts to
+ * true LOS with own heading at queue time; course/speed/range compute the
+ * intercept fire heading fish actually run.
  */
 export function TorpedoCalculator({
   ownHeading,
@@ -39,8 +63,12 @@ export function TorpedoCalculator({
   onSubmit,
   onClear,
 }: Props) {
-  const [aimHeading, setAimHeading] = useState(
-    () => Math.round(pending?.aimHeading ?? ownHeading),
+  const [aimRel, setAimRel] = useState(() =>
+    normalizeRelAim(
+      pending
+        ? relativeBearingDeg(ownHeading, pending.aimHeading)
+        : 0,
+    ),
   );
   const [estimatedCourse, setEstimatedCourse] = useState(
     () => Math.round(pending?.estimatedCourse ?? 0),
@@ -58,49 +86,60 @@ export function TorpedoCalculator({
     () => pending?.spreadDeg ?? TORPEDO_SPREAD_DEFAULT_DEG,
   );
 
+  const aimTrue = trueBearingFromRelative(ownHeading, aimRel);
   const solution = torpedoFireHeadingFromSolution({
-    aimHeading,
+    aimHeading: aimTrue,
     estimatedCourse,
     estimatedSpeedKn,
     estimatedRangeNm,
   });
   const fireHeading = solution.fireHeading;
   const gyro = ((fireHeading - ownHeading + 540) % 360) - 180;
-  const lead = ((fireHeading - aimHeading + 540) % 360) - 180;
+  const lead = ((fireHeading - aimTrue + 540) % 360) - 180;
   const maxCount = Math.max(1, Math.min(TORPEDO_SPREAD_MAX_COUNT, torpedoLoad || 1));
   const effectiveCount = Math.min(spreadCount, maxCount);
   const loadBlocked = torpedoLoad <= 0;
+  const ownHdgLabel = String(Math.round(ownHeading)).padStart(3, '0');
+  const aimTrueLabel = String(Math.round(aimTrue)).padStart(3, '0');
+  const fireLabel = String(Math.round(fireHeading)).padStart(3, '0');
 
   return (
     <section className="panel stack controls-weapons-panel">
       <div className="controls-section-head">
         <h2>Torpedo calculator</h2>
         <p className="muted controls-section-blurb">
-          Enter aim (LOS) + target estimates from optics — nothing is auto-filled from
-          truth. Fish run the computed intercept from your solution. Hits are geometric
-          (hull breadth). Load {torpedoLoad} fish · Mk14-ish {TORPEDO_SPEED_KN} kn /{' '}
-          {TORPEDO_MAX_RUN_NM} nm. Fire allowed with scope down.
+          Aim in relative bearing — same as optics (bow / port / stbd), not true
+          compass. We convert to true LOS with your HDG. Enter target course /
+          speed / range estimates; fish run the computed intercept. Hits are
+          geometric (hull breadth). Load {torpedoLoad} fish · Mk14-ish{' '}
+          {TORPEDO_SPEED_KN} kn / {TORPEDO_MAX_RUN_NM} nm. Fire allowed with scope
+          down.
         </p>
       </div>
 
       <TouchNumber
-        label="Aim / LOS bearing (true)"
-        value={aimHeading}
-        onChange={setAimHeading}
-        min={0}
-        max={359}
+        label="Aim / LOS (relative to bow)"
+        value={aimRel}
+        onChange={(v) => setAimRel(normalizeRelAim(v))}
+        min={-180}
+        max={179}
         step={1}
         wrap
         unit="°"
         disabled={disabled || loadBlocked}
-        format={(v) => `${String(v).padStart(3, '0')}°`}
+        format={formatAimRel}
+        parse={parseAimRel}
+        hint="Same as optics: 0 bow, +stbd, −port · tap to type e.g. 45 stbd"
       />
       <p className="mono muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-        Fire HDG {String(Math.round(fireHeading)).padStart(3, '0')}°
+        {formatAimRel(aimRel)} + own HDG {ownHdgLabel}° → true LOS {aimTrueLabel}°
+      </p>
+      <p className="mono muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+        Fire HDG {fireLabel}°
         {solution.solvable
-          ? ` · lead ${lead >= 0 ? '+' : ''}${Math.round(lead)}°`
+          ? ` · lead ${lead >= 0 ? '+' : ''}${Math.round(lead)}° vs LOS`
           : ' · no intercept (aim)'}{' '}
-        · gyro vs own HDG {String(Math.round(ownHeading)).padStart(3, '0')}° →{' '}
+        · gyro vs own HDG {ownHdgLabel}° →{' '}
         {gyro >= 0 ? '+' : ''}
         {Math.round(gyro)}°
         {effectiveCount > 1
@@ -109,7 +148,7 @@ export function TorpedoCalculator({
       </p>
 
       <TouchNumber
-        label="Est. target course"
+        label="Est. target course (true)"
         value={estimatedCourse}
         onChange={setEstimatedCourse}
         min={0}
@@ -169,7 +208,7 @@ export function TorpedoCalculator({
           disabled={disabled || loadBlocked || estimatedRangeNm <= 0}
           onClick={() =>
             onSubmit({
-              aimHeading,
+              aimHeading: aimTrue,
               estimatedCourse,
               estimatedSpeedKn,
               estimatedRangeNm,
@@ -190,7 +229,9 @@ export function TorpedoCalculator({
 
       {pending && (
         <p className="mono readout" style={{ margin: 0 }}>
-          Of record: aim {String(Math.round(pending.aimHeading)).padStart(3, '0')}°
+          Of record: LOS{' '}
+          {formatAimRel(relativeBearingDeg(ownHeading, pending.aimHeading))} →
+          true {String(Math.round(pending.aimHeading)).padStart(3, '0')}°
           {pending.spreadCount && pending.spreadCount > 1
             ? ` · ×${pending.spreadCount}@${pending.spreadDeg ?? 0}°`
             : ''}{' '}

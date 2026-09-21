@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { normalizeHeading } from '@war-patrol/shared';
+import { formatRelativeBearingLabel, normalizeHeading } from '@war-patrol/shared';
 import {
   COMPASS_SIZE,
   CrtCompassDashedBug,
@@ -20,10 +20,7 @@ interface Props {
 
 /** Match PeriscopeScope / lookout contact readout language. */
 export function formatRelBearing(rel: number): string {
-  if (rel === 0) return '000° rel';
-  const abs = Math.abs(rel);
-  const side = rel > 0 ? 'stbd' : 'port';
-  return `${String(abs).padStart(3, '0')}° ${side}`;
+  return formatRelativeBearingLabel(rel);
 }
 
 /**

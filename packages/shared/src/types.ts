@@ -106,9 +106,11 @@ export type DepthChargePattern = 'single' | 'pair' | 'pattern_3' | 'pattern_5';
 /** Pending torpedo shot for the current turn (fleet sub Controls). */
 export interface TorpedoFireOrder {
   /**
-   * Player LOS / aim bearing to the estimated present target (true °).
-   * Combined with course/speed/range on resolve to compute the intercept
-   * fire heading — never auto-filled from sim truth.
+   * Player LOS / aim bearing to the estimated present target (**true °**).
+   * Controls UI enters this as **relative** (optics port/stbd) and converts
+   * with own heading at queue time. Combined with course/speed/range on
+   * resolve to compute the intercept fire heading — never auto-filled from
+   * sim truth.
    */
   aimHeading: number;
   /**

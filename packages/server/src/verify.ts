@@ -1543,6 +1543,48 @@ async function main() {
     const fan = torpedoSpreadHeadings(0, 3, 2).map((h) => Math.round(h));
     check('spread 3×2° headings', fan[0] === 358 && fan[1] === 0 && fan[2] === 2);
 
+    // Relative (optics) → true LOS: pasting "000° rel" as true while HDG 180
+    // used to aim reciprocal (north) — calculator now converts rel→true first.
+    {
+      const {
+        trueBearingFromRelative,
+        relativeBearingDeg,
+        formatRelativeBearingLabel,
+      } = await import('@war-patrol/shared');
+      check(
+        'rel 0 + HDG 180 → true LOS 180 (not 0)',
+        Math.abs(trueBearingFromRelative(180, 0) - 180) < 0.01,
+      );
+      check(
+        'rel 90 stbd + HDG 0 → true 90',
+        Math.abs(trueBearingFromRelative(0, 90) - 90) < 0.01,
+      );
+      check(
+        'rel −90 port + HDG 0 → true 270',
+        Math.abs(trueBearingFromRelative(0, -90) - 270) < 0.01,
+      );
+      check(
+        'relativeBearingDeg inverse of trueBearingFromRelative',
+        Math.abs(relativeBearingDeg(180, trueBearingFromRelative(180, 45)) - 45) < 0.01,
+      );
+      check(
+        'formatRelativeBearingLabel port/stbd',
+        formatRelativeBearingLabel(45) === '045° stbd' &&
+          formatRelativeBearingLabel(-45) === '045° port' &&
+          formatRelativeBearingLabel(0) === '000° rel',
+      );
+      const southBow = torpedoFireHeadingFromSolution({
+        aimHeading: trueBearingFromRelative(180, 0),
+        estimatedCourse: 90,
+        estimatedSpeedKn: 0,
+        estimatedRangeNm: 1.5,
+      });
+      check(
+        'south HDG dead-ahead aim fires south not north',
+        Math.abs(southBow.fireHeading - 180) < 0.01 && southBow.solvable,
+      );
+    }
+
     // Solution-driven intercept: estimates (not truth) set the fire heading.
     const stationarySol = torpedoFireHeadingFromSolution({
       aimHeading: 0,

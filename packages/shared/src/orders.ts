@@ -33,7 +33,7 @@ function formatTorpedoOrderSummary(
     count > 1
       ? ` ×${count}@${Math.round(fire.spreadDeg || 0)}°`
       : '';
-  return `TORP aim ${formatCourseDegrees(fire.aimHeading)}${spread} · CRS ${formatCourseDegrees(fire.estimatedCourse)} · ${Math.round(fire.estimatedSpeedKn)}kn · ${fire.estimatedRangeNm.toFixed(1)}nm`;
+  return `TORP LOS ${formatCourseDegrees(fire.aimHeading)} true${spread} · CRS ${formatCourseDegrees(fire.estimatedCourse)} · ${Math.round(fire.estimatedSpeedKn)}kn · ${fire.estimatedRangeNm.toFixed(1)}nm`;
 }
 
 function formatDepthChargeOrderSummary(

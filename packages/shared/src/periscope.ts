@@ -1,6 +1,6 @@
 import { PERISCOPE_MAX_RANGE_NM, RADAR_SURFACE_DEPTH_M } from './constants.js';
 import { divePresetById } from './dive.js';
-import { clamp } from './geo.js';
+import { clamp, normalizeHeading } from './geo.js';
 import { shortestBearingDelta } from './hydrophone.js';
 import type { HullClass, SensorDef, UnitState } from './types.js';
 import { canUseSensors, isHullClass, resolveVesselIdentity } from './vessel.js';
@@ -153,6 +153,31 @@ export function resetPlotStamp<T extends { plotStampTurns?: number }>(unit: T): 
 /** Relative bearing deg (−180, 180] from own heading to true contact bearing. */
 export function relativeBearingDeg(ownHeadingDeg: number, trueBearingDeg: number): number {
   return shortestBearingDelta(ownHeadingDeg, trueBearingDeg);
+}
+
+/**
+ * True bearing (0–360) from own heading + relative bearing.
+ * Relative: bow = 0, starboard positive, port negative (same as optics).
+ * Inverse of {@link relativeBearingDeg}.
+ */
+export function trueBearingFromRelative(
+  ownHeadingDeg: number,
+  relativeBearingDeg: number,
+): number {
+  return normalizeHeading(ownHeadingDeg + relativeBearingDeg);
+}
+
+/**
+ * CRT label for a relative bearing — matches optics contact / compass language
+ * (`000° rel`, `045° stbd`, `090° port`).
+ */
+export function formatRelativeBearingLabel(relDeg: number): string {
+  const rel = relativeBearingDeg(0, relDeg);
+  if (rel === 0) return '000° rel';
+  if (Math.abs(rel) === 180) return '180° rel';
+  const abs = Math.abs(rel);
+  const side = rel > 0 ? 'stbd' : 'port';
+  return `${String(abs).padStart(3, '0')}° ${side}`;
 }
 
 /** FoW coarsen relative bearing to nearest 5°. */
