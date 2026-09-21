@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   EOT_LABELS,
+  DEPTH_CHARGE_CONTROLS_AUDIBLE_NM,
   FLEET_SUB_CRUSH_DEPTH_M,
   PERISCOPE_DEPTH_M,
   RADAR_SURFACE_DEPTH_M,
@@ -1291,9 +1292,9 @@ export function StationPage() {
                 )}
                 <p className="muted controls-ambient-note">
                   Bridge audio: quiet facility hum loops on this screen; nearby depth-charge
-                  detonations play when within ~0.6 nm of own ship (any vessel — not only the
-                  dropper) — close blasts are loud, then fall off sharply with range toward
-                  silence at the hear-radius edge.
+                  detonations play when within ~{DEPTH_CHARGE_CONTROLS_AUDIBLE_NM} nm of own ship
+                  (any vessel — not only the dropper) — close blasts are loud, then fall off
+                  sharply with range toward silence at the hear-radius edge.
                   Multi-charge patterns play one distant-explosion sample per charge, spaced
                   evenly across ~{DEPTH_CHARGE_AUDIO_SPREAD_SEC / 60} minutes (not stacked),
                   each at its own range volume. Torpedo hits play a procedural explosion for

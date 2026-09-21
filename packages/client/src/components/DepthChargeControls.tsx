@@ -22,8 +22,8 @@ interface Props {
 const PATTERNS: Array<{ id: DepthChargePattern; label: string }> = [
   { id: 'single', label: 'Single' },
   { id: 'pair', label: 'Pair' },
-  { id: 'pattern_3', label: 'Pattern 3' },
-  { id: 'pattern_5', label: 'Pattern 5' },
+  { id: 'pattern_3', label: 'Pattern 6' },
+  { id: 'pattern_5', label: 'Pattern 10' },
 ];
 
 /** Destroyer depth-charge drop panel — pattern + depth setting. */

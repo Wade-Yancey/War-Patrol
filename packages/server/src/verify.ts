@@ -13,6 +13,7 @@ import {
   CLASS_LENGTH_M,
   CLASS_MAX_SPEED_KNOTS,
   CLASS_SPEED_STEP_FRACTION,
+  DEPTH_CHARGE_CONTROLS_AUDIBLE_NM,
   FLEET_SUB_CRUSH_DEPTH_M,
   FLEET_SUB_PATROL_DEPTH_M,
   FLEET_SUB_TEST_DEPTH_M,
@@ -2707,7 +2708,7 @@ async function main() {
       gBridgeTyped.every(
         (c) =>
           typeof c.rangeNm === 'number' &&
-          c.rangeNm <= 0.6 &&
+          c.rangeNm <= DEPTH_CHARGE_CONTROLS_AUDIBLE_NM &&
           !('firerUnitId' in c) &&
           typeof c.id === 'string',
       ),
