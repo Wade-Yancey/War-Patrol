@@ -17,12 +17,14 @@ import {
   createDepthChargeTracks,
   createTorpedoTrack,
   depthChargePatternCount,
+  formatTorpedoMissLogSummary,
   horizontalMissMeters,
   isDepthChargeTarget,
   isTorpedoTarget,
   makeDetonationEvent,
   normalizeDepthChargePattern,
   normalizeHeading,
+  recordTorpedoClosestApproach,
   resolveDepthChargeEffect,
   resolveTorpedoHit,
   segmentClosestPoint,
@@ -261,24 +263,26 @@ export function resolveWeaponsForTurn(
       if (fish.status !== 'running') return fish;
       const before = fish.position;
       let advanced = advanceTorpedo(fish, dt);
-      if (advanced.status === 'expired' && fish.status === 'running') {
-        combatLogEntries.push(
-          logLine({
-            kind: 'torpedo_expired',
-            turnNumber,
-            gameTimeSeconds,
-            actor: unitMap.get(fish.firerUnitId),
-            summary: `Torpedo from ${nameOf(fish.firerUnitId)} exhausted run (miss / end)`,
-          }),
-        );
-        return advanced;
-      }
-      if (advanced.status !== 'running') return advanced;
+      // Carry multi-turn CPA onto this substep result before approach checks.
+      advanced = {
+        ...advanced,
+        ...(fish.closestApproachM != null
+          ? {
+              closestApproachM: fish.closestApproachM,
+              closestApproachUnitId: fish.closestApproachUnitId,
+            }
+          : {}),
+      };
 
       for (const [uid, target] of unitMap) {
         if (uid === fish.firerUnitId) continue;
         if (!isTorpedoTarget(target)) continue;
         const closest = segmentClosestPoint(before, advanced.position, target.position);
+        advanced = recordTorpedoClosestApproach(advanced, closest.missM, uid);
+
+        // Exhausted fish still update CPA on the last segment, then log miss.
+        if (advanced.status !== 'running') continue;
+
         const depthOk =
           target.type === 'Ship' || target.position.depth <= RADAR_SURFACE_DEPTH_M
             ? advanced.runDepthM <= 8
@@ -363,6 +367,27 @@ export function resolveWeaponsForTurn(
           }
           return truncated;
         }
+      }
+
+      if (advanced.status === 'expired' && fish.status === 'running') {
+        const cpaTarget =
+          advanced.closestApproachUnitId != null
+            ? unitMap.get(advanced.closestApproachUnitId)
+            : undefined;
+        combatLogEntries.push(
+          logLine({
+            kind: 'torpedo_miss',
+            turnNumber,
+            gameTimeSeconds,
+            actor: unitMap.get(fish.firerUnitId),
+            target: cpaTarget,
+            summary: formatTorpedoMissLogSummary({
+              firerName: nameOf(fish.firerUnitId),
+              targetName: cpaTarget?.name,
+              closestApproachM: advanced.closestApproachM,
+            }),
+          }),
+        );
       }
       return advanced;
     });

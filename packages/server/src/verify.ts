@@ -1525,9 +1525,15 @@ async function main() {
       torpedoFireHeadingFromSolution,
       trueBearingFromRelative,
       relativeBearingDeg,
+      recordTorpedoClosestApproach,
+      formatTorpedoMissDistance,
+      formatTorpedoMissLogSummary,
+      torpedoMissBand,
       RECOGNITION_MANUAL_ENTRIES,
       TORPEDO_DEFAULT_DEPTH_M,
       TORPEDO_HIT_DAMAGE,
+      TORPEDO_NEAR_MISS_M,
+      METERS_PER_NAVAL_YARD,
     } = await import('@war-patrol/shared');
     check('beam aspect dud ~3%', Math.abs(torpedoDudPctFromAspect(90) - 3) < 0.01);
     check('end-on dud ~18%', Math.abs(torpedoDudPctFromAspect(0) - 18) < 0.01);
@@ -1573,6 +1579,54 @@ async function main() {
     );
     const fan = torpedoSpreadHeadings(0, 3, 2).map((h) => Math.round(h));
     check('spread 3×2° headings', fan[0] === 358 && fan[1] === 0 && fan[2] === 2);
+
+    // Umpire miss-distance helpers (CPA format + near/far band + track accumulate).
+    check('near miss band at 100 m', torpedoMissBand(TORPEDO_NEAR_MISS_M) === 'near');
+    check('far miss band above 100 m', torpedoMissBand(TORPEDO_NEAR_MISS_M + 1) === 'far');
+    check(
+      'miss distance formats m + yd',
+      formatTorpedoMissDistance(92.6) === `93 m (${Math.round(92.6 / METERS_PER_NAVAL_YARD)} yd)`,
+    );
+    check(
+      'miss log with CPA names target',
+      formatTorpedoMissLogSummary({
+        firerName: 'Gato',
+        targetName: 'Porter',
+        closestApproachM: 42,
+      }).includes('MISSED Porter') &&
+        formatTorpedoMissLogSummary({
+          firerName: 'Gato',
+          targetName: 'Porter',
+          closestApproachM: 42,
+        }).includes('near miss'),
+    );
+    check(
+      'miss log without CPA is exhaust fallback',
+      formatTorpedoMissLogSummary({ firerName: 'Gato' }).includes('exhausted run'),
+    );
+    {
+      const fish0 = createTorpedoTrack({
+        id: 'cpa-test',
+        firerUnitId: 'ss-212',
+        position: { lat: 0, lon: 0, depth: 3 },
+        heading: 0,
+        runDepthM: TORPEDO_DEFAULT_DEPTH_M,
+        launchedTurn: 1,
+        estimatedCourse: 90,
+        estimatedSpeedKn: 0,
+        estimatedRangeNm: 1,
+        estimatedLengthM: 115,
+      });
+      const closer = recordTorpedoClosestApproach(fish0, 80, 'dd-101');
+      const farther = recordTorpedoClosestApproach(closer, 120, 'dd-other');
+      const nearer = recordTorpedoClosestApproach(farther, 40, 'dd-near');
+      check('CPA keeps closer approach', closer.closestApproachM === 80);
+      check('CPA ignores farther approach', farther.closestApproachM === 80);
+      check(
+        'CPA updates to nearer target',
+        nearer.closestApproachM === 40 && nearer.closestApproachUnitId === 'dd-near',
+      );
+    }
 
     // Solution-driven intercept: estimates (not truth) set the fire heading.
     const stationarySol = torpedoFireHeadingFromSolution({
@@ -1996,6 +2050,20 @@ async function main() {
         }
       }
       check('wrong solution misses parked target', !sawHit, `hit=${sawHit} expired=${sawExpired}`);
+      {
+        const missView = await api('GET', `/api/games/${missId}/view`, undefined, missUTok);
+        const log =
+          ((missView.json.view as { combatLog?: Array<{ kind: string; summary: string }> })
+            .combatLog) ?? [];
+        const missLine = log.find((e) => e.kind === 'torpedo_miss');
+        check(
+          'wrong-solution umpire miss log has CPA',
+          !!missLine &&
+            /MISSED/.test(missLine.summary) &&
+            /CPA \d+ m \(\d+ yd\)/.test(missLine.summary),
+          missLine?.summary ?? 'no torpedo_miss line',
+        );
+      }
       await api('DELETE', `/api/saves/${missId}`);
     }
 
