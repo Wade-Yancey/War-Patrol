@@ -758,7 +758,7 @@ export function StationPage() {
 
   return (
     <CrtShell side={sideAccent as 'blue' | 'red' | 'civilian' | 'neutral'} faction={faction}>
-      <div className={`app-shell${vessel && sensorFocus ? ' app-shell--radar-focus' : ''}`}>
+      <div className={`app-shell${vessel && (sensorFocus || (isControls && !isSensors)) ? ' app-shell--radar-focus' : ''}`}>
         <header className="header-bar">
           <div>
             <span className="brand-mark">Station console</span>
@@ -864,7 +864,7 @@ export function StationPage() {
             {canRadar &&
               (activeTab === 'radar' ||
                 (!canHydrophone && !canActiveSonar && !canPeriscope)) && (
-              <section className="panel stack radar-station-panel">
+              <section className="panel stack radar-station-panel station-instrument-panel">
                 <div className="radar-station-head">
                   <h2>Radar · PPI</h2>
                   <p className="muted radar-station-blurb">
@@ -918,7 +918,7 @@ export function StationPage() {
             )}
 
             {canPeriscope && activeTab === 'periscope' && (
-              <section className="panel stack radar-station-panel">
+              <section className="panel stack radar-station-panel station-instrument-panel">
                 <div className="radar-station-head">
                   <h2>
                     {opticsVariant === 'lookout' ? 'Lookout · Visual' : 'Periscope · Visual'}
@@ -1035,7 +1035,7 @@ export function StationPage() {
             )}
 
             {canHydrophone && activeTab === 'hydrophone' && (
-              <section className="panel stack radar-station-panel">
+              <section className="panel stack radar-station-panel station-instrument-panel">
                 <div className="radar-station-head">
                   <h2>Hydrophone · Bearing listen</h2>
                   <p className="muted radar-station-blurb">
@@ -1084,7 +1084,7 @@ export function StationPage() {
             )}
 
             {canActiveSonar && activeTab === 'sonar' && (
-              <section className="panel stack radar-station-panel">
+              <section className="panel stack radar-station-panel station-instrument-panel">
                 <div className="radar-station-head">
                   <h2>Active search sonar</h2>
                   <p className="muted radar-station-blurb">
@@ -1305,24 +1305,23 @@ export function StationPage() {
             </div>
 
             {controlsTab === 'helm' && (
-              <section className="panel stack controls-helm-panel">
-                <div className="controls-section-head">
+              <section className="panel stack controls-helm-panel station-instrument-panel">
+                <div className="station-instrument-head controls-section-head">
                   <h2>Helm</h2>
-                  <p className="muted controls-section-blurb">
+                  <p className="muted station-instrument-blurb controls-section-blurb">
                     Gyro compass dominates — click or drag the rose to set course, or use the
                     dial, then submit.
                   </p>
                 </div>
                 {canHelm && (
-                  <>
-                    <HelmCompass
-                      heading={vessel.unit.heading}
-                      orderedCourse={vessel.unit.orderedCourse}
-                      draftCourse={course}
-                      onDraftCourseChange={setCourse}
-                      disabled={!vessel.canSubmitOrders}
-                      turnRate={vessel.unit.turnRate}
-                    />
+                  <HelmCompass
+                    heading={vessel.unit.heading}
+                    orderedCourse={vessel.unit.orderedCourse}
+                    draftCourse={course}
+                    onDraftCourseChange={setCourse}
+                    disabled={!vessel.canSubmitOrders}
+                    turnRate={vessel.unit.turnRate}
+                  >
                     <TouchNumber
                       label="Ordered / steering course"
                       value={course}
@@ -1345,16 +1344,16 @@ export function StationPage() {
                         Submit course
                       </button>
                     </div>
-                  </>
+                  </HelmCompass>
                 )}
               </section>
             )}
 
             {controlsTab === 'dive' && canHelm && vessel.unit.type === 'Submarine' && (
-              <section className="panel stack controls-dive-panel">
-                <div className="controls-section-head">
+              <section className="panel stack controls-dive-panel station-instrument-panel">
+                <div className="station-instrument-head controls-section-head">
                   <h2>Dive plane</h2>
-                  <p className="muted controls-section-blurb">
+                  <p className="muted station-instrument-blurb controls-section-blurb">
                     Coarse {SUBMARINE_DEPTH_ORDER_STEP_M} m dial — presets and band marks (patrol /
                     test / crush). You may order past crush; that risks implosion.
                   </p>
@@ -1451,10 +1450,10 @@ export function StationPage() {
             {controlsTab === 'eot' && (
               <>
                 {canEot && (
-                  <section className="panel stack controls-eot-panel">
-                    <div className="controls-section-head">
+                  <section className="panel stack controls-eot-panel station-instrument-panel">
+                    <div className="station-instrument-head controls-section-head">
                       <h2>Engine orders</h2>
-                      <p className="muted controls-section-blurb">
+                      <p className="muted station-instrument-blurb controls-section-blurb">
                         Ring up a bell — acknowledged on resolve; hull speed ramps.
                       </p>
                     </div>

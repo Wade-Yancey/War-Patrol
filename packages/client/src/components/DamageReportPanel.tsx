@@ -79,10 +79,10 @@ export function DamageReportPanel({
       : subsystemStateLabel(subsystems.divePlanes);
 
   return (
-    <section className="panel stack controls-damage-panel" aria-label="Damage report">
-      <div className="controls-section-head">
+    <section className="panel stack controls-damage-panel station-instrument-panel" aria-label="Damage report">
+      <div className="station-instrument-head controls-section-head">
         <h2>Damage report</h2>
-        <p className="muted controls-section-blurb">
+        <p className="muted station-instrument-blurb controls-section-blurb">
           Own ship only — hull integrity and subsystem status known to {vesselName}. Not the enemy
           damage board.
         </p>

@@ -444,7 +444,7 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
       : `approximate range ${approxRangeNm} nautical miles`;
 
   return (
-    <div className="radar-scope radar-console hydrophone-scope">
+    <div className="radar-scope radar-console crt-console hydrophone-scope">
       <div className="radar-scope-plot">
         <svg
           ref={svgRef}
@@ -561,31 +561,33 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
       </div>
 
       <div className="radar-side-panel hydrophone-aux">
-        <div className="hydrophone-readouts">
-          <div className="hydrophone-readout">
-            <span className="hydrophone-key">LSTN</span>
-            <span className="readout hydrophone-val">{listenLabel}°</span>
+        <div className="crt-console-readouts hydrophone-readouts">
+          <div className="crt-console-readout hydrophone-readout">
+            <span className="crt-console-key hydrophone-key">LSTN</span>
+            <span className="readout crt-console-val hydrophone-val">{listenLabel}°</span>
           </div>
-          <div className="hydrophone-readout">
-            <span className="hydrophone-key">HDG</span>
-            <span className="readout hydrophone-val">{hdgLabel}°</span>
+          <div className="crt-console-readout hydrophone-readout">
+            <span className="crt-console-key hydrophone-key">HDG</span>
+            <span className="readout crt-console-val hydrophone-val">{hdgLabel}°</span>
           </div>
-          <div className="hydrophone-readout">
-            <span className="hydrophone-key">INT</span>
-            <span className="readout hydrophone-val">{levelPct}%</span>
+          <div className="crt-console-readout hydrophone-readout">
+            <span className="crt-console-key hydrophone-key">INT</span>
+            <span className="readout crt-console-val hydrophone-val">{levelPct}%</span>
           </div>
-          <div className="hydrophone-readout">
-            <span className="hydrophone-key">RNG</span>
+          <div className="crt-console-readout hydrophone-readout">
+            <span className="crt-console-key hydrophone-key">RNG</span>
             <span
-              className={`readout hydrophone-val hydrophone-band hydrophone-band--${rangeBand}`}
+              className={`readout crt-console-val hydrophone-val hydrophone-band hydrophone-band--${rangeBand}`}
             >
               {approxLabel}
             </span>
           </div>
           {rangeBand !== 'none' && (
-            <div className="hydrophone-readout hydrophone-readout--band">
-              <span className="hydrophone-key">BAND</span>
-              <span className="readout hydrophone-val hydrophone-band-label">{bandLabel}</span>
+            <div className="crt-console-readout hydrophone-readout hydrophone-readout--band">
+              <span className="crt-console-key hydrophone-key">BAND</span>
+              <span className="readout crt-console-val hydrophone-val hydrophone-band-label">
+                {bandLabel}
+              </span>
             </div>
           )}
         </div>
@@ -649,7 +651,7 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
           </div>
         </div>
 
-        <p className="hydrophone-caption muted mono">
+        <p className="crt-console-caption hydrophone-caption muted mono">
           Click dial to jump · hold ◀▶ to train · RNG ≈ invert range falloff (R0=8 nm) when needle
           is on contact · ~nm coarsened · max {maxRangeNm} nm ·{' '}
           {contacts.length === 0
