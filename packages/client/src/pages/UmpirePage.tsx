@@ -525,7 +525,8 @@ export function UmpirePage() {
                 {umpire.historyTurnNumbers.length > 0 && (
                   <div className="stack" style={{ gap: '0.4rem' }}>
                     <span className="muted" style={{ fontSize: '0.8rem' }}>
-                      Rollback to end of turn (requires confirmation):
+                      Rollback requires confirmation. T1 restores the scenario start (before turn 1
+                      resolved). Later buttons restore the end of that turn.
                     </span>
                     <div className="row">
                       {umpire.historyTurnNumbers.map((n) => (
@@ -548,25 +549,49 @@ export function UmpirePage() {
             {rollbackTarget !== null && token && (
               <div style={{ marginTop: '1rem' }}>
                 <ConfirmAction
-                  title={`Rollback to end of turn ${rollbackTarget}`}
+                  title={
+                    rollbackTarget === 1
+                      ? 'Rollback to start of turn 1'
+                      : `Rollback to end of turn ${rollbackTarget}`
+                  }
                   warning={
-                    <>
-                      <p>
-                        <strong>Destructive.</strong> Restores units to the snapshot after turn{' '}
-                        {rollbackTarget} resolved, clears in-progress orders, and discards every later
-                        turn.
-                      </p>
-                      <p>
-                        Current turn {umpire.turn.number} and in-game clock{' '}
-                        <span className="mono">{formatGameClock(umpire.turn.gameTimeSeconds)}</span>{' '}
-                        will be replaced by the restored clock. Later movement and history are gone.
-                      </p>
-                    </>
+                    rollbackTarget === 1 ? (
+                      <>
+                        <p>
+                          <strong>Destructive.</strong> Restores units, weapons, and the in-game clock
+                          to the scenario start (before turn 1 resolved), clears in-progress orders,
+                          and discards every resolved turn.
+                        </p>
+                        <p>
+                          Current turn {umpire.turn.number} and in-game clock{' '}
+                          <span className="mono">{formatGameClock(umpire.turn.gameTimeSeconds)}</span>{' '}
+                          will be replaced by the start-of-scenario clock. Movement and history are
+                          gone.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p>
+                          <strong>Destructive.</strong> Restores units to the snapshot after turn{' '}
+                          {rollbackTarget} resolved, clears in-progress orders, and discards every later
+                          turn.
+                        </p>
+                        <p>
+                          Current turn {umpire.turn.number} and in-game clock{' '}
+                          <span className="mono">{formatGameClock(umpire.turn.gameTimeSeconds)}</span>{' '}
+                          will be replaced by the restored clock. Later movement and history are gone.
+                        </p>
+                      </>
+                    )
                   }
                   confirmTokens={['ROLLBACK', String(rollbackTarget)]}
                   confirmHint={`Type ROLLBACK or ${rollbackTarget} to confirm`}
                   placeholder="ROLLBACK"
-                  confirmLabel={`Execute rollback to T${rollbackTarget}`}
+                  confirmLabel={
+                    rollbackTarget === 1
+                      ? 'Execute rollback to start of T1'
+                      : `Execute rollback to T${rollbackTarget}`
+                  }
                   busy={busy}
                   onCancel={() => setRollbackTarget(null)}
                   onConfirm={(matched) =>
