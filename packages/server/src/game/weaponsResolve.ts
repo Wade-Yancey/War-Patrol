@@ -32,6 +32,7 @@ import {
   resolveDepthChargeEffect,
   resolveTorpedoHit,
   segmentClosestPoint,
+  buildTorpedoArcBlock,
   checkTorpedoOrderArc,
   formatTorpedoArcRejectMessage,
   truncateTorpedoAtHit,
@@ -175,6 +176,12 @@ export function resolveWeaponsForTurn(
         spreadDeg: spacing,
       });
       if (!arc.ok) {
+        // Ordering validated the arc at queue time; the hull may have turned
+        // since. Drop the salvo with no fish spent and tell the crew.
+        next = {
+          ...next,
+          torpedoArcBlock: buildTorpedoArcBlock(arc, turnNumber, unit.heading),
+        };
         combatLogEntries.push(
           logLine({
             kind: 'torpedo_launch',
@@ -206,6 +213,10 @@ export function resolveWeaponsForTurn(
           launchedFish.push(fish);
         }
         next = consumeTorpedoRoom(next, room, count);
+        if (next.torpedoArcBlock) {
+          const { torpedoArcBlock: _cleared, ...rest } = next;
+          next = rest as UnitState;
+        }
         const fanLabel =
           count > 1
             ? ` spread ×${count} @${spacing}° · center `

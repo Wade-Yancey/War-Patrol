@@ -199,6 +199,26 @@ export interface TorpedoFireOrder {
   spreadDeg?: number;
 }
 
+/**
+ * Record of a queued torpedo order that never launched because the hull was
+ * outside the room's firing cone at resolve (ordering only validates the
+ * heading at queue time — a course change can swing the tubes off target).
+ *
+ * No fish are expended; the crew is told on the next turn so a lost salvo is
+ * never silent. Cleared when a new fire order is queued or a salvo launches.
+ */
+export interface TorpedoArcBlock {
+  /** Turn whose resolve dropped the order. */
+  turnNumber: number;
+  room: TorpedoRoomId;
+  /** Gyro of the solution fire heading vs the room axis at resolve (−180, 180]. */
+  gyroDeg: number;
+  /** Room cone half-angle the gyro had to stay inside. */
+  halfDeg: number;
+  /** Own heading at resolve (°) — usually the post-turn heading. */
+  ownHeadingDeg: number;
+}
+
 /** Pending depth-charge drop for the current turn (destroyer Controls). */
 export interface DepthChargeDropOrder {
   pattern: DepthChargePattern;
@@ -449,6 +469,11 @@ export interface UnitState {
   torpedoForwardReloadTurnsRemaining: number;
   /** Resolved turns left on an in-progress aft reload (0 = not counting). */
   torpedoAftReloadTurnsRemaining: number;
+  /**
+   * Last fire order dropped at resolve for being outside the room's arc.
+   * Player-facing on Controls; absent when the last order launched normally.
+   */
+  torpedoArcBlock?: TorpedoArcBlock;
   /**
    * Ready depth charges remaining (destroyers). 0 for non-DC hulls.
    * Consumed when a drop pattern launches on resolve.
@@ -859,6 +884,7 @@ export interface VesselView {
     | 'torpedoAftAwaitingReload'
     | 'torpedoForwardReloadTurnsRemaining'
     | 'torpedoAftReloadTurnsRemaining'
+    | 'torpedoArcBlock'
     | 'depthChargeLoad'
     | 'depthChargeAwaitingReload'
     | 'depthChargeReloadTurnsRemaining'

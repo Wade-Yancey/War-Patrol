@@ -12,11 +12,13 @@ import {
   TORPEDO_SPREAD_MAX_COUNT,
   TORPEDO_SPREAD_MAX_DEG,
   checkTorpedoOrderArc,
+  formatTorpedoArcBlockNotice,
   formatTorpedoArcRejectMessage,
   relativeBearingDeg,
   torpedoFireHeadingFromSolution,
   torpedoRoomArcHalfDeg,
   trueBearingFromRelative,
+  type TorpedoArcBlock,
   type TorpedoFireOrder,
   type TorpedoRoomId,
   type TorpedoTrack,
@@ -32,9 +34,13 @@ interface RoomState {
 
 interface Props {
   ownHeading: number;
+  /** Helm set-point; the hull may reach it before the salvo launches. */
+  orderedCourse?: number;
   forward: RoomState;
   aft: RoomState;
   pending?: TorpedoFireOrder;
+  /** Last salvo dropped at resolve for being outside the room arc (no fish spent). */
+  arcBlock?: TorpedoArcBlock;
   running?: TorpedoTrack[];
   disabled?: boolean;
   reloadBusy?: boolean;
@@ -91,9 +97,11 @@ function roomStatus(room: RoomState, capacity: number): string {
  */
 export function TorpedoCalculator({
   ownHeading,
+  orderedCourse,
   forward,
   aft,
   pending,
+  arcBlock,
   running = [],
   disabled,
   reloadBusy,
@@ -155,6 +163,34 @@ export function TorpedoCalculator({
   });
   const gyro = arcCheck.gyroDeg;
   const arcBlocked = !arcCheck.ok;
+  // Arc is validated again at resolve against the heading the hull actually
+  // reaches, so a helm order can still swing a queued salvo out of the cone.
+  const courseArcWarning =
+    !arcBlocked &&
+    orderedCourse != null &&
+    Math.round(orderedCourse) !== Math.round(ownHeading) &&
+    !checkTorpedoOrderArc({
+      ownHeadingDeg: orderedCourse,
+      room,
+      aimHeading: aimTrue,
+      estimatedCourse,
+      estimatedSpeedKn,
+      estimatedRangeNm,
+      spreadCount: effectiveCount,
+      spreadDeg,
+    }).ok;
+  const pendingArcCheck = pending
+    ? checkTorpedoOrderArc({
+        ownHeadingDeg: ownHeading,
+        room: pending.room,
+        aimHeading: pending.aimHeading,
+        estimatedCourse: pending.estimatedCourse,
+        estimatedSpeedKn: pending.estimatedSpeedKn,
+        estimatedRangeNm: pending.estimatedRangeNm,
+        spreadCount: pending.spreadCount,
+        spreadDeg: pending.spreadDeg,
+      })
+    : null;
   const canQueue =
     !disabled &&
     !loadBlocked &&
@@ -451,6 +487,27 @@ export function TorpedoCalculator({
         <p className="mono muted" style={{ margin: 0 }}>
           Cannot queue — {formatTorpedoArcRejectMessage(arcCheck)}. Switch room or change aim /
           solution lead.
+        </p>
+      )}
+
+      {courseArcWarning && !loadBlocked && (
+        <p className="mono muted" style={{ margin: 0 }}>
+          Heads up — ordered course {String(Math.round(orderedCourse!)).padStart(3, '0')}° swings
+          this shot outside the ±{arcHalf}° {room === 'aft' ? 'stern' : 'bow'} arc; fire before
+          the turn or steady up.
+        </p>
+      )}
+
+      {pendingArcCheck && !pendingArcCheck.ok && (
+        <p className="mono" style={{ margin: 0, color: 'var(--warn, #c45c26)' }}>
+          Order of record is now OUT OF ARC ({formatTorpedoArcRejectMessage(pendingArcCheck)}) —
+          it will not launch. Re-aim or clear it.
+        </p>
+      )}
+
+      {arcBlock && (
+        <p className="mono" style={{ margin: 0, color: 'var(--warn, #c45c26)' }}>
+          {formatTorpedoArcBlockNotice(arcBlock)}
         </p>
       )}
 

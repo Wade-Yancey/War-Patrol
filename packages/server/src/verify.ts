@@ -1870,6 +1870,9 @@ async function main() {
       checkTorpedoOrderArc,
       isTorpedoFireHeadingInRoomArc,
       torpedoRoomGyroAngleDeg,
+      buildTorpedoArcBlock,
+      formatTorpedoArcBlockNotice,
+      shortestBearingDelta,
       TORPEDO_FORWARD_ARC_HALF_DEG,
       TORPEDO_AFT_ARC_HALF_DEG,
       trueBearingFromRelative,
@@ -2420,6 +2423,15 @@ async function main() {
         estimatedRangeNm: 1,
       });
       check('aft aim ahead rejected by arc check', !aftBad.ok);
+      const notice = formatTorpedoArcBlockNotice(buildTorpedoArcBlock(aftBad, 7, 90));
+      check(
+        'blocked-salvo notice names turn, arc, and unspent fish',
+        notice.includes('Turn 7') &&
+          notice.includes('Aft') &&
+          notice.includes('±45°') &&
+          notice.includes('No fish expended'),
+        notice,
+      );
     }
     // Optics-style relative aim → true: port contact must not fire starboard.
     const ownHdg0 = 0;
@@ -2983,6 +2995,103 @@ async function main() {
         torpTok,
       );
       check('queue aft fire astern', aftAsternOk.status === 200);
+      await api('POST', `/api/games/${torpId}/orders`, { fireTorpedo: null }, torpTok);
+
+      // Queue in-arc, then turn the hull out of the cone before resolve: the
+      // salvo must be dropped without spending fish, and the crew told.
+      const preTurnView = await api('GET', `/api/games/${torpId}/view`, undefined, torpTok);
+      const preTurnUnit = (preTurnView.json.view as {
+        unit?: { heading?: number; torpedoAft?: number };
+      }).unit;
+      const hdg0 = Math.round(Number(preTurnUnit?.heading) || 0);
+      const aftBefore = preTurnUnit?.torpedoAft ?? 0;
+      // Gyro −40° at order time (inside the cone); a starboard swing walks it out.
+      const swungAim = (hdg0 + 140) % 360;
+      const queuedInArc = await api(
+        'POST',
+        `/api/games/${torpId}/orders`,
+        {
+          fireTorpedo: {
+            room: 'aft',
+            aimHeading: swungAim,
+            estimatedCourse: 90,
+            estimatedSpeedKn: 0,
+            estimatedRangeNm: 1.5,
+            estimatedLengthM: 115,
+          },
+        },
+        torpTok,
+      );
+      check('queue in-arc aft salvo before hull turn', queuedInArc.status === 200);
+      const swing = await api(
+        'POST',
+        `/api/games/${torpId}/orders`,
+        { course: (hdg0 + 90) % 360 },
+        torpTok,
+      );
+      check('order course swing out of aft arc', swing.status === 200);
+      await api('POST', `/api/games/${torpId}/turn/lock`, {}, torpUTok);
+      const swingRes = await api('POST', `/api/games/${torpId}/turn/resolve`, {}, torpUTok);
+      check('resolve turn with out-of-arc queued salvo', swingRes.status === 200);
+      const blockedView = await api('GET', `/api/games/${torpId}/view`, undefined, torpTok);
+      const blockedUnit = (blockedView.json.view as {
+        unit?: {
+          heading?: number;
+          torpedoAft?: number;
+          torpedoAftAwaitingReload?: boolean;
+          torpedoArcBlock?: { room?: string; halfDeg?: number; gyroDeg?: number };
+        };
+      }).unit;
+      check(
+        'hull turned out of aft arc',
+        Math.abs(
+          shortestBearingDelta((Number(blockedUnit?.heading) || 0) + 180, swungAim),
+        ) > TORPEDO_AFT_ARC_HALF_DEG,
+        `hdg=${blockedUnit?.heading} from ${hdg0}`,
+      );
+      check(
+        'out-of-arc resolve consumes no fish',
+        blockedUnit?.torpedoAft === aftBefore &&
+          blockedUnit?.torpedoAftAwaitingReload === false,
+        `aft=${blockedUnit?.torpedoAft} want ${aftBefore}`,
+      );
+      check(
+        'crew sees blocked-salvo notice',
+        blockedUnit?.torpedoArcBlock?.room === 'aft' &&
+          blockedUnit?.torpedoArcBlock?.halfDeg === TORPEDO_AFT_ARC_HALF_DEG &&
+          Math.abs(Number(blockedUnit?.torpedoArcBlock?.gyroDeg) || 0) >
+            TORPEDO_AFT_ARC_HALF_DEG,
+        JSON.stringify(blockedUnit?.torpedoArcBlock),
+      );
+      const blockedLog = await api('GET', `/api/games/${torpId}/view`, undefined, torpUTok);
+      check(
+        'umpire log records blocked torpedo order',
+        ((blockedLog.json.view as { combatLog?: Array<{ summary?: string }> }).combatLog ?? [])
+          .some((e) => (e.summary ?? '').includes('torpedo order blocked')),
+      );
+      const hdg1 = Math.round(Number(blockedUnit?.heading) || 0);
+      const requeued = await api(
+        'POST',
+        `/api/games/${torpId}/orders`,
+        {
+          fireTorpedo: {
+            room: 'aft',
+            aimHeading: (hdg1 + 180) % 360,
+            estimatedCourse: 90,
+            estimatedSpeedKn: 0,
+            estimatedRangeNm: 1.5,
+            estimatedLengthM: 115,
+          },
+        },
+        torpTok,
+      );
+      check('re-aimed aft salvo accepted', requeued.status === 200);
+      const clearedView = await api('GET', `/api/games/${torpId}/view`, undefined, torpTok);
+      check(
+        'blocked-salvo notice clears on new order',
+        (clearedView.json.view as { unit?: { torpedoArcBlock?: unknown } }).unit
+          ?.torpedoArcBlock === undefined,
+      );
       await api('POST', `/api/games/${torpId}/orders`, { fireTorpedo: null }, torpTok);
     }
 

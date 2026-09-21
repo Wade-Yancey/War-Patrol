@@ -1376,6 +1376,7 @@ export function StationPage() {
                 {canTorpedo && (
                   <TorpedoCalculator
                     ownHeading={vessel.unit.heading}
+                    orderedCourse={vessel.unit.orderedCourse}
                     forward={{
                       ready: vessel.unit.torpedoForward ?? 0,
                       awaitingReload: Boolean(vessel.unit.torpedoForwardAwaitingReload),
@@ -1387,6 +1388,7 @@ export function StationPage() {
                       reloadTurnsRemaining: vessel.unit.torpedoAftReloadTurnsRemaining ?? 0,
                     }}
                     pending={vessel.unit.orders.fireTorpedo}
+                    arcBlock={vessel.unit.torpedoArcBlock}
                     running={vessel.ownTorpedoes}
                     disabled={!vessel.canSubmitOrders}
                     reloadBusy={weaponReloadBusy}
