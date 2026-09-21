@@ -68,20 +68,20 @@ export function DiveControls({
 
   return (
     <div className="dive-controls">
-      <div className="dive-readouts" aria-live="polite">
-        <div className="dive-readout">
-          <span className="dive-key">DEPTH</span>
-          <span className="readout dive-val">{depthLabel}</span>
+      <div className="crt-console-readouts dive-readouts" aria-live="polite">
+        <div className="crt-console-readout dive-readout">
+          <span className="crt-console-key dive-key">DEPTH</span>
+          <span className="readout crt-console-val dive-val">{depthLabel}</span>
         </div>
-        <div className="dive-readout">
-          <span className="dive-key">ORDERED</span>
-          <span className="readout dive-val">{orderedLabel}</span>
+        <div className="crt-console-readout dive-readout">
+          <span className="crt-console-key dive-key">ORDERED</span>
+          <span className="readout crt-console-val dive-val">{orderedLabel}</span>
           {onOrdered && <span className="dive-ok">ON</span>}
         </div>
         {coarseDraft !== coarseOrdered && (
-          <div className="dive-readout dive-readout--draft">
-            <span className="dive-key">SET</span>
-            <span className="readout dive-val">{draftLabel}</span>
+          <div className="crt-console-readout dive-readout dive-readout--draft">
+            <span className="crt-console-key dive-key">SET</span>
+            <span className="readout crt-console-val dive-val">{draftLabel}</span>
           </div>
         )}
       </div>
@@ -176,7 +176,7 @@ export function DiveControls({
         </button>
       </div>
 
-      <p className="dive-caption muted mono">
+      <p className="crt-console-caption dive-caption muted mono">
         Coarse {orderStepM} m orders — patrol {DIVE_BAND_MARKS[0].depthM} / test{' '}
         {DIVE_BAND_MARKS[1].depthM} / crush {DIVE_BAND_MARKS[2].depthM} m. Keel
         approaches ordered over resolves. Max {maxDepthM} m (past crush = implosion
