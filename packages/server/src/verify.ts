@@ -1515,6 +1515,8 @@ async function main() {
       torpedoDamageFactorFromAspect,
       torpedoHullHalfBreadthM,
       torpedoHitGateM,
+      torpedoLengthIdScale,
+      torpedoEffectiveHitGateM,
       resolveTorpedoHit,
       segmentClosestPoint,
       truncateTorpedoAtHit,
@@ -1523,6 +1525,7 @@ async function main() {
       torpedoFireHeadingFromSolution,
       trueBearingFromRelative,
       relativeBearingDeg,
+      RECOGNITION_MANUAL_ENTRIES,
       TORPEDO_DEFAULT_DEPTH_M,
       TORPEDO_HIT_DAMAGE,
     } = await import('@war-patrol/shared');
@@ -1541,6 +1544,32 @@ async function main() {
     check(
       'half breadth beam = length/2',
       Math.abs(torpedoHullHalfBreadthM(115, 12, 90) - 57.5) < 0.01,
+    );
+    // Length ID: recognition-manual accuracy scales the true geometric gate.
+    check('length ID exact = 1', torpedoLengthIdScale(115, 115) === 1);
+    check('length ID ±10% full', torpedoLengthIdScale(126, 115) === 1);
+    check('length ID zero when blank', torpedoLengthIdScale(0, 115) === 0);
+    check(
+      'length ID battleship-for-DD collapses',
+      torpedoLengthIdScale(270, 115) === 0,
+    );
+    check(
+      'length ID mid error partial',
+      torpedoLengthIdScale(150, 115) > 0 && torpedoLengthIdScale(150, 115) < 1,
+    );
+    check(
+      'effective gate = true × scale',
+      Math.abs(
+        torpedoEffectiveHitGateM(115, 12, 90, 115) - beamGate,
+      ) < 1e-9,
+    );
+    check(
+      'wrong length shrinks gate',
+      torpedoEffectiveHitGateM(115, 12, 90, 270) === 0,
+    );
+    check(
+      'recognition manual has Fletcher 115',
+      RECOGNITION_MANUAL_ENTRIES.some((e) => e.class === 'Destroyer' && e.lengthM === 115),
     );
     const fan = torpedoSpreadHeadings(0, 3, 2).map((h) => Math.round(h));
     check('spread 3×2° headings', fan[0] === 358 && fan[1] === 0 && fan[2] === 2);
@@ -1623,11 +1652,13 @@ async function main() {
       targetHeading: 90,
       trueLengthM: 115,
       trueBeamM: 12,
+      estimatedLengthM: 115,
       depthOk: true,
       seed: 'verify-aspect-beam-geo',
     });
     check('beam geometric contact', roll.geometricMiss === false);
     check('beam gate applied', roll.hitGateM === beamGate);
+    check('beam length ID full', roll.lengthIdScale === 1);
     check(
       'beam hit or dud',
       (roll.hit && !roll.dud && roll.damage === TORPEDO_HIT_DAMAGE) ||
@@ -1639,11 +1670,25 @@ async function main() {
       targetHeading: 90,
       trueLengthM: 115,
       trueBeamM: 12,
+      estimatedLengthM: 115,
       depthOk: true,
       seed: 'verify-geo-miss',
     });
     check('far miss is geometric', missRoll.geometricMiss === true);
     check('far miss no hit', missRoll.hit === false);
+    const wrongLenRoll = resolveTorpedoHit({
+      missDistanceM: 5,
+      fishHeading: 0,
+      targetHeading: 90,
+      trueLengthM: 115,
+      trueBeamM: 12,
+      estimatedLengthM: 270,
+      depthOk: true,
+      seed: 'verify-wrong-length',
+    });
+    check('wrong length ID geometric miss', wrongLenRoll.geometricMiss === true);
+    check('wrong length ID no hit', wrongLenRoll.hit === false);
+    check('wrong length ID scale 0', wrongLenRoll.lengthIdScale === 0);
 
     // Hit path truncation: trail ends at closest approach, not past the target.
     {
@@ -1662,6 +1707,7 @@ async function main() {
         estimatedCourse: 90,
         estimatedSpeedKn: 14,
         estimatedRangeNm: 1.5,
+        estimatedLengthM: 115,
       });
       const advanced = {
         ...prior,
@@ -1720,6 +1766,7 @@ async function main() {
         estimatedCourse: 90,
         estimatedSpeedKn: 14,
         estimatedRangeNm: 1.5,
+        estimatedLengthM: 115,
         spreadCount: 3,
         spreadDeg: 2,
       },
@@ -1768,6 +1815,7 @@ async function main() {
         estimatedCourse: 0,
         estimatedSpeedKn: 14,
         estimatedRangeNm: 2,
+        estimatedLengthM: 115,
       });
       check('fish starts at max run', Math.abs(fish0.remainingRunNm - TORPEDO_MAX_RUN_NM) < 1e-9);
       // One long step past max run → expired / exhausted.
@@ -1813,6 +1861,7 @@ async function main() {
             estimatedCourse: 0,
             estimatedSpeedKn: 0,
             estimatedRangeNm: 4,
+            estimatedLengthM: 115,
             spreadCount: 1,
             spreadDeg: 2,
           },
@@ -1916,6 +1965,7 @@ async function main() {
             estimatedCourse: 90,
             estimatedSpeedKn: 28,
             estimatedRangeNm: 0.24,
+            estimatedLengthM: 115,
             spreadCount: 1,
             spreadDeg: 2,
           },
@@ -2012,6 +2062,7 @@ async function main() {
             estimatedCourse: 0,
             estimatedSpeedKn: 0,
             estimatedRangeNm: 4,
+            estimatedLengthM: 115,
             spreadCount: 1,
             spreadDeg: 2,
           },

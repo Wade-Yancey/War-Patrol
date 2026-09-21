@@ -129,6 +129,13 @@ export interface TorpedoFireOrder {
    */
   estimatedRangeNm: number;
   /**
+   * Player-entered estimated target overall length (meters).
+   * Look up from the recognition manual (class OA). Scales the geometric hit
+   * gate vs true hull length — wrong ID shrinks the intercept chord.
+   * Never auto-filled from sim truth.
+   */
+  estimatedLengthM: number;
+  /**
    * Number of fish in the spread (1 = single shot). Consumes that many from load.
    * Omitted → 1. Clamped to available tubes / load on resolve.
    */
@@ -189,12 +196,13 @@ export interface TorpedoTrack {
   hitUnitId?: string;
   /**
    * Snapshotted calculator estimates at launch (of-record).
-   * At fire time these drove the intercept fire heading; hit resolution
-   * itself is pure geometry against truth kinematics.
+   * Course/speed/range drove the intercept fire heading; length scales the
+   * hit gate vs true hull length on contact.
    */
   estimatedCourse: number;
   estimatedSpeedKn: number;
   estimatedRangeNm: number;
+  estimatedLengthM: number;
   /**
    * Breadcrumb positions along the run (launch → current/end).
    * Umpire GT map polyline; includes launch as first point.

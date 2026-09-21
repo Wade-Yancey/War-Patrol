@@ -1972,6 +1972,94 @@ label {
   gap: 0.25rem;
 }
 
+.recognition-manual {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  width: 100%;
+}
+
+.recognition-manual-toggle {
+  align-self: stretch;
+  text-align: left;
+  font-family: var(--font-display, inherit);
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.55rem 0.7rem;
+  background: transparent;
+  border: 1px dashed var(--border, #1a4a28);
+  color: var(--phosphor, #3dff7a);
+  cursor: pointer;
+}
+
+.recognition-manual-toggle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.recognition-manual-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.55rem 0.65rem 0.7rem;
+  border: 1px solid var(--border, #1a4a28);
+  background: color-mix(in srgb, var(--panel, #04140a) 88%, #000);
+}
+
+.recognition-manual-blurb {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.recognition-manual-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.recognition-manual-row {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 0.85rem;
+  text-align: left;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border, #1a4a28);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.recognition-manual-row:hover:not(:disabled) {
+  border-color: var(--phosphor, #3dff7a);
+}
+
+.recognition-manual-row.is-selected {
+  border-color: var(--phosphor, #3dff7a);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--phosphor, #3dff7a) 45%, transparent);
+}
+
+.recognition-manual-row:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.recognition-manual-name {
+  font-size: 0.9rem;
+}
+
+.recognition-manual-dims {
+  font-size: 0.82rem;
+  opacity: 0.85;
+}
+
 .wake-cues {
   margin-top: 0.75rem;
   padding: 0.65rem 0.75rem;

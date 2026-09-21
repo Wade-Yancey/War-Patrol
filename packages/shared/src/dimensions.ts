@@ -107,3 +107,65 @@ export function resolveBeamM(opts: {
   }
   return defaultBeamM(resolveHullClass(opts));
 }
+
+/**
+ * Recognition-manual plate for the torpedo calculator.
+ * Operators look up OA length here (same numbers as class / library stubs)
+ * and enter it as the TDC length estimate — never auto-filled from FoW.
+ */
+export interface RecognitionManualEntry {
+  /** Plate title (concrete exemplar name). */
+  name: string;
+  class: HullClass;
+  lengthM: number;
+  beamM: number;
+}
+
+/**
+ * Surface / sub recognition plates used beside the torpedo length field.
+ * Aircraft omitted (not torpedo targets in v1). Lengths match {@link CLASS_LENGTH_M}.
+ */
+export const RECOGNITION_MANUAL_ENTRIES: readonly RecognitionManualEntry[] = [
+  {
+    name: 'Gato-class Fleet Submarine',
+    class: 'Fleet Submarine',
+    lengthM: CLASS_LENGTH_M['Fleet Submarine'],
+    beamM: CLASS_BEAM_M['Fleet Submarine'],
+  },
+  {
+    name: 'Fletcher-class Destroyer',
+    class: 'Destroyer',
+    lengthM: CLASS_LENGTH_M.Destroyer,
+    beamM: CLASS_BEAM_M.Destroyer,
+  },
+  {
+    name: 'Cleveland-class Cruiser',
+    class: 'Cruiser',
+    lengthM: CLASS_LENGTH_M.Cruiser,
+    beamM: CLASS_BEAM_M.Cruiser,
+  },
+  {
+    name: 'Essex-class Aircraft Carrier',
+    class: 'Aircraft Carrier',
+    lengthM: CLASS_LENGTH_M['Aircraft Carrier'],
+    beamM: CLASS_BEAM_M['Aircraft Carrier'],
+  },
+  {
+    name: 'Liberty-class Merchant',
+    class: 'Merchant',
+    lengthM: CLASS_LENGTH_M.Merchant,
+    beamM: CLASS_BEAM_M.Merchant,
+  },
+  {
+    name: 'Cimarron-class Oiler',
+    class: 'Oiler',
+    lengthM: CLASS_LENGTH_M.Oiler,
+    beamM: CLASS_BEAM_M.Oiler,
+  },
+  {
+    name: 'Iowa-class Battleship',
+    class: 'Battleship',
+    lengthM: CLASS_LENGTH_M.Battleship,
+    beamM: CLASS_BEAM_M.Battleship,
+  },
+];

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  RECOGNITION_MANUAL_ENTRIES,
   TORPEDO_MAX_RUN_NM,
   TORPEDO_SPEED_KN,
   TORPEDO_SPREAD_DEFAULT_DEG,
@@ -46,10 +47,9 @@ function parseRelAim(raw: string): number | null {
 
 /**
  * Torpedo firing calculator — all solution inputs are operator-entered.
- * Never auto-fills true course/speed/range from the sim (optics + judgment).
- * Aim = relative LOS (same port/stbd language as periscope/lookout); converted
- * to true for the intercept. Course/speed/range compute the fire heading fish
- * actually run. Wrong lead → miss; correct solution → geometry hit.
+ * Never auto-fills true course/speed/range/length from the sim (optics +
+ * recognition manual + judgment). Aim = relative LOS; course/speed/range
+ * compute the fire heading; length scales the geometric hit gate vs truth.
  * Run depth is fixed in sim (shallow anti-surface default) — not operator-set.
  * Supports single shot or angular fan spreads (multiple tracked fish).
  * Fire is allowed with the periscope down.
@@ -78,12 +78,16 @@ export function TorpedoCalculator({
   const [estimatedRangeNm, setEstimatedRangeNm] = useState(
     () => pending?.estimatedRangeNm ?? 0,
   );
+  const [estimatedLengthM, setEstimatedLengthM] = useState(
+    () => pending?.estimatedLengthM ?? 0,
+  );
   const [spreadCount, setSpreadCount] = useState(
     () => pending?.spreadCount ?? 1,
   );
   const [spreadDeg, setSpreadDeg] = useState(
     () => pending?.spreadDeg ?? TORPEDO_SPREAD_DEFAULT_DEG,
   );
+  const [manualOpen, setManualOpen] = useState(false);
 
   const aimTrue = trueBearingFromRelative(ownHeading, aimRelative);
   const solution = torpedoFireHeadingFromSolution({
@@ -98,6 +102,8 @@ export function TorpedoCalculator({
   const maxCount = Math.max(1, Math.min(TORPEDO_SPREAD_MAX_COUNT, torpedoLoad || 1));
   const effectiveCount = Math.min(spreadCount, maxCount);
   const loadBlocked = torpedoLoad <= 0;
+  const canQueue =
+    !disabled && !loadBlocked && estimatedRangeNm > 0 && estimatedLengthM > 0;
 
   return (
     <section className="panel stack controls-weapons-panel">
@@ -105,10 +111,10 @@ export function TorpedoCalculator({
         <h2>Torpedo calculator</h2>
         <p className="muted controls-section-blurb">
           Aim uses the same relative bearing as optics (bow 0 · stbd + · port −) — not true
-          compass. Enter target true course (not AOB), speed, and range; fish run the
-          computed intercept. Hits are geometric (hull breadth). Load {torpedoLoad} fish ·
-          Mk14-ish {TORPEDO_SPEED_KN} kn / {TORPEDO_MAX_RUN_NM} nm. Fire allowed with scope
-          down.
+          compass. Enter target true course (not AOB), speed, range, and OA length from the
+          recognition manual — wrong length shrinks the hit window. Fish run the computed
+          intercept. Load {torpedoLoad} fish · Mk14-ish {TORPEDO_SPEED_KN} kn /{' '}
+          {TORPEDO_MAX_RUN_NM} nm. Fire allowed with scope down.
         </p>
       </div>
 
@@ -174,6 +180,61 @@ export function TorpedoCalculator({
         unit="nm"
         disabled={disabled || loadBlocked}
       />
+      <TouchNumber
+        label="Est. target length (OA)"
+        value={estimatedLengthM}
+        onChange={setEstimatedLengthM}
+        min={0}
+        max={400}
+        step={5}
+        unit="m"
+        disabled={disabled || loadBlocked}
+        hint="From recognition manual — wrong class length shrinks the hit gate"
+      />
+
+      <div className="recognition-manual">
+        <button
+          type="button"
+          className="recognition-manual-toggle"
+          disabled={disabled || loadBlocked}
+          aria-expanded={manualOpen}
+          onClick={() => setManualOpen((o) => !o)}
+        >
+          Recognition manual — class OA lengths {manualOpen ? '▴' : '▾'}
+        </button>
+        {manualOpen && (
+          <div className="recognition-manual-body">
+            <p className="muted recognition-manual-blurb">
+              Identify the silhouette class, then tap a plate to set length. Longer hulls are
+              easier to hit when ID is correct; guessing hurts either way.
+            </p>
+            <ul className="recognition-manual-list">
+              {RECOGNITION_MANUAL_ENTRIES.map((entry) => {
+                const selected = estimatedLengthM === entry.lengthM;
+                return (
+                  <li key={entry.name}>
+                    <button
+                      type="button"
+                      className={
+                        selected
+                          ? 'recognition-manual-row is-selected'
+                          : 'recognition-manual-row'
+                      }
+                      disabled={disabled || loadBlocked}
+                      onClick={() => setEstimatedLengthM(entry.lengthM)}
+                    >
+                      <span className="recognition-manual-name">{entry.name}</span>
+                      <span className="mono recognition-manual-dims">
+                        L {entry.lengthM} m · B {entry.beamM} m
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+      </div>
 
       <TouchNumber
         label="Spread count"
@@ -200,13 +261,14 @@ export function TorpedoCalculator({
         <button
           className="primary"
           type="button"
-          disabled={disabled || loadBlocked || estimatedRangeNm <= 0}
+          disabled={!canQueue}
           onClick={() =>
             onSubmit({
               aimHeading: aimTrue,
               estimatedCourse,
               estimatedSpeedKn,
               estimatedRangeNm,
+              estimatedLengthM,
               spreadCount: effectiveCount,
               spreadDeg,
             })
@@ -230,7 +292,8 @@ export function TorpedoCalculator({
             ? ` · ×${pending.spreadCount}@${pending.spreadDeg ?? 0}°`
             : ''}{' '}
           · tgt CRS {String(Math.round(pending.estimatedCourse)).padStart(3, '0')}° ·{' '}
-          {Math.round(pending.estimatedSpeedKn)}kn · {pending.estimatedRangeNm.toFixed(1)}nm
+          {Math.round(pending.estimatedSpeedKn)}kn · {pending.estimatedRangeNm.toFixed(1)}nm · L
+          {Math.round(pending.estimatedLengthM)}m
           {' → fire '}
           {String(
             Math.round(
@@ -255,7 +318,7 @@ export function TorpedoCalculator({
               .map((t) => (
                 <li key={t.id}>
                   HDG {String(Math.round(t.heading)).padStart(3, '0')}° · rem{' '}
-                  {t.remainingRunNm.toFixed(1)} nm
+                  {t.remainingRunNm.toFixed(1)} nm · L{Math.round(t.estimatedLengthM)}m
                 </li>
               ))}
           </ul>
