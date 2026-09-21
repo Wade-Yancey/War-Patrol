@@ -1804,6 +1804,54 @@ async function main() {
     : [];
   check('scenario removed from list', !scList2.some((s) => s.id === tempId));
 
+  // Path traversal must not escape data/saves or data/scenarios (audit).
+  // Use a single path-segment id so HTTP routers cannot normalize `../` out of the param.
+  const {
+    assertSafeDataId,
+    deleteSaveFile: deleteSaveFileProbe,
+    deleteScenarioFile: deleteScenarioFileProbe,
+  } = await import('./store/fileStore.js');
+  let safeIdThrew = false;
+  try {
+    assertSafeDataId('../scenarios/destroyer-sub-demo', 'save id');
+  } catch (err) {
+    safeIdThrew =
+      Boolean(err && typeof err === 'object' && (err as { statusCode?: number }).statusCode === 400);
+  }
+  check('assertSafeDataId rejects traversal', safeIdThrew);
+  let storeDeleteThrew = false;
+  try {
+    await deleteSaveFileProbe('../scenarios/destroyer-sub-demo');
+  } catch (err) {
+    storeDeleteThrew =
+      Boolean(err && typeof err === 'object' && (err as { statusCode?: number }).statusCode === 400);
+  }
+  check('deleteSaveFile rejects traversal', storeDeleteThrew);
+  let storeScThrew = false;
+  try {
+    await deleteScenarioFileProbe('../saves/nope');
+  } catch (err) {
+    storeScThrew =
+      Boolean(err && typeof err === 'object' && (err as { statusCode?: number }).statusCode === 400);
+  }
+  check('deleteScenarioFile rejects traversal', storeScThrew);
+  const travId = encodeURIComponent('../scenarios/destroyer-sub-demo');
+  const travDelete = await api('DELETE', `/api/saves/${travId}`);
+  check('delete save rejects path traversal', travDelete.status === 400);
+  const travLoad = await api('POST', `/api/saves/${travId}/load`);
+  check('load save rejects path traversal', travLoad.status === 400);
+  const travSc = await api('DELETE', `/api/scenarios/${encodeURIComponent('../saves/nope')}`);
+  check('delete scenario rejects path traversal', travSc.status === 400);
+  // Demo scenario must still exist after traversal probes.
+  const demoStill = await api('GET', '/api/scenarios');
+  const demoList = Array.isArray(demoStill.json)
+    ? (demoStill.json as unknown as Array<{ id: string }>)
+    : [];
+  check(
+    'traversal probes left demo scenario',
+    demoList.some((s) => s.id === 'destroyer-sub-demo'),
+  );
+
   // --- Weapons: scenarios + torpedo fire + DC drop + umpire GT tracks ---
   {
     const {

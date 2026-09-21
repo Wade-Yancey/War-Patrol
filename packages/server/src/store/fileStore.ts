@@ -34,6 +34,52 @@ async function ensureDirs(): Promise<void> {
   await mkdir(libraryDir(), { recursive: true });
 }
 
+/**
+ * Reject path traversal / separator tricks in save & scenario ids.
+ * Ids are single path segments under data/saves or data/scenarios (e.g. nanoid).
+ */
+export function assertSafeDataId(id: string, kind = 'id'): string {
+  if (typeof id !== 'string' || !id) {
+    throw Object.assign(new Error(`Invalid ${kind}`), { statusCode: 400 });
+  }
+  // No absolute paths, drive letters, separators, or `..` segments.
+  if (
+    id.includes('\0') ||
+    id.includes('/') ||
+    id.includes('\\') ||
+    id.includes('..') ||
+    path.isAbsolute(id)
+  ) {
+    throw Object.assign(new Error(`Invalid ${kind}`), { statusCode: 400 });
+  }
+  // Defense in depth: resolved path must stay inside the intended root.
+  // Callers join `${id}.json` under saves/scenarios — validate the bare id form.
+  if (id !== path.basename(id)) {
+    throw Object.assign(new Error(`Invalid ${kind}`), { statusCode: 400 });
+  }
+  return id;
+}
+
+function savePathForId(id: string): string {
+  const safe = assertSafeDataId(id, 'save id');
+  const filePath = path.resolve(savesDir(), `${safe}.json`);
+  const root = path.resolve(savesDir()) + path.sep;
+  if (!filePath.startsWith(root)) {
+    throw Object.assign(new Error('Invalid save id'), { statusCode: 400 });
+  }
+  return filePath;
+}
+
+function scenarioPathForId(id: string): string {
+  const safe = assertSafeDataId(id, 'scenario id');
+  const filePath = path.resolve(scenariosDir(), `${safe}.json`);
+  const root = path.resolve(scenariosDir()) + path.sep;
+  if (!filePath.startsWith(root)) {
+    throw Object.assign(new Error('Invalid scenario id'), { statusCode: 400 });
+  }
+  return filePath;
+}
+
 function assertSchemaVersion(doc: { schemaVersion?: number }, kind: string): void {
   if (doc.schemaVersion !== SCHEMA_VERSION) {
     throw new Error(
@@ -56,18 +102,20 @@ export async function listScenarios(): Promise<Scenario[]> {
 }
 
 export async function loadScenario(id: string): Promise<Scenario> {
+  assertSafeDataId(id, 'scenario id');
   const scenarios = await listScenarios();
   const found = scenarios.find((s) => s.id === id);
   if (!found) {
-    // Also try filename
-    const filePath = path.join(scenariosDir(), `${id}.json`);
+    // Also try filename (must still be a single safe segment).
+    const filePath = scenarioPathForId(id);
     try {
       await access(filePath);
       const raw = await readFile(filePath, 'utf8');
       const scenario = JSON.parse(raw) as Scenario;
       assertSchemaVersion(scenario, 'Scenario');
       return scenario;
-    } catch {
+    } catch (err) {
+      if (err && typeof err === 'object' && 'statusCode' in err) throw err;
       throw new Error(`Scenario not found: ${id}`);
     }
   }
@@ -89,7 +137,7 @@ export async function listSaves(): Promise<Array<{ id: string; name: string; upd
 
 export async function loadSave(id: string): Promise<GameSave> {
   await ensureDirs();
-  const filePath = path.join(savesDir(), `${id}.json`);
+  const filePath = savePathForId(id);
   const raw = await readFile(filePath, 'utf8');
   const save = JSON.parse(raw) as GameSave;
   assertSchemaVersion(save, 'Save');
@@ -99,14 +147,14 @@ export async function loadSave(id: string): Promise<GameSave> {
 export async function writeSave(save: GameSave): Promise<void> {
   await ensureDirs();
   assertSchemaVersion(save, 'Save');
-  const filePath = path.join(savesDir(), `${save.id}.json`);
+  const filePath = savePathForId(save.id);
   await writeFile(filePath, JSON.stringify(save, null, 2), 'utf8');
 }
 
 /** Remove a save JSON file from disk. Returns false if missing. */
 export async function deleteSaveFile(id: string): Promise<boolean> {
   await ensureDirs();
-  const filePath = path.join(savesDir(), `${id}.json`);
+  const filePath = savePathForId(id);
   try {
     await access(filePath);
   } catch {
@@ -131,7 +179,9 @@ export async function deleteAllSaveFiles(): Promise<number> {
 /** Remove a scenario JSON file from disk. Returns false if missing. */
 export async function deleteScenarioFile(id: string): Promise<boolean> {
   await ensureDirs();
-  const filePath = path.join(scenariosDir(), `${id}.json`);
+  // Reject traversal before any disk work (also covers the by-id fallback path).
+  assertSafeDataId(id, 'scenario id');
+  const filePath = scenarioPathForId(id);
   try {
     await access(filePath);
   } catch {
@@ -139,7 +189,7 @@ export async function deleteScenarioFile(id: string): Promise<boolean> {
     const scenarios = await listScenarios();
     const found = scenarios.find((s) => s.id === id);
     if (!found) return false;
-    const byId = path.join(scenariosDir(), `${found.id}.json`);
+    const byId = scenarioPathForId(found.id);
     try {
       await access(byId);
       await unlink(byId);
@@ -155,7 +205,7 @@ export async function deleteScenarioFile(id: string): Promise<boolean> {
 export async function writeScenario(scenario: Scenario): Promise<void> {
   await ensureDirs();
   assertSchemaVersion(scenario, 'Scenario');
-  const filePath = path.join(scenariosDir(), `${scenario.id}.json`);
+  const filePath = scenarioPathForId(scenario.id);
   await writeFile(filePath, JSON.stringify(scenario, null, 2), 'utf8');
 }
 
