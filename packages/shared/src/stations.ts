@@ -7,7 +7,7 @@ export const STATION_ID_SENSORS = 'sensors' as const;
 
 /**
  * v1 player vessels expose exactly two screens:
- * - Controls — helm / EOT / orders (+ quiet ambient BT bed)
+ * - Controls — helm / EOT / orders (+ quiet ambient BT bed; sub hull creaks when submerged)
  * - Sensors — all sensor instruments
  */
 export function defaultTwoScreenStations(

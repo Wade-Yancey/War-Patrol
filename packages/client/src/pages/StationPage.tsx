@@ -4,6 +4,7 @@ import {
   EOT_LABELS,
   PERISCOPE_DEPTH_M,
   PERISCOPE_EXPOSURE_PRESETS,
+  RADAR_SURFACE_DEPTH_M,
   SUBMARINE_MAX_DEPTH_M,
   conditionLabel,
   effectiveMaxSpeed,
@@ -48,6 +49,18 @@ import {
   loadTorpedoHitBuffer,
   playTorpedoHitSample,
 } from '../audio/torpedoHit';
+import {
+  SUBMARINE_CREAK_AMBIENT_DURATION_SEC,
+  SUBMARINE_CREAK_AMBIENT_GAIN,
+  SUBMARINE_CREAK_DC_DURATION_SEC,
+  SUBMARINE_CREAK_DC_GAIN,
+  SUBMARINE_CREAK_INTERVAL_DEEP_SEC,
+  SUBMARINE_CREAK_INTERVAL_SHALLOW_SEC,
+  creakIntervalMsForDepth,
+  jitterCreakIntervalMs,
+  loadSubmarineCreakingBuffer,
+  playSubmarineCreakSample,
+} from '../audio/submarineCreaking';
 
 function tokenKey(gameId: string, accessToken: string, stationId: string) {
   return `wp-token:${gameId}:${accessToken}:${stationId}`;
@@ -133,15 +146,22 @@ export function StationPage() {
     isSensors && (canRadar || canHydrophone || canActiveSonar || canPeriscope);
 
   const onControlsBridge = Boolean(vessel) && isControls && !isSensors;
+  /** Hull creaks: submarine Controls only (not destroyer). */
+  const onSubCreakBridge =
+    onControlsBridge && vessel?.unit.type === 'Submarine';
 
   const playedBridgeBlastRef = useRef<Set<string>>(new Set());
   const pendingBridgeBlastRef = useRef<
     Array<{ id: string; rangeNm: number; kind: 'depth_charge' | 'torpedo_hit' }>
   >([]);
+  /** Latest sub keel depth for ambient creak scheduling + DC stress burst. */
+  const subDepthRef = useRef(0);
+  const ambientCreakBusyRef = useRef(false);
   const bridgeAudioRef = useRef<{
     ctx: AudioContext | null;
     buffer: AudioBuffer | null;
     torpedoHitBuffer: AudioBuffer | null;
+    creakBuffer: AudioBuffer | null;
     ambientBuffer: AudioBuffer | null;
     ambientSource: AudioBufferSourceNode | null;
     ambientGain: GainNode | null;
@@ -149,6 +169,7 @@ export function StationPage() {
     ctx: null,
     buffer: null,
     torpedoHitBuffer: null,
+    creakBuffer: null,
     ambientBuffer: null,
     ambientSource: null,
     ambientGain: null,
@@ -162,11 +183,32 @@ export function StationPage() {
       bridgeAudioRef.current.ctx = new Ctx();
       bridgeAudioRef.current.buffer = null;
       bridgeAudioRef.current.torpedoHitBuffer = null;
+      bridgeAudioRef.current.creakBuffer = null;
       bridgeAudioRef.current.ambientBuffer = null;
     }
     const ctx = bridgeAudioRef.current.ctx;
     if (ctx.state === 'suspended') await ctx.resume();
     return ctx;
+  };
+
+  const ensureCreakBuffer = async (ctx: AudioContext): Promise<AudioBuffer | null> => {
+    if (bridgeAudioRef.current.creakBuffer) return bridgeAudioRef.current.creakBuffer;
+    try {
+      bridgeAudioRef.current.creakBuffer = await loadSubmarineCreakingBuffer(ctx);
+      return bridgeAudioRef.current.creakBuffer;
+    } catch {
+      return null;
+    }
+  };
+
+  /** Stress creak when a nearby DC detonates — may overlap an ambient creak sparingly. */
+  const playDcStressCreak = async (ctx: AudioContext): Promise<void> => {
+    if (subDepthRef.current <= RADAR_SURFACE_DEPTH_M) return;
+    const creak = await ensureCreakBuffer(ctx);
+    if (!creak || ctx.state !== 'running') return;
+    playSubmarineCreakSample(ctx, creak, ctx.destination, SUBMARINE_CREAK_DC_GAIN, {
+      durationSec: SUBMARINE_CREAK_DC_DURATION_SEC,
+    });
   };
 
   /** Play queued bridge blasts (close DC + torpedo hits for firer/target). */
@@ -193,6 +235,10 @@ export function StationPage() {
       } catch {
         /* keep pending hits; unlock may retry */
       }
+    }
+    // Prefetch creak with DC so the stress burst is ready on the same unlock.
+    if (needsDc && onSubCreakBridge) {
+      await ensureCreakBuffer(ctx);
     }
 
     const dcBuffer = bridgeAudioRef.current.buffer;
@@ -224,6 +270,10 @@ export function StationPage() {
             ctx.destination,
             DEPTH_CHARGE_CONTROLS_GAIN * proximity,
           );
+          // Sub Controls: hull creak with the blast (overlap with ambient OK).
+          if (onSubCreakBridge) {
+            void playDcStressCreak(ctx);
+          }
         }
         playedBridgeBlastRef.current.add(e.id);
       } catch {
@@ -305,12 +355,114 @@ export function StationPage() {
       bridgeAudioRef.current.ctx = null;
       bridgeAudioRef.current.buffer = null;
       bridgeAudioRef.current.torpedoHitBuffer = null;
+      bridgeAudioRef.current.creakBuffer = null;
       bridgeAudioRef.current.ambientBuffer = null;
       // Closed ctx → allow replay after remount (React Strict Mode / leave+rejoin).
       playedBridgeBlastRef.current.clear();
       if (ctx && ctx.state !== 'closed') void ctx.close();
     };
   }, [onControlsBridge]);
+
+  const surfaced = vessel ? isRadarSurfaced(vessel.unit.position) : true;
+  const depthM = vessel?.unit.position.depth ?? 0;
+  subDepthRef.current = depthM;
+  const atPeriscopeDepth = depthM <= PERISCOPE_DEPTH_M;
+  /** Ambient creak loop only while keel is below the radar surface band. */
+  const submergedForCreak = onSubCreakBridge && depthM > RADAR_SURFACE_DEPTH_M;
+
+  // Submarine Controls: occasional hull creaks while submerged; denser with depth.
+  useEffect(() => {
+    if (!submergedForCreak) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const clearTimer = () => {
+      if (timer != null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    };
+
+    const scheduleNext = () => {
+      clearTimer();
+      if (cancelled) return;
+      const meanMs = creakIntervalMsForDepth(subDepthRef.current);
+      if (!Number.isFinite(meanMs)) return;
+      const wait = jitterCreakIntervalMs(meanMs);
+      timer = setTimeout(() => {
+        void (async () => {
+          if (cancelled) return;
+          // Skip if still surfaced or a prior ambient creak is ringing.
+          if (subDepthRef.current <= RADAR_SURFACE_DEPTH_M) {
+            return;
+          }
+          if (ambientCreakBusyRef.current) {
+            timer = setTimeout(() => {
+              void scheduleNext();
+            }, 800);
+            return;
+          }
+          try {
+            const ctx = await ensureBridgeAudioCtx();
+            if (cancelled || ctx.state !== 'running') {
+              scheduleNext();
+              return;
+            }
+            const creak = await ensureCreakBuffer(ctx);
+            if (cancelled || !creak) {
+              scheduleNext();
+              return;
+            }
+            if (ambientCreakBusyRef.current) {
+              timer = setTimeout(() => {
+                void scheduleNext();
+              }, 800);
+              return;
+            }
+            ambientCreakBusyRef.current = true;
+            const source = playSubmarineCreakSample(
+              ctx,
+              creak,
+              ctx.destination,
+              SUBMARINE_CREAK_AMBIENT_GAIN,
+              { durationSec: SUBMARINE_CREAK_AMBIENT_DURATION_SEC },
+            );
+            if (source) {
+              source.onended = () => {
+                ambientCreakBusyRef.current = false;
+              };
+              // Safety: clear busy if onended never fires (ctx closed).
+              window.setTimeout(() => {
+                ambientCreakBusyRef.current = false;
+              }, (SUBMARINE_CREAK_AMBIENT_DURATION_SEC + 0.5) * 1000);
+            } else {
+              ambientCreakBusyRef.current = false;
+            }
+          } catch {
+            ambientCreakBusyRef.current = false;
+          }
+          scheduleNext();
+        })();
+      }, wait);
+    };
+
+    const unlock = () => {
+      scheduleNext();
+    };
+
+    // Kick after gesture / ambient unlock so Autoplay policy is satisfied.
+    scheduleNext();
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
+
+    return () => {
+      cancelled = true;
+      clearTimer();
+      ambientCreakBusyRef.current = false;
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+  }, [submergedForCreak]);
 
   // Controls bridge: queue + play DC / torpedo-hit blasts (attenuated by range).
   useEffect(() => {
@@ -337,10 +489,6 @@ export function StationPage() {
       cancelled = true;
     };
   }, [onControlsBridge, vessel, vessel?.bridgeDetonations, vessel?.stateVersion]);
-
-  const surfaced = vessel ? isRadarSurfaced(vessel.unit.position) : true;
-  const depthM = vessel?.unit.position.depth ?? 0;
-  const atPeriscopeDepth = depthM <= PERISCOPE_DEPTH_M;
 
   // Sub Sensors: pick a sensible default tab from depth; follow depth-band changes.
   // Do not depend on the whole vessel object — mast raise/lower / exposure updates must
@@ -1153,8 +1301,12 @@ export function StationPage() {
                   Bridge audio: quiet facility hum loops on this screen; nearby depth-charge
                   detonations play when within ~0.6 nm of own ship (any vessel — not only the
                   dropper). Torpedo hits play a procedural explosion for both firer and target
-                  Controls, attenuated by range. Hydrophone hears the DC sample at longer range
-                  when submerged.
+                  Controls, attenuated by range. Submarine Controls also hear occasional hull
+                  creaks while submerged (depth &gt; {RADAR_SURFACE_DEPTH_M} m), more often as
+                  keel depth increases (~{SUBMARINE_CREAK_INTERVAL_SHALLOW_SEC} s mean near the
+                  surface band down to ~{SUBMARINE_CREAK_INTERVAL_DEEP_SEC} s at{' '}
+                  {SUBMARINE_MAX_DEPTH_M} m), plus a stress creak with each nearby depth-charge
+                  blast. Hydrophone hears the DC sample at longer range when submerged.
                 </p>
               </>
             )}
