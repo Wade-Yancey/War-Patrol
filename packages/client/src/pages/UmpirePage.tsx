@@ -314,6 +314,9 @@ export function UmpirePage() {
               {umpire?.name ?? gameId}
             </p>
           </div>
+          {umpire && (
+            <TurnStatus turn={umpire.turn} turnLengthSeconds={umpire.turnLengthSeconds} />
+          )}
           <div className="stack" style={{ alignItems: 'flex-end', gap: '0.35rem' }}>
             <div className="row" style={{ alignItems: 'center' }}>
               <span className={`live-dot ${connected ? '' : 'off'}`} />

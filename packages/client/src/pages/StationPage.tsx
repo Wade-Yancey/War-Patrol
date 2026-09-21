@@ -753,6 +753,9 @@ export function StationPage() {
               </span>
             )}
           </div>
+          {vessel && (
+            <TurnStatus turn={vessel.turn} turnLengthSeconds={vessel.turnLengthSeconds} />
+          )}
           <div className="stack" style={{ alignItems: 'flex-end', gap: '0.35rem' }}>
             <div className="row" style={{ alignItems: 'center' }}>
               <span className={`live-dot ${connected ? '' : 'off'}`} />

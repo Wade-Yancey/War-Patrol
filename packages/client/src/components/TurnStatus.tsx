@@ -2,10 +2,15 @@ import type { TurnState } from '@war-patrol/shared';
 import { formatGameClock } from '@war-patrol/shared';
 import { memo, useEffect, useState } from 'react';
 
-function formatRemaining(deadline: string, now: number): string {
-  const ms = Date.parse(deadline) - now;
-  if (ms <= 0) return '00:00';
-  const s = Math.ceil(ms / 1000);
+const URGENT_SECONDS = 30;
+const CRITICAL_SECONDS = 10;
+
+function remainingSeconds(deadline: string, now: number): number {
+  return Math.max(0, Math.ceil((Date.parse(deadline) - now) / 1000));
+}
+
+function formatMmSs(totalSeconds: number): string {
+  const s = Math.max(0, totalSeconds);
   const mm = String(Math.floor(s / 60)).padStart(2, '0');
   const ss = String(s % 60).padStart(2, '0');
   return `${mm}:${ss}`;
@@ -27,7 +32,18 @@ function TurnStatusInner({
     return () => window.clearInterval(id);
   }, [active, turn.timerDeadline]);
 
-  const remaining = active && turn.timerDeadline ? formatRemaining(turn.timerDeadline, now) : null;
+  const secsLeft =
+    active && turn.timerDeadline ? remainingSeconds(turn.timerDeadline, now) : null;
+  const remaining = secsLeft != null ? formatMmSs(secsLeft) : null;
+  const urgency =
+    secsLeft == null
+      ? null
+      : secsLeft <= CRITICAL_SECONDS
+        ? 'critical'
+        : secsLeft <= URGENT_SECONDS
+          ? 'urgent'
+          : 'nominal';
+
   const gameClock =
     typeof turn.gameTimeSeconds === 'number' ? formatGameClock(turn.gameTimeSeconds) : null;
   const lengthMin =
@@ -36,24 +52,40 @@ function TurnStatusInner({
       : null;
 
   return (
-    <div className="row" style={{ alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-      <span className="mono">Turn {turn.number}</span>
-      {gameClock && (
-        <span className="mono readout" title="In-game clock">
-          ZULU {gameClock}
+    <div className="turn-status" role="group" aria-label="Turn status">
+      <div
+        className={[
+          'turn-chronometer',
+          active ? 'is-running' : 'is-idle',
+          urgency ? `is-${urgency}` : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        <span className="turn-chronometer-label">
+          {active ? 'Order time' : turn.phase === 'open' ? 'No timer' : 'Orders closed'}
         </span>
-      )}
-      {lengthMin != null && (
-        <span className="mono muted" title="In-game minutes per turn">
-          +{Number.isInteger(lengthMin) ? lengthMin : lengthMin.toFixed(1)} min/turn
+        <span className="turn-chronometer-digits mono">
+          {remaining ?? (turn.phase === 'open' ? '--:--' : '——')}
         </span>
-      )}
-      <span className={`status-pill ${turn.phase}`}>{turn.phase.replace('_', ' ')}</span>
-      {remaining && (
-        <span className="mono muted" aria-live="polite">
-          Timer {remaining}
-        </span>
-      )}
+      </div>
+
+      <div className="turn-status-meta">
+        <span className="mono turn-status-turn">Turn {turn.number}</span>
+        {gameClock && (
+          <span className="mono readout" title="In-game clock">
+            ZULU {gameClock}
+          </span>
+        )}
+        {lengthMin != null && (
+          <span className="mono muted" title="In-game minutes per turn">
+            +{Number.isInteger(lengthMin) ? lengthMin : lengthMin.toFixed(1)} min/turn
+          </span>
+        )}
+        <span className={`status-pill ${turn.phase}`}>{turn.phase.replace('_', ' ')}</span>
+      </div>
     </div>
   );
 }

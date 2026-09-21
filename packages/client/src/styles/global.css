@@ -824,10 +824,15 @@ label {
 
 .app-shell--radar-focus .header-bar {
   margin-bottom: 0.55rem;
+  align-items: center;
 }
 
 .app-shell--radar-focus .header-bar .brand {
   font-size: clamp(1.15rem, 3vw, 1.55rem) !important;
+}
+
+.app-shell--radar-focus .turn-chronometer-digits {
+  font-size: clamp(1.55rem, 4.5vw, 2.1rem);
 }
 
 .radar-station-panel {
@@ -1044,10 +1049,21 @@ label {
 
   .app-shell--radar-focus .header-bar {
     margin-bottom: 0.35rem;
+    gap: 0.45rem 0.65rem;
   }
 
   .app-shell--radar-focus .brand-mark {
     font-size: 0.65rem;
+  }
+
+  .app-shell--radar-focus .turn-status-meta .muted,
+  .app-shell--radar-focus .turn-status-meta .readout {
+    display: none;
+  }
+
+  .app-shell--radar-focus .turn-chronometer {
+    min-width: 6.5rem;
+    padding: 0.25rem 0.65rem 0.35rem;
   }
 
   .radar-station-blurb {
@@ -1610,14 +1626,137 @@ label {
 }
 
 .header-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
+  gap: 0.75rem 1rem;
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 1.25rem;
-  padding-bottom: 0.85rem;
+  padding: 0.65rem 0 0.85rem;
   border-bottom: 1px solid var(--line);
+  background: var(--bg-crt);
+  /* Keep sticky bar readable over scrolling phosphor panels */
+  box-shadow: 0 8px 16px -12px rgba(0, 0, 0, 0.85);
+}
+
+.header-bar .turn-status {
+  flex: 1 1 14rem;
+  min-width: min(100%, 14rem);
+  justify-content: flex-end;
+}
+
+@media (min-width: 720px) {
+  .header-bar .turn-status {
+    justify-content: center;
+  }
+}
+
+/* Shared chronometer — station + umpire; CRT readout, not a dashboard widget */
+.turn-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 0.9rem;
+}
+
+.turn-status-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.7rem;
+}
+
+.turn-status-turn {
+  letter-spacing: 0.06em;
+}
+
+.turn-chronometer {
+  display: grid;
+  grid-template-columns: auto;
+  justify-items: center;
+  gap: 0.15rem;
+  min-width: 7.5rem;
+  padding: 0.35rem 0.85rem 0.45rem;
+  border: 1px solid var(--phosphor);
+  background: var(--bezel-inset);
+  box-shadow:
+    inset 0 0 0 1px rgba(61, 255, 106, 0.12),
+    0 0 12px rgba(61, 255, 106, 0.08);
+}
+
+.turn-chronometer-label {
+  font-size: 0.62rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  line-height: 1.2;
+}
+
+.turn-chronometer-digits {
+  font-family: var(--font-display);
+  font-size: clamp(1.85rem, 5vw, 2.45rem);
+  line-height: 1;
+  letter-spacing: 0.12em;
+  color: var(--accent-strong);
+  text-shadow: 0 0 10px rgba(61, 255, 106, 0.35);
+  font-variant-numeric: tabular-nums;
+}
+
+.turn-chronometer.is-idle {
+  border-color: var(--line);
+  box-shadow: none;
+}
+
+.turn-chronometer.is-idle .turn-chronometer-digits {
+  color: var(--ink-muted);
+  text-shadow: none;
+  font-size: clamp(1.35rem, 4vw, 1.75rem);
+}
+
+.turn-chronometer.is-urgent {
+  border-color: #e0a050;
+  box-shadow:
+    inset 0 0 0 1px rgba(224, 160, 80, 0.18),
+    0 0 14px rgba(224, 160, 80, 0.18);
+}
+
+.turn-chronometer.is-urgent .turn-chronometer-label {
+  color: #e0b878;
+}
+
+.turn-chronometer.is-urgent .turn-chronometer-digits {
+  color: #ffd090;
+  text-shadow: 0 0 12px rgba(224, 160, 80, 0.45);
+}
+
+.turn-chronometer.is-critical {
+  border-color: var(--danger);
+  animation: chronometer-pulse 1s steps(2, end) infinite;
+}
+
+.turn-chronometer.is-critical .turn-chronometer-label {
+  color: #ffc8b8;
+}
+
+.turn-chronometer.is-critical .turn-chronometer-digits {
+  color: #ffb4a8;
+  text-shadow: 0 0 14px rgba(224, 112, 80, 0.55);
+}
+
+@keyframes chronometer-pulse {
+  50% {
+    background: rgba(224, 112, 80, 0.16);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turn-chronometer.is-critical {
+    animation: none;
+    background: rgba(224, 112, 80, 0.12);
+  }
 }
 
 /* Small side accent on the bezel — not a full-page tint */
