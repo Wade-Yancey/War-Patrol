@@ -1805,6 +1805,10 @@ async function main() {
       METERS_PER_NAVAL_YARD,
       METERS_PER_DEG_LAT,
       torpedoHitAudioDelaySec,
+      applyHealthDamage,
+      healthDamageApplied,
+      presentationHealthFromUnrevealedDamage,
+      DEPTH_CHARGE_DAMAGE_AMOUNT,
     } = await import('@war-patrol/shared');
     check('beam aspect dud ~3%', Math.abs(torpedoDudPctFromAspect(90) - 3) < 0.01);
     check('end-on dud ~18%', Math.abs(torpedoDudPctFromAspect(0) - 18) < 0.01);
@@ -1829,6 +1833,73 @@ async function main() {
       'torpedo audio delay preserves short turns',
       Math.abs(torpedoHitAudioDelaySec(5, 0, 60) - 30) < 0.01,
     );
+    // Applied HP (not rolled effect) must drive combat-log damage + Damage-tab staging.
+    // Five × 22 rolls on a fresh hull only remove 100 HP; last blow is a 12-point finish.
+    {
+      const baseUnit = {
+        id: 'ss-hp',
+        name: 'Hull',
+        type: 'Submarine' as const,
+        class: 'Fleet Submarine' as const,
+        condition: 'afloat' as const,
+        health: 100,
+        position: { lat: 0, lon: 0, depth: 80 },
+        speed: 3,
+        eot: 'ahead_standard' as const,
+        heading: 0,
+        orderedCourse: 0,
+        orderedDepth: 80,
+        subsystems: { propulsion: 'intact' as const, sensors: 'intact' as const },
+        orders: {},
+        maxSpeed: 21,
+        turnRate: 12,
+        radarSignature: 'small' as const,
+        sensors: [],
+        stations: [],
+        side: 'red' as const,
+        faction: 'Red' as const,
+        periscopeRaised: false,
+        periscopeExposure: 0,
+        plotStampTurns: 0,
+        activeSonarEnabled: false,
+      };
+      const applied: number[] = [];
+      let u = { ...baseUnit };
+      for (let i = 0; i < 5; i++) {
+        const next = applyHealthDamage(u, DEPTH_CHARGE_DAMAGE_AMOUNT);
+        applied.push(healthDamageApplied(u, next));
+        u = next;
+      }
+      check(
+        'DC overkill applied sum = 100',
+        applied.reduce((a, b) => a + b, 0) === 100,
+        `applied=${applied.join(',')}`,
+      );
+      check('DC overkill last applied is remainder 12', applied[4] === 12);
+      check('DC overkill no phantom after sunk', healthDamageApplied(u, applyHealthDamage(u, 22)) === 0);
+
+      const events = applied
+        .filter((d) => d > 0)
+        .map((damage, i) => ({
+          kind: 'depth_charge_damage' as const,
+          damage,
+          id: `e${i}`,
+        }));
+      let held = [...events];
+      let prev = presentationHealthFromUnrevealedDamage(0, held);
+      check('staged overkill HP starts at 100', prev === 100);
+      for (const e of events) {
+        held = held.filter((h) => h.id !== e.id);
+        const nextHp = presentationHealthFromUnrevealedDamage(0, held);
+        check(
+          `staged reveal ${e.id} drops by logged ${e.damage}`,
+          prev - nextHp === e.damage,
+          `prev=${prev} next=${nextHp} dmg=${e.damage}`,
+        );
+        prev = nextHp;
+      }
+      check('staged overkill ends at 0', prev === 0);
+    }
     // Fletcher 115×12: beam aspect gate ≈ length/2 + pad; end-on ≈ beam/2 + pad.
     const beamGate = torpedoHitGateM(115, 12, 90);
     const endGate = torpedoHitGateM(115, 12, 0);

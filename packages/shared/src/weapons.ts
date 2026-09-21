@@ -1241,6 +1241,36 @@ export function applyHealthDamage(unit: UnitState, damage: number): UnitState {
 }
 
 /**
+ * HP actually removed by {@link applyHealthDamage} (0 when already sunk / no-op).
+ * Combat-log `damage` and Controls staging must use this — not the rolled effect —
+ * so overkill / finishing blows do not report more HP than the bar can drop.
+ */
+export function healthDamageApplied(before: UnitState, after: UnitState): number {
+  return Math.max(0, before.health - after.health);
+}
+
+/**
+ * Controls Damage-tab presentation HP while some own-damage lines are still
+ * waiting on blast cues: add unrevealed applied HP back onto resolve-truth.
+ */
+export function presentationHealthFromUnrevealedDamage(
+  resolvedHealth: number,
+  unrevealed: ReadonlyArray<{ kind: string; damage?: number }>,
+): number {
+  let addBack = 0;
+  for (const e of unrevealed) {
+    if (
+      (e.kind === 'depth_charge_damage' || e.kind === 'torpedo_hit') &&
+      e.damage != null &&
+      e.damage > 0
+    ) {
+      addBack += e.damage;
+    }
+  }
+  return Math.min(100, Math.max(0, resolvedHealth + addBack));
+}
+
+/**
  * Build FoW-safe own-ship damage lines from the umpire combat log.
  * Only events that targeted this hull; summaries omit enemy GT identity.
  */

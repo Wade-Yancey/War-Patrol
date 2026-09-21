@@ -8,6 +8,7 @@ import {
   advanceDepthCharge,
   advanceTorpedo,
   applyHealthDamage,
+  healthDamageApplied,
   canDropDepthCharges,
   canFireTorpedo,
   clampDepthChargeSetting,
@@ -335,6 +336,7 @@ export function resolveWeaponsForTurn(
         if (roll.hit) {
           const damage = roll.damage;
           const damaged = applyHealthDamage(target, damage);
+          const applied = healthDamageApplied(target, damaged);
           units = units.map((u) => (u.id === uid ? damaged : u));
           unitMap.set(uid, damaged);
           const truncated = truncateTorpedoAtHit(fish, advanced, before, closest, uid, 'hit');
@@ -351,38 +353,41 @@ export function resolveWeaponsForTurn(
               audioDelaySec,
             }),
           );
-          combatLogEntries.push(
-            logLine({
-              kind: 'torpedo_hit',
-              turnNumber,
-              gameTimeSeconds,
-              actor: unitMap.get(fish.firerUnitId),
-              target: damaged,
-              damage,
-              sourceDetonationId: hitDetonationId,
-              summary: `Torpedo HIT ${target.name} (−${damage} HP · aspect ${roll.aspectDeg.toFixed(0)}° · gate ${roll.hitGateM.toFixed(0)} m · L-ID ${(roll.lengthIdScale * 100).toFixed(0)}%)`,
-            }),
-          );
-          combatLogEntries.push(
-            ...logSubsystemCasualties(target, damaged, {
-              turnNumber,
-              gameTimeSeconds,
-              actor: unitMap.get(fish.firerUnitId),
-              sourceDetonationId: hitDetonationId,
-            }),
-          );
-          if (damaged.condition === 'sunk') {
+          // Log HP actually removed (not the roll) so FoW staging matches the bar.
+          if (applied > 0) {
             combatLogEntries.push(
               logLine({
-                kind: 'unit_sunk',
+                kind: 'torpedo_hit',
                 turnNumber,
                 gameTimeSeconds,
-                target: damaged,
                 actor: unitMap.get(fish.firerUnitId),
+                target: damaged,
+                damage: applied,
                 sourceDetonationId: hitDetonationId,
-                summary: `${damaged.name} SUNK / destroyed`,
+                summary: `Torpedo HIT ${target.name} (−${applied} HP · aspect ${roll.aspectDeg.toFixed(0)}° · gate ${roll.hitGateM.toFixed(0)} m · L-ID ${(roll.lengthIdScale * 100).toFixed(0)}%)`,
               }),
             );
+            combatLogEntries.push(
+              ...logSubsystemCasualties(target, damaged, {
+                turnNumber,
+                gameTimeSeconds,
+                actor: unitMap.get(fish.firerUnitId),
+                sourceDetonationId: hitDetonationId,
+              }),
+            );
+            if (damaged.condition === 'sunk') {
+              combatLogEntries.push(
+                logLine({
+                  kind: 'unit_sunk',
+                  turnNumber,
+                  gameTimeSeconds,
+                  target: damaged,
+                  actor: unitMap.get(fish.firerUnitId),
+                  sourceDetonationId: hitDetonationId,
+                  summary: `${damaged.name} SUNK / destroyed`,
+                }),
+              );
+            }
           }
           return truncated;
         }
@@ -448,40 +453,45 @@ export function resolveWeaponsForTurn(
         });
         if (damage > 0) {
           const damaged = applyHealthDamage(target, damage);
+          const applied = healthDamageApplied(target, damaged);
           units = units.map((u) => (u.id === uid ? damaged : u));
           unitMap.set(uid, damaged);
-          combatLogEntries.push(
-            logLine({
-              kind: 'depth_charge_damage',
-              turnNumber,
-              gameTimeSeconds,
-              actor: unitMap.get(advanced.firerUnitId),
-              target: damaged,
-              damage,
-              sourceDetonationId: dcDetonationId,
-              summary: `DC effect on ${target.name} −${damage} HP (miss ${horiz.toFixed(0)} m · ΔD ${depthErr.toFixed(0)} m)`,
-            }),
-          );
-          combatLogEntries.push(
-            ...logSubsystemCasualties(target, damaged, {
-              turnNumber,
-              gameTimeSeconds,
-              actor: unitMap.get(advanced.firerUnitId),
-              sourceDetonationId: dcDetonationId,
-            }),
-          );
-          if (damaged.condition === 'sunk') {
+          // Applied HP only — rolled overkill past 0 must not inflate Damage-tab lines
+          // or staged hull rewind (#92 presentation).
+          if (applied > 0) {
             combatLogEntries.push(
               logLine({
-                kind: 'unit_sunk',
+                kind: 'depth_charge_damage',
                 turnNumber,
                 gameTimeSeconds,
-                target: damaged,
                 actor: unitMap.get(advanced.firerUnitId),
+                target: damaged,
+                damage: applied,
                 sourceDetonationId: dcDetonationId,
-                summary: `${damaged.name} SUNK / destroyed`,
+                summary: `DC effect on ${target.name} −${applied} HP (miss ${horiz.toFixed(0)} m · ΔD ${depthErr.toFixed(0)} m)`,
               }),
             );
+            combatLogEntries.push(
+              ...logSubsystemCasualties(target, damaged, {
+                turnNumber,
+                gameTimeSeconds,
+                actor: unitMap.get(advanced.firerUnitId),
+                sourceDetonationId: dcDetonationId,
+              }),
+            );
+            if (damaged.condition === 'sunk') {
+              combatLogEntries.push(
+                logLine({
+                  kind: 'unit_sunk',
+                  turnNumber,
+                  gameTimeSeconds,
+                  target: damaged,
+                  actor: unitMap.get(advanced.firerUnitId),
+                  sourceDetonationId: dcDetonationId,
+                  summary: `${damaged.name} SUNK / destroyed`,
+                }),
+              );
+            }
           }
         }
       }

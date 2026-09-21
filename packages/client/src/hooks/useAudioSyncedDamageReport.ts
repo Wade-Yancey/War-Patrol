@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   HEALTH_PROPULSION_DISABLED_BELOW,
   HEALTH_SENSORS_DISABLED_BELOW,
+  presentationHealthFromUnrevealedDamage,
   type OwnDamageEvent,
   type UnitCondition,
   type UnitSubsystems,
@@ -175,16 +176,7 @@ export function useAudioSyncedDamageReport(
     const damageLog = log.filter((e) => revealedIds.has(e.id));
     const held = log.filter((e) => !revealedIds.has(e.id));
 
-    let health = unit.health;
-    for (const e of held) {
-      if (
-        (e.kind === 'depth_charge_damage' || e.kind === 'torpedo_hit') &&
-        e.damage != null &&
-        e.damage > 0
-      ) {
-        health = Math.min(100, health + e.damage);
-      }
-    }
+    const health = presentationHealthFromUnrevealedDamage(unit.health, held);
 
     const heldFatal = held.some((e) => e.kind === 'unit_sunk' || e.kind === 'hull_implosion');
     // Keep afloat while a linked fatal line is still waiting on its blast cue.
