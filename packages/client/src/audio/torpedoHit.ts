@@ -1,8 +1,11 @@
 /** Torpedo-hit explosion sample (Controls bridge — firer + target). */
 export const TORPEDO_HIT_SAMPLE_URL = '/audio/explosion.wav';
 
-/** Peak gain on Controls at zero range (before distance attenuation). */
-export const TORPEDO_HIT_CONTROLS_PEAK_GAIN = 0.72;
+/**
+ * Peak gain on Controls at zero range (before distance attenuation).
+ * Modest bump vs the prior 0.72 so scored hits read clearly without clipping.
+ */
+export const TORPEDO_HIT_CONTROLS_PEAK_GAIN = 0.82;
 
 export async function loadTorpedoHitBuffer(ctx: AudioContext): Promise<AudioBuffer> {
   const res = await fetch(TORPEDO_HIT_SAMPLE_URL);
