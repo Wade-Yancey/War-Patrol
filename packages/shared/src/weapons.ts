@@ -1042,25 +1042,52 @@ export function formatTorpedoMissDistance(missM: number): string {
 /**
  * Record a closer horizontal approach on a running fish (persists across turns).
  * Distance is track→target-center meters — same metric as {@link resolveTorpedoHit}.
+ * Only replaces the stored CPA when `missM` is strictly nearer (nearest contact).
  */
 export function recordTorpedoClosestApproach(
   fish: TorpedoTrack,
   missM: number,
   unitId: string,
+  unitName?: string,
 ): TorpedoTrack {
   const m = Math.max(0, Number(missM) || 0);
   if (!(m >= 0) || !unitId) return fish;
   if (fish.closestApproachM != null && m >= fish.closestApproachM) return fish;
+  const name = (unitName ?? '').trim();
   return {
     ...fish,
     closestApproachM: m,
     closestApproachUnitId: unitId,
+    ...(name ? { closestApproachUnitName: name } : { closestApproachUnitName: undefined }),
   };
 }
 
 /**
+ * Nearest eligible contact along one track segment (horizontal CPA to centers).
+ * Skips firer and non-targets. Used by resolve and verify to pick Platte@200 m
+ * over Neosho@6000 m.
+ */
+export function nearestTorpedoApproachOnSegment(
+  from: LatLonDepth,
+  to: LatLonDepth,
+  candidates: readonly UnitState[],
+  firerUnitId: string,
+): { unitId: string; unitName: string; missM: number } | null {
+  let best: { unitId: string; unitName: string; missM: number } | null = null;
+  for (const target of candidates) {
+    if (target.id === firerUnitId) continue;
+    if (!isTorpedoTarget(target)) continue;
+    const missM = segmentClosestMissM(from, to, target.position);
+    if (best == null || missM < best.missM) {
+      best = { unitId: target.id, unitName: target.name, missM };
+    }
+  }
+  return best;
+}
+
+/**
  * Umpire CRT summary when a fish exhausts without a hit/dud.
- * Includes firer, nearest approach target (if any), CPA, and near/far band.
+ * Names the **nearest contact** CPA (not the aimed solution target).
  */
 export function formatTorpedoMissLogSummary(opts: {
   firerName: string;
@@ -1078,6 +1105,39 @@ export function formatTorpedoMissLogSummary(opts: {
     return `Torpedo from ${firer} MISSED ${opts.targetName} — CPA ${dist} (${band})`;
   }
   return `Torpedo from ${firer} MISSED — CPA ${dist} (${band})`;
+}
+
+/**
+ * Compact umpire GT / AAR weapon-track label for an exhausted fish.
+ * Example: `FISH · MISS Platte 200m (FAR)`.
+ */
+export function formatTorpedoMissTrackLabel(opts: {
+  closestApproachM?: number;
+  targetName?: string;
+}): string {
+  const cpa = opts.closestApproachM;
+  if (cpa == null || !(cpa >= 0) || Number.isNaN(cpa)) {
+    return 'FISH · EXHAUSTED';
+  }
+  const band = torpedoMissBand(cpa) === 'near' ? 'NEAR' : 'FAR';
+  const dist = `${Math.round(cpa)}m`;
+  const name = (opts.targetName ?? '').trim();
+  if (name) {
+    return `FISH · MISS ${name} ${dist} (${band})`;
+  }
+  return `FISH · MISS ${dist} (${band})`;
+}
+
+/** Resolve display name for a fish's stored nearest-contact CPA. */
+export function torpedoMissNearestContactName(
+  fish: Pick<TorpedoTrack, 'closestApproachUnitId' | 'closestApproachUnitName'>,
+  units?: readonly Pick<UnitState, 'id' | 'name'>[],
+): string | undefined {
+  const snap = (fish.closestApproachUnitName ?? '').trim();
+  if (snap) return snap;
+  const id = fish.closestApproachUnitId;
+  if (!id || !units?.length) return undefined;
+  return units.find((u) => u.id === id)?.name;
 }
 
 /**

@@ -204,13 +204,20 @@ export interface TorpedoTrack {
   estimatedRangeNm: number;
   estimatedLengthM: number;
   /**
-   * Best horizontal closest-approach to an enemy hull while running (m),
+   * Best horizontal closest-approach to any eligible hull while running (m),
    * measured track→target center (same geometry as the hit gate miss check).
-   * Accumulated across turns for the umpire miss log when the fish expires.
+   * Always the **nearest contact** this run — not the aimed / solution target —
+   * so a fish that skimmed Platte at 200 m while Neosho was 6000 m away reports
+   * Platte. Accumulated across turns for umpire miss log + AAR GT labels.
    */
   closestApproachM?: number;
   /** Unit id of {@link closestApproachM} (nearest approach this run). */
   closestApproachUnitId?: string;
+  /**
+   * Display name snapshotted with {@link closestApproachUnitId} (of-record for
+   * AAR / GT labels when the live unit list is unavailable).
+   */
+  closestApproachUnitName?: string;
   /**
    * Breadcrumb positions along the run (launch → current/end).
    * Umpire GT map polyline; includes launch as first point.
