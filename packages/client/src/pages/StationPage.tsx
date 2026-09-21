@@ -1368,8 +1368,9 @@ export function StationPage() {
                 <p className="muted controls-ambient-note">
                   Bridge audio: quiet facility hum loops on this screen; nearby depth-charge
                   detonations play when within ~{DEPTH_CHARGE_CONTROLS_AUDIBLE_NM} nm of own ship
-                  (any vessel — not only the dropper) — close blasts are loud, then fall off
-                  sharply with range toward silence at the hear-radius edge.
+                  (any vessel — not only the dropper) — close blasts stay near peak, then fall
+                  off steeply with range (quiets quieter mid/far) toward silence at the
+                  hear-radius edge.
                   Multi-charge patterns play one distant-explosion sample per charge, spaced
                   evenly across ~{DEPTH_CHARGE_AUDIO_SPREAD_SEC / 60} minutes (not stacked),
                   each at its own range volume. Own-ship Damage report lines (and hull readout
