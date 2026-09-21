@@ -15,7 +15,7 @@ Original: https://freesound.org/people/ecfike/sounds/132861/
 Local copy: depth-charge.wav
 Original filename: 132861__ecfike__distant-explosion.wav
 Notes: Controls bridge + hydrophone depth-charge detonation one-shots;
-multi-charge patterns stagger one play per charge across ~2 minutes.
+multi-charge patterns stagger one play per charge across ~1.5 minutes.
 
 Source: Facility Hum Ambience Loopable by aSuperiorPotato (Freesound #619320)
 License: CC0 / public domain

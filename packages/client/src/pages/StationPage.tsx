@@ -290,7 +290,7 @@ export function StationPage() {
     }> = [];
 
     // Multi-charge patterns arrive as one hear-batch after resolve — stagger
-    // one distant-explosion one-shot per charge across ~2 minutes (not stacked).
+    // one distant-explosion one-shot per charge across ~1.5 minutes (not stacked).
     const dcBatch = pending
       .filter((e) => e.kind !== 'torpedo_hit' && !playedBridgeBlastRef.current.has(e.id))
       .slice()

@@ -39,7 +39,7 @@ export const DEPTH_CHARGE_DAMAGE_BAND_GAIN = {
  * spread on the client. Server resolve still applies all effects in one turn;
  * audio only is staggered so N blasts are not stacked into a single hit.
  */
-export const DEPTH_CHARGE_AUDIO_SPREAD_SEC = 120;
+export const DEPTH_CHARGE_AUDIO_SPREAD_SEC = 90;
 
 /**
  * Delay (seconds) for the `index`-th of `count` depth-charge one-shots in a
@@ -47,7 +47,7 @@ export const DEPTH_CHARGE_AUDIO_SPREAD_SEC = 120;
  *
  * - `count <= 1` → 0
  * - else evenly from 0 … {@link DEPTH_CHARGE_AUDIO_SPREAD_SEC}:
- *   `delay = index / (count - 1) * 120`
+ *   `delay = index / (count - 1) * DEPTH_CHARGE_AUDIO_SPREAD_SEC`
  */
 export function depthChargeStaggerDelaySec(index: number, count: number): number {
   const n = Math.max(0, Math.floor(count));
