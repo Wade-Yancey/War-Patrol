@@ -295,7 +295,7 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
     for (const id of [...playedDcIdsRef.current]) {
       if (!liveIds.has(id)) playedDcIdsRef.current.delete(id);
     }
-    // New contacts in this hear-batch: one sample per charge, staggered over ~2 min.
+    // New contacts in this hear-batch: one sample per charge, staggered over ~1.5 min.
     const fresh = charges
       .filter((c) => !playedDcIdsRef.current.has(c.id))
       .slice()

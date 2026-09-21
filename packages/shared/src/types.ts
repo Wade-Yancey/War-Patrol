@@ -259,9 +259,10 @@ export interface WeaponDetonationEvent {
   targetUnitId?: string;
   /**
    * Wall-clock seconds after the client receives this cue before bridge SFX
-   * (and the matching Damage-tab reveal) should play. Torpedo hits: offset into
-   * the resolved turn when the fish reached the target. Depth charges omit this
-   * and use the client stagger schedule instead.
+   * (and the matching Damage-tab reveal) should play. Torpedo hits: compressed
+   * presentation delay from intercept fraction within the turn (capped — see
+   * `TORPEDO_HIT_AUDIO_MAX_DELAY_SEC`). Depth charges omit this and use the
+   * client stagger schedule instead.
    */
   audioDelaySec?: number;
 }
@@ -808,8 +809,8 @@ export interface VesselView {
     kind: 'depth_charge' | 'torpedo_hit';
     /**
      * Seconds after the cue is heard before the one-shot (and Damage-tab line)
-     * should play. Set for torpedo hits from run-arrival; omitted for DC
-     * (client stagger).
+     * should play. Torpedo hits: compressed run-arrival delay (≤
+     * `TORPEDO_HIT_AUDIO_MAX_DELAY_SEC`). Omitted for DC (client stagger).
      */
     audioDelaySec?: number;
   }>;
