@@ -21,6 +21,7 @@ import {
   moveAlongHeading,
   normalizeHeading,
 } from './geo.js';
+import { shortestBearingDelta } from './hydrophone.js';
 import type {
   CombatLogEntry,
   DepthChargePattern,
@@ -66,6 +67,19 @@ export const FLEET_SUB_TORPEDO_LOAD = FLEET_SUB_TORPEDO_FORWARD + FLEET_SUB_TORP
  * minutes of live ordering). Deliberately slow for physical-tube live events.
  */
 export const TORPEDO_RELOAD_TURNS = 5;
+
+/**
+ * Forward (bow) tube firing cone half-angle about own heading.
+ * WWII fleet-boat bow tubes / gyro angles: fish must run roughly ahead —
+ * mid of the historically plausible ±30–60° band (±45° → 90° total cone).
+ */
+export const TORPEDO_FORWARD_ARC_HALF_DEG = 45;
+
+/**
+ * Aft (stern) tube firing cone half-angle about own heading + 180°.
+ * Stern tubes fire roughly astern — same ±45° half-angle as the bow room.
+ */
+export const TORPEDO_AFT_ARC_HALF_DEG = 45;
 
 /** Max fish in one queued spread order. */
 export const TORPEDO_SPREAD_MAX_COUNT = 4;
@@ -485,6 +499,111 @@ export function torpedoRoomCapacity(room: TorpedoRoomId): number {
 
 export function normalizeTorpedoRoomId(raw: unknown): TorpedoRoomId {
   return raw === 'aft' ? 'aft' : 'forward';
+}
+
+/** Tube-axis true heading for a room (bow = own HDG; stern = own HDG + 180°). */
+export function torpedoRoomArcAxisHeading(
+  ownHeadingDeg: number,
+  room: TorpedoRoomId,
+): number {
+  const r = normalizeTorpedoRoomId(room);
+  return r === 'aft'
+    ? normalizeHeading(ownHeadingDeg + 180)
+    : normalizeHeading(ownHeadingDeg);
+}
+
+/** Half-angle of the room's firing cone (degrees). */
+export function torpedoRoomArcHalfDeg(room: TorpedoRoomId): number {
+  return normalizeTorpedoRoomId(room) === 'aft'
+    ? TORPEDO_AFT_ARC_HALF_DEG
+    : TORPEDO_FORWARD_ARC_HALF_DEG;
+}
+
+/**
+ * Signed gyro angle of a fish run heading vs the room's tube axis (−180, 180].
+ * Forward: 0 = dead ahead; aft: 0 = dead astern.
+ */
+export function torpedoRoomGyroAngleDeg(
+  ownHeadingDeg: number,
+  fireHeadingDeg: number,
+  room: TorpedoRoomId,
+): number {
+  return shortestBearingDelta(
+    torpedoRoomArcAxisHeading(ownHeadingDeg, room),
+    fireHeadingDeg,
+  );
+}
+
+/** True when a single fish heading lies inside the room's firing cone. */
+export function isTorpedoFireHeadingInRoomArc(
+  ownHeadingDeg: number,
+  fireHeadingDeg: number,
+  room: TorpedoRoomId,
+): boolean {
+  return (
+    Math.abs(torpedoRoomGyroAngleDeg(ownHeadingDeg, fireHeadingDeg, room)) <=
+    torpedoRoomArcHalfDeg(room)
+  );
+}
+
+export type TorpedoArcCheckInput = {
+  ownHeadingDeg: number;
+  room?: TorpedoRoomId | string;
+  aimHeading: number;
+  estimatedCourse: number;
+  estimatedSpeedKn: number;
+  estimatedRangeNm: number;
+  spreadCount?: number;
+  spreadDeg?: number;
+};
+
+export type TorpedoArcCheckResult = {
+  ok: boolean;
+  room: TorpedoRoomId;
+  fireHeading: number;
+  /** Gyro of the center fire heading vs the room axis (−180, 180]. */
+  gyroDeg: number;
+  halfDeg: number;
+  headings: number[];
+  /** Fish headings that fall outside the cone (empty when ok). */
+  outOfArc: number[];
+};
+
+/**
+ * Compute solution fire heading + spread fan, then test every fish against
+ * the selected room's historically plausible cone (bow vs stern).
+ */
+export function checkTorpedoOrderArc(input: TorpedoArcCheckInput): TorpedoArcCheckResult {
+  const room = normalizeTorpedoRoomId(input.room);
+  const solution = torpedoFireHeadingFromSolution({
+    aimHeading: input.aimHeading,
+    estimatedCourse: input.estimatedCourse,
+    estimatedSpeedKn: input.estimatedSpeedKn,
+    estimatedRangeNm: input.estimatedRangeNm,
+  });
+  const count = clampTorpedoSpreadCount(input.spreadCount);
+  const spacing = clampTorpedoSpreadDeg(input.spreadDeg);
+  const headings = torpedoSpreadHeadings(solution.fireHeading, count, spacing);
+  const halfDeg = torpedoRoomArcHalfDeg(room);
+  const outOfArc = headings.filter(
+    (h) => !isTorpedoFireHeadingInRoomArc(input.ownHeadingDeg, h, room),
+  );
+  return {
+    ok: outOfArc.length === 0,
+    room,
+    fireHeading: solution.fireHeading,
+    gyroDeg: torpedoRoomGyroAngleDeg(input.ownHeadingDeg, solution.fireHeading, room),
+    halfDeg,
+    headings,
+    outOfArc,
+  };
+}
+
+/** Compact operator/umpire message when a fire order sits outside the room arc. */
+export function formatTorpedoArcRejectMessage(check: TorpedoArcCheckResult): string {
+  const roomLabel = check.room === 'aft' ? 'aft (stern)' : 'forward (bow)';
+  const gyro = `${check.gyroDeg >= 0 ? '+' : ''}${Math.round(check.gyroDeg)}°`;
+  return `${roomLabel} arc ±${check.halfDeg}° — gyro ${gyro} outside cone`;
 }
 
 /** Full forward/aft magazines for a fleet sub (or zeros for non-torpedo hulls). */
