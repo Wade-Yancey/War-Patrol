@@ -34,14 +34,14 @@ function PendingOrdersPanelInner({ units }: { units: UnitState[] }) {
         <h2>Pending orders of record</h2>
         <span
           className={`status-pill ${filed === total && total > 0 ? 'open' : 'awaiting_resolution'}`}
-          title="Vessels with helm and/or EOT filed for this turn"
+          title="Vessels with helm and/or engine orders filed for this turn"
         >
           {filed}/{total} filed
         </span>
       </div>
       <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-        Live submissions for the current turn. CRS rings up immediately; EOT applies on Resolve.
-        Gaps sort to the top.
+        Live submissions for the current turn. CRS rings up immediately; engine orders apply on
+        Resolve. Gaps sort to the top.
       </p>
       {total === 0 ? (
         <p className="muted mono" style={{ margin: 0 }}>
@@ -74,7 +74,7 @@ function PendingOrdersPanelInner({ units }: { units: UnitState[] }) {
                   </div>
                   <div className="pending-order-meta mono muted">
                     <span>
-                      Standing CRS {formatCourseDegrees(row.orderedCourse)} · EOT{' '}
+                      Standing CRS {formatCourseDegrees(row.orderedCourse)} · Engine orders{' '}
                       {EOT_LABELS[row.currentEot]}
                     </span>
                     {row.submitted && (row.updatedByStationId || clock) && (

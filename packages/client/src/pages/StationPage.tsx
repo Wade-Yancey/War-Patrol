@@ -1198,7 +1198,7 @@ export function StationPage() {
                   </span>
                 </div>
                 <div className="controls-status-item">
-                  <span className="controls-status-key">EOT</span>
+                  <span className="controls-status-key">Engine orders</span>
                   <span className="readout">{EOT_LABELS[vessel.unit.eot]}</span>
                 </div>
                 {vessel.unit.type === 'Submarine' && (
@@ -1240,7 +1240,7 @@ export function StationPage() {
                   aria-selected={controlsTab === 'eot'}
                   onClick={() => setControlsTab('eot')}
                 >
-                  EOT
+                  Engine orders
                 </button>
               )}
               {canHelm && vessel.unit.type === 'Submarine' && (
@@ -1406,7 +1406,7 @@ export function StationPage() {
                 {canEot && (
                   <section className="panel stack controls-eot-panel">
                     <div className="controls-section-head">
-                      <h2>Engine order telegraph</h2>
+                      <h2>Engine orders</h2>
                       <p className="muted controls-section-blurb">
                         Ring up a bell — acknowledged on resolve; hull speed ramps.
                       </p>
@@ -1423,7 +1423,7 @@ export function StationPage() {
                         disabled={!vessel.canSubmitOrders}
                         onClick={() => void submit({ eot })}
                       >
-                        Ring up EOT
+                        Submit engine orders
                       </button>
                     </div>
                   </section>
