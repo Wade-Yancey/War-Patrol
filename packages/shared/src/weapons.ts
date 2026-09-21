@@ -291,9 +291,12 @@ export function torpedoSpreadHeadings(
 }
 
 export type TorpedoSolutionInput = {
-  /** Player LOS / aim bearing to the estimated present target position (true °). */
+  /**
+   * LOS / aim bearing to the estimated present target position (**true** °).
+   * UI may collect this as optics relative and convert before calling.
+   */
   aimHeading: number;
-  /** Player-estimated target true course (°). */
+  /** Player-estimated target true course (° — not AOB). */
   estimatedCourse: number;
   /** Player-estimated target speed (kn). */
   estimatedSpeedKn: number;
