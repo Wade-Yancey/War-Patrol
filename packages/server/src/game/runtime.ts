@@ -37,6 +37,7 @@ import {
   resolveVesselIdentity,
   sideFromFaction,
   isV1PlayerUnit,
+  normalizeContactBook,
   type EotSetting,
   type GameSave,
   type HullClass,
@@ -151,6 +152,7 @@ function normalizeUnit(unit: UnitState): UnitState {
     class: (unit as UnitState & { class?: HullClass }).class,
     classId: unit.classId,
   });
+  const contactBook = normalizeContactBook(unit.contactBook);
   let sensors = unit.sensors ?? defaultSensors(identity.class);
   // Migrate multi-station layouts → Controls + Sensors; reconcile equipment by class.
   let stations = unit.stations.map((s) => ({ ...s, capabilities: [...s.capabilities] }));
@@ -275,6 +277,7 @@ function normalizeUnit(unit: UnitState): UnitState {
       typeof unit.depthChargeLoad === 'number'
         ? Math.max(0, Math.floor(unit.depthChargeLoad))
         : defaultDepthChargeLoad(identity),
+    ...(contactBook ? { contactBook } : {}),
   };
 }
 

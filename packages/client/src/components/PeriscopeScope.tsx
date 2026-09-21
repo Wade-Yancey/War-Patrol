@@ -102,8 +102,7 @@ function PeriscopeScopeInner({
       : (sorted[0]?.id ?? null);
 
   const selected = effectiveId ? (sorted.find((c) => c.id === effectiveId) ?? null) : null;
-  const selectedIndex = selected ? sorted.findIndex((c) => c.id === selected.id) : -1;
-  const selectedLabelN = selectedIndex >= 0 ? selectedIndex + 1 : null;
+  const selectedLabelN = selected?.labelN ?? null;
 
   const scale = selected ? Math.max(periscopeSilhouetteScale(selected.rangeNm, maxRangeNm), 0.55) : 1;
   const viewportLabel =
@@ -167,7 +166,7 @@ function PeriscopeScopeInner({
             <div className="periscope-readouts mono">
               <span className="readout">
                 {isFeather
-                  ? 'PERISCOPE'
+                  ? `PERISCOPE ${selectedLabelN}`
                   : `Contact ${selectedLabelN}`}
               </span>
               <span>{formatRelBearing(selected.relativeBearing)}</span>
@@ -200,7 +199,7 @@ function PeriscopeScopeInner({
             </p>
           ) : (
             <ul className="sensor-contact-scroll">
-              {sorted.map((c, i) => {
+              {sorted.map((c) => {
                 const active = c.id === effectiveId;
                 return (
                   <li key={c.id}>
@@ -215,8 +214,8 @@ function PeriscopeScopeInner({
                     >
                       <span className="readout">
                         {c.kind === 'periscope'
-                          ? 'PERISCOPE'
-                          : `${contactKindLabel(c)} ${i + 1}`}
+                          ? `PERISCOPE ${c.labelN}`
+                          : `${contactKindLabel(c)} ${c.labelN}`}
                       </span>
                       <span className="radar-contact-meta">
                         <span>{formatRelBearing(c.relativeBearing)}</span>

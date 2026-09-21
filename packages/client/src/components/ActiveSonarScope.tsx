@@ -181,9 +181,11 @@ function ActiveSonarScopeInner({
 
   const contactIndexById = useMemo(() => {
     const map = new Map<string, number>();
-    visibleContacts.forEach((c, i) => map.set(c.id, i + 1));
+    for (const c of contacts) {
+      map.set(c.id, c.labelN);
+    }
     return map;
-  }, [visibleContacts]);
+  }, [contacts]);
 
   const blips = [...persistRef.current.values()]
     .filter((b) => b.rangeNm <= scaleNm || contactIndexById.has(b.id))
@@ -196,8 +198,8 @@ function ActiveSonarScopeInner({
       const x = CX + Math.cos(rad) * r;
       const y = CY + Math.sin(rad) * r;
       const blipR = 4 + 5 * b.strength;
-      const labelN = contactIndexById.get(b.id);
-      const live = labelN != null && b.rangeNm <= scaleNm;
+      const labelN = contactIndexById.get(b.id) ?? b.labelN;
+      const live = contactIndexById.has(b.id) && b.rangeNm <= scaleNm;
       const opacity = live ? Math.max(0.92, 0.85 + 0.15 * b.strength) : Math.max(0.25, fade * 0.55);
       const labelOnLeft = x > CX + SCOPE_R * 0.35;
       return {
@@ -368,9 +370,9 @@ function ActiveSonarScopeInner({
             </p>
           ) : (
             <ul className="sensor-contact-scroll">
-              {visibleContacts.map((c, i) => (
+              {visibleContacts.map((c) => (
                 <li key={c.id} className="mono">
-                  <span className="readout">Contact {i + 1}</span>
+                  <span className="readout">Contact {c.labelN}</span>
                   <div className="radar-contact-meta">
                     <span>{String(Math.round(c.bearing)).padStart(3, '0')}°</span>
                     <span>{c.rangeNm.toFixed(1)} nm</span>

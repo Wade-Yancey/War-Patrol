@@ -4,6 +4,7 @@ import {
   bearingRangeNm,
   canUseSensors,
   defaultRadarSignature,
+  ensureContactLabel,
   findActiveSonarSensor,
   isInsideActiveSonarCone,
   isRadarTargetable,
@@ -88,6 +89,7 @@ export function buildActiveSonarContacts(own: UnitState, save: GameSave): Active
 
     contacts.push({
       id: `s-${hashTrackId(own.id, other.id)}`,
+      labelN: ensureContactLabel(own, other.id),
       bearing: Math.round(bearing * 10) / 10,
       rangeNm: Math.round(rangeNm * 100) / 100,
       strength: Math.round(strength * 100) / 100,

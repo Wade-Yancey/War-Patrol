@@ -4,6 +4,7 @@ import {
   coarsenPeriscopeRangeNm,
   coarsenPeriscopeSpeedKn,
   coarsenRelativeBearingDeg,
+  ensureContactLabel,
   findLookoutSensor,
   isPeriscopeDepthOk,
   isPeriscopeRaised,
@@ -99,6 +100,7 @@ export function buildPeriscopeContacts(own: UnitState, save: GameSave): Periscop
 
       contacts.push({
         id: `p-${hashTrackId(own.id, other.id)}`,
+        labelN: ensureContactLabel(own, other.id),
         kind: 'hull',
         relativeBearing: coarsenRelativeBearingDeg(relativeBearingDeg(own.heading, bearing)),
         rangeNm: coarsenPeriscopeRangeNm(rangeNm),
@@ -116,6 +118,7 @@ export function buildPeriscopeContacts(own: UnitState, save: GameSave): Periscop
 
       contacts.push({
         id: `pf-${hashTrackId(own.id, other.id)}`,
+        labelN: ensureContactLabel(own, other.id),
         kind: 'periscope',
         relativeBearing: coarsenRelativeBearingDeg(
           relativeBearingDeg(own.heading, bearing),
@@ -127,6 +130,7 @@ export function buildPeriscopeContacts(own: UnitState, save: GameSave): Periscop
     }
   }
 
+  // Display order by relative bearing / range — labels stay on the designation book.
   contacts.sort(
     (a, b) =>
       Math.abs(a.relativeBearing) - Math.abs(b.relativeBearing) || a.rangeNm - b.rangeNm,
