@@ -3051,7 +3051,8 @@ label {
 
 .periscope-silhouette {
   /* Plain Vite-bundled PNG with alpha — no filters; transparent over sky/sea.
-     Natural aspect from width/height attrs (DD 349×79, sub 350×55). */
+     Natural aspect from width/height attrs (DD 349×79, sub 350×55).
+     Default art is bow-right; --flip mirrors for port AOB (see periscopeSilhouetteFlipX). */
   display: block;
   flex: 0 0 auto;
   box-sizing: border-box;
@@ -3065,6 +3066,10 @@ label {
   border: none;
   user-select: none;
   -webkit-user-drag: none;
+}
+
+.periscope-silhouette--flip {
+  transform: scaleX(-1);
 }
 
 /* DD lookout feather — thin mast SVG, not a hull plate. */

@@ -205,6 +205,33 @@ export function periscopeSilhouetteScale(
 }
 
 /**
+ * Whether to mirror a bow-right recognition plate for the observed aspect.
+ *
+ * **Flip rule (periscope / lookout hull plates):**
+ * - Asset plates are drawn **bow right** (starboard-side elevation).
+ * - Signed angle-on-bow (AOB) = shortest turn from FoW `courseDeg` to the
+ *   bearing from the target back to the observer (`trueBearing + 180°`),
+ *   where `trueBearing = ownHeading + relativeBearing`.
+ * - `aob < 0` → **port aspect** → flip horizontally (`scaleX(-1)`, bow left).
+ * - `aob ≥ 0` → **starboard / end-on** → leave unflipped (bow right).
+ * - Missing / non-finite `courseDeg` (e.g. periscope feathers) → no flip.
+ */
+export function periscopeSilhouetteFlipX(
+  ownHeadingDeg: number,
+  relativeBearingDeg: number,
+  courseDeg: number | undefined,
+): boolean {
+  if (courseDeg == null || !Number.isFinite(courseDeg)) return false;
+  if (!Number.isFinite(ownHeadingDeg) || !Number.isFinite(relativeBearingDeg)) {
+    return false;
+  }
+  const trueBearing = trueBearingFromRelative(ownHeadingDeg, relativeBearingDeg);
+  const bearingFromTargetToObserver = normalizeHeading(trueBearing + 180);
+  const aob = shortestBearingDelta(courseDeg, bearingFromTargetToObserver);
+  return aob < 0;
+}
+
+/**
  * Recognition plates under Vite `public/silhouettes/`.
  * Used for docs/verify static path checks. The Sensors UI mounts the same bytes
  * via Vite-bundled imports in `PeriscopeScope` (harder to 404 than a bare path).
