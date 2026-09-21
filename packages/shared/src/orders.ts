@@ -41,11 +41,11 @@ function formatDepthChargeOrderSummary(
 ): string {
   const pat =
     drop.pattern === 'pattern_5'
-      ? 'P5'
+      ? 'P10'
       : drop.pattern === 'pattern_3'
-        ? 'P3'
+        ? 'P6'
         : drop.pattern === 'pair'
-          ? 'PAIR'
+          ? 'PAIR4'
           : '1';
   return `DC ${pat} · SET ${formatDepthMeters(drop.depthSettingM)}`;
 }

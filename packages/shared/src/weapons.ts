@@ -149,8 +149,8 @@ export const DEPTH_CHARGE_DEFAULT_DEPTH_M = 50;
 export const DEPTH_CHARGE_MIN_DEPTH_M = 15;
 export const DEPTH_CHARGE_MAX_DEPTH_M = 90;
 
-/** Fletcher-class ready rack load for demo. */
-export const DESTROYER_DEPTH_CHARGE_LOAD = 12;
+/** Fletcher-class ready rack load for demo (doubled from the original 12). */
+export const DESTROYER_DEPTH_CHARGE_LOAD = 24;
 
 /**
  * Base effect % at zero horizontal miss + perfect depth match (single charge).
@@ -168,10 +168,14 @@ export const DEPTH_CHARGE_MOD_DEPTH_GOOD_PCT = 20;
 export const DEPTH_CHARGE_MOD_DEPTH_PARTIAL_PCT = 5;
 export const DEPTH_CHARGE_MOD_DEPTH_BAD_PCT = -25;
 
-/** Horizontal range bands (m) for additive range modifiers. */
-export const DEPTH_CHARGE_RANGE_CLOSE_M = 25;
-export const DEPTH_CHARGE_RANGE_MED_M = 55;
-export const DEPTH_CHARGE_RANGE_FAR_M = 90;
+/**
+ * Horizontal range bands (m) for additive range modifiers / effect gate.
+ * Widened ~2.5× vs the original 25 / 55 / 90 m so a pattern has a meaningful
+ * blast footprint in we-go play (lethal / damage / stun still use these gates).
+ */
+export const DEPTH_CHARGE_RANGE_CLOSE_M = 65;
+export const DEPTH_CHARGE_RANGE_MED_M = 140;
+export const DEPTH_CHARGE_RANGE_FAR_M = 225;
 
 export const DEPTH_CHARGE_MOD_RANGE_CLOSE_PCT = 15;
 export const DEPTH_CHARGE_MOD_RANGE_MED_PCT = 0;
@@ -182,8 +186,8 @@ export const DEPTH_CHARGE_MOD_RANGE_OUT_PCT = -100;
 export const DEPTH_CHARGE_MOD_PATTERN: Record<DepthChargePattern, number> = {
   single: 0,
   pair: 5,
-  pattern_3: 8,
-  pattern_5: 10,
+  pattern_3: 10,
+  pattern_5: 12,
 };
 
 export const DEPTH_CHARGE_LETHAL_DAMAGE = 55;
@@ -194,15 +198,18 @@ export const DEPTH_CHARGE_STUN_DAMAGE = 8;
  * Pattern → thrower lateral offsets (m, + = starboard of track heading).
  * Along-track spacing uses {@link depthChargeReleaseFractions} on the firer's
  * start→end move — charges trail along the path, not a single midpoint pile.
+ *
+ * Counts (ids kept for save/API compatibility):
+ * single 1 · pair 4 · pattern_3 → 6 · pattern_5 → 10
  */
 export const DEPTH_CHARGE_PATTERN_LATERAL_M: Record<
   DepthChargePattern,
   ReadonlyArray<number>
 > = {
   single: [0],
-  pair: [-28, 28],
-  pattern_3: [-35, 0, 35],
-  pattern_5: [-40, 22, -22, 40, 0],
+  pair: [-42, -14, 14, 42],
+  pattern_3: [-50, -25, 0, 25, 50, 12],
+  pattern_5: [-55, -33, -11, 11, 33, 55, -22, 22, -44, 0],
 };
 
 /**
@@ -215,20 +222,30 @@ export const DEPTH_CHARGE_PATTERN_OFFSETS: Record<
 > = {
   single: [{ aheadM: -40, lateralM: 0 }],
   pair: [
-    { aheadM: -20, lateralM: -28 },
-    { aheadM: -55, lateralM: 28 },
+    { aheadM: -10, lateralM: -42 },
+    { aheadM: -35, lateralM: -14 },
+    { aheadM: -60, lateralM: 14 },
+    { aheadM: -85, lateralM: 42 },
   ],
   pattern_3: [
-    { aheadM: -15, lateralM: -35 },
-    { aheadM: -45, lateralM: 0 },
-    { aheadM: -75, lateralM: 35 },
+    { aheadM: -10, lateralM: -50 },
+    { aheadM: -30, lateralM: -25 },
+    { aheadM: -50, lateralM: 0 },
+    { aheadM: -70, lateralM: 25 },
+    { aheadM: -90, lateralM: 50 },
+    { aheadM: -110, lateralM: 12 },
   ],
   pattern_5: [
-    { aheadM: -10, lateralM: -40 },
-    { aheadM: -30, lateralM: 22 },
-    { aheadM: -50, lateralM: -22 },
-    { aheadM: -70, lateralM: 40 },
-    { aheadM: -90, lateralM: 0 },
+    { aheadM: -8, lateralM: -55 },
+    { aheadM: -22, lateralM: -33 },
+    { aheadM: -36, lateralM: -11 },
+    { aheadM: -50, lateralM: 11 },
+    { aheadM: -64, lateralM: 33 },
+    { aheadM: -78, lateralM: 55 },
+    { aheadM: -92, lateralM: -22 },
+    { aheadM: -106, lateralM: 22 },
+    { aheadM: -120, lateralM: -44 },
+    { aheadM: -134, lateralM: 0 },
   ],
 };
 
@@ -270,8 +287,12 @@ export const TORPEDO_WAKE_BEARING_STEP_DEG = 15;
 // --- Acoustic range for depth-charge WAV ---
 
 export const DEPTH_CHARGE_HYDROPHONE_RANGE_NM = 12;
-/** Controls bridge speakers — any vessel this close to a blast hears it. */
-export const DEPTH_CHARGE_CONTROLS_AUDIBLE_NM = 0.6;
+/**
+ * Controls bridge speakers — any vessel this close to a blast hears it.
+ * Kept well outside the far damage band (~225 m ≈ 0.12 nm) so charges that
+ * can hurt are always audible; cubic falloff still makes distant cues quiet.
+ */
+export const DEPTH_CHARGE_CONTROLS_AUDIBLE_NM = 1.5;
 
 /** Substeps per turn for weapon geometry. */
 export const WEAPON_SUBSTEPS = 10;

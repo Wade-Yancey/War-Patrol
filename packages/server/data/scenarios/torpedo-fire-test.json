@@ -35,7 +35,7 @@
       "beamM": 12,
       "radarSignature": "medium",
       "activeSonarEnabled": false,
-      "depthChargeLoad": 12,
+      "depthChargeLoad": 24,
       "sensors": [
         { "kind": "radar", "maxRangeNm": 25 },
         { "kind": "active_sonar", "maxRangeNm": 8 },

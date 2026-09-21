@@ -1,8 +1,14 @@
+import { DEPTH_CHARGE_CONTROLS_AUDIBLE_NM } from '@war-patrol/shared';
+
 /** Depth-charge detonation sample (hydrophone + close Controls bridge). */
 export const DEPTH_CHARGE_SAMPLE_URL = '/audio/depth-charge.wav';
 
-/** Peak gain on Controls when a charge detonates very close. */
-export const DEPTH_CHARGE_CONTROLS_GAIN = 0.42;
+/**
+ * Peak gain on Controls when a charge detonates on top of own ship (range ≈ 0).
+ * Raised above the old 0.42 so nearby blasts read clearly vs ambient/creak;
+ * kept under 1.0 to avoid GainNode clipping on hot sample peaks.
+ */
+export const DEPTH_CHARGE_CONTROLS_GAIN = 0.9;
 
 /**
  * Wall-clock window (seconds) over which a multi-charge pattern's one-shots are
@@ -27,9 +33,28 @@ export function depthChargeStaggerDelaySec(index: number, count: number): number
   return (i / (n - 1)) * DEPTH_CHARGE_AUDIO_SPREAD_SEC;
 }
 
+/**
+ * Controls bridge gain factor [0, 1] from range to the detonation point.
+ *
+ * - Silent at / beyond {@link DEPTH_CHARGE_CONTROLS_AUDIBLE_NM} (server also
+ *   filters bridge cues past this radius).
+ * - Cubic falloff: `t = 1 - range / rMax`, factor = `t³` — near/far contrast
+ *   is obvious (half-range ≈ 1/8 loudness); edge-of-nearby is near-silent.
+ * Applied **per charge** (each pattern member uses its own `rangeNm`).
+ *
+ * Peak playback gain = {@link DEPTH_CHARGE_CONTROLS_GAIN} × this factor.
+ */
+export function depthChargeControlsGain(rangeNm: number): number {
+  const r = Math.max(0, rangeNm);
+  const rMax = DEPTH_CHARGE_CONTROLS_AUDIBLE_NM;
+  if (!(rMax > 0) || r >= rMax) return 0;
+  const t = 1 - r / rMax;
+  return t * t * t;
+}
+
 /** Peak gain for hydrophone-heard detonation given range×beam gain in [0, 1]. */
 export function hydrophoneDepthChargePeakGain(contactGain: number): number {
-  return Math.min(0.5, 0.12 + contactGain * 0.55);
+  return Math.min(0.72, 0.16 + contactGain * 0.7);
 }
 
 export async function loadDepthChargeBuffer(ctx: AudioContext): Promise<AudioBuffer> {
