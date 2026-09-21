@@ -1521,6 +1521,8 @@ async function main() {
       createTorpedoTrack,
       torpedoSpreadHeadings,
       torpedoFireHeadingFromSolution,
+      trueBearingFromRelative,
+      relativeBearingDeg,
       TORPEDO_DEFAULT_DEPTH_M,
       TORPEDO_HIT_DAMAGE,
     } = await import('@war-patrol/shared');
@@ -1564,6 +1566,56 @@ async function main() {
       'beam solution lead ~18°',
       beamSol.solvable && beamSol.fireHeading > 16 && beamSol.fireHeading < 20,
       `fire=${beamSol.fireHeading}`,
+    );
+    // Optics-style relative aim → true: port contact must not fire starboard.
+    const ownHdg0 = 0;
+    const portRel = -90;
+    const portTrue = trueBearingFromRelative(ownHdg0, portRel);
+    check('port 90° rel → true 270', Math.abs(portTrue - 270) < 0.01);
+    check(
+      'port true round-trips to rel',
+      Math.abs(relativeBearingDeg(ownHdg0, portTrue) - portRel) < 0.01,
+    );
+    const portSol = torpedoFireHeadingFromSolution({
+      aimHeading: portTrue,
+      estimatedCourse: 0,
+      estimatedSpeedKn: 0,
+      estimatedRangeNm: 1.5,
+    });
+    check(
+      'port-beam stationary fish run west (not east)',
+      Math.abs(portSol.fireHeading - 270) < 0.01,
+      `fire=${portSol.fireHeading}`,
+    );
+    // Mistakenly treating optics "090° port" number as true 090 fires opposite.
+    const mistakenEast = torpedoFireHeadingFromSolution({
+      aimHeading: 90,
+      estimatedCourse: 0,
+      estimatedSpeedKn: 0,
+      estimatedRangeNm: 1.5,
+    });
+    check(
+      'true-090 is opposite of port-beam solution',
+      Math.abs(
+        Math.abs(
+          ((mistakenEast.fireHeading - portSol.fireHeading + 540) % 360) - 180,
+        ) - 180,
+      ) < 0.01,
+      `mistaken=${mistakenEast.fireHeading} port=${portSol.fireHeading}`,
+    );
+    const ownHdg180 = 180;
+    const aheadTrue = trueBearingFromRelative(ownHdg180, 0);
+    check('dead-ahead rel0 @ HDG180 → true 180', Math.abs(aheadTrue - 180) < 0.01);
+    const aheadSol = torpedoFireHeadingFromSolution({
+      aimHeading: aheadTrue,
+      estimatedCourse: 90,
+      estimatedSpeedKn: 0,
+      estimatedRangeNm: 1.5,
+    });
+    check(
+      'dead-ahead fish run south with own HDG 180',
+      Math.abs(aheadSol.fireHeading - 180) < 0.01,
+      `fire=${aheadSol.fireHeading}`,
     );
     const roll = resolveTorpedoHit({
       missDistanceM: 5,

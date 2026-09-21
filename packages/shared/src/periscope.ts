@@ -1,6 +1,6 @@
 import { PERISCOPE_MAX_RANGE_NM, RADAR_SURFACE_DEPTH_M } from './constants.js';
 import { divePresetById } from './dive.js';
-import { clamp } from './geo.js';
+import { clamp, normalizeHeading } from './geo.js';
 import { shortestBearingDelta } from './hydrophone.js';
 import type { HullClass, SensorDef, UnitState } from './types.js';
 import { canUseSensors, isHullClass, resolveVesselIdentity } from './vessel.js';
@@ -153,6 +153,18 @@ export function resetPlotStamp<T extends { plotStampTurns?: number }>(unit: T): 
 /** Relative bearing deg (−180, 180] from own heading to true contact bearing. */
 export function relativeBearingDeg(ownHeadingDeg: number, trueBearingDeg: number): number {
   return shortestBearingDelta(ownHeadingDeg, trueBearingDeg);
+}
+
+/**
+ * True bearing from own heading + relative (bow = 0, starboard +, port −).
+ * Inverse of {@link relativeBearingDeg}. Used by the torpedo calculator so aim
+ * matches optics port/stbd readouts instead of requiring a true-bearing conversion.
+ */
+export function trueBearingFromRelative(
+  ownHeadingDeg: number,
+  relativeBearingDeg: number,
+): number {
+  return normalizeHeading(ownHeadingDeg + relativeBearingDeg);
 }
 
 /** FoW coarsen relative bearing to nearest 5°. */
