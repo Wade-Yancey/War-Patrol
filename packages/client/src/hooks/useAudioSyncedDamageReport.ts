@@ -7,6 +7,7 @@ import {
   type UnitSubsystems,
   type VesselView,
 } from '@war-patrol/shared';
+import { depthChargeBatchWhenSecById } from '../audio/depthCharge';
 
 export type ScheduleDamageReveal = (detonationId: string, whenSec: number) => void;
 
@@ -17,16 +18,25 @@ export type SyncedDamagePresentation = {
   subsystems: UnitSubsystems;
   /** Register from Controls bridge audio flush so reveals share `whenSec`. */
   scheduleRevealForDetonation: ScheduleDamageReveal;
+  /**
+   * Bridge hit cues filtered to detonations whose reveal timer has fired.
+   * Firer “TORPEDO HIT / DEPTH CHARGE” BRIDGE lines use this — not raw cues.
+   */
+  visibleBridgeDetonations: NonNullable<VesselView['bridgeDetonations']>;
 };
 
 /**
- * Stage Controls Damage-report UI until the matching bridge blast SFX plays.
+ * Stage Controls Damage-report UI (and firer BRIDGE hit lines) until the
+ * matching bridge blast SFX plays.
  *
- * Sim / vessel health stay at resolve-time truth; only the Damage tab presentation
- * is held. Entries without a live `bridgeDetonations` cue (or no
- * `sourceDetonationId`) reveal immediately. DC cues use the stagger `whenSec`;
- * torpedo-hit cues use `audioDelaySec` (arrival inside the resolved turn).
- * Umpire Action log is untouched.
+ * Sim / vessel health stay at resolve-time truth; only presentation is held.
+ * Entries without a live `bridgeDetonations` cue (or no `sourceDetonationId`)
+ * reveal immediately. DC cues use the stagger `whenSec`; torpedo-hit cues use
+ * `audioDelaySec` (arrival inside the resolved turn). Umpire Action log is
+ * untouched.
+ *
+ * Reveals are scheduled from live `bridgeDetonations` (Sensors + Controls) and
+ * again from Controls audio flush — first schedule wins (idempotent).
  */
 export function useAudioSyncedDamageReport(
   fullLog: OwnDamageEvent[] | undefined,
@@ -38,11 +48,22 @@ export function useAudioSyncedDamageReport(
   } | null,
 ): SyncedDamagePresentation {
   const [revealedIds, setRevealedIds] = useState<Set<string>>(() => new Set());
+  const [revealedDetonationIds, setRevealedDetonationIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const fullLogRef = useRef(fullLog);
   fullLogRef.current = fullLog;
   const timersRef = useRef<number[]>([]);
+  /** Detonation ids already given a reveal timer (or revealed at once). */
+  const scheduledDetonationIdsRef = useRef<Set<string>>(new Set());
 
   const revealDetonation = useCallback((detonationId: string) => {
+    setRevealedDetonationIds((prev) => {
+      if (prev.has(detonationId)) return prev;
+      const next = new Set(prev);
+      next.add(detonationId);
+      return next;
+    });
     setRevealedIds((prev) => {
       const next = new Set(prev);
       let changed = false;
@@ -58,6 +79,8 @@ export function useAudioSyncedDamageReport(
 
   const scheduleRevealForDetonation = useCallback<ScheduleDamageReveal>(
     (detonationId, whenSec) => {
+      if (scheduledDetonationIdsRef.current.has(detonationId)) return;
+      scheduledDetonationIdsRef.current.add(detonationId);
       const delaySec = Math.max(0, whenSec);
       if (delaySec <= 0) {
         revealDetonation(detonationId);
@@ -75,6 +98,38 @@ export function useAudioSyncedDamageReport(
       timersRef.current = [];
     };
   }, []);
+
+  // Auto-schedule from live bridge cues (Sensors has no audio flush; Controls
+  // flush may also call schedule — first wins via scheduledDetonationIdsRef).
+  useEffect(() => {
+    const events = bridgeDetonations ?? [];
+    const liveIds = new Set(events.map((d) => d.id));
+    for (const id of [...scheduledDetonationIdsRef.current]) {
+      if (!liveIds.has(id)) scheduledDetonationIdsRef.current.delete(id);
+    }
+    setRevealedDetonationIds((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const id of [...next]) {
+        if (!liveIds.has(id)) {
+          next.delete(id);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+
+    const dcBatch = events.filter((e) => e.kind !== 'torpedo_hit');
+    const dcWhenById = depthChargeBatchWhenSecById(dcBatch);
+    for (const e of events) {
+      if (scheduledDetonationIdsRef.current.has(e.id)) continue;
+      const whenSec =
+        e.kind === 'torpedo_hit'
+          ? Math.max(0, e.audioDelaySec ?? 0)
+          : (dcWhenById.get(e.id) ?? 0);
+      scheduleRevealForDetonation(e.id, whenSec);
+    }
+  }, [bridgeDetonations, scheduleRevealForDetonation]);
 
   // Reveal anything not waiting on a live bridge cue (history, crush, expired cues).
   useEffect(() => {
@@ -102,6 +157,10 @@ export function useAudioSyncedDamageReport(
 
   return useMemo(() => {
     const log = fullLog ?? [];
+    const visibleBridgeDetonations = (bridgeDetonations ?? []).filter((d) =>
+      revealedDetonationIds.has(d.id),
+    );
+
     if (!unit) {
       return {
         damageLog: log.filter((e) => revealedIds.has(e.id)),
@@ -109,6 +168,7 @@ export function useAudioSyncedDamageReport(
         condition: 'afloat' as const,
         subsystems: { propulsion: 'intact' as const, sensors: 'intact' as const },
         scheduleRevealForDetonation,
+        visibleBridgeDetonations,
       };
     }
 
@@ -141,6 +201,14 @@ export function useAudioSyncedDamageReport(
       condition,
       subsystems,
       scheduleRevealForDetonation,
+      visibleBridgeDetonations,
     };
-  }, [fullLog, revealedIds, unit, scheduleRevealForDetonation]);
+  }, [
+    fullLog,
+    bridgeDetonations,
+    revealedIds,
+    revealedDetonationIds,
+    unit,
+    scheduleRevealForDetonation,
+  ]);
 }

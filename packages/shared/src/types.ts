@@ -785,7 +785,9 @@ export interface VesselView {
   torpedoWakeCues?: TorpedoWakeCue[];
   /**
    * Weapon blasts audible on Controls (close DC, or torpedo hit for firer/target).
-   * Polar only — range for gain attenuation; no firer identity in FoW fields.
+   * Also attached on Sensors (timing only — no SFX) so sunk popup / staged damage
+   * can wait on the same delays. Polar only — range for gain attenuation; no
+   * firer identity in FoW fields.
    */
   bridgeDetonations?: Array<{
     id: string;
