@@ -1,6 +1,7 @@
 import {
   bearingRangeNm,
   canUseLookoutOptics,
+  coarsenPeriscopeCourseDeg,
   coarsenPeriscopeRangeNm,
   coarsenPeriscopeSpeedKn,
   coarsenRelativeBearingDeg,
@@ -103,6 +104,7 @@ export function buildPeriscopeContacts(own: UnitState, save: GameSave): Periscop
         relativeBearing: coarsenRelativeBearingDeg(relativeBearingDeg(own.heading, bearing)),
         rangeNm: coarsenPeriscopeRangeNm(rangeNm),
         speedKn: coarsenPeriscopeSpeedKn(other.speed),
+        courseDeg: coarsenPeriscopeCourseDeg(other.heading),
         silhouetteClass: silhouetteClass as HullClass,
       });
       continue;
@@ -122,6 +124,7 @@ export function buildPeriscopeContacts(own: UnitState, save: GameSave): Periscop
         ),
         rangeNm: coarsenPeriscopeRangeNm(rangeNm),
         speedKn: 0,
+        // No courseDeg — feather/stick gives no reliable aspect estimate.
         silhouetteClass: 'Fleet Submarine',
       });
     }

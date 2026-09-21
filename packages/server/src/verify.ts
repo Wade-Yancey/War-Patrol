@@ -13,10 +13,12 @@ import {
   CLASS_LENGTH_M,
   CLASS_MAX_SPEED_KNOTS,
   CLASS_SPEED_STEP_FRACTION,
+  PERISCOPE_COURSE_STEP_DEG,
   SUBMARINE_DEPTH_RATE_M_PER_MIN,
   SUBMERGED_MAX_SPEED_KNOTS,
   bearingRangeNm,
   clampSpeedToMax,
+  coarsenPeriscopeCourseDeg,
   editMaxSpeedForClass,
   effectiveMaxSpeed,
   formatWallDuration,
@@ -48,6 +50,16 @@ async function main() {
   check('formatWallDuration minutes-first', formatWallDuration(180) === '3m');
   check('formatWallDuration with seconds', formatWallDuration(210) === '3m 30s');
   check('parseWallDuration bare minutes', parseWallDuration('3') === 180);
+  check(
+    'periscope course step 15°',
+    PERISCOPE_COURSE_STEP_DEG === 15,
+  );
+  check('coarsen course 90 stays 90', coarsenPeriscopeCourseDeg(90) === 90);
+  check('coarsen course 97 → 90', coarsenPeriscopeCourseDeg(97) === 90);
+  check('coarsen course 98 → 105', coarsenPeriscopeCourseDeg(98) === 105);
+  check('coarsen course 225 stays 225', coarsenPeriscopeCourseDeg(225) === 225);
+  check('coarsen course 359 → 0', coarsenPeriscopeCourseDeg(359) === 0);
+  check('coarsen course 352 → 345', coarsenPeriscopeCourseDeg(352) === 345);
   check('parseWallDuration mm:ss', parseWallDuration('3:30') === 210);
   check('snapWallDuration 30s', snapWallDuration(200, 30) === 210);
 
@@ -373,10 +385,16 @@ async function main() {
         typeof ddLookoutContacts[0].relativeBearing === 'number' &&
           typeof ddLookoutContacts[0].rangeNm === 'number' &&
           typeof ddLookoutContacts[0].speedKn === 'number' &&
+          typeof ddLookoutContacts[0].courseDeg === 'number' &&
           ddLookoutContacts[0].silhouetteClass === 'Fleet Submarine' &&
           !('side' in ddLookoutContacts[0]) &&
           !('name' in ddLookoutContacts[0]) &&
           !('position' in ddLookoutContacts[0]),
+      );
+      check(
+        'destroyer lookout approx course 15° band',
+        ddLookoutContacts[0].courseDeg === 225,
+        `got ${ddLookoutContacts[0].courseDeg}`,
       );
     }
   }
@@ -504,7 +522,33 @@ async function main() {
     'periscope contact relative bearing + range + speed',
     typeof periContacts[0].relativeBearing === 'number' &&
       typeof periContacts[0].rangeNm === 'number' &&
-      typeof periContacts[0].speedKn === 'number',
+      typeof periContacts[0].speedKn === 'number' &&
+      typeof periContacts[0].courseDeg === 'number',
+  );
+  check(
+    'periscope contact approx course 15° band',
+    periContacts[0].courseDeg === 90,
+    `got ${periContacts[0].courseDeg}`,
+  );
+  // Non-aligned GT heading must not leak exact degrees through optics FoW.
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { heading: 97 },
+    umpireToken,
+  );
+  const periCourseCoarse = await api('GET', `/api/games/${gameId}/view`, undefined, subSensorsToken);
+  const periCoarseContacts = (periCourseCoarse.json.view as Json).periscopeContacts as Array<Json>;
+  check(
+    'periscope course coarsens off-grid heading',
+    periCoarseContacts[0]?.courseDeg === 90,
+    `got ${periCoarseContacts[0]?.courseDeg}`,
+  );
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { heading: 90 },
+    umpireToken,
   );
   check(
     'periscope contact silhouette class only',
@@ -674,6 +718,7 @@ async function main() {
         feather.speedKn === 0 &&
         typeof feather.relativeBearing === 'number' &&
         typeof feather.rangeNm === 'number' &&
+        !('courseDeg' in feather) &&
         !('name' in feather),
     );
   }
