@@ -22,6 +22,7 @@ import {
   isDepthChargeTarget,
   isTorpedoTarget,
   makeDetonationEvent,
+  torpedoHitAudioDelaySec,
   normalizeDepthChargePattern,
   normalizeHeading,
   recordTorpedoClosestApproach,
@@ -336,6 +337,7 @@ export function resolveWeaponsForTurn(
           unitMap.set(uid, damaged);
           const truncated = truncateTorpedoAtHit(fish, advanced, before, closest, uid, 'hit');
           const hitDetonationId = `thit-${fish.id}`;
+          const audioDelaySec = torpedoHitAudioDelaySec(step, closest.t, turnLengthSeconds);
           newDetonations.push(
             makeDetonationEvent({
               id: hitDetonationId,
@@ -344,6 +346,7 @@ export function resolveWeaponsForTurn(
               turnNumber,
               firerUnitId: fish.firerUnitId,
               targetUnitId: uid,
+              audioDelaySec,
             }),
           );
           combatLogEntries.push(

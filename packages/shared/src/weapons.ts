@@ -1232,6 +1232,25 @@ export function unitLengthBeam(unit: UnitState): { lengthM: number; beamM: numbe
   };
 }
 
+/**
+ * Wall-clock delay (seconds) from turn resolve until a torpedo-hit explosion
+ * should be heard. The fish is advanced in {@link WEAPON_SUBSTEPS} slices of
+ * the turn; `stepIndex` is the slice that scored the hit and `segmentT` is the
+ * fraction along that slice (0 = start, 1 = end) where the track met the target.
+ */
+export function torpedoHitAudioDelaySec(
+  stepIndex: number,
+  segmentT: number,
+  turnLengthSeconds: number,
+): number {
+  const steps = WEAPON_SUBSTEPS;
+  if (!(steps > 0)) return 0;
+  const step = Math.max(0, Math.min(steps - 1, Math.floor(stepIndex)));
+  const t = Math.max(0, Math.min(1, Number.isFinite(segmentT) ? segmentT : 0));
+  const turn = Math.max(0, Number.isFinite(turnLengthSeconds) ? turnLengthSeconds : 0);
+  return ((step + t) / steps) * turn;
+}
+
 export function makeDetonationEvent(opts: {
   id: string;
   kind?: 'depth_charge' | 'torpedo_hit';
@@ -1239,7 +1258,9 @@ export function makeDetonationEvent(opts: {
   turnNumber: number;
   firerUnitId: string;
   targetUnitId?: string;
+  audioDelaySec?: number;
 }): WeaponDetonationEvent {
+  const delay = opts.audioDelaySec;
   return {
     id: opts.id,
     kind: opts.kind ?? 'depth_charge',
@@ -1247,6 +1268,7 @@ export function makeDetonationEvent(opts: {
     turnNumber: opts.turnNumber,
     firerUnitId: opts.firerUnitId,
     ...(opts.targetUnitId ? { targetUnitId: opts.targetUnitId } : {}),
+    ...(delay != null && delay > 0 ? { audioDelaySec: delay } : {}),
   };
 }
 

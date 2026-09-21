@@ -250,6 +250,13 @@ export interface WeaponDetonationEvent {
   firerUnitId: string;
   /** Hit target for torpedo_hit — firer and target both get Controls audio cues. */
   targetUnitId?: string;
+  /**
+   * Wall-clock seconds after the client receives this cue before bridge SFX
+   * (and the matching Damage-tab reveal) should play. Torpedo hits: offset into
+   * the resolved turn when the fish reached the target. Depth charges omit this
+   * and use the client stagger schedule instead.
+   */
+  audioDelaySec?: number;
 }
 
 /**
@@ -778,6 +785,12 @@ export interface VesselView {
     bearing: number;
     rangeNm: number;
     kind: 'depth_charge' | 'torpedo_hit';
+    /**
+     * Seconds after the cue is heard before the one-shot (and Damage-tab line)
+     * should play. Set for torpedo hits from run-arrival; omitted for DC
+     * (client stagger).
+     */
+    audioDelaySec?: number;
   }>;
   /**
    * Radar picture for stations with the `radar` capability.

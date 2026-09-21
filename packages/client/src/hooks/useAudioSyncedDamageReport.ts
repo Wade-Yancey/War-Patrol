@@ -24,7 +24,9 @@ export type SyncedDamagePresentation = {
  *
  * Sim / vessel health stay at resolve-time truth; only the Damage tab presentation
  * is held. Entries without a live `bridgeDetonations` cue (or no
- * `sourceDetonationId`) reveal immediately. Umpire Action log is untouched.
+ * `sourceDetonationId`) reveal immediately. DC cues use the stagger `whenSec`;
+ * torpedo-hit cues use `audioDelaySec` (arrival inside the resolved turn).
+ * Umpire Action log is untouched.
  */
 export function useAudioSyncedDamageReport(
   fullLog: OwnDamageEvent[] | undefined,
