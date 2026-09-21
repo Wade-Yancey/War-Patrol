@@ -58,7 +58,7 @@ export function formatPendingOrdersSummary(orders: UnitOrders | undefined | null
   if (!hasPendingOrders(orders)) return '—';
   const parts: string[] = [];
   parts.push(orders!.course !== undefined ? `CRS ${formatCourseDegrees(orders!.course)}` : 'CRS —');
-  parts.push(orders!.eot ? EOT_LABELS[orders!.eot] : 'EOT —');
+  parts.push(orders!.eot ? EOT_LABELS[orders!.eot] : 'Engine orders —');
   if (orders!.depth !== undefined) {
     parts.push(`DPT ${formatDepthMeters(orders!.depth)}`);
   }

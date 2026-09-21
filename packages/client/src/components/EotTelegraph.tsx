@@ -9,7 +9,7 @@ interface Props {
 /** Engine-order telegraph: large stacked buttons, no native select. */
 export function EotTelegraph({ value, onChange, disabled }: Props) {
   return (
-    <div className="eot-telegraph" role="listbox" aria-label="Engine order telegraph">
+    <div className="eot-telegraph" role="listbox" aria-label="Engine orders">
       {ALL_EOT_SETTINGS.map((setting, i) => {
         const active = setting === value;
         return (
