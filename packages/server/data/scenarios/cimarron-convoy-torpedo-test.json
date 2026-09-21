@@ -1,0 +1,162 @@
+{
+  "schemaVersion": 1,
+  "id": "cimarron-convoy-torpedo-test",
+  "name": "Cimarron convoy torpedo test",
+  "description": "Torpedo calculator / convoy drill: Gato at periscope depth south of an eastbound column of four Cimarron-class (T3-S2-A1) U.S. Fleet Oilers (~1.5 nm, near-beam aspect on the column center). Recognition plate OA 169 m / beam 23 m. Passwords: umpire / red (Gato token gato-demo).",
+  "mode": "pvp",
+  "operatingArea": {
+    "minLat": 34.30,
+    "maxLat": 34.50,
+    "minLon": -120.18,
+    "maxLon": -119.82
+  },
+  "umpirePassword": "umpire",
+  "defaultTurnSeconds": 180,
+  "turnLengthSeconds": 180,
+  "startGameTimeSeconds": 28800,
+  "units": [
+    {
+      "id": "ao-22",
+      "name": "USS Cimarron",
+      "side": "blue",
+      "faction": "Blue",
+      "classId": "cimarron-class",
+      "type": "Ship",
+      "class": "Oiler",
+      "position": { "lat": 34.4, "lon": -120.03, "depth": 0 },
+      "heading": 90,
+      "speed": 12,
+      "eot": "ahead_standard",
+      "health": 100,
+      "maxSpeed": 18,
+      "lengthM": 169,
+      "beamM": 23,
+      "radarSignature": "medium",
+      "sensors": [],
+      "stations": [
+        {
+          "id": "controls",
+          "name": "Controls",
+          "capabilities": ["helm", "engineering", "plot"]
+        }
+      ]
+    },
+    {
+      "id": "ao-23",
+      "name": "USS Neosho",
+      "side": "blue",
+      "faction": "Blue",
+      "classId": "cimarron-class",
+      "type": "Ship",
+      "class": "Oiler",
+      "position": { "lat": 34.4, "lon": -120.01, "depth": 0 },
+      "heading": 90,
+      "speed": 12,
+      "eot": "ahead_standard",
+      "health": 100,
+      "maxSpeed": 18,
+      "lengthM": 169,
+      "beamM": 23,
+      "radarSignature": "medium",
+      "sensors": [],
+      "stations": [
+        {
+          "id": "controls",
+          "name": "Controls",
+          "capabilities": ["helm", "engineering", "plot"]
+        }
+      ]
+    },
+    {
+      "id": "ao-24",
+      "name": "USS Platte",
+      "side": "blue",
+      "faction": "Blue",
+      "classId": "cimarron-class",
+      "type": "Ship",
+      "class": "Oiler",
+      "position": { "lat": 34.4, "lon": -119.99, "depth": 0 },
+      "heading": 90,
+      "speed": 12,
+      "eot": "ahead_standard",
+      "health": 100,
+      "maxSpeed": 18,
+      "lengthM": 169,
+      "beamM": 23,
+      "radarSignature": "medium",
+      "sensors": [],
+      "stations": [
+        {
+          "id": "controls",
+          "name": "Controls",
+          "capabilities": ["helm", "engineering", "plot"]
+        }
+      ]
+    },
+    {
+      "id": "ao-25",
+      "name": "USS Sabine",
+      "side": "blue",
+      "faction": "Blue",
+      "classId": "cimarron-class",
+      "type": "Ship",
+      "class": "Oiler",
+      "position": { "lat": 34.4, "lon": -119.97, "depth": 0 },
+      "heading": 90,
+      "speed": 12,
+      "eot": "ahead_standard",
+      "health": 100,
+      "maxSpeed": 18,
+      "lengthM": 169,
+      "beamM": 23,
+      "radarSignature": "medium",
+      "sensors": [],
+      "stations": [
+        {
+          "id": "controls",
+          "name": "Controls",
+          "capabilities": ["helm", "engineering", "plot"]
+        }
+      ]
+    },
+    {
+      "id": "ss-212",
+      "name": "USS Gato",
+      "side": "red",
+      "faction": "Red",
+      "classId": "gato-class",
+      "type": "Submarine",
+      "class": "Fleet Submarine",
+      "position": { "lat": 34.37504, "lon": -120.0, "depth": 18 },
+      "orderedDepth": 18,
+      "heading": 0,
+      "speed": 5,
+      "eot": "ahead_2",
+      "accessToken": "gato-demo",
+      "password": "red",
+      "health": 100,
+      "maxSpeed": 21,
+      "lengthM": 95,
+      "beamM": 8.3,
+      "radarSignature": "small",
+      "torpedoLoad": 6,
+      "sensors": [
+        { "kind": "radar", "maxRangeNm": 25 },
+        { "kind": "hydrophone", "maxRangeNm": 30 },
+        { "kind": "lookout", "maxRangeNm": 6 }
+      ],
+      "stations": [
+        {
+          "id": "controls",
+          "name": "Controls",
+          "capabilities": ["helm", "engineering", "plot", "weapons", "torpedo"]
+        },
+        {
+          "id": "sensors",
+          "name": "Sensors",
+          "capabilities": ["radar", "hydrophone", "lookout"]
+        }
+      ]
+    }
+  ]
+}

@@ -6,6 +6,7 @@ import {
 } from '@war-patrol/shared';
 /** Vite-bundled PNGs (alpha) — guaranteed in the client graph (not fragile public-path strings). */
 import destroyerSilhouettePng from '../assets/silhouettes/destroyer.png';
+import oilerSilhouettePng from '../assets/silhouettes/oiler.png';
 import submarineSilhouettePng from '../assets/silhouettes/submarine.png';
 import {
   formatRelBearing,
@@ -33,6 +34,7 @@ interface Props {
 const SILHOUETTE_SIZE: Record<string, { width: number; height: number }> = {
   Destroyer: { width: 349, height: 79 },
   'Fleet Submarine': { width: 350, height: 55 },
+  Oiler: { width: 510, height: 98 },
 };
 
 /**
@@ -43,6 +45,8 @@ function silhouetteSrcForClass(hullClass: HullClass | string | undefined): strin
   switch (hullClass) {
     case 'Fleet Submarine':
       return submarineSilhouettePng;
+    case 'Oiler':
+      return oilerSilhouettePng;
     case 'Destroyer':
     default:
       return destroyerSilhouettePng;
@@ -50,7 +54,9 @@ function silhouetteSrcForClass(hullClass: HullClass | string | undefined): strin
 }
 
 function silhouetteAlt(hullClass: HullClass | string | undefined): string {
-  return hullClass === 'Fleet Submarine' ? 'Submarine silhouette' : 'Destroyer silhouette';
+  if (hullClass === 'Fleet Submarine') return 'Submarine silhouette';
+  if (hullClass === 'Oiler') return 'Oiler silhouette';
+  return 'Destroyer silhouette';
 }
 
 function contactKindLabel(c: PeriscopeContact): string {
