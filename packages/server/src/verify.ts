@@ -523,9 +523,14 @@ async function main() {
     silhouetteUrlForClass('Fleet Submarine') === '/silhouettes/submarine.png',
   );
   check(
+    'oiler silhouette asset path',
+    silhouetteUrlForClass('Oiler') === '/silhouettes/oiler.png',
+  );
+  check(
     'periscope silhouette class map + destroyer fallback',
     periscopeSilhouetteUrl('Fleet Submarine') === '/silhouettes/submarine.png' &&
       periscopeSilhouetteUrl('Destroyer') === '/silhouettes/destroyer.png' &&
+      periscopeSilhouetteUrl('Oiler') === '/silhouettes/oiler.png' &&
       periscopeSilhouetteUrl(undefined) === '/silhouettes/destroyer.png' &&
       periscopeSilhouetteUrl('Merchant') === '/silhouettes/destroyer.png',
   );
@@ -575,6 +580,7 @@ async function main() {
     };
     assertSilhouettePng('destroyer.png', 1000);
     assertSilhouettePng('submarine.png', 1000);
+    assertSilhouettePng('oiler.png', 1000);
   }
   check(
     'controls has no periscope picture',
@@ -1600,6 +1606,12 @@ async function main() {
       'recognition manual has Fletcher 115',
       RECOGNITION_MANUAL_ENTRIES.some((e) => e.class === 'Destroyer' && e.lengthM === 115),
     );
+    check(
+      'recognition manual has Cimarron 169×23',
+      RECOGNITION_MANUAL_ENTRIES.some(
+        (e) => e.class === 'Oiler' && e.lengthM === 169 && e.beamM === 23,
+      ),
+    );
     const fan = torpedoSpreadHeadings(0, 3, 2).map((h) => Math.round(h));
     check('spread 3×2° headings', fan[0] === 358 && fan[1] === 0 && fan[2] === 2);
 
@@ -1821,6 +1833,45 @@ async function main() {
       'torpedo-fire-test scenario listed',
       scArr.some((s) => s.id === 'torpedo-fire-test'),
     );
+    check(
+      'cimarron-convoy-torpedo-test scenario listed',
+      scArr.some((s) => s.id === 'cimarron-convoy-torpedo-test'),
+    );
+
+    {
+      const convoyGame = await api('POST', '/api/games', {
+        scenarioId: 'cimarron-convoy-torpedo-test',
+        name: 'Verify Cimarron Convoy',
+      });
+      check('cimarron convoy scenario create', convoyGame.status === 200);
+      const convoyId = String(convoyGame.json.gameId);
+      const convoyUmp = await api('POST', `/api/games/${convoyId}/auth/umpire`, {
+        password: 'umpire',
+      });
+      const convoyUTok = String(convoyUmp.json.token);
+      const convoyView = await api('GET', `/api/games/${convoyId}/view`, undefined, convoyUTok);
+      const convoyUnits = (convoyView.json.view as {
+        units?: Array<{ id: string; class?: string; lengthM?: number; beamM?: number }>;
+      }).units ?? [];
+      const oilers = convoyUnits.filter((u) => u.class === 'Oiler');
+      check('cimarron convoy has 4 oilers', oilers.length === 4);
+      check(
+        'cimarron oilers 169×23',
+        oilers.every((u) => u.lengthM === 169 && u.beamM === 23),
+      );
+      const convoySub = await api('POST', `/api/games/${convoyId}/auth/vessel`, {
+        accessToken: 'gato-demo',
+        password: 'red',
+        stationId: 'controls',
+      });
+      check('cimarron convoy gato controls join', convoySub.status === 200);
+      const convoySensors = await api('POST', `/api/games/${convoyId}/auth/vessel`, {
+        accessToken: 'gato-demo',
+        password: 'red',
+        stationId: 'sensors',
+      });
+      check('cimarron convoy gato sensors join', convoySensors.status === 200);
+    }
 
     const torpGame = await api('POST', '/api/games', {
       scenarioId: 'torpedo-fire-test',

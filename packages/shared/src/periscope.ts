@@ -206,11 +206,13 @@ export function periscopeSilhouetteScale(
  */
 export const DESTROYER_SILHOUETTE_URL = '/silhouettes/destroyer.png';
 export const SUBMARINE_SILHOUETTE_URL = '/silhouettes/submarine.png';
+export const OILER_SILHOUETTE_URL = '/silhouettes/oiler.png';
 
 /**
  * Public asset path for a hull-class silhouette (side profile).
  * Destroyer → {@link DESTROYER_SILHOUETTE_URL};
- * Fleet Submarine → {@link SUBMARINE_SILHOUETTE_URL}.
+ * Fleet Submarine → {@link SUBMARINE_SILHOUETTE_URL};
+ * Oiler → {@link OILER_SILHOUETTE_URL} (Cimarron-class plate).
  * Other classes → null (UI falls back to the destroyer PNG).
  */
 export function silhouetteUrlForClass(
@@ -222,6 +224,8 @@ export function silhouetteUrlForClass(
       return DESTROYER_SILHOUETTE_URL;
     case 'Fleet Submarine':
       return SUBMARINE_SILHOUETTE_URL;
+    case 'Oiler':
+      return OILER_SILHOUETTE_URL;
     default:
       return null;
   }
