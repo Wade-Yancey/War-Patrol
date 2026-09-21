@@ -360,6 +360,11 @@ export class GameRuntime {
   /** Active in-memory games keyed by save/game id. */
   private games = new Map<string, GameSave>();
   private timerHandles = new Map<string, NodeJS.Timeout>();
+  /**
+   * Serialize resolve/rollback per game so overlapping umpire clicks (or double
+   * submits) cannot double-advance a turn while `writeSave` is still awaiting.
+   */
+  private turnMutationTail = new Map<string, Promise<unknown>>();
 
   constructor() {
     this.sse.setViewBuilder((client) => {
@@ -373,6 +378,20 @@ export class GameRuntime {
       if (!save) return;
       this.sse.broadcast(gameId, save.stateVersion);
     };
+  }
+
+  /** Run resolve/rollback exclusively per gameId (FIFO). */
+  private enqueueTurnMutation<T>(gameId: string, work: () => Promise<T>): Promise<T> {
+    const prev = this.turnMutationTail.get(gameId) ?? Promise.resolve();
+    const next = prev.catch(() => undefined).then(work);
+    this.turnMutationTail.set(
+      gameId,
+      next.then(
+        () => undefined,
+        () => undefined,
+      ),
+    );
+    return next;
   }
 
   getGame(gameId: string): GameSave | undefined {
@@ -459,6 +478,7 @@ export class GameRuntime {
     this.sessions.clearGame(gameId);
     this.sse.dropGame(gameId);
     this.games.delete(gameId);
+    this.turnMutationTail.delete(gameId);
     return true;
   }
 
@@ -901,26 +921,32 @@ export class GameRuntime {
   }
 
   async resolve(gameId: string): Promise<GameSave> {
-    this.clearTimer(gameId);
-    const current = this.requireGame(gameId);
-    if (current.turn.phase !== 'locked' && current.turn.phase !== 'awaiting_resolution' && current.turn.phase !== 'open') {
-      throw Object.assign(new Error('Cannot resolve turn'), { statusCode: 409 });
-    }
-    // Allow resolve from open (umpire force) or locked
-    const prepared =
-      current.turn.phase === 'open'
-        ? this.touch(gameId, (s) => {
-            s.turn.phase = 'locked';
-            s.turn.timerDeadline = null;
-            return s;
-          })
-        : current;
+    return this.enqueueTurnMutation(gameId, async () => {
+      this.clearTimer(gameId);
+      const current = this.requireGame(gameId);
+      if (
+        current.turn.phase !== 'locked' &&
+        current.turn.phase !== 'awaiting_resolution' &&
+        current.turn.phase !== 'open'
+      ) {
+        throw Object.assign(new Error('Cannot resolve turn'), { statusCode: 409 });
+      }
+      // Allow resolve from open (umpire force) or locked
+      const prepared =
+        current.turn.phase === 'open'
+          ? this.touch(gameId, (s) => {
+              s.turn.phase = 'locked';
+              s.turn.timerDeadline = null;
+              return s;
+            })
+          : current;
 
-    const resolved = resolveTurn(structuredClone(prepared));
-    this.replace(gameId, resolved);
-    this.sse.broadcast(gameId, resolved.stateVersion);
-    await store.writeSave(resolved);
-    return resolved;
+      const resolved = resolveTurn(structuredClone(prepared));
+      this.replace(gameId, resolved);
+      this.sse.broadcast(gameId, resolved.stateVersion);
+      await store.writeSave(resolved);
+      return resolved;
+    });
   }
 
   /**
@@ -936,12 +962,14 @@ export class GameRuntime {
         { statusCode: 400 },
       );
     }
-    this.clearTimer(gameId);
-    const next = rollbackToTurn(this.requireGame(gameId), turnNumber);
-    this.replace(gameId, next);
-    this.sse.broadcast(gameId, next.stateVersion);
-    await store.writeSave(next);
-    return next;
+    return this.enqueueTurnMutation(gameId, async () => {
+      this.clearTimer(gameId);
+      const next = rollbackToTurn(this.requireGame(gameId), turnNumber);
+      this.replace(gameId, next);
+      this.sse.broadcast(gameId, next.stateVersion);
+      await store.writeSave(next);
+      return next;
+    });
   }
 
   updateUnit(
