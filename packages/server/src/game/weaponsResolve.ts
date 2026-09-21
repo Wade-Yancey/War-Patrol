@@ -62,6 +62,8 @@ function logLine(opts: {
   actor?: UnitState;
   target?: UnitState;
   damage?: number;
+  /** Bridge / audio detonation id this combat effect came from. */
+  sourceDetonationId?: string;
 }): CombatLogEntry {
   return {
     id: `cl-${nanoid(8)}`,
@@ -75,13 +77,19 @@ function logLine(opts: {
     targetUnitId: opts.target?.id,
     targetName: opts.target?.name,
     damage: opts.damage,
+    ...(opts.sourceDetonationId ? { sourceDetonationId: opts.sourceDetonationId } : {}),
   };
 }
 
 function logSubsystemCasualties(
   before: UnitState,
   after: UnitState,
-  opts: { turnNumber: number; gameTimeSeconds: number; actor?: UnitState },
+  opts: {
+    turnNumber: number;
+    gameTimeSeconds: number;
+    actor?: UnitState;
+    sourceDetonationId?: string;
+  },
 ): CombatLogEntry[] {
   const lines: CombatLogEntry[] = [];
   if (before.subsystems.sensors === 'intact' && after.subsystems.sensors === 'disabled') {
@@ -93,6 +101,7 @@ function logSubsystemCasualties(
         actor: opts.actor,
         target: after,
         summary: `${after.name}: sensors disabled`,
+        sourceDetonationId: opts.sourceDetonationId,
       }),
     );
   }
@@ -108,6 +117,7 @@ function logSubsystemCasualties(
         actor: opts.actor,
         target: after,
         summary: `${after.name}: propulsion disabled`,
+        sourceDetonationId: opts.sourceDetonationId,
       }),
     );
   }
@@ -325,9 +335,10 @@ export function resolveWeaponsForTurn(
           units = units.map((u) => (u.id === uid ? damaged : u));
           unitMap.set(uid, damaged);
           const truncated = truncateTorpedoAtHit(fish, advanced, before, closest, uid, 'hit');
+          const hitDetonationId = `thit-${fish.id}`;
           newDetonations.push(
             makeDetonationEvent({
-              id: `thit-${fish.id}`,
+              id: hitDetonationId,
               kind: 'torpedo_hit',
               position: truncated.position,
               turnNumber,
@@ -343,6 +354,7 @@ export function resolveWeaponsForTurn(
               actor: unitMap.get(fish.firerUnitId),
               target: damaged,
               damage,
+              sourceDetonationId: hitDetonationId,
               summary: `Torpedo HIT ${target.name} (−${damage} HP · aspect ${roll.aspectDeg.toFixed(0)}° · gate ${roll.hitGateM.toFixed(0)} m · L-ID ${(roll.lengthIdScale * 100).toFixed(0)}%)`,
             }),
           );
@@ -351,6 +363,7 @@ export function resolveWeaponsForTurn(
               turnNumber,
               gameTimeSeconds,
               actor: unitMap.get(fish.firerUnitId),
+              sourceDetonationId: hitDetonationId,
             }),
           );
           if (damaged.condition === 'sunk') {
@@ -361,6 +374,7 @@ export function resolveWeaponsForTurn(
                 gameTimeSeconds,
                 target: damaged,
                 actor: unitMap.get(fish.firerUnitId),
+                sourceDetonationId: hitDetonationId,
                 summary: `${damaged.name} SUNK / destroyed`,
               }),
             );
@@ -397,9 +411,10 @@ export function resolveWeaponsForTurn(
       const advanced = advanceDepthCharge(charge, dt);
       if (advanced.status !== 'detonated') return advanced;
 
+      const dcDetonationId = `det-${advanced.id}`;
       newDetonations.push(
         makeDetonationEvent({
-          id: `det-${advanced.id}`,
+          id: dcDetonationId,
           position: advanced.position,
           turnNumber,
           firerUnitId: advanced.firerUnitId,
@@ -411,6 +426,7 @@ export function resolveWeaponsForTurn(
           turnNumber,
           gameTimeSeconds,
           actor: unitMap.get(advanced.firerUnitId),
+          sourceDetonationId: dcDetonationId,
           summary: `DC detonated at ${Math.round(advanced.depthSettingM)} m (from ${nameOf(advanced.firerUnitId)})`,
         }),
       );
@@ -436,6 +452,7 @@ export function resolveWeaponsForTurn(
               actor: unitMap.get(advanced.firerUnitId),
               target: damaged,
               damage,
+              sourceDetonationId: dcDetonationId,
               summary: `DC effect on ${target.name} −${damage} HP (miss ${horiz.toFixed(0)} m · ΔD ${depthErr.toFixed(0)} m)`,
             }),
           );
@@ -444,6 +461,7 @@ export function resolveWeaponsForTurn(
               turnNumber,
               gameTimeSeconds,
               actor: unitMap.get(advanced.firerUnitId),
+              sourceDetonationId: dcDetonationId,
             }),
           );
           if (damaged.condition === 'sunk') {
@@ -454,6 +472,7 @@ export function resolveWeaponsForTurn(
                 gameTimeSeconds,
                 target: damaged,
                 actor: unitMap.get(advanced.firerUnitId),
+                sourceDetonationId: dcDetonationId,
                 summary: `${damaged.name} SUNK / destroyed`,
               }),
             );

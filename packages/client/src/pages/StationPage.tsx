@@ -37,11 +37,12 @@ import { ActiveSonarScope } from '../components/ActiveSonarScope';
 import { TorpedoCalculator } from '../components/TorpedoCalculator';
 import { DepthChargeControls } from '../components/DepthChargeControls';
 import { DamageReportPanel } from '../components/DamageReportPanel';
+import { useAudioSyncedDamageReport } from '../hooks/useAudioSyncedDamageReport';
 import {
   DEPTH_CHARGE_AUDIO_SPREAD_SEC,
   DEPTH_CHARGE_CONTROLS_GAIN,
+  depthChargeBatchWhenSecById,
   depthChargeControlsGain,
-  depthChargeStaggerDelaySec,
   loadDepthChargeBuffer,
   playDepthChargeSample,
 } from '../audio/depthCharge';
@@ -156,6 +157,20 @@ export function StationPage() {
   const onSubCreakBridge =
     onControlsBridge && vessel?.unit.type === 'Submarine';
 
+  const syncedDamage = useAudioSyncedDamageReport(
+    vessel?.ownDamageLog,
+    vessel?.bridgeDetonations,
+    vessel
+      ? {
+          health: vessel.unit.health,
+          condition: vessel.unit.condition,
+          subsystems: vessel.unit.subsystems,
+        }
+      : null,
+  );
+  const scheduleDamageRevealRef = useRef(syncedDamage.scheduleRevealForDetonation);
+  scheduleDamageRevealRef.current = syncedDamage.scheduleRevealForDetonation;
+
   const playedBridgeBlastRef = useRef<Set<string>>(new Set());
   const pendingBridgeBlastRef = useRef<
     Array<{ id: string; rangeNm: number; kind: 'depth_charge' | 'torpedo_hit' }>
@@ -267,8 +282,7 @@ export function StationPage() {
       .filter((e) => e.kind !== 'torpedo_hit' && !playedBridgeBlastRef.current.has(e.id))
       .slice()
       .sort((a, b) => a.id.localeCompare(b.id));
-    const dcBatchIndex = new Map(dcBatch.map((e, i) => [e.id, i]));
-    const dcCount = dcBatch.length;
+    const dcWhenById = depthChargeBatchWhenSecById(dcBatch);
 
     for (const e of pending) {
       if (playedBridgeBlastRef.current.has(e.id)) continue;
@@ -283,18 +297,20 @@ export function StationPage() {
             TORPEDO_HIT_CONTROLS_PEAK_GAIN *
             Math.max(0.35, torpedoHitControlsGain(e.rangeNm));
           playTorpedoHitSample(ctx, hitBuffer, ctx.destination, gain);
+          // Damage report lines for this hit appear with the explosion cue.
+          scheduleDamageRevealRef.current(e.id, 0);
         } else {
           if (!dcBuffer) {
             still.push(e);
             continue;
           }
-          const idx = dcBatchIndex.get(e.id) ?? 0;
-          const whenSec = depthChargeStaggerDelaySec(idx, dcCount);
+          const whenSec = dcWhenById.get(e.id) ?? 0;
           // Per-charge range attenuation (closer = louder); silent past hear radius.
           const peak =
             DEPTH_CHARGE_CONTROLS_GAIN * depthChargeControlsGain(e.rangeNm);
           if (peak < 0.001) {
             playedBridgeBlastRef.current.add(e.id);
+            scheduleDamageRevealRef.current(e.id, whenSec);
             continue;
           }
           playDepthChargeSample(ctx, dcBuffer, ctx.destination, peak, { whenSec });
@@ -302,6 +318,8 @@ export function StationPage() {
           if (onSubCreakBridge && creakBuffer) {
             playDcStressCreak(ctx, creakBuffer, whenSec);
           }
+          // Own-ship Damage report reveals with this charge's blast, not at resolve.
+          scheduleDamageRevealRef.current(e.id, whenSec);
         }
         playedBridgeBlastRef.current.add(e.id);
       } catch {
@@ -1297,7 +1315,9 @@ export function StationPage() {
                   sharply with range toward silence at the hear-radius edge.
                   Multi-charge patterns play one distant-explosion sample per charge, spaced
                   evenly across ~{DEPTH_CHARGE_AUDIO_SPREAD_SEC / 60} minutes (not stacked),
-                  each at its own range volume. Torpedo hits play a procedural explosion for
+                  each at its own range volume. Own-ship Damage report lines (and hull readout
+                  on that tab) appear with each blast cue — not all at once on resolve.
+                  Torpedo hits play a procedural explosion for
                   both firer and target Controls, attenuated by range. Submarine Controls also
                   hear occasional hull creaks while submerged (depth &gt; {RADAR_SURFACE_DEPTH_M}{' '}
                   m), denser toward test depth and <em>super frequent</em> near crush (~
@@ -1313,10 +1333,10 @@ export function StationPage() {
               <DamageReportPanel
                 vesselName={vessel.unit.name}
                 vesselType={vessel.unit.type}
-                health={vessel.unit.health}
-                condition={vessel.unit.condition}
-                subsystems={vessel.unit.subsystems}
-                damageLog={vessel.ownDamageLog}
+                health={syncedDamage.health}
+                condition={syncedDamage.condition}
+                subsystems={syncedDamage.subsystems}
+                damageLog={syncedDamage.damageLog}
               />
             )}
 

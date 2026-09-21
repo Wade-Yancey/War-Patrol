@@ -41,6 +41,9 @@ function subsystemLabel(state: UnitSubsystems[keyof UnitSubsystems]): string {
 /**
  * Own-ship FoW damage report for Controls — hull integrity, subsystems,
  * and chronological damage taken (never the enemy board).
+ *
+ * Callers may pass audio-staged health / log lines so DC shock reports appear
+ * with the matching explosion cue rather than all at once on turn resolve.
  */
 export function DamageReportPanel({
   vesselName,

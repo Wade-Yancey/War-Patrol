@@ -1219,6 +1219,7 @@ export function buildOwnDamageLog(
       gameTimeSeconds: e.gameTimeSeconds,
       summary,
       damage: e.damage,
+      ...(e.sourceDetonationId ? { sourceDetonationId: e.sourceDetonationId } : {}),
     });
   }
   return out;
