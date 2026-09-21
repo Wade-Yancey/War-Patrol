@@ -90,6 +90,8 @@ export type PlayCreakOptions = {
   offsetSec?: number;
   /** How long to play (sec). Clamped to remaining buffer. */
   durationSec?: number;
+  /** Seconds from `ctx.currentTime` before the creak starts (default 0). */
+  whenSec?: number;
 };
 
 /**
@@ -115,6 +117,7 @@ export function playSubmarineCreakSample(
       : maxOffset > 0
         ? Math.random() * maxOffset
         : 0;
+  const whenSec = Math.max(0, options.whenSec ?? 0);
 
   const source = ctx.createBufferSource();
   const gain = ctx.createGain();
@@ -122,6 +125,6 @@ export function playSubmarineCreakSample(
   gain.gain.value = peakGain;
   source.connect(gain);
   gain.connect(destination);
-  source.start(ctx.currentTime, offsetSec, durationSec);
+  source.start(ctx.currentTime + whenSec, offsetSec, durationSec);
   return source;
 }

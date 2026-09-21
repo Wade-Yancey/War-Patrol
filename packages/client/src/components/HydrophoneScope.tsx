@@ -14,6 +14,7 @@ import {
   playSonarPingSample,
 } from '../audio/sonarPing';
 import {
+  depthChargeStaggerDelaySec,
   hydrophoneDepthChargePeakGain,
   loadDepthChargeBuffer,
   playDepthChargeSample,
@@ -291,12 +292,20 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
     for (const id of [...playedDcIdsRef.current]) {
       if (!liveIds.has(id)) playedDcIdsRef.current.delete(id);
     }
-    for (const c of charges) {
-      if (playedDcIdsRef.current.has(c.id)) continue;
+    // New contacts in this hear-batch: one sample per charge, staggered over ~2 min.
+    const fresh = charges
+      .filter((c) => !playedDcIdsRef.current.has(c.id))
+      .slice()
+      .sort((a, b) => a.id.localeCompare(b.id));
+    const n = fresh.length;
+    for (let i = 0; i < n; i++) {
+      const c = fresh[i]!;
       const gainAmt = hydrophoneContactGain(c.rangeNm, bearing, c.bearing);
       // Detonations are loud — play even off-beam at reduced gain.
       const peak = Math.max(0.04, hydrophoneDepthChargePeakGain(Math.max(gainAmt, 0.15)));
-      playDepthChargeSample(ctx, dcBuffer, master, peak);
+      playDepthChargeSample(ctx, dcBuffer, master, peak, {
+        whenSec: depthChargeStaggerDelaySec(i, n),
+      });
       playedDcIdsRef.current.add(c.id);
     }
   }, []);
