@@ -3,6 +3,7 @@ import {
   RADAR_SIGNATURE_STRENGTH,
   bearingRangeNm,
   canUseSensors,
+  coarsenActiveSonarDepthM,
   defaultRadarSignature,
   ensureContactLabel,
   findActiveSonarSensor,
@@ -27,8 +28,8 @@ export type ActiveSonarPicture = {
 /**
  * Forward-cone active search sonar picture (destroyer Sensors).
  * Only paints when the operator toggle is ON. Contacts are anonymous polar
- * echoes (Contact N / bearing / range / signature) like radar, limited to the
- * cone about own heading.
+ * echoes (Contact N / bearing / range / signature / estimated depth) like
+ * radar, limited to the cone about own heading. Depth is FoW-coarsened — not GT.
  */
 export function buildActiveSonarContacts(own: UnitState, save: GameSave): ActiveSonarPicture {
   const sensor = findActiveSonarSensor(own);
@@ -94,6 +95,7 @@ export function buildActiveSonarContacts(own: UnitState, save: GameSave): Active
       rangeNm: Math.round(rangeNm * 100) / 100,
       strength: Math.round(strength * 100) / 100,
       signature,
+      estimatedDepthM: coarsenActiveSonarDepthM(other.position.depth),
     });
   }
 

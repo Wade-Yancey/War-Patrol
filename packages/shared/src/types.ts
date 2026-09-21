@@ -727,6 +727,11 @@ export interface RadarContact {
    * Not a class/side/name — operators see only small/medium/large.
    */
   signature: RadarSignature;
+  /**
+   * Active-sonar only: FoW-coarsened estimated keel depth (m, positive down).
+   * Omitted on radar contacts. Coarse bands — not ground-truth depth.
+   */
+  estimatedDepthM?: number;
 }
 
 /** Filtered vessel/station view — never other units' ground truth. */

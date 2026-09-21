@@ -27,6 +27,7 @@ import {
   bearingRangeNm,
   clampSpeedToMax,
   clampSubmarineDepth,
+  coarsenActiveSonarDepthM,
   coarsenPeriscopeCourseDeg,
   editMaxSpeedForClass,
   effectiveMaxSpeed,
@@ -77,6 +78,12 @@ async function main() {
   check('coarsen course 225 stays 225', coarsenPeriscopeCourseDeg(225) === 225);
   check('coarsen course 359 → 0', coarsenPeriscopeCourseDeg(359) === 0);
   check('coarsen course 352 → 345', coarsenPeriscopeCourseDeg(352) === 345);
+  check('sonar depth surface band → 0', coarsenActiveSonarDepthM(0) === 0);
+  check('sonar depth ≤5 m → 0', coarsenActiveSonarDepthM(5) === 0);
+  check('sonar depth 10 m → 25 (min submerged band)', coarsenActiveSonarDepthM(10) === 25);
+  check('sonar depth 40 m → 50', coarsenActiveSonarDepthM(40) === 50);
+  check('sonar depth 50 m → 50', coarsenActiveSonarDepthM(50) === 50);
+  check('sonar depth 90 m → 100', coarsenActiveSonarDepthM(90) === 100);
   check('parseWallDuration mm:ss', parseWallDuration('3:30') === 210);
   check('snapWallDuration 30s', snapWallDuration(200, 30) === 210);
 
@@ -546,6 +553,16 @@ async function main() {
     sonarContacts[0].signature === 'small' ||
       sonarContacts[0].signature === 'medium' ||
       sonarContacts[0].signature === 'large',
+  );
+  check(
+    'sonar contact estimated depth FoW band',
+    // Umpire placed Gato at depth 40 → coarsen to nearest 25 m band (50).
+    sonarContacts[0].estimatedDepthM === 50,
+    `got ${sonarContacts[0].estimatedDepthM}`,
+  );
+  check(
+    'sonar contact estimated depth is not exact GT',
+    sonarContacts[0].estimatedDepthM !== 40,
   );
   await api(
     'POST',

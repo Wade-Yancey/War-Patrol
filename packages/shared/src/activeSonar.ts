@@ -1,7 +1,11 @@
 import {
+  ACTIVE_SONAR_DEPTH_STEP_M,
   ACTIVE_SONAR_HALF_ANGLE_DEG,
   ACTIVE_SONAR_MAX_RANGE_NM,
+  RADAR_SURFACE_DEPTH_M,
+  SUBMARINE_MAX_DEPTH_M,
 } from './constants.js';
+import { formatDepthMeters } from './orders.js';
 import { shortestBearingDelta } from './hydrophone.js';
 import type { HullClass, SensorDef, UnitState } from './types.js';
 import { isHullClass, resolveVesselIdentity } from './vessel.js';
@@ -58,4 +62,23 @@ export function isActiveSonarPinging(
   if (unit.condition === 'sunk') return false;
   if (unit.subsystems?.sensors === 'disabled') return false;
   return true;
+}
+
+/**
+ * FoW coarse keel-depth estimate for an active-sonar echo (meters, positive down).
+ * Surface band (≤ {@link RADAR_SURFACE_DEPTH_M}) → 0. Otherwise nearest
+ * {@link ACTIVE_SONAR_DEPTH_STEP_M} band, floored at one step so shallow
+ * submerged contacts are not collapsed back to “surface”. Not ground truth —
+ * operators set depth-charge rack depth from this readout.
+ */
+export function coarsenActiveSonarDepthM(depthM: number): number {
+  if (!Number.isFinite(depthM) || depthM <= RADAR_SURFACE_DEPTH_M) return 0;
+  const step = Math.max(1, ACTIVE_SONAR_DEPTH_STEP_M);
+  const stepped = Math.round(depthM / step) * step;
+  return Math.max(step, Math.min(SUBMARINE_MAX_DEPTH_M, stepped));
+}
+
+/** CRT string for sonar estimated depth (e.g. `EST 050 m`). */
+export function formatActiveSonarEstimatedDepth(depthM: number): string {
+  return `EST ${formatDepthMeters(coarsenActiveSonarDepthM(depthM))}`;
 }
