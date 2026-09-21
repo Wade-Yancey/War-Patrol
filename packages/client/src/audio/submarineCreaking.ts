@@ -8,10 +8,10 @@ import {
 export const SUBMARINE_CREAKING_SAMPLE_URL = '/audio/submarine-creaking.wav';
 
 /** Quiet ambient one-shot — sits under the facility hum, below DC/torpedo peaks. */
-export const SUBMARINE_CREAK_AMBIENT_GAIN = 0.14;
+export const SUBMARINE_CREAK_AMBIENT_GAIN = 0.1;
 
-/** Louder burst when a nearby depth charge hits while submerged. */
-export const SUBMARINE_CREAK_DC_GAIN = 0.28;
+/** Stress burst when a nearby depth charge hits while submerged (still under DC peak). */
+export const SUBMARINE_CREAK_DC_GAIN = 0.2;
 
 /** Mean seconds between ambient creaks just below the surface band. */
 export const SUBMARINE_CREAK_INTERVAL_SHALLOW_SEC = 48;

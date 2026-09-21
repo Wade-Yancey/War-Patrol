@@ -5,10 +5,10 @@ export const DEPTH_CHARGE_SAMPLE_URL = '/audio/depth-charge.wav';
 
 /**
  * Peak gain on Controls when a charge detonates on top of own ship (range ≈ 0).
- * Raised above the old 0.42 so nearby blasts read clearly vs ambient/creak;
- * kept under 1.0 to avoid GainNode clipping on hot sample peaks.
+ * Slightly above 0.9 so nearby blasts read over ambient/creak; still under 1.0
+ * to avoid GainNode clipping on hot sample peaks.
  */
-export const DEPTH_CHARGE_CONTROLS_GAIN = 0.9;
+export const DEPTH_CHARGE_CONTROLS_GAIN = 0.98;
 
 /**
  * Wall-clock window (seconds) over which a multi-charge pattern's one-shots are
@@ -54,7 +54,7 @@ export function depthChargeControlsGain(rangeNm: number): number {
 
 /** Peak gain for hydrophone-heard detonation given range×beam gain in [0, 1]. */
 export function hydrophoneDepthChargePeakGain(contactGain: number): number {
-  return Math.min(0.72, 0.16 + contactGain * 0.7);
+  return Math.min(0.85, 0.18 + contactGain * 0.78);
 }
 
 export async function loadDepthChargeBuffer(ctx: AudioContext): Promise<AudioBuffer> {
