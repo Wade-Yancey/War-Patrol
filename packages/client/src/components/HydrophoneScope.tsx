@@ -22,7 +22,7 @@ import {
 import { useContinuousAngle } from '../hooks/useContinuousAngle';
 
 const PROP_SAMPLE_URL = '/audio/echo-propeller.wav';
-/** Fine-adjust nudge step for ◀ / ▶ flanking the bearing slider (degrees). */
+/** Bearing nudge step for ◀ / ▶ train buttons (degrees). */
 const BEARING_NUDGE_DEG = 1;
 /** Delay before continuous hold-repeat starts (ms). */
 const NUDGE_HOLD_DELAY_MS = 400;
@@ -413,6 +413,7 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
   const startNudgeHold = (dir: -1 | 1) => (e: PointerEvent<HTMLButtonElement>) => {
     if (e.button !== 0) return;
     e.preventDefault();
+    // Capture so hold-repeat continues if the pointer slides off the hit target.
     e.currentTarget.setPointerCapture(e.pointerId);
     stopNudgeHold();
     nudgeBearing(dir);
@@ -450,7 +451,7 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
           className="radar-scope-svg hydrophone-svg"
           viewBox={`0 0 ${SIZE} ${SIZE}`}
           role="img"
-          aria-label={`Hydrophone listen bearing ${listenLabel} degrees. Intensity ${levelPct} percent. ${ariaRange}. No visual contacts — audio only.`}
+          aria-label={`Hydrophone listen bearing ${listenLabel} degrees. Click dial to jump needle. Intensity ${levelPct} percent. ${ariaRange}. No visual contacts — audio only.`}
           preserveAspectRatio="xMidYMid meet"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
@@ -613,16 +614,16 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
             {listening ? 'Stop listening' : 'Start listening'}
           </button>
           <div className="hydrophone-fine">
-            <span className="hydrophone-key">Fine · {BEARING_NUDGE_DEG}°</span>
+            <span className="hydrophone-key">Train · hold · {BEARING_NUDGE_DEG}°</span>
             <div className="hydrophone-fine-row">
               <button
                 type="button"
                 className="hydrophone-nudge"
-                aria-label={`Decrease listen bearing ${BEARING_NUDGE_DEG} degree`}
+                aria-label={`Decrease listen bearing ${BEARING_NUDGE_DEG} degree. Hold to repeat.`}
                 onPointerDown={startNudgeHold(-1)}
                 onPointerUp={endNudgeHold}
-                onPointerLeave={endNudgeHold}
                 onPointerCancel={endNudgeHold}
+                onLostPointerCapture={stopNudgeHold}
                 onClick={(e) => {
                   /* Keyboard activation only — pointer path already nudged on down. */
                   if (e.detail === 0) nudgeBearing(-1);
@@ -630,24 +631,14 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
               >
                 ◀
               </button>
-              <input
-                type="range"
-                className="hydrophone-fine-slider"
-                min={0}
-                max={359}
-                step={1}
-                value={Math.round(listen)}
-                onChange={(e) => setListenBearing(Number(e.target.value))}
-                aria-label="Listen bearing fine adjust"
-              />
               <button
                 type="button"
                 className="hydrophone-nudge"
-                aria-label={`Increase listen bearing ${BEARING_NUDGE_DEG} degree`}
+                aria-label={`Increase listen bearing ${BEARING_NUDGE_DEG} degree. Hold to repeat.`}
                 onPointerDown={startNudgeHold(1)}
                 onPointerUp={endNudgeHold}
-                onPointerLeave={endNudgeHold}
                 onPointerCancel={endNudgeHold}
+                onLostPointerCapture={stopNudgeHold}
                 onClick={(e) => {
                   if (e.detail === 0) nudgeBearing(1);
                 }}
@@ -659,8 +650,8 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
         </div>
 
         <p className="hydrophone-caption muted mono">
-          RNG ≈ invert range falloff (R0=8 nm) when needle is on contact · ~nm coarsened · max{' '}
-          {maxRangeNm} nm ·{' '}
+          Click dial to jump · hold ◀▶ to train · RNG ≈ invert range falloff (R0=8 nm) when needle
+          is on contact · ~nm coarsened · max {maxRangeNm} nm ·{' '}
           {contacts.length === 0
             ? 'no acoustic contacts in range'
             : `${contacts.filter((c) => c.kind !== 'active_sonar_ping').length} prop · ${contacts.filter((c) => c.kind === 'active_sonar_ping').length} ping (audio only)`}

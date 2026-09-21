@@ -1101,16 +1101,16 @@ label {
   }
 
   .hydrophone-scope .radar-scope-svg {
-    /* Same dominance as radar tablet SVG; subtract wider fine-slider panel. */
-    width: min(calc(100vw - 16.5rem), calc(100dvh - 4.75rem));
-    max-width: min(calc(100vw - 16.5rem), calc(100dvh - 4.75rem));
-    max-height: min(calc(100vw - 16.5rem), calc(100dvh - 4.75rem));
+    /* Same dominance as radar tablet SVG; subtract train-button aux panel. */
+    width: min(calc(100vw - 14.5rem), calc(100dvh - 4.75rem));
+    max-width: min(calc(100vw - 14.5rem), calc(100dvh - 4.75rem));
+    max-height: min(calc(100vw - 14.5rem), calc(100dvh - 4.75rem));
   }
 
   .hydrophone-scope .radar-side-panel {
-    width: 15rem;
-    max-width: 15rem;
-    max-height: min(calc(100vw - 16.5rem), calc(100dvh - 4.75rem));
+    width: 12.5rem;
+    max-width: 12.5rem;
+    max-height: min(calc(100vw - 14.5rem), calc(100dvh - 4.75rem));
     overflow-x: visible;
     overflow-y: auto;
     padding: 0.1rem 0.35rem;
@@ -1172,16 +1172,16 @@ label {
     justify-content: flex-start;
   }
 
-  /* Hydrophone dial: exact radar PPI desktop scale (#33); keep wider fine aux. */
+  /* Hydrophone dial: exact radar PPI desktop scale (#33); train-button aux. */
   .hydrophone-scope .radar-scope-svg {
-    width: min(78vh, 820px, calc(100vw - 18.5rem));
-    max-width: min(78vh, 820px, calc(100vw - 18.5rem));
+    width: min(78vh, 820px, calc(100vw - 15.5rem));
+    max-width: min(78vh, 820px, calc(100vw - 15.5rem));
     max-height: min(78vh, 820px);
   }
 
   .hydrophone-scope .radar-side-panel {
-    width: 15rem;
-    max-width: 15rem;
+    width: 12.5rem;
+    max-width: 12.5rem;
     max-height: min(78vh, 820px);
   }
 
@@ -1230,14 +1230,14 @@ label {
 
   /* Hydrophone dial: exact radar PPI large-desktop scale (#33). */
   .hydrophone-scope .radar-scope-svg {
-    width: min(84vh, 920px, calc(100vw - 19.5rem));
-    max-width: min(84vh, 920px, calc(100vw - 19.5rem));
+    width: min(84vh, 920px, calc(100vw - 16.5rem));
+    max-width: min(84vh, 920px, calc(100vw - 16.5rem));
     max-height: min(84vh, 920px);
   }
 
   .hydrophone-scope .radar-side-panel {
-    width: 16rem;
-    max-width: 16rem;
+    width: 13rem;
+    max-width: 13rem;
     max-height: min(84vh, 920px);
   }
 }
@@ -2426,18 +2426,18 @@ label {
 }
 
 .hydrophone-scope .radar-scope-svg {
-  /* Match radar base dominance; subtract wider fine-slider panel. */
-  width: min(calc(100vw - 17.5rem), calc(100dvh - 5.25rem));
-  max-width: min(calc(100vw - 17.5rem), calc(100dvh - 5.25rem));
-  max-height: min(calc(100vw - 17.5rem), calc(100dvh - 5.25rem));
+  /* Match radar base dominance; subtract train-button aux panel. */
+  width: min(calc(100vw - 15rem), calc(100dvh - 5.25rem));
+  max-width: min(calc(100vw - 15rem), calc(100dvh - 5.25rem));
+  max-height: min(calc(100vw - 15rem), calc(100dvh - 5.25rem));
 }
 
 .hydrophone-scope .radar-side-panel {
-  /* Wider than radar aux so the fine bearing slider has useful track length. */
-  width: 15rem;
-  max-width: 15rem;
-  max-height: min(calc(100vw - 17.5rem), calc(100dvh - 5.25rem));
-  /* Visible so range thumb is not clipped; vertical scroll still allowed. */
+  /* Train ◀/▶ buttons — no fine bearing slider track. */
+  width: 12.5rem;
+  max-width: 12.5rem;
+  max-height: min(calc(100vw - 15rem), calc(100dvh - 5.25rem));
+  /* Visible so large train buttons are not clipped; vertical scroll still allowed. */
   overflow-x: visible;
   overflow-y: auto;
   padding: 0.15rem 0.35rem;
@@ -2536,19 +2536,19 @@ label {
 .hydrophone-fine-row {
   display: flex;
   flex-direction: row;
-  align-items: center;
-  gap: 0.2rem;
+  align-items: stretch;
+  gap: 0.4rem;
   width: 100%;
   min-width: 0;
   overflow: visible;
 }
 
 .hydrophone-nudge {
-  flex: 0 0 auto;
-  min-width: 2.35rem;
-  min-height: 2.5rem;
-  padding: 0.2rem 0.35rem;
-  font-size: 0.85rem;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 3.75rem;
+  padding: 0.55rem 0.5rem;
+  font-size: 1.45rem;
   line-height: 1;
   font-family: var(--font-display);
   color: var(--phosphor);
@@ -2567,62 +2567,6 @@ label {
 
 .hydrophone-nudge:active:not(:disabled) {
   background: var(--phosphor-deep);
-}
-
-.hydrophone-fine-slider {
-  -webkit-appearance: none;
-  appearance: none;
-  flex: 1 1 auto;
-  min-width: 0;
-  width: auto;
-  height: 2.5rem;
-  min-height: 2.5rem;
-  margin: 0;
-  padding: 0 0.35rem;
-  box-sizing: border-box;
-  background: transparent;
-  border: none;
-  accent-color: var(--phosphor);
-  cursor: pointer;
-  touch-action: none;
-}
-
-.hydrophone-fine-slider:focus {
-  outline: none;
-  box-shadow: none;
-}
-
-.hydrophone-fine-slider::-webkit-slider-runnable-track {
-  height: 0.45rem;
-  background: var(--phosphor-deep);
-  border: 1px solid var(--line);
-  border-radius: 1px;
-}
-
-.hydrophone-fine-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 1.35rem;
-  height: 1.35rem;
-  margin-top: -0.5rem;
-  background: var(--phosphor);
-  border: 2px solid var(--bg-void);
-  border-radius: 2px;
-}
-
-.hydrophone-fine-slider::-moz-range-track {
-  height: 0.45rem;
-  background: var(--phosphor-deep);
-  border: 1px solid var(--line);
-  border-radius: 1px;
-}
-
-.hydrophone-fine-slider::-moz-range-thumb {
-  width: 1.35rem;
-  height: 1.35rem;
-  background: var(--phosphor);
-  border: 2px solid var(--bg-void);
-  border-radius: 2px;
 }
 
 .hydrophone-caption {
