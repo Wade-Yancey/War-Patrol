@@ -2801,27 +2801,22 @@ label {
   min-height: 0;
 }
 
-/* Optics relative-bearing compass (lookout / periscope) — CRT phosphor, bow-up */
+/* Optics bearing compass (lookout / periscope) — helm visual language, left column */
 .optics-bearing-compass {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.45rem;
   width: 100%;
+  max-width: 20rem;
+  margin: 0 auto;
   flex: 0 0 auto;
-}
-
-.optics-bearing-compass-title {
-  margin: 0;
-  font-size: 0.68rem;
-  letter-spacing: 0.12em;
-  text-align: center;
 }
 
 .optics-bearing-compass-svg {
   display: block;
-  /* Larger than the prior side-panel rose (~9.5rem) — left-column instrument. */
-  width: min(100%, 13.5rem);
+  /* Left-column instrument — larger rose, same viewBox geometry as helm. */
+  width: min(100%, 14.5rem);
   height: auto;
   aspect-ratio: 1 / 1;
   touch-action: manipulation;
@@ -2830,12 +2825,12 @@ label {
 
 @media (min-width: 900px) {
   .optics-bearing-compass-svg {
-    width: min(100%, 15rem);
+    width: min(100%, 16.5rem);
   }
 }
 
 .optics-bearing-compass-needle {
-  transition: transform 0.4s ease-out;
+  transition: transform 0.45s ease-out;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2846,42 +2841,73 @@ label {
 
 .optics-bearing-compass-readouts {
   display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.55rem 1rem;
   width: 100%;
 }
 
 .optics-bearing-compass-readout {
   display: flex;
   align-items: baseline;
-  justify-content: center;
-  gap: 0.4rem;
-  width: 100%;
-  padding: 0.2rem 0.35rem;
-  font-size: 0.82rem;
-  color: var(--phosphor);
-  background: color-mix(in srgb, var(--bg-crt) 82%, transparent);
-  border: 1px solid color-mix(in srgb, var(--phosphor-dim) 40%, transparent);
+  gap: 0.35rem;
 }
 
 .optics-bearing-compass-key {
   font-family: var(--font-display);
-  font-size: 0.65rem;
+  font-size: 0.68rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--phosphor-dim);
 }
 
 .optics-bearing-compass-val {
-  font-size: 0.95rem;
+  font-size: 1.15rem;
   letter-spacing: 0.04em;
+}
+
+.optics-bearing-compass-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.45rem 0.9rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--ink-muted);
+}
+
+.optics-bearing-compass-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.optics-bearing-compass-swatch {
+  display: inline-block;
+  width: 0.85rem;
+  height: 0.85rem;
+  flex: none;
+}
+
+.optics-bearing-compass-swatch--hdg {
+  background: #7dff9a;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.optics-bearing-compass-swatch--contact {
+  width: 0;
+  height: 0;
+  border-left: 0.4rem solid transparent;
+  border-right: 0.4rem solid transparent;
+  border-bottom: 0.7rem solid #3dff6a;
+  background: none;
 }
 
 .optics-bearing-compass-caption {
   margin: 0;
-  max-width: 15rem;
-  font-size: 0.68rem;
-  line-height: 1.3;
+  max-width: 17rem;
+  font-size: 0.72rem;
+  line-height: 1.35;
   text-align: center;
 }
 
@@ -2961,6 +2987,6 @@ label {
   }
 
   .optics-bearing-compass-svg {
-    width: min(100%, 12rem);
+    width: min(100%, 13rem);
   }
 }

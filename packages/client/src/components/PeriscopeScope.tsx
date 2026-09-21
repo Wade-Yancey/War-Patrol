@@ -16,7 +16,7 @@ import { PeriscopeFeatherSvg } from './PeriscopeFeatherSvg';
 interface Props {
   contacts: PeriscopeContact[];
   maxRangeNm: number;
-  /** Own-ship heading — lubber / bow reference only. */
+  /** Own-ship heading — solid HDG needle (bow facing) on the north-up rose. */
   ownHeading: number;
   /**
    * Sub periscope vs surface-ship lookout — same FoW / silhouette / contact list.
@@ -63,7 +63,7 @@ function contactsKey(contacts: PeriscopeContact[]): string {
 
 /**
  * Shared visual optics CRT — one desktop row:
- * relative-bearing compass (left) · silhouette viewer (center) · contact table (right).
+ * helm-style bearing compass (left) · silhouette viewer (center) · contact table (right).
  *
  * Used for fleet-sub periscope and surface-ship lookout. Destroyer / ship
  * contacts → `destroyer.png`; Fleet Submarine hull contacts → `submarine.png`.
