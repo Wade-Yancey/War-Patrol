@@ -4,7 +4,6 @@ import {
   EOT_LABELS,
   FLEET_SUB_CRUSH_DEPTH_M,
   PERISCOPE_DEPTH_M,
-  PERISCOPE_EXPOSURE_PRESETS,
   RADAR_SURFACE_DEPTH_M,
   SUBMARINE_DEPTH_ORDER_STEP_M,
   SUBMARINE_MAX_DEPTH_M,
@@ -494,7 +493,7 @@ export function StationPage() {
   }, [onControlsBridge, vessel, vessel?.bridgeDetonations, vessel?.stateVersion]);
 
   // Sub Sensors: pick a sensible default tab from depth; follow depth-band changes.
-  // Do not depend on the whole vessel object — mast raise/lower / exposure updates must
+  // Do not depend on the whole vessel object — mast raise/lower updates must
   // not re-run this and kick the operator off Periscope.
   const hasVessel = Boolean(vessel);
   useEffect(() => {
@@ -602,12 +601,12 @@ export function StationPage() {
     }
   };
 
-  const togglePeriscope = async (raised: boolean, exposure?: number) => {
+  const togglePeriscope = async (raised: boolean) => {
     if (!token) return;
     setActionError(null);
     setPeriBusy(true);
     try {
-      await api.setPeriscope(gameId, token, raised, exposure);
+      await api.setPeriscope(gameId, token, raised);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Periscope toggle failed');
     } finally {
@@ -837,53 +836,16 @@ export function StationPage() {
                               vessel.unit.position.depth > PERISCOPE_DEPTH_M))
                         }
                         aria-pressed={Boolean(vessel.unit.periscopeRaised)}
-                        onClick={() =>
-                          void togglePeriscope(
-                            !vessel.unit.periscopeRaised,
-                            vessel.unit.periscopeRaised
-                              ? undefined
-                              : (vessel.unit.periscopeExposure || undefined),
-                          )
-                        }
+                        onClick={() => void togglePeriscope(!vessel.unit.periscopeRaised)}
                       >
                         {vessel.unit.periscopeRaised ? 'Periscope UP' : 'Periscope DOWN'}
                       </button>
                       <span className="mono muted">
                         {vessel.unit.periscopeRaised
-                          ? `RAISED · expose ${Math.round((vessel.unit.periscopeExposure ?? 1) * 100)}% · stamp ${vessel.unit.plotStampTurns ?? 0}`
+                          ? `RAISED · stamp ${vessel.unit.plotStampTurns ?? 0}`
                           : 'LOWERED · blind · not spottable'}
                       </span>
                     </div>
-                    {vessel.unit.periscopeRaised && (
-                      <div
-                        className="peri-exposure-row"
-                        role="group"
-                        aria-label="Mast exposure this turn"
-                      >
-                        <span className="mono muted peri-exposure-label">Exposure</span>
-                        {PERISCOPE_EXPOSURE_PRESETS.map((preset) => {
-                          const active =
-                            Math.abs(
-                              (vessel.unit.periscopeExposure ?? 1) - preset.exposure,
-                            ) < 0.03;
-                          return (
-                            <button
-                              key={preset.id}
-                              type="button"
-                              className={active ? 'primary' : undefined}
-                              disabled={periBusy}
-                              aria-pressed={active}
-                              onClick={() => void togglePeriscope(true, preset.exposure)}
-                            >
-                              {preset.label}
-                            </button>
-                          );
-                        })}
-                        <span className="mono muted peri-exposure-hint">
-                          How long the mast is up this turn — lookouts see it while exposed
-                        </span>
-                      </div>
-                    )}
                   </div>
                 )}
                 {vessel.periscopeOperational === false &&

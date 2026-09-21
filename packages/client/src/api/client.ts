@@ -107,12 +107,7 @@ export const api = {
         body: JSON.stringify({ enabled }),
       },
     ),
-  setPeriscope: (
-    gameId: string,
-    token: string,
-    raised: boolean,
-    exposure?: number,
-  ) =>
+  setPeriscope: (gameId: string, token: string, raised: boolean) =>
     request<{
       ok: boolean;
       stateVersion: number;
@@ -122,9 +117,7 @@ export const api = {
     }>(`/api/games/${gameId}/periscope`, {
       method: 'POST',
       token,
-      body: JSON.stringify(
-        exposure === undefined ? { raised } : { raised, exposure },
-      ),
+      body: JSON.stringify({ raised }),
     }),
   turnTimer: (gameId: string, token: string, seconds: number) =>
     request(`/api/games/${gameId}/turn/timer`, {

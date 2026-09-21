@@ -2712,30 +2712,6 @@ label {
   touch-action: manipulation;
 }
 
-.peri-exposure-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.45rem 0.55rem;
-  margin: 0 0 0.65rem;
-}
-
-.peri-exposure-row button {
-  min-height: 2.4rem;
-  padding: 0.35rem 0.75rem;
-  touch-action: manipulation;
-}
-
-.peri-exposure-label {
-  font-size: 0.8rem;
-  margin-right: 0.15rem;
-}
-
-.peri-exposure-hint {
-  font-size: 0.75rem;
-  flex: 1 1 100%;
-}
-
 /* —— Periscope / lookout optics —— desktop row: compass | viewer | contacts */
 .periscope-scope.radar-scope {
   display: grid;
