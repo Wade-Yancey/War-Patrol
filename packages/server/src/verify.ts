@@ -1917,6 +1917,10 @@ async function main() {
       'cimarron-convoy-torpedo-test scenario listed',
       scArr.some((s) => s.id === 'cimarron-convoy-torpedo-test'),
     );
+    check(
+      'deep-dc-test scenario listed',
+      scArr.some((s) => s.id === 'deep-dc-test'),
+    );
 
     {
       const convoyGame = await api('POST', '/api/games', {
@@ -2040,6 +2044,67 @@ async function main() {
         'cimarron Contact N not equal to range-sort index',
         sortedByRange.some((c, i) => c.labelN !== i + 1) || sortedByRange.length < 2,
       );
+    }
+
+    {
+      const deepDcGame = await api('POST', '/api/games', {
+        scenarioId: 'deep-dc-test',
+        name: 'Verify Deep DC',
+      });
+      check('deep-dc-test scenario create', deepDcGame.status === 200);
+      const deepDcId = String(deepDcGame.json.gameId);
+      const deepDcUmp = await api('POST', `/api/games/${deepDcId}/auth/umpire`, {
+        password: 'umpire',
+      });
+      const deepDcUTok = String(deepDcUmp.json.token);
+      const deepDcView = await api('GET', `/api/games/${deepDcId}/view`, undefined, deepDcUTok);
+      const deepDcUnits = (deepDcView.json.view as {
+        units?: Array<{
+          id: string;
+          class?: string;
+          orderedDepth?: number;
+          position?: { lat?: number; lon?: number; depth?: number };
+          depthChargeLoad?: number;
+        }>;
+      }).units ?? [];
+      const deepPorter = deepDcUnits.find((u) => u.id === 'dd-101');
+      const deepGato = deepDcUnits.find((u) => u.id === 'ss-212');
+      check(
+        'deep-dc-test gato at deep keel',
+        deepGato?.position?.depth === 90 && deepGato?.orderedDepth === 90,
+      );
+      check(
+        'deep-dc-test porter overhead',
+        deepPorter?.position?.lat === deepGato?.position?.lat &&
+          deepPorter?.position?.lon === deepGato?.position?.lon &&
+          deepPorter?.position?.depth === 0,
+      );
+      check('deep-dc-test porter has DC load', (deepPorter?.depthChargeLoad ?? 0) > 0);
+      const deepDdCtrl = await api('POST', `/api/games/${deepDcId}/auth/vessel`, {
+        accessToken: 'porter-demo',
+        password: 'blue',
+        stationId: 'controls',
+      });
+      check('deep-dc-test porter controls join', deepDdCtrl.status === 200);
+      const deepDdSens = await api('POST', `/api/games/${deepDcId}/auth/vessel`, {
+        accessToken: 'porter-demo',
+        password: 'blue',
+        stationId: 'sensors',
+      });
+      check('deep-dc-test porter sensors join', deepDdSens.status === 200);
+      const deepSubCtrl = await api('POST', `/api/games/${deepDcId}/auth/vessel`, {
+        accessToken: 'gato-demo',
+        password: 'red',
+        stationId: 'controls',
+      });
+      check('deep-dc-test gato controls join', deepSubCtrl.status === 200);
+      const deepSubSens = await api('POST', `/api/games/${deepDcId}/auth/vessel`, {
+        accessToken: 'gato-demo',
+        password: 'red',
+        stationId: 'sensors',
+      });
+      check('deep-dc-test gato sensors join', deepSubSens.status === 200);
+      await api('DELETE', `/api/saves/${deepDcId}`);
     }
 
     const torpGame = await api('POST', '/api/games', {
