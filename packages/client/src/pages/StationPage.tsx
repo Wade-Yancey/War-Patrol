@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import {
   EOT_LABELS,
   DEPTH_CHARGE_CONTROLS_AUDIBLE_NM,
+  DEPTH_CHARGE_RANGE_FAR_M,
   FLEET_SUB_CRUSH_DEPTH_M,
   PERISCOPE_DEPTH_M,
   RADAR_SURFACE_DEPTH_M,
@@ -41,9 +42,8 @@ import { useAudioSyncedDamageReport } from '../hooks/useAudioSyncedDamageReport'
 import { resolveSunkCause, SunkModal } from '../components/SunkModal';
 import {
   DEPTH_CHARGE_AUDIO_SPREAD_SEC,
-  DEPTH_CHARGE_CONTROLS_GAIN,
   depthChargeBatchWhenSecById,
-  depthChargeControlsGain,
+  depthChargeControlsPeakGain,
   loadDepthChargeBuffer,
   playDepthChargeSample,
 } from '../audio/depthCharge';
@@ -319,9 +319,8 @@ export function StationPage() {
             continue;
           }
           const whenSec = dcWhenById.get(e.id) ?? 0;
-          // Per-charge range attenuation (closer = louder); silent past hear radius.
-          const peak =
-            DEPTH_CHARGE_CONTROLS_GAIN * depthChargeControlsGain(e.rangeNm);
+          // Quintic range × damage-band boost (≤65/140/225 m); ceiling avoids clip.
+          const peak = depthChargeControlsPeakGain(e.rangeNm);
           if (peak < 0.001) {
             playedBridgeBlastRef.current.add(e.id);
             scheduleDamageRevealRef.current(e.id, whenSec);
@@ -1370,7 +1369,10 @@ export function StationPage() {
                   detonations play when within ~{DEPTH_CHARGE_CONTROLS_AUDIBLE_NM} nm of own ship
                   (any vessel — not only the dropper) — close blasts stay near peak, then fall
                   off steeply with range (quiets quieter mid/far) toward silence at the
-                  hear-radius edge.
+                  hear-radius edge. Charges inside the damage / stun bands (≤
+                  {DEPTH_CHARGE_RANGE_FAR_M} m horizontal — close / med / far) get a modest
+                  extra gain boost so blasts that can hurt read louder than distant near-misses,
+                  capped just under 1.0 to avoid clipping.
                   Multi-charge patterns play one distant-explosion sample per charge, spaced
                   evenly across ~{DEPTH_CHARGE_AUDIO_SPREAD_SEC / 60} minutes (not stacked),
                   each at its own range volume. Own-ship Damage report lines (and hull readout

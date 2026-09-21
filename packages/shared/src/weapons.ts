@@ -291,6 +291,8 @@ export const DEPTH_CHARGE_HYDROPHONE_RANGE_NM = 12;
  * Controls bridge speakers — any vessel this close to a blast hears it.
  * Kept well outside the far damage band (~225 m ≈ 0.12 nm) so charges that
  * can hurt are always audible; quintic falloff still makes distant cues quiet.
+ * Client also applies a modest damage-band gain boost (≤65 / 140 / 225 m) on
+ * top of that curve so kill-radius blasts read louder than mid-range near-misses.
  */
 export const DEPTH_CHARGE_CONTROLS_AUDIBLE_NM = 1.5;
 
