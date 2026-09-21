@@ -881,6 +881,12 @@ export interface PeriscopeContact {
   /** Approximate absolute speed in knots (coarsened). Always 0 for periscope feathers. */
   speedKn: number;
   /**
+   * Approximate true course degrees [0, 360), coarsened (15° bands).
+   * Visual estimate from hull aspect — not exact GT heading.
+   * Omitted for periscope feathers (`kind: 'periscope'`).
+   */
+  courseDeg?: number;
+  /**
    * Hull class for silhouette mapping only
    * (Destroyer → destroyer.png, Fleet Submarine → submarine.png, Oiler → oiler.png).
    * Not a side/name; other classes fall back to the destroyer plate.

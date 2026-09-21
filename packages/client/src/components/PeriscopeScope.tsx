@@ -63,6 +63,11 @@ function contactKindLabel(c: PeriscopeContact): string {
   return c.kind === 'periscope' ? 'PERISCOPE' : `Contact`;
 }
 
+/** FoW approx true course (15° bands) — padded like own HDG readout. */
+function formatApproxCourse(courseDeg: number): string {
+  return `~${String(Math.round(courseDeg) % 360).padStart(3, '0')}°`;
+}
+
 function contactsKey(contacts: PeriscopeContact[]): string {
   return contacts.map((c) => `${c.id}:${c.kind ?? 'hull'}`).join('|');
 }
@@ -172,6 +177,11 @@ function PeriscopeScopeInner({
               <span>{formatRelBearing(selected.relativeBearing)}</span>
               <span className="muted">~{selected.rangeNm.toFixed(1)} nm</span>
               {!isFeather && <span className="muted">~{selected.speedKn} kn</span>}
+              {!isFeather &&
+                selected.courseDeg != null &&
+                Number.isFinite(selected.courseDeg) && (
+                  <span className="muted">crs {formatApproxCourse(selected.courseDeg)}</span>
+                )}
             </div>
           </div>
         ) : null}
@@ -221,6 +231,11 @@ function PeriscopeScopeInner({
                         <span>{formatRelBearing(c.relativeBearing)}</span>
                         <span>~{c.rangeNm.toFixed(1)} nm</span>
                         {c.kind !== 'periscope' && <span>~{c.speedKn} kn</span>}
+                        {c.kind !== 'periscope' &&
+                          c.courseDeg != null &&
+                          Number.isFinite(c.courseDeg) && (
+                            <span>crs {formatApproxCourse(c.courseDeg)}</span>
+                          )}
                       </span>
                     </button>
                   </li>
@@ -255,6 +270,7 @@ export const PeriscopeScope = memo(PeriscopeScopeInner, (prev, next) => {
         c.relativeBearing === o.relativeBearing &&
         c.rangeNm === o.rangeNm &&
         c.speedKn === o.speedKn &&
+        c.courseDeg === o.courseDeg &&
         c.silhouetteClass === o.silhouetteClass &&
         (c.kind ?? 'hull') === (o.kind ?? 'hull')
       );

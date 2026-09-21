@@ -186,6 +186,22 @@ export function coarsenPeriscopeSpeedKn(speedKn: number): number {
 }
 
 /**
+ * Visual estimate of contact true course — round to nearest 15°.
+ * Coarser than relative bearing (5°) so optics readouts stay useful but imperfect;
+ * not ground-truth heading. Feathers omit course (stick gives no aspect).
+ */
+export const PERISCOPE_COURSE_STEP_DEG = 15;
+
+/** FoW coarsen true heading / course to {@link PERISCOPE_COURSE_STEP_DEG} bands ([0, 360)). */
+export function coarsenPeriscopeCourseDeg(headingDeg: number): number {
+  if (!Number.isFinite(headingDeg)) return 0;
+  const stepped =
+    Math.round(normalizeHeading(headingDeg) / PERISCOPE_COURSE_STEP_DEG) *
+    PERISCOPE_COURSE_STEP_DEG;
+  return normalizeHeading(stepped);
+}
+
+/**
  * Silhouette display scale (0.25–1) from range — farther = smaller.
  * Linear falloff vs sensor max: at 0 nm → 1, at max → 0.25.
  */
