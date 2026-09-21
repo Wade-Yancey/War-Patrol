@@ -2,7 +2,7 @@ import {
   RADAR_SIGNATURE_RANGE_FACTOR,
   RADAR_SIGNATURE_STRENGTH,
   bearingRangeNm,
-  canUseSensors,
+  canUseSensorStation,
   coarsenActiveSonarDepthM,
   defaultRadarSignature,
   ensureContactLabel,
@@ -47,7 +47,7 @@ export function buildActiveSonarContacts(own: UnitState, save: GameSave): Active
 
   const maxRangeNm = resolveActiveSonarMaxRangeNm(sensor);
 
-  const sensorOk = canUseSensors(own);
+  const sensorOk = canUseSensorStation(own, 'active_sonar');
   if (!sensorOk.ok) {
     return {
       contacts: [],

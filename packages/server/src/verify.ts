@@ -364,7 +364,8 @@ async function main() {
   check('porter faction Blue', porter.faction === 'Blue');
   check('porter afloat', porter.condition === 'afloat');
   check('porter propulsion intact', (porter.subsystems as Json).propulsion === 'intact');
-  check('porter sensors intact', (porter.subsystems as Json).sensors === 'intact');
+  check('porter radar intact', (porter.subsystems as Json).radar === 'intact');
+  check('porter steering intact', (porter.subsystems as Json).steering === 'intact');
   check('porter depth surface', (porter.position as Json).depth === 0);
   check('gato type Submarine', gato.type === 'Submarine');
   check('gato class Fleet Submarine', gato.class === 'Fleet Submarine');
@@ -1573,28 +1574,36 @@ async function main() {
     runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!.position.depth === 0,
   );
 
-  // Sensors disabled → no radar picture
+  // Radar station knocked out → no radar picture (lookout still up on DD)
   await api(
     'PATCH',
     `/api/games/${gameId}/units/dd-101`,
-    { subsystems: { sensors: 'disabled' } },
+    { subsystems: { radar: 'disabled' } },
     umpireToken,
   );
   const radarSensorsOff = await api('GET', `/api/games/${gameId}/view`, undefined, radarToken);
   const rso = radarSensorsOff.json.view as Json;
-  check('sensors disabled radar off', rso.radarOperational === false);
-  check('sensors disabled reason', rso.radarUnavailableReason === 'sensors_disabled');
+  check('radar disabled radar off', rso.radarOperational === false);
+  check('radar disabled reason', rso.radarUnavailableReason === 'sensors_disabled');
   check(
-    'DD lookout immune to sensors casualty',
+    'DD lookout immune to radar casualty',
     rso.periscopeOperational === true,
     `got operational=${String(rso.periscopeOperational)} reason=${String(rso.periscopeUnavailableReason)}`,
+  );
+
+  // Legacy sensors:disabled expands to all stations (lookout still immune on DD)
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { subsystems: { sensors: 'disabled', radar: 'intact', activeSonar: 'intact' } },
+    umpireToken,
   );
 
   // Propulsion disabled → stop
   await api(
     'PATCH',
     `/api/games/${gameId}/units/dd-101`,
-    { subsystems: { propulsion: 'disabled', sensors: 'intact' }, speed: 12 },
+    { subsystems: { propulsion: 'disabled', radar: 'intact' }, speed: 12 },
     umpireToken,
   );
   const deadInWater = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
@@ -1622,7 +1631,7 @@ async function main() {
   await api(
     'PATCH',
     `/api/games/${gameId}/units/dd-101`,
-    { subsystems: { propulsion: 'intact', sensors: 'intact' }, speed: 12, eot: 'ahead_standard' },
+    { subsystems: { propulsion: 'intact', radar: 'intact' }, speed: 12, eot: 'ahead_standard' },
     umpireToken,
   );
 
@@ -1806,8 +1815,13 @@ async function main() {
       METERS_PER_DEG_LAT,
       torpedoHitAudioDelaySec,
       applyHealthDamage,
+      applyHealthDamageResult,
       healthDamageApplied,
       presentationHealthFromUnrevealedDamage,
+      applyUnitKinematics,
+      rollCombatCasualties,
+      resolveSubsystems,
+      PROPULSION_DAMAGED_SPEED_FACTOR,
       DEPTH_CHARGE_DAMAGE_AMOUNT,
     } = await import('@war-patrol/shared');
     check('beam aspect dud ~3%', Math.abs(torpedoDudPctFromAspect(90) - 3) < 0.01);
@@ -1864,7 +1878,7 @@ async function main() {
         activeSonarEnabled: false,
       };
       const applied: number[] = [];
-      let u = { ...baseUnit };
+      let u = { ...baseUnit } as unknown as import('@war-patrol/shared').UnitState;
       for (let i = 0; i < 5; i++) {
         const next = applyHealthDamage(u, DEPTH_CHARGE_DAMAGE_AMOUNT);
         applied.push(healthDamageApplied(u, next));
@@ -1899,6 +1913,135 @@ async function main() {
         prev = nextHp;
       }
       check('staged overkill ends at 0', prev === 0);
+    }
+    // Granular casualties: deterministic RNG sequences.
+    {
+      const subBase = {
+        id: 'ss-cas',
+        name: 'Gato',
+        type: 'Submarine' as const,
+        class: 'Fleet Submarine' as const,
+        classId: 'gato',
+        condition: 'afloat' as const,
+        health: 60,
+        position: { lat: 0, lon: 0, depth: 50 },
+        speed: 6,
+        eot: 'ahead_standard' as const,
+        heading: 90,
+        orderedCourse: 90,
+        orderedDepth: 50,
+        subsystems: resolveSubsystems({}),
+        orders: {},
+        maxSpeed: 21,
+        turnRate: 12,
+        lengthM: 95,
+        beamM: 8.3,
+        radarSignature: 'small' as const,
+        sensors: [
+          { kind: 'radar' as const },
+          { kind: 'hydrophone' as const },
+          { kind: 'lookout' as const },
+        ],
+        stations: [],
+        side: 'red',
+        faction: 'Red' as const,
+        accessToken: 'x',
+        periscopeRaised: true,
+        periscopeExposure: 1,
+        plotStampTurns: 0,
+        activeSonarEnabled: false,
+      } as unknown as import('@war-patrol/shared').UnitState;
+
+      // Always-true RNG → every eligible roll fires.
+      const always = () => 0;
+      const { unit: knocked, effects } = applyHealthDamageResult(subBase, 10, always);
+      check('granular hit drops HP', knocked.health === 50);
+      check(
+        'granular rolls name specific effects',
+        effects.length >= 1 &&
+          effects.every((e) => typeof e.kind === 'string' && e.kind.length > 0),
+        `effects=${effects.map((e) => e.kind).join(',')}`,
+      );
+      check(
+        'legacy sensors:disabled migrates all stations',
+        resolveSubsystems({ sensors: 'disabled' }).radar === 'disabled' &&
+          resolveSubsystems({ sensors: 'disabled' }).hydrophone === 'disabled' &&
+          resolveSubsystems({ sensors: 'disabled' }).lookout === 'disabled',
+      );
+
+      // Propulsion damaged (not disabled): force only that outcome via rollCombatCasualties.
+      const damagedOnly = rollCombatCasualties(
+        { ...subBase, health: 30, subsystems: resolveSubsystems({}) },
+        30,
+        (() => {
+          let i = 0;
+          // Sensor rolls: skip (return 0.99); control rolls: skip; propulsion: land in damaged band.
+          // Order in rollCombatCasualties: radar, hydro, lookout, steering, dive, propulsion.
+          const seq = [0.99, 0.99, 0.99, 0.99, 0.99, 0.4];
+          return () => seq[Math.min(i++, seq.length - 1)]!;
+        })(),
+      );
+      check(
+        'propulsion can be damaged not disabled',
+        damagedOnly.subsystems.propulsion === 'damaged' &&
+          damagedOnly.effects.some((e) => e.kind === 'propulsion_damaged'),
+        `prop=${damagedOnly.subsystems.propulsion} effects=${damagedOnly.effects.map((e) => e.kind).join(',')}`,
+      );
+
+      const damagedUnit = {
+        ...subBase,
+        subsystems: resolveSubsystems({ propulsion: 'damaged' }),
+        speed: 20,
+        eot: 'ahead_flank' as const,
+        orders: { eot: 'ahead_flank' as const },
+      };
+      const stepped = applyUnitKinematics(damagedUnit, 180);
+      const cap = damagedUnit.maxSpeed * PROPULSION_DAMAGED_SPEED_FACTOR;
+      check(
+        'damaged propulsion caps speed',
+        Math.abs(stepped.speed) <= cap + 0.01,
+        `speed=${stepped.speed} cap=${cap}`,
+      );
+
+      const stuckRudder = {
+        ...subBase,
+        subsystems: resolveSubsystems({
+          steering: 'stuck',
+          rudderStuckHeading: 45,
+        }),
+        orderedCourse: 45,
+        heading: 45,
+        orders: { course: 180 },
+      };
+      const noTurn = applyUnitKinematics(stuckRudder, 180);
+      check(
+        'rudder stuck ignores helm order',
+        Math.abs(noTurn.orderedCourse - 45) < 0.01,
+        `crs=${noTurn.orderedCourse}`,
+      );
+
+      const stuckDive = {
+        ...subBase,
+        subsystems: resolveSubsystems({
+          divePlanes: 'stuck',
+          divePlanesStuckDepth: 50,
+        }),
+        orderedDepth: 50,
+        position: { ...subBase.position, depth: 50 },
+        orders: { depth: 90 },
+      };
+      const noDive = applyUnitKinematics(stuckDive, 180);
+      check(
+        'dive planes stuck ignores depth order',
+        noDive.orderedDepth === 50 && Math.abs(noDive.position.depth - 50) < 0.01,
+        `ord=${noDive.orderedDepth} keel=${noDive.position.depth}`,
+      );
+
+      const radarOnlyOut = resolveSubsystems({ radar: 'disabled' });
+      check(
+        'radar out leaves hydrophone intact',
+        radarOnlyOut.radar === 'disabled' && radarOnlyOut.hydrophone === 'intact',
+      );
     }
     // Fletcher 115×12: beam aspect gate ≈ length/2 + pad; end-on ≈ beam/2 + pad.
     const beamGate = torpedoHitGateM(115, 12, 90);
@@ -2065,7 +2208,12 @@ async function main() {
           depth: 0,
         },
       };
-      const nearest = nearestTorpedoApproachOnSegment(from, to, [neosho, platte], 'ss-212');
+      const nearest = nearestTorpedoApproachOnSegment(
+        from,
+        to,
+        [neosho, platte] as unknown as import('@war-patrol/shared').UnitState[],
+        'ss-212',
+      );
       check(
         'nearest CPA picks Platte over Neosho',
         !!nearest &&

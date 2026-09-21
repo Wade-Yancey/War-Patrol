@@ -3,7 +3,8 @@ import { divePresetById } from './dive.js';
 import { clamp, normalizeHeading } from './geo.js';
 import { shortestBearingDelta } from './hydrophone.js';
 import type { HullClass, SensorDef, UnitState } from './types.js';
-import { canUseSensors, isHullClass, resolveVesselIdentity } from './vessel.js';
+import { canUseSensorStation } from './damage.js';
+import { isHullClass, resolveVesselIdentity } from './vessel.js';
 
 /**
  * Max keel depth (m) at which fleet-sub periscope optics are usable.
@@ -59,16 +60,14 @@ export function hasLookoutSensor(unit: Pick<UnitState, 'sensors'>): boolean {
 /**
  * Whether lookout / periscope optics can form a picture.
  *
- * Surface-ship bridge lookout is **immune** to sensors-subsystem combat
+ * Surface-ship bridge lookout is **immune** to lookout-station combat
  * casualties (eyeballs on the bridge stay available). Fleet-sub periscope
- * still requires the sensors subsystem intact (damageable mast / optics).
+ * can be knocked out independently of radar / hydrophone.
  */
 export function canUseLookoutOptics(
   unit: Pick<UnitState, 'type' | 'condition' | 'subsystems'>,
 ): { ok: boolean; reason?: 'sunk' | 'sensors_disabled' } {
-  if (unit.condition === 'sunk') return { ok: false, reason: 'sunk' };
-  if (unit.type === 'Ship') return { ok: true };
-  return canUseSensors(unit);
+  return canUseSensorStation(unit, 'lookout');
 }
 
 /**

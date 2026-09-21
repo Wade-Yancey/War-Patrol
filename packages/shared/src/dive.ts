@@ -7,6 +7,7 @@ import {
   SUBMARINE_IMPLOSION_CHANCE_PER_TURN,
   SUBMARINE_MAX_DEPTH_M,
 } from './constants.js';
+import { disabledAllSubsystems } from './damage.js';
 import type { CombatLogEntry, UnitState } from './types.js';
 
 /**
@@ -156,7 +157,7 @@ export function implodeSubmarine(unit: UnitState): UnitState {
     periscopeRaised: false,
     periscopeExposure: 0,
     plotStampTurns: 0,
-    subsystems: { propulsion: 'disabled', sensors: 'disabled' },
+    subsystems: disabledAllSubsystems(),
   };
 }
 

@@ -32,6 +32,7 @@ import {
   resolveOrderedDepth,
   resolveStartGameTimeSeconds,
   resolveSubsystems,
+  propulsionSpeedFactor,
   resolveTurnLengthSeconds,
   resolveTurnRate,
   resolveVesselIdentity,
@@ -43,6 +44,7 @@ import {
   type HullClass,
   type Scenario,
   type TurnSnapshot,
+  type SubsystemState,
   type UnitState,
 } from '@war-patrol/shared';
 import * as store from '../store/fileStore.js';
@@ -221,11 +223,12 @@ function normalizeUnit(unit: UnitState): UnitState {
     speed = 0;
     eot = 'stop';
   } else {
-    const ceiling = effectiveMaxSpeed({
-      type: identity.type,
-      maxSpeed,
-      depth: position.depth,
-    });
+    const ceiling =
+      effectiveMaxSpeed({
+        type: identity.type,
+        maxSpeed,
+        depth: position.depth,
+      }) * propulsionSpeedFactor(subsystems.propulsion);
     speed = clampSpeedToMax(speed, ceiling);
   }
   return {
@@ -629,11 +632,21 @@ export class GameRuntime {
       };
       unit.orders = mergeOrders(unit.orders, normalizedPatch, stationId);
       // Steering course is live as soon as helm rings it up (persists across turns).
-      if (normalizedPatch.course !== undefined) {
+      // Rudder stuck / steering disabled: ignore new course set-points.
+      if (
+        normalizedPatch.course !== undefined &&
+        unit.subsystems?.steering !== 'stuck' &&
+        unit.subsystems?.steering !== 'disabled'
+      ) {
         unit.orderedCourse = normalizeHeading(normalizedPatch.course);
       }
       // Depth set-point is live; actual depth changes on resolve.
-      if (normalizedPatch.depth !== undefined) {
+      // Dive planes stuck/disabled: ignore new depth set-points.
+      if (
+        normalizedPatch.depth !== undefined &&
+        unit.subsystems?.divePlanes !== 'stuck' &&
+        unit.subsystems?.divePlanes !== 'disabled'
+      ) {
         unit.orderedDepth = clampSubmarineDepth(normalizedPatch.depth);
       }
       return save;
@@ -860,7 +873,7 @@ export class GameRuntime {
       >
     > & {
       position?: Partial<UnitState['position']>;
-      subsystems?: Partial<UnitState['subsystems']>;
+      subsystems?: Partial<UnitState['subsystems']> & { sensors?: SubsystemState };
     },
   ): GameSave {
     return this.touch(gameId, (save) => {

@@ -7,7 +7,7 @@ import {
   WEAPON_SUBSTEPS,
   advanceDepthCharge,
   advanceTorpedo,
-  applyHealthDamage,
+  applyHealthDamageResult,
   healthDamageApplied,
   canDropDepthCharges,
   canFireTorpedo,
@@ -18,6 +18,7 @@ import {
   createDepthChargeTracks,
   createTorpedoTrack,
   depthChargePatternCount,
+  formatCasualtySummary,
   formatTorpedoMissLogSummary,
   horizontalMissMeters,
   isDepthChargeTarget,
@@ -34,6 +35,7 @@ import {
   torpedoSpreadHeadings,
   truncateTorpedoAtHit,
   unitLengthBeam,
+  type CasualtyEffect,
   type CombatLogEntry,
   type CombatLogKind,
   type DepthChargeTrack,
@@ -66,6 +68,7 @@ function logLine(opts: {
   damage?: number;
   /** Bridge / audio detonation id this combat effect came from. */
   sourceDetonationId?: string;
+  casualtyEffect?: CasualtyEffect;
 }): CombatLogEntry {
   return {
     id: `cl-${nanoid(8)}`,
@@ -80,12 +83,13 @@ function logLine(opts: {
     targetName: opts.target?.name,
     damage: opts.damage,
     ...(opts.sourceDetonationId ? { sourceDetonationId: opts.sourceDetonationId } : {}),
+    ...(opts.casualtyEffect ? { casualtyEffect: opts.casualtyEffect } : {}),
   };
 }
 
-function logSubsystemCasualties(
-  before: UnitState,
-  after: UnitState,
+function logCasualtyEffects(
+  target: UnitState,
+  effects: CasualtyEffect[],
   opts: {
     turnNumber: number;
     gameTimeSeconds: number;
@@ -93,37 +97,18 @@ function logSubsystemCasualties(
     sourceDetonationId?: string;
   },
 ): CombatLogEntry[] {
-  const lines: CombatLogEntry[] = [];
-  if (before.subsystems.sensors === 'intact' && after.subsystems.sensors === 'disabled') {
-    lines.push(
-      logLine({
-        kind: 'subsystem_casualty',
-        turnNumber: opts.turnNumber,
-        gameTimeSeconds: opts.gameTimeSeconds,
-        actor: opts.actor,
-        target: after,
-        summary: `${after.name}: sensors disabled`,
-        sourceDetonationId: opts.sourceDetonationId,
-      }),
-    );
-  }
-  if (
-    before.subsystems.propulsion === 'intact' &&
-    after.subsystems.propulsion === 'disabled'
-  ) {
-    lines.push(
-      logLine({
-        kind: 'subsystem_casualty',
-        turnNumber: opts.turnNumber,
-        gameTimeSeconds: opts.gameTimeSeconds,
-        actor: opts.actor,
-        target: after,
-        summary: `${after.name}: propulsion disabled`,
-        sourceDetonationId: opts.sourceDetonationId,
-      }),
-    );
-  }
-  return lines;
+  return effects.map((effect) =>
+    logLine({
+      kind: 'subsystem_casualty',
+      turnNumber: opts.turnNumber,
+      gameTimeSeconds: opts.gameTimeSeconds,
+      actor: opts.actor,
+      target,
+      summary: formatCasualtySummary(target.name, effect),
+      sourceDetonationId: opts.sourceDetonationId,
+      casualtyEffect: effect,
+    }),
+  );
 }
 
 /**
@@ -335,7 +320,7 @@ export function resolveWeaponsForTurn(
         }
         if (roll.hit) {
           const damage = roll.damage;
-          const damaged = applyHealthDamage(target, damage);
+          const { unit: damaged, effects } = applyHealthDamageResult(target, damage);
           const applied = healthDamageApplied(target, damaged);
           units = units.map((u) => (u.id === uid ? damaged : u));
           unitMap.set(uid, damaged);
@@ -368,7 +353,7 @@ export function resolveWeaponsForTurn(
               }),
             );
             combatLogEntries.push(
-              ...logSubsystemCasualties(target, damaged, {
+              ...logCasualtyEffects(damaged, effects, {
                 turnNumber,
                 gameTimeSeconds,
                 actor: unitMap.get(fish.firerUnitId),
@@ -452,7 +437,7 @@ export function resolveWeaponsForTurn(
           seed: `${advanced.id}|${uid}|${turnNumber}`,
         });
         if (damage > 0) {
-          const damaged = applyHealthDamage(target, damage);
+          const { unit: damaged, effects } = applyHealthDamageResult(target, damage);
           const applied = healthDamageApplied(target, damaged);
           units = units.map((u) => (u.id === uid ? damaged : u));
           unitMap.set(uid, damaged);
@@ -472,7 +457,7 @@ export function resolveWeaponsForTurn(
               }),
             );
             combatLogEntries.push(
-              ...logSubsystemCasualties(target, damaged, {
+              ...logCasualtyEffects(damaged, effects, {
                 turnNumber,
                 gameTimeSeconds,
                 actor: unitMap.get(advanced.firerUnitId),

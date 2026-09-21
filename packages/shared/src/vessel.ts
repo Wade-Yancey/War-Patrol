@@ -6,7 +6,6 @@ import type {
   HullClass,
   UnitCondition,
   UnitState,
-  UnitSubsystems,
   VesselType,
 } from './types.js';
 
@@ -31,8 +30,6 @@ export const FACTIONS: readonly Faction[] = ['Blue', 'Red', 'Civilian'];
 export const FLIGHT_LEVELS: readonly FlightLevel[] = ['low', 'medium', 'high'];
 
 export const UNIT_CONDITIONS: readonly UnitCondition[] = ['afloat', 'sunk'];
-
-export const SUBSYSTEM_STATES = ['intact', 'disabled'] as const;
 
 /** Canonical class → type mapping. */
 export const CLASS_TO_TYPE: Record<HullClass, VesselType> = {
@@ -210,22 +207,9 @@ export function factionAccent(faction: Faction): 'blue' | 'red' | 'civilian' {
 /**
  * Speed table / clamp helpers live in {@link ./performance.js} (re-exported from
  * package root). Kept out of this module to avoid duplicate `export *` names.
+ *
+ * Subsystem defaults / casualty helpers live in {@link ./damage.js}.
  */
-
-export function defaultSubsystems(): UnitSubsystems {
-  return { propulsion: 'intact', sensors: 'intact' };
-}
-
-export function resolveSubsystems(
-  partial?: Partial<UnitSubsystems> | null,
-): UnitSubsystems {
-  const d = defaultSubsystems();
-  if (!partial) return d;
-  return {
-    propulsion: partial.propulsion === 'disabled' ? 'disabled' : 'intact',
-    sensors: partial.sensors === 'disabled' ? 'disabled' : 'intact',
-  };
-}
 
 export function resolveCondition(value: unknown): UnitCondition {
   return value === 'sunk' ? 'sunk' : 'afloat';
@@ -248,15 +232,6 @@ export function canMakeWay(unit: Pick<UnitState, 'condition' | 'subsystems'>): b
 /** True when unit still exists as a radar/contactable target. */
 export function isRadarTargetable(unit: Pick<UnitState, 'condition'>): boolean {
   return unit.condition !== 'sunk';
-}
-
-/** Own-ship radar set usable (not sunk, sensors intact). */
-export function canUseSensors(
-  unit: Pick<UnitState, 'condition' | 'subsystems'>,
-): { ok: boolean; reason?: 'sunk' | 'sensors_disabled' } {
-  if (unit.condition === 'sunk') return { ok: false, reason: 'sunk' };
-  if (unit.subsystems?.sensors === 'disabled') return { ok: false, reason: 'sensors_disabled' };
-  return { ok: true };
 }
 
 /**

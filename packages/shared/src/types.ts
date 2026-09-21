@@ -32,12 +32,55 @@ export type FlightLevel = 'low' | 'medium' | 'high';
  */
 export type UnitCondition = 'afloat' | 'sunk';
 
-/** Major subsystem health (umpire-editable). */
+/** Binary station / set health (umpire-editable). */
 export type SubsystemState = 'intact' | 'disabled';
 
+/** Propulsion: intact, reduced max speed, or dead in the water. */
+export type PropulsionState = 'intact' | 'damaged' | 'disabled';
+
+/** Helm / rudder: intact, cannot yaw, or jammed at a fixed ordered course. */
+export type SteeringState = 'intact' | 'disabled' | 'stuck';
+
+/** Sub dive planes: intact, jammed at a depth set-point, or disabled. */
+export type DivePlanesState = 'intact' | 'stuck' | 'disabled';
+
+/**
+ * Combat / umpire subsystem casualties.
+ * Sensor stations are independent (radar vs hydrophone vs sonar vs lookout).
+ * Legacy saves with only `{ propulsion, sensors }` migrate via `resolveSubsystems`.
+ */
 export interface UnitSubsystems {
-  propulsion: SubsystemState;
-  sensors: SubsystemState;
+  propulsion: PropulsionState;
+  radar: SubsystemState;
+  hydrophone: SubsystemState;
+  activeSonar: SubsystemState;
+  /** Fleet-sub periscope / optics. Ship bridge lookout ignores combat damage. */
+  lookout: SubsystemState;
+  steering: SteeringState;
+  divePlanes: DivePlanesState;
+  /** Locked ordered course when {@link steering} === `stuck`. */
+  rudderStuckHeading?: number;
+  /** Locked ordered depth when dive planes are stuck / disabled. */
+  divePlanesStuckDepth?: number;
+}
+
+/** Structured combat casualty for umpire log + Controls Damage staging. */
+export type CasualtyEffectKind =
+  | 'propulsion_damaged'
+  | 'propulsion_disabled'
+  | 'radar_disabled'
+  | 'hydrophone_disabled'
+  | 'active_sonar_disabled'
+  | 'lookout_disabled'
+  | 'steering_disabled'
+  | 'rudder_stuck'
+  | 'dive_planes_stuck'
+  | 'dive_planes_disabled';
+
+export interface CasualtyEffect {
+  kind: CasualtyEffectKind;
+  stuckHeading?: number;
+  stuckDepthM?: number;
 }
 
 /** Relative radar cross-section / echo size (detection stub). */
@@ -596,6 +639,8 @@ export interface CombatLogEntry {
    * Umpire Action log still shows at resolve time — this is for client presentation.
    */
   sourceDetonationId?: string;
+  /** Structured casualty when kind === subsystem_casualty. */
+  casualtyEffect?: CasualtyEffect;
 }
 
 /**
@@ -619,6 +664,8 @@ export interface OwnDamageEvent {
   damage?: number;
   /** Matching bridge / hydrophone detonation id when this line came from a blast. */
   sourceDetonationId?: string;
+  /** Structured casualty when kind === subsystem_casualty (for staging / UI). */
+  casualtyEffect?: CasualtyEffect;
 }
 
 /** Vessel-class library stub (ARCH-LIB data shape only). */

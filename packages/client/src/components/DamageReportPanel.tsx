@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import {
   conditionLabel,
   formatGameClock,
+  subsystemStateLabel,
   type OwnDamageEvent,
   type UnitCondition,
   type UnitSubsystems,
@@ -34,8 +35,8 @@ function kindLabel(kind: OwnDamageEvent['kind']): string {
   }
 }
 
-function subsystemLabel(state: UnitSubsystems[keyof UnitSubsystems]): string {
-  return state === 'disabled' ? 'DISABLED' : 'INTACT';
+function isBad(state: string): boolean {
+  return state !== 'intact';
 }
 
 /**
@@ -65,6 +66,17 @@ export function DamageReportPanel({
   const healthPct = Math.max(0, Math.min(100, Math.round(health)));
   const hullBad = condition === 'sunk' || healthPct < 35;
   const hullWarn = !hullBad && healthPct < 70;
+
+  const steeringLabel =
+    subsystems.steering === 'stuck' && subsystems.rudderStuckHeading != null
+      ? `STUCK ${String(Math.round(subsystems.rudderStuckHeading)).padStart(3, '0')}°`
+      : subsystemStateLabel(subsystems.steering);
+
+  const diveLabel =
+    (subsystems.divePlanes === 'stuck' || subsystems.divePlanes === 'disabled') &&
+    subsystems.divePlanesStuckDepth != null
+      ? `${subsystemStateLabel(subsystems.divePlanes)} ${Math.round(subsystems.divePlanesStuckDepth)} m`
+      : subsystemStateLabel(subsystems.divePlanes);
 
   return (
     <section className="panel stack controls-damage-panel" aria-label="Damage report">
@@ -100,20 +112,53 @@ export function DamageReportPanel({
         </div>
         <div className="damage-status-item">
           <span className="controls-status-key">PROPULSION</span>
-          <span
-            className={`readout${subsystems.propulsion === 'disabled' ? ' damage-bad' : ''}`}
-          >
-            {subsystemLabel(subsystems.propulsion)}
+          <span className={`readout${isBad(subsystems.propulsion) ? ' damage-bad' : ''}`}>
+            {subsystemStateLabel(subsystems.propulsion)}
           </span>
         </div>
         <div className="damage-status-item">
-          <span className="controls-status-key">SENSORS</span>
-          <span
-            className={`readout${subsystems.sensors === 'disabled' ? ' damage-bad' : ''}`}
-          >
-            {subsystemLabel(subsystems.sensors)}
+          <span className="controls-status-key">STEERING</span>
+          <span className={`readout${isBad(subsystems.steering) ? ' damage-bad' : ''}`}>
+            {steeringLabel}
           </span>
         </div>
+        {vesselType === 'Submarine' && (
+          <div className="damage-status-item">
+            <span className="controls-status-key">DIVE PLANES</span>
+            <span className={`readout${isBad(subsystems.divePlanes) ? ' damage-bad' : ''}`}>
+              {diveLabel}
+            </span>
+          </div>
+        )}
+        <div className="damage-status-item">
+          <span className="controls-status-key">RADAR</span>
+          <span className={`readout${isBad(subsystems.radar) ? ' damage-bad' : ''}`}>
+            {subsystemStateLabel(subsystems.radar)}
+          </span>
+        </div>
+        {vesselType === 'Submarine' ? (
+          <>
+            <div className="damage-status-item">
+              <span className="controls-status-key">HYDROPHONE</span>
+              <span className={`readout${isBad(subsystems.hydrophone) ? ' damage-bad' : ''}`}>
+                {subsystemStateLabel(subsystems.hydrophone)}
+              </span>
+            </div>
+            <div className="damage-status-item">
+              <span className="controls-status-key">PERISCOPE</span>
+              <span className={`readout${isBad(subsystems.lookout) ? ' damage-bad' : ''}`}>
+                {subsystemStateLabel(subsystems.lookout)}
+              </span>
+            </div>
+          </>
+        ) : (
+          <div className="damage-status-item">
+            <span className="controls-status-key">ACTIVE SONAR</span>
+            <span className={`readout${isBad(subsystems.activeSonar) ? ' damage-bad' : ''}`}>
+              {subsystemStateLabel(subsystems.activeSonar)}
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="damage-log-block">
