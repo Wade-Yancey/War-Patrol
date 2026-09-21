@@ -1,4 +1,14 @@
-import { DIVE_PRESETS, formatDepthMeters, type DivePresetId } from '@war-patrol/shared';
+import {
+  DIVE_BAND_MARKS,
+  DIVE_PRESETS,
+  FLEET_SUB_CRUSH_DEPTH_M,
+  FLEET_SUB_TEST_DEPTH_M,
+  SUBMARINE_DEPTH_ORDER_STEP_M,
+  SUBMARINE_MAX_DEPTH_M,
+  formatCoarseDepthMeters,
+  submarineDepthRisk,
+  type DivePresetId,
+} from '@war-patrol/shared';
 import { TouchNumber } from './TouchNumber';
 
 export interface DiveControlsProps {
@@ -9,13 +19,14 @@ export interface DiveControlsProps {
   /** Draft depth on the control (pre-submit). */
   draftDepth: number;
   onDraftDepthChange: (depthM: number) => void;
-  maxDepthM: number;
+  maxDepthM?: number;
+  orderStepM?: number;
   disabled?: boolean;
   onSubmit: (depthM: number) => void;
 }
 
 /**
- * Submarine dive panel: preset depth buttons + touch depth setter.
+ * Submarine dive panel: preset depth buttons + coarse touch depth setter.
  * Ships never render this — depth is surface-only for them.
  */
 export function DiveControls({
@@ -23,14 +34,21 @@ export function DiveControls({
   orderedDepth,
   draftDepth,
   onDraftDepthChange,
-  maxDepthM,
+  maxDepthM = SUBMARINE_MAX_DEPTH_M,
+  orderStepM = SUBMARINE_DEPTH_ORDER_STEP_M,
   disabled = false,
   onSubmit,
 }: DiveControlsProps) {
-  const depthLabel = formatDepthMeters(depth);
-  const orderedLabel = formatDepthMeters(orderedDepth);
-  const draftLabel = formatDepthMeters(draftDepth);
-  const onOrdered = Math.round(depth) === Math.round(orderedDepth);
+  const depthLabel = formatCoarseDepthMeters(depth);
+  const orderedLabel = formatCoarseDepthMeters(orderedDepth);
+  const draftLabel = formatCoarseDepthMeters(draftDepth);
+  const coarseDepth = Math.round(depth / orderStepM) * orderStepM;
+  const coarseOrdered = Math.round(orderedDepth / orderStepM) * orderStepM;
+  const coarseDraft = Math.round(draftDepth / orderStepM) * orderStepM;
+  const onOrdered = coarseDepth === coarseOrdered;
+
+  const draftRisk = submarineDepthRisk(draftDepth);
+  const keelRisk = submarineDepthRisk(depth);
 
   const applyPreset = (id: DivePresetId) => {
     const preset = DIVE_PRESETS.find((p) => p.id === id);
@@ -38,6 +56,15 @@ export function DiveControls({
     onDraftDepthChange(preset.depthM);
     onSubmit(preset.depthM);
   };
+
+  const riskBanner =
+    draftRisk === 'past_crush' || keelRisk === 'past_crush'
+      ? `PAST CRUSH (>${FLEET_SUB_CRUSH_DEPTH_M} m) — implosion risk each resolve`
+      : draftRisk === 'at_crush' || keelRisk === 'at_crush'
+        ? `AT CRUSH (${FLEET_SUB_CRUSH_DEPTH_M} m) — hull at limit; go deeper and you may implode`
+        : draftRisk === 'below_test' || keelRisk === 'below_test'
+          ? `BELOW TEST (>${FLEET_SUB_TEST_DEPTH_M} m) — into risk band toward crush`
+          : null;
 
   return (
     <div className="dive-controls">
@@ -51,13 +78,49 @@ export function DiveControls({
           <span className="readout dive-val">{orderedLabel}</span>
           {onOrdered && <span className="dive-ok">ON</span>}
         </div>
-        {Math.round(draftDepth) !== Math.round(orderedDepth) && (
+        {coarseDraft !== coarseOrdered && (
           <div className="dive-readout dive-readout--draft">
             <span className="dive-key">SET</span>
             <span className="readout dive-val">{draftLabel}</span>
           </div>
         )}
       </div>
+
+      <div className="dive-bands" role="group" aria-label="Depth band marks">
+        {DIVE_BAND_MARKS.map((mark) => {
+          const active = coarseDraft === mark.depthM || coarseDepth === mark.depthM;
+          return (
+            <div
+              key={mark.id}
+              className={[
+                'dive-band-mark',
+                `dive-band-mark--${mark.id}`,
+                active ? 'dive-band-mark--active' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              title={`${mark.label} depth ${mark.depthM} m`}
+            >
+              <span className="dive-band-label">{mark.label}</span>
+              <span className="dive-band-depth mono">{mark.depthM} m</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {riskBanner && (
+        <p
+          className={[
+            'dive-risk',
+            draftRisk === 'past_crush' || keelRisk === 'past_crush'
+              ? 'dive-risk--critical'
+              : 'dive-risk--warn',
+          ].join(' ')}
+          role="status"
+        >
+          {riskBanner}
+        </p>
+      )}
 
       <div className="dive-presets" role="group" aria-label="Dive depth presets">
         {DIVE_PRESETS.map((preset) => {
@@ -91,15 +154,15 @@ export function DiveControls({
         onChange={onDraftDepthChange}
         min={0}
         max={maxDepthM}
-        step={1}
+        step={orderStepM}
         unit="m"
         disabled={disabled}
-        format={(v) => formatDepthMeters(v)}
+        format={(v) => formatCoarseDepthMeters(v)}
         parse={(raw) => {
           const n = Number(String(raw).replace(/[^\d.-]/g, ''));
           return Number.isFinite(n) ? n : null;
         }}
-        hint={`Tap readout to type · 0–${maxDepthM} m`}
+        hint={`Coarse dial · ${orderStepM} m steps · 0–${maxDepthM} m (past crush allowed)`}
       />
 
       <div className="control-actions">
@@ -114,8 +177,10 @@ export function DiveControls({
       </div>
 
       <p className="dive-caption muted mono">
-        Ordered depth rings up now; keel depth approaches ordered over resolves. Max{' '}
-        {maxDepthM} m.
+        Coarse {orderStepM} m orders — patrol {DIVE_BAND_MARKS[0].depthM} / test{' '}
+        {DIVE_BAND_MARKS[1].depthM} / crush {DIVE_BAND_MARKS[2].depthM} m. Keel
+        approaches ordered over resolves. Max {maxDepthM} m (past crush = implosion
+        risk).
       </p>
     </div>
   );
