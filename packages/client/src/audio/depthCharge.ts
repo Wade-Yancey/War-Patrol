@@ -34,6 +34,18 @@ export function depthChargeStaggerDelaySec(index: number, count: number): number
 }
 
 /**
+ * Map each depth-charge bridge cue id → stagger delay (seconds), using the same
+ * sort + formula as Controls / hydrophone one-shot scheduling.
+ */
+export function depthChargeBatchWhenSecById(
+  events: ReadonlyArray<{ id: string }>,
+): Map<string, number> {
+  const sorted = events.slice().sort((a, b) => a.id.localeCompare(b.id));
+  const n = sorted.length;
+  return new Map(sorted.map((e, i) => [e.id, depthChargeStaggerDelaySec(i, n)]));
+}
+
+/**
  * Controls bridge gain factor [0, 1] from range to the detonation point.
  *
  * - Silent at / beyond {@link DEPTH_CHARGE_CONTROLS_AUDIBLE_NM} (server also

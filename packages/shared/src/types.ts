@@ -568,6 +568,12 @@ export interface CombatLogEntry {
   targetName?: string;
   /** Hit points applied when relevant. */
   damage?: number;
+  /**
+   * Links this line to a {@link WeaponDetonationEvent.id} (e.g. `det-…`, `thit-…`)
+   * so vessel Controls can reveal FoW damage with the matching blast SFX.
+   * Umpire Action log still shows at resolve time — this is for client presentation.
+   */
+  sourceDetonationId?: string;
 }
 
 /**
@@ -589,6 +595,8 @@ export interface OwnDamageEvent {
   /** Operator-facing summary (no enemy GT beyond what own crew knows). */
   summary: string;
   damage?: number;
+  /** Matching bridge / hydrophone detonation id when this line came from a blast. */
+  sourceDetonationId?: string;
 }
 
 /** Vessel-class library stub (ARCH-LIB data shape only). */
