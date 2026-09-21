@@ -177,7 +177,12 @@ export function StationPage() {
 
   const playedBridgeBlastRef = useRef<Set<string>>(new Set());
   const pendingBridgeBlastRef = useRef<
-    Array<{ id: string; rangeNm: number; kind: 'depth_charge' | 'torpedo_hit' }>
+    Array<{
+      id: string;
+      rangeNm: number;
+      kind: 'depth_charge' | 'torpedo_hit';
+      audioDelaySec?: number;
+    }>
   >([]);
   /** Latest sub keel depth for ambient creak scheduling + DC stress burst. */
   const subDepthRef = useRef(0);
@@ -277,8 +282,12 @@ export function StationPage() {
     const dcBuffer = bridgeAudioRef.current.buffer;
     const hitBuffer = bridgeAudioRef.current.torpedoHitBuffer;
     const creakBuffer = bridgeAudioRef.current.creakBuffer;
-    const still: Array<{ id: string; rangeNm: number; kind: 'depth_charge' | 'torpedo_hit' }> =
-      [];
+    const still: Array<{
+      id: string;
+      rangeNm: number;
+      kind: 'depth_charge' | 'torpedo_hit';
+      audioDelaySec?: number;
+    }> = [];
 
     // Multi-charge patterns arrive as one hear-batch after resolve — stagger
     // one distant-explosion one-shot per charge across ~2 minutes (not stacked).
@@ -300,9 +309,10 @@ export function StationPage() {
           const gain =
             TORPEDO_HIT_CONTROLS_PEAK_GAIN *
             Math.max(0.35, torpedoHitControlsGain(e.rangeNm));
-          playTorpedoHitSample(ctx, hitBuffer, ctx.destination, gain);
-          // Damage report lines for this hit appear with the explosion cue.
-          scheduleDamageRevealRef.current(e.id, 0);
+          // Arrival offset into the resolved turn — not at the resolve click.
+          const whenSec = Math.max(0, e.audioDelaySec ?? 0);
+          playTorpedoHitSample(ctx, hitBuffer, ctx.destination, gain, { whenSec });
+          scheduleDamageRevealRef.current(e.id, whenSec);
         } else {
           if (!dcBuffer) {
             still.push(e);
@@ -528,6 +538,7 @@ export function StationPage() {
         id: e.id,
         rangeNm: e.rangeNm,
         kind: e.kind ?? 'depth_charge',
+        audioDelaySec: e.audioDelaySec,
       }));
     if (!pendingBridgeBlastRef.current.length) return;
     let cancelled = false;
@@ -1365,8 +1376,9 @@ export function StationPage() {
                   evenly across ~{DEPTH_CHARGE_AUDIO_SPREAD_SEC / 60} minutes (not stacked),
                   each at its own range volume. Own-ship Damage report lines (and hull readout
                   on that tab) appear with each blast cue — not all at once on resolve.
-                  Torpedo hits play a procedural explosion for
-                  both firer and target Controls, attenuated by range. Submarine Controls also
+                  Torpedo hits play the explosion for both firer and target Controls when the
+                  fish reaches the target (offset into the resolved turn), attenuated by range,
+                  and the Damage report for that hit waits for the same cue. Submarine Controls also
                   hear occasional hull creaks while submerged (depth &gt; {RADAR_SURFACE_DEPTH_M}{' '}
                   m), denser toward test depth and <em>super frequent</em> near crush (~
                   {SUBMARINE_CREAK_INTERVAL_SHALLOW_SEC} s mean near the surface band down to ~

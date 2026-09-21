@@ -48,6 +48,9 @@ export function buildBridgeDetonations(
         bearing: Math.round(bearing * 10) / 10,
         rangeNm: Math.round(rangeNm * 100) / 100,
         kind: 'torpedo_hit',
+        ...(d.audioDelaySec != null && d.audioDelaySec > 0
+          ? { audioDelaySec: d.audioDelaySec }
+          : {}),
       });
       continue;
     }
