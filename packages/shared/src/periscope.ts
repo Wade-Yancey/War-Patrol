@@ -7,11 +7,11 @@ import { canUseSensors, isHullClass, resolveVesselIdentity } from './vessel.js';
 
 /**
  * Max keel depth (m) at which fleet-sub periscope optics are usable.
- * Aligns with the Periscope dive preset (18 m / ~60 ft).
+ * Aligns with the Periscope dive preset (20 m — ~60 ft rounded to coarse dial).
  * Rule: depth ≤ this value (surfaced through periscope depth).
  */
 export const PERISCOPE_DEPTH_M: number =
-  divePresetById('periscope')?.depthM ?? 18;
+  divePresetById('periscope')?.depthM ?? 20;
 
 /**
  * Fraction of the turn the mast is exposed while raised (0–1).

@@ -127,7 +127,7 @@
       "classId": "gato-class",
       "type": "Submarine",
       "class": "Fleet Submarine",
-      "position": { "lat": 34.37504, "lon": -120.0, "depth": 18 },
+      "position": { "lat": 34.37504, "lon": -120.0, "depth": 20 },
       "orderedDepth": 18,
       "heading": 0,
       "speed": 5,

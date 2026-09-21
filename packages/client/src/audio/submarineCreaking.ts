@@ -1,4 +1,8 @@
-import { RADAR_SURFACE_DEPTH_M, SUBMARINE_MAX_DEPTH_M } from '@war-patrol/shared';
+import {
+  FLEET_SUB_CRUSH_DEPTH_M,
+  FLEET_SUB_TEST_DEPTH_M,
+  RADAR_SURFACE_DEPTH_M,
+} from '@war-patrol/shared';
 
 /** Hull-pressure creak for submerged submarine Controls (BT speakers). */
 export const SUBMARINE_CREAKING_SAMPLE_URL = '/audio/submarine-creaking.wav';
@@ -12,8 +16,20 @@ export const SUBMARINE_CREAK_DC_GAIN = 0.28;
 /** Mean seconds between ambient creaks just below the surface band. */
 export const SUBMARINE_CREAK_INTERVAL_SHALLOW_SEC = 48;
 
-/** Mean seconds between ambient creaks at {@link SUBMARINE_MAX_DEPTH_M}. */
-export const SUBMARINE_CREAK_INTERVAL_DEEP_SEC = 10;
+/** Mean seconds between ambient creaks at {@link FLEET_SUB_TEST_DEPTH_M}. */
+export const SUBMARINE_CREAK_INTERVAL_AT_TEST_SEC = 10;
+
+/**
+ * Mean seconds at crush depth — hull under extreme pressure.
+ * Steep power curve from test→crush drives interval down hard near this floor.
+ */
+export const SUBMARINE_CREAK_INTERVAL_AT_CRUSH_SEC = 2;
+
+/** Past crush: near-continuous ambient creaking. */
+export const SUBMARINE_CREAK_INTERVAL_PAST_CRUSH_SEC = 1.2;
+
+/** @deprecated Prefer {@link SUBMARINE_CREAK_INTERVAL_AT_CRUSH_SEC}. */
+export const SUBMARINE_CREAK_INTERVAL_DEEP_SEC = SUBMARINE_CREAK_INTERVAL_AT_CRUSH_SEC;
 
 /** Play this many seconds of the sample per ambient creak (random offset). */
 export const SUBMARINE_CREAK_AMBIENT_DURATION_SEC = 3.2;
@@ -24,15 +40,34 @@ export const SUBMARINE_CREAK_DC_DURATION_SEC = 4.5;
 /**
  * Mean interval (ms) between ambient creaks for keel depth.
  * - Surfaced (≤ {@link RADAR_SURFACE_DEPTH_M}): no ambient creaks (Infinity).
- * - Linear blend from shallow→deep means as depth rises to max.
+ * - Surface band → test: linear 48 s → 10 s.
+ * - Test → crush: **t³** blend 10 s → 2 s (stays quieter until near crush, then spikes).
+ * - Past crush: 1.2 s mean (super frequent).
+ * DC stress creaks remain separate (one per nearby Controls blast).
  */
 export function creakIntervalMsForDepth(depthM: number): number {
   if (!(depthM > RADAR_SURFACE_DEPTH_M)) return Number.POSITIVE_INFINITY;
-  const span = Math.max(1, SUBMARINE_MAX_DEPTH_M - RADAR_SURFACE_DEPTH_M);
-  const t = Math.min(1, Math.max(0, (depthM - RADAR_SURFACE_DEPTH_M) / span));
+
+  if (depthM > FLEET_SUB_CRUSH_DEPTH_M) {
+    return SUBMARINE_CREAK_INTERVAL_PAST_CRUSH_SEC * 1000;
+  }
+
+  if (depthM <= FLEET_SUB_TEST_DEPTH_M) {
+    const span = Math.max(1, FLEET_SUB_TEST_DEPTH_M - RADAR_SURFACE_DEPTH_M);
+    const t = Math.min(1, Math.max(0, (depthM - RADAR_SURFACE_DEPTH_M) / span));
+    const sec =
+      SUBMARINE_CREAK_INTERVAL_SHALLOW_SEC +
+      (SUBMARINE_CREAK_INTERVAL_AT_TEST_SEC - SUBMARINE_CREAK_INTERVAL_SHALLOW_SEC) * t;
+    return sec * 1000;
+  }
+
+  // Steep near crush: cubic ease so creaks become super frequent only close to the line.
+  const span = Math.max(1, FLEET_SUB_CRUSH_DEPTH_M - FLEET_SUB_TEST_DEPTH_M);
+  const t = Math.min(1, Math.max(0, (depthM - FLEET_SUB_TEST_DEPTH_M) / span));
+  const steep = t * t * t;
   const sec =
-    SUBMARINE_CREAK_INTERVAL_SHALLOW_SEC +
-    (SUBMARINE_CREAK_INTERVAL_DEEP_SEC - SUBMARINE_CREAK_INTERVAL_SHALLOW_SEC) * t;
+    SUBMARINE_CREAK_INTERVAL_AT_TEST_SEC +
+    (SUBMARINE_CREAK_INTERVAL_AT_CRUSH_SEC - SUBMARINE_CREAK_INTERVAL_AT_TEST_SEC) * steep;
   return sec * 1000;
 }
 

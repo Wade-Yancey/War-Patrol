@@ -1,4 +1,5 @@
 import { SUBMARINE_MAX_DEPTH_M } from './constants.js';
+import { clampSubmarineDepth } from './dive.js';
 import type {
   Faction,
   FlightLevel,
@@ -273,11 +274,11 @@ export function normalizePositionForType(
   }
   return {
     ...position,
-    depth: Math.max(0, Math.min(SUBMARINE_MAX_DEPTH_M, Math.round(position.depth))),
+    depth: Math.max(0, Math.min(SUBMARINE_MAX_DEPTH_M, position.depth)),
   };
 }
 
-/** Standing ordered depth: ships/aircraft 0; subs default to current depth. */
+/** Standing ordered depth: ships/aircraft 0; subs default to current depth (coarse). */
 export function resolveOrderedDepth(
   type: VesselType,
   positionDepth: number,
@@ -288,7 +289,7 @@ export function resolveOrderedDepth(
     typeof orderedDepth === 'number' && Number.isFinite(orderedDepth)
       ? orderedDepth
       : positionDepth;
-  return Math.max(0, Math.min(SUBMARINE_MAX_DEPTH_M, Math.round(raw)));
+  return clampSubmarineDepth(raw);
 }
 
 /** Operator label for sunk/destroyed by type. */

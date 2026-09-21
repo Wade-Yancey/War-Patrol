@@ -2,13 +2,16 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   EOT_LABELS,
+  FLEET_SUB_CRUSH_DEPTH_M,
   PERISCOPE_DEPTH_M,
   PERISCOPE_EXPOSURE_PRESETS,
   RADAR_SURFACE_DEPTH_M,
+  SUBMARINE_DEPTH_ORDER_STEP_M,
   SUBMARINE_MAX_DEPTH_M,
+  clampSubmarineDepth,
   conditionLabel,
   effectiveMaxSpeed,
-  formatDepthMeters,
+  formatCoarseDepthMeters,
   formatPendingOrdersSummary,
   hasPendingOrders,
   isRadarSurfaced,
@@ -54,7 +57,7 @@ import {
   SUBMARINE_CREAK_AMBIENT_GAIN,
   SUBMARINE_CREAK_DC_DURATION_SEC,
   SUBMARINE_CREAK_DC_GAIN,
-  SUBMARINE_CREAK_INTERVAL_DEEP_SEC,
+  SUBMARINE_CREAK_INTERVAL_AT_CRUSH_SEC,
   SUBMARINE_CREAK_INTERVAL_SHALLOW_SEC,
   creakIntervalMsForDepth,
   jitterCreakIntervalMs,
@@ -114,7 +117,7 @@ export function StationPage() {
     setCourse(Math.round(vessel.unit.orders.course ?? vessel.unit.orderedCourse ?? vessel.unit.heading));
     setEot(vessel.unit.orders.eot ?? vessel.unit.eot);
     setDepth(
-      Math.round(
+      clampSubmarineDepth(
         vessel.unit.orders.depth ?? vessel.unit.orderedDepth ?? vessel.unit.position.depth,
       ),
     );
@@ -1140,11 +1143,11 @@ export function StationPage() {
                   <div className="controls-status-item">
                     <span className="controls-status-key">DPT</span>
                     <span className="readout">
-                      {formatDepthMeters(vessel.unit.position.depth)}
+                      {formatCoarseDepthMeters(vessel.unit.position.depth)}
                       {Math.round(vessel.unit.orderedDepth ?? vessel.unit.position.depth) !==
                         Math.round(vessel.unit.position.depth) && (
                         <span className="muted" style={{ marginLeft: 6, fontSize: '0.75em' }}>
-                          → {formatDepthMeters(vessel.unit.orderedDepth ?? 0)}
+                          → {formatCoarseDepthMeters(vessel.unit.orderedDepth ?? 0)}
                         </span>
                       )}
                     </span>
@@ -1259,17 +1262,19 @@ export function StationPage() {
                 <div className="controls-section-head">
                   <h2>Dive plane</h2>
                   <p className="muted controls-section-blurb">
-                    Preset depths or set meters directly. Surface ships have no dive plane.
+                    Coarse {SUBMARINE_DEPTH_ORDER_STEP_M} m dial — presets and band marks (patrol /
+                    test / crush). You may order past crush; that risks implosion.
                   </p>
                 </div>
                 <DiveControls
                   depth={vessel.unit.position.depth}
                   orderedDepth={vessel.unit.orderedDepth ?? vessel.unit.position.depth}
                   draftDepth={depth}
-                  onDraftDepthChange={setDepth}
+                  onDraftDepthChange={(d) => setDepth(clampSubmarineDepth(d))}
                   maxDepthM={SUBMARINE_MAX_DEPTH_M}
+                  orderStepM={SUBMARINE_DEPTH_ORDER_STEP_M}
                   disabled={!vessel.canSubmitOrders}
-                  onSubmit={(d) => void submit({ depth: d })}
+                  onSubmit={(d) => void submit({ depth: clampSubmarineDepth(d) })}
                 />
               </section>
             )}
@@ -1302,10 +1307,11 @@ export function StationPage() {
                   detonations play when within ~0.6 nm of own ship (any vessel — not only the
                   dropper). Torpedo hits play a procedural explosion for both firer and target
                   Controls, attenuated by range. Submarine Controls also hear occasional hull
-                  creaks while submerged (depth &gt; {RADAR_SURFACE_DEPTH_M} m), more often as
-                  keel depth increases (~{SUBMARINE_CREAK_INTERVAL_SHALLOW_SEC} s mean near the
-                  surface band down to ~{SUBMARINE_CREAK_INTERVAL_DEEP_SEC} s at{' '}
-                  {SUBMARINE_MAX_DEPTH_M} m), plus a stress creak with each nearby depth-charge
+                  creaks while submerged (depth &gt; {RADAR_SURFACE_DEPTH_M} m), denser toward
+                  test depth and <em>super frequent</em> near crush (~
+                  {SUBMARINE_CREAK_INTERVAL_SHALLOW_SEC} s mean near the surface band down to ~
+                  {SUBMARINE_CREAK_INTERVAL_AT_CRUSH_SEC} s at {FLEET_SUB_CRUSH_DEPTH_M} m crush),
+                  plus a stress creak with each nearby depth-charge
                   blast. Hydrophone hears the DC sample at longer range when submerged.
                 </p>
               </>
@@ -1423,7 +1429,7 @@ export function StationPage() {
                       {vessel.unit.type === 'Submarine' && (
                         <tr>
                           <th>Depth</th>
-                          <td className="readout">{formatDepthMeters(vessel.unit.position.depth)}</td>
+                          <td className="readout">{formatCoarseDepthMeters(vessel.unit.position.depth)}</td>
                         </tr>
                       )}
                       {(canTorpedo || canDepthCharges) && (

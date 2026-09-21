@@ -6,6 +6,7 @@ import {
   clampDepthChargeSetting,
   clampSpeedToMax,
   clampSubmarineDepth,
+  applyCrushDepthImplosions,
   effectiveMaxSpeed,
   moveAlongHeading,
   normalizeDepthChargePattern,
@@ -48,8 +49,15 @@ export function resolveTurn(save: GameSave): GameSave {
   // Periscope auto-lower when too deep; plot stamp accrue/reset (no frozen bonus).
   const stampedUnits = applyPeriscopePlotStamps(movedUnits, save);
 
+  // Past crush depth: per-turn implosion RNG (strictly deeper than crush).
+  const crush = applyCrushDepthImplosions(stampedUnits, {
+    turnNumber: resolveTurnNumber,
+    gameTimeSeconds,
+    nowIso: now,
+  });
+
   const weapons = resolveWeaponsForTurn(
-    stampedUnits,
+    crush.units,
     save.torpedoes ?? [],
     save.depthCharges ?? [],
     save.recentDetonations ?? [],
@@ -95,7 +103,10 @@ export function resolveTurn(save: GameSave): GameSave {
     torpedoes: weapons.torpedoes,
     depthCharges: weapons.depthCharges,
     recentDetonations: weapons.recentDetonations,
-    combatLog: appendCombatLog(save.combatLog, weapons.combatLogEntries),
+    combatLog: appendCombatLog(save.combatLog, [
+      ...crush.combatLogEntries,
+      ...weapons.combatLogEntries,
+    ]),
     turn: nextTurnState,
     history: [...save.history, snapshot],
   };

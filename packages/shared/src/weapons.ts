@@ -1162,6 +1162,7 @@ export function buildOwnDamageLog(
       e.kind !== 'torpedo_hit' &&
       e.kind !== 'depth_charge_damage' &&
       e.kind !== 'unit_sunk' &&
+      e.kind !== 'hull_implosion' &&
       e.kind !== 'subsystem_casualty'
     ) {
       continue;
@@ -1180,6 +1181,9 @@ export function buildOwnDamageLog(
         break;
       case 'unit_sunk':
         summary = 'Hull lost — sunk / destroyed';
+        break;
+      case 'hull_implosion':
+        summary = 'Hull imploded — crushed by pressure';
         break;
       case 'subsystem_casualty':
         summary = e.summary;

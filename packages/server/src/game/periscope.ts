@@ -35,7 +35,7 @@ export type PeriscopePicture = {
 /**
  * Server-authoritative periscope / lookout picture (visual stub).
  *
- * Subs: mast must be raised AND keel ≤ 18 m; sensors casualty still knocks
+ * Subs: mast must be raised AND keel ≤ periscope depth; sensors casualty still knocks
  * out the periscope. Scope down → optically blind (no contacts / stale data).
  * Surface ships (DD lookout): available whenever not sunk — lookout is immune
  * to sensors-subsystem combat damage. DD lookout always sees raised enemy

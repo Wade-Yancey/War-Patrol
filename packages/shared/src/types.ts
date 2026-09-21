@@ -548,6 +548,7 @@ export type CombatLogKind =
   | 'depth_charge_detonation'
   | 'depth_charge_damage'
   | 'unit_sunk'
+  | 'hull_implosion'
   | 'subsystem_casualty';
 
 /** One umpire-visible action / damage line (CRT log). */
@@ -578,7 +579,11 @@ export interface OwnDamageEvent {
   id: string;
   kind: Extract<
     CombatLogKind,
-    'torpedo_hit' | 'depth_charge_damage' | 'unit_sunk' | 'subsystem_casualty'
+    | 'torpedo_hit'
+    | 'depth_charge_damage'
+    | 'unit_sunk'
+    | 'hull_implosion'
+    | 'subsystem_casualty'
   >;
   turnNumber: number;
   gameTimeSeconds: number;

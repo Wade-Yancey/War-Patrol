@@ -23,6 +23,8 @@ function kindLabel(kind: CombatLogEntry['kind']): string {
       return 'DC DMG';
     case 'unit_sunk':
       return 'SUNK';
+    case 'hull_implosion':
+      return 'IMPLODE';
     case 'subsystem_casualty':
       return 'CASUALTY';
     default:

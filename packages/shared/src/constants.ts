@@ -118,10 +118,34 @@ export const ACTIVE_SONAR_PING_INTERVAL_SEC = 6;
 export const PERISCOPE_MAX_RANGE_NM = 6;
 
 /**
- * Max ordered / actual depth (m) for fleet submarines in v1.
- * Slightly past Gato test depth (~300 ft / 91 m); crush depth is not modeled.
+ * Coarse dive-order increment (m) for fleet submarines.
+ * Players order in large steps so patrol / test / crush lines are deliberate
+ * decision points — not silent 1 m GT dialing.
  */
-export const SUBMARINE_MAX_DEPTH_M = 100;
+export const SUBMARINE_DEPTH_ORDER_STEP_M = 10;
+
+/**
+ * Gato / fleet-boat depth bands (meters, positive-down). Historically plausible
+ * WWII approximations, snapped to {@link SUBMARINE_DEPTH_ORDER_STEP_M}:
+ * - Patrol ~164 ft — normal submerged operating / “safe” ordered band
+ * - Test ~295 ft — design test depth (~300 ft)
+ * - Crush ~492 ft — estimated collapse depth (~500 ft)
+ */
+export const FLEET_SUB_PATROL_DEPTH_M = 50;
+export const FLEET_SUB_TEST_DEPTH_M = 90;
+export const FLEET_SUB_CRUSH_DEPTH_M = 150;
+
+/**
+ * Max ordered / actual depth (m) for fleet submarines.
+ * Past {@link FLEET_SUB_CRUSH_DEPTH_M} so players may order into implosion risk.
+ */
+export const SUBMARINE_MAX_DEPTH_M = 180;
+
+/**
+ * Per-resolve chance the hull implodes while keel is **strictly deeper** than
+ * {@link FLEET_SUB_CRUSH_DEPTH_M} (past crush only — not at exactly crush).
+ */
+export const SUBMARINE_IMPLOSION_CHANCE_PER_TURN = 0.25;
 
 /**
  * Fleet-boat dive / ascent rate (meters per in-game minute), positive-down change.

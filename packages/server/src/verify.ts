@@ -13,25 +13,37 @@ import {
   CLASS_LENGTH_M,
   CLASS_MAX_SPEED_KNOTS,
   CLASS_SPEED_STEP_FRACTION,
+  FLEET_SUB_CRUSH_DEPTH_M,
+  FLEET_SUB_PATROL_DEPTH_M,
+  FLEET_SUB_TEST_DEPTH_M,
   PERISCOPE_COURSE_STEP_DEG,
+  SUBMARINE_DEPTH_ORDER_STEP_M,
   SUBMARINE_DEPTH_RATE_M_PER_MIN,
+  SUBMARINE_IMPLOSION_CHANCE_PER_TURN,
+  SUBMARINE_MAX_DEPTH_M,
   SUBMERGED_MAX_SPEED_KNOTS,
+  applyCrushDepthImplosions,
   bearingRangeNm,
   clampSpeedToMax,
+  clampSubmarineDepth,
   coarsenPeriscopeCourseDeg,
   editMaxSpeedForClass,
   effectiveMaxSpeed,
   ensureContactLabel,
   formatWallDuration,
+  isPastCrushDepth,
   normalizeContactBook,
   parseWallDuration,
+  quantizeSubmarineDepth,
   resolveBeamM,
   resolveLengthM,
   resolveMaxSpeed,
+  rollSubmarineImplosion,
   periscopeSilhouetteUrl,
   silhouetteUrlForClass,
   snapWallDuration,
   stepDepthTowardOrdered,
+  submarineDepthRisk,
 } from '@war-patrol/shared';
 import { buildPeriscopeContacts } from './game/periscope.js';
 import { buildRadarContacts } from './game/radar.js';
@@ -132,6 +144,75 @@ async function main() {
   check('clampSpeedToMax caps reverse', clampSpeedToMax(-50, 36) === -36);
   check('submerged max is 9 kn', SUBMERGED_MAX_SPEED_KNOTS === 9);
   check('dive rate is 15 m/min', SUBMARINE_DEPTH_RATE_M_PER_MIN === 15);
+  check('depth order step is 10 m', SUBMARINE_DEPTH_ORDER_STEP_M === 10);
+  check('patrol depth 50 m', FLEET_SUB_PATROL_DEPTH_M === 50);
+  check('test depth 90 m', FLEET_SUB_TEST_DEPTH_M === 90);
+  check('crush depth 150 m', FLEET_SUB_CRUSH_DEPTH_M === 150);
+  check('max depth past crush', SUBMARINE_MAX_DEPTH_M === 180);
+  check('implosion chance 25%', SUBMARINE_IMPLOSION_CHANCE_PER_TURN === 0.25);
+  check('quantize 94 → 90', quantizeSubmarineDepth(94) === 90);
+  check('quantize 96 → 100', quantizeSubmarineDepth(96) === 100);
+  check('clamp over max → 180', clampSubmarineDepth(250) === 180);
+  check('at crush is not past', isPastCrushDepth(150) === false);
+  check('past crush at 160', isPastCrushDepth(160) === true);
+  check('risk below test', submarineDepthRisk(100) === 'below_test');
+  check('risk at crush', submarineDepthRisk(150) === 'at_crush');
+  check('risk past crush', submarineDepthRisk(160) === 'past_crush');
+  check('implosion roll always when chance 1', rollSubmarineImplosion(() => 0.5, 1) === true);
+  check('implosion roll never when chance 0', rollSubmarineImplosion(() => 0, 0) === false);
+  check('implosion roll uses threshold', rollSubmarineImplosion(() => 0.2, 0.25) === true);
+  check('implosion roll miss above chance', rollSubmarineImplosion(() => 0.3, 0.25) === false);
+  {
+    const units = [
+      {
+        id: 'ss-x',
+        name: 'Testboat',
+        type: 'Submarine' as const,
+        class: 'Fleet Submarine' as const,
+        condition: 'afloat' as const,
+        health: 100,
+        position: { lat: 0, lon: 0, depth: 160 },
+        speed: 3,
+        eot: 'ahead_standard' as const,
+        heading: 0,
+        orderedCourse: 0,
+        orderedDepth: 160,
+        subsystems: { propulsion: 'intact' as const, sensors: 'intact' as const },
+        orders: {},
+        maxSpeed: 21,
+        turnRate: 12,
+        radarSignature: 'small' as const,
+        sensors: [],
+        stations: [],
+        side: 'red' as const,
+        faction: 'Red' as const,
+        periscopeRaised: false,
+        periscopeExposure: 0,
+        plotStampTurns: 0,
+        activeSonarEnabled: false,
+      },
+    ];
+    const boom = applyCrushDepthImplosions(units as never, {
+      turnNumber: 3,
+      gameTimeSeconds: 900,
+      rng: () => 0.1,
+      chance: 0.25,
+    });
+    check('implosion sinks past crush', boom.units[0]!.condition === 'sunk');
+    check('implosion log kind', boom.combatLogEntries[0]?.kind === 'hull_implosion');
+    const safe = applyCrushDepthImplosions(units as never, {
+      turnNumber: 3,
+      gameTimeSeconds: 900,
+      rng: () => 0.9,
+      chance: 0.25,
+    });
+    check('implosion miss keeps hull', safe.units[0]!.condition === 'afloat');
+    const atCrush = applyCrushDepthImplosions(
+      [{ ...units[0]!, position: { ...units[0]!.position, depth: 150 } }] as never,
+      { turnNumber: 3, gameTimeSeconds: 900, rng: () => 0, chance: 1 },
+    );
+    check('exactly crush does not implode', atCrush.units[0]!.condition === 'afloat');
+  }
   check(
     'depth steps 45 m toward ordered in 3-min turn',
     stepDepthTowardOrdered(0, 50, 180) === 45,
@@ -669,12 +750,12 @@ async function main() {
   await api(
     'PATCH',
     `/api/games/${gameId}/units/ss-212`,
-    { position: { depth: 18 } },
+    { position: { depth: 20 } },
     umpireToken,
   );
   const periAt18 = await api('GET', `/api/games/${gameId}/view`, undefined, subSensorsToken);
   check(
-    'sub periscope operational at 18 m when raised',
+    'sub periscope operational at 20 m when raised',
     (periAt18.json.view as Json).periscopeOperational === true,
   );
 
@@ -722,7 +803,7 @@ async function main() {
   await api(
     'PATCH',
     `/api/games/${gameId}/units/ss-212`,
-    { position: { lat: 34.35, lon: -120.05, depth: 18 }, speed: 3 },
+    { position: { lat: 34.35, lon: -120.05, depth: 20 }, speed: 3 },
     umpireToken,
   );
   await api(
@@ -1260,13 +1341,13 @@ async function main() {
   const diveOrder = await api(
     'POST',
     `/api/games/${gameId}/orders`,
-    { depth: 18 },
+    { depth: 20 },
     redToken,
   );
   check('sub periscope depth order', diveOrder.status === 200);
   check(
     'periscope orderedDepth live',
-    runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!.orderedDepth === 18,
+    runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!.orderedDepth === 20,
   );
   check(
     'periscope keel still surface until resolve',
@@ -1279,6 +1360,17 @@ async function main() {
     blueToken,
   );
   check('ship depth order rejected', shipDepthReject.status === 400);
+  const coarseOrder = await api(
+    'POST',
+    `/api/games/${gameId}/orders`,
+    { depth: 94 },
+    redToken,
+  );
+  check('coarse depth order accepted', coarseOrder.status === 200);
+  check(
+    'orderedDepth quantized to 10 m',
+    runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!.orderedDepth === 90,
+  );
   const deepClamp = await api(
     'POST',
     `/api/games/${gameId}/orders`,
@@ -1287,28 +1379,28 @@ async function main() {
   );
   check('depth order clamps to max', deepClamp.status === 200);
   check(
-    'orderedDepth clamped to 100',
-    runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!.orderedDepth === 100,
+    'orderedDepth clamped to max (past crush allowed)',
+    runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!.orderedDepth ===
+      SUBMARINE_MAX_DEPTH_M,
+  );
+  // Do not resolve at max (past crush rolls implosion RNG). Dive to test depth instead.
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { position: { depth: 45 } },
+    umpireToken,
+  );
+  await api('POST', `/api/games/${gameId}/orders`, { depth: 90 }, redToken);
+  check(
+    'test-depth order after clamp',
+    runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!.orderedDepth === 90,
   );
   await api('POST', `/api/games/${gameId}/turn/lock`, {}, umpireToken);
   await api('POST', `/api/games/${gameId}/turn/resolve`, {}, umpireToken);
-  const afterDeepDive1 = runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!;
+  const afterDeepDive = runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!;
   check(
-    'clamped depth stepped on first resolve',
-    afterDeepDive1.position.depth === 45 && afterDeepDive1.orderedDepth === 100,
-  );
-  await api('POST', `/api/games/${gameId}/turn/lock`, {}, umpireToken);
-  await api('POST', `/api/games/${gameId}/turn/resolve`, {}, umpireToken);
-  const afterDeepDive2 = runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!;
-  check(
-    'clamped depth stepped on second resolve',
-    afterDeepDive2.position.depth === 90 && afterDeepDive2.orderedDepth === 100,
-  );
-  await api('POST', `/api/games/${gameId}/turn/lock`, {}, umpireToken);
-  await api('POST', `/api/games/${gameId}/turn/resolve`, {}, umpireToken);
-  check(
-    'clamped depth reached ordered on third resolve',
-    runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!.position.depth === 100,
+    'depth stepped to test band',
+    afterDeepDive.position.depth === 90 && afterDeepDive.orderedDepth === 90,
   );
   // Emergency blow → surface (standing ordered 0; keel approaches over resolves)
   await api('POST', `/api/games/${gameId}/orders`, { depth: 0 }, redToken);
@@ -1316,13 +1408,7 @@ async function main() {
   await api('POST', `/api/games/${gameId}/turn/resolve`, {}, umpireToken);
   check(
     'emergency blow ascent first resolve',
-    runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!.position.depth === 55,
-  );
-  await api('POST', `/api/games/${gameId}/turn/lock`, {}, umpireToken);
-  await api('POST', `/api/games/${gameId}/turn/resolve`, {}, umpireToken);
-  check(
-    'emergency blow ascent second resolve',
-    runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!.position.depth === 10,
+    runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!.position.depth === 45,
   );
   await api('POST', `/api/games/${gameId}/turn/lock`, {}, umpireToken);
   await api('POST', `/api/games/${gameId}/turn/resolve`, {}, umpireToken);
@@ -1335,7 +1421,7 @@ async function main() {
   await api(
     'PATCH',
     `/api/games/${gameId}/units/ss-212`,
-    { position: { depth: 18 } },
+    { position: { depth: 20 } },
     umpireToken,
   );
   const raiseForDive = await api(
@@ -2210,7 +2296,7 @@ async function main() {
       await api(
         'PATCH',
         `/api/games/${persistId}/units/ss-212`,
-        { speed: 0, heading: 0, position: { lat: 34.37, lon: -120.0, depth: 18 } },
+        { speed: 0, heading: 0, position: { lat: 34.37, lon: -120.0, depth: 20 } },
         persistUTok,
       );
       await api(
@@ -2301,7 +2387,7 @@ async function main() {
       await api(
         'PATCH',
         `/api/games/${missId}/units/ss-212`,
-        { speed: 0, heading: 0, position: { lat: 34.378, lon: -120.0, depth: 18 } },
+        { speed: 0, heading: 0, position: { lat: 34.378, lon: -120.0, depth: 20 } },
         missUTok,
       );
       await api('POST', `/api/games/${missId}/orders`, { eot: 'stop' }, missDdTok);
@@ -2407,7 +2493,7 @@ async function main() {
     await api(
       'PATCH',
       `/api/games/${hitId}/units/ss-212`,
-      { speed: 0, heading: 0, position: { lat: 34.378, lon: -120.0, depth: 18 } },
+      { speed: 0, heading: 0, position: { lat: 34.378, lon: -120.0, depth: 20 } },
       hitUTok,
     );
     await api('POST', `/api/games/${hitId}/orders`, { eot: 'stop' }, hitDdTok);
@@ -2424,7 +2510,7 @@ async function main() {
       await api(
         'PATCH',
         `/api/games/${hitId}/units/ss-212`,
-        { speed: 0, heading: 0, position: { lat: 34.378, lon: -120.0, depth: 18 } },
+        { speed: 0, heading: 0, position: { lat: 34.378, lon: -120.0, depth: 20 } },
         hitUTok,
       );
       await api('POST', `/api/games/${hitId}/orders`, { eot: 'stop' }, hitDdTok);
