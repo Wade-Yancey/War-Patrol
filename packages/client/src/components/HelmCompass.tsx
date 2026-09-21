@@ -1,5 +1,6 @@
 import { memo } from 'react';
-import { normalizeHeading } from '@war-patrol/shared';
+import { normalizeHeading, shortestBearingDelta } from '@war-patrol/shared';
+import { useContinuousAngle } from '../hooks/useContinuousAngle';
 import {
   COMPASS_CX,
   COMPASS_CY,
@@ -25,10 +26,6 @@ interface Props {
   turnRate?: number;
 }
 
-function shortestDelta(from: number, to: number): number {
-  return ((to - from + 540) % 360) - 180;
-}
-
 /**
  * CRT gyro-style compass for the helmsman: north-up rose with distinct
  * heading needle and ordered-course bug. Live unit state only — no fake data.
@@ -38,10 +35,11 @@ function HelmCompassInner({ heading, orderedCourse, draftCourse, turnRate }: Pro
   const crs = normalizeHeading(orderedCourse);
   const draft =
     draftCourse === undefined ? undefined : normalizeHeading(draftCourse);
+  const draftRotateDeg = useContinuousAngle(draft ?? 0);
 
   const showDraft =
-    draft !== undefined && Math.abs(shortestDelta(crs, draft)) > 0.5;
-  const onCourse = Math.abs(shortestDelta(hdg, crs)) < 0.75;
+    draft !== undefined && Math.abs(shortestBearingDelta(crs, draft)) > 0.5;
+  const onCourse = Math.abs(shortestBearingDelta(hdg, crs)) < 0.75;
 
   const hdgLabel = String(Math.round(hdg)).padStart(3, '0');
   const crsLabel = String(Math.round(crs)).padStart(3, '0');
@@ -72,7 +70,7 @@ function HelmCompassInner({ heading, orderedCourse, draftCourse, turnRate }: Pro
             <g
               className="helm-compass-needle helm-compass-draft"
               style={{
-                transform: `rotate(${draft}deg)`,
+                transform: `rotate(${draftRotateDeg}deg)`,
                 transformOrigin: `${COMPASS_CX}px ${COMPASS_CY}px`,
               }}
               opacity={0.55}

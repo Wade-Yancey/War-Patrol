@@ -19,6 +19,7 @@ import {
   loadDepthChargeBuffer,
   playDepthChargeSample,
 } from '../audio/depthCharge';
+import { useContinuousAngle } from '../hooks/useContinuousAngle';
 
 const PROP_SAMPLE_URL = '/audio/echo-propeller.wav';
 /** Fine-adjust nudge step for ◀ / ▶ flanking the bearing slider (degrees). */
@@ -112,6 +113,8 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
 
   const hdg = normalizeHeading(ownHeading);
   const listen = normalizeHeading(listenBearing);
+  const hdgRotateDeg = useContinuousAngle(hdg);
+  const listenRotateDeg = useContinuousAngle(listen);
 
   const cue = useMemo(
     () => hydrophoneListenCue(contacts, listen),
@@ -515,7 +518,10 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
             {/* Own-ship lubber — faint, not a contact. */}
             <g
               className="hydrophone-needle"
-              style={{ transform: `rotate(${hdg}deg)`, transformOrigin: `${CX}px ${CY}px` }}
+              style={{
+                transform: `rotate(${hdgRotateDeg}deg)`,
+                transformOrigin: `${CX}px ${CY}px`,
+              }}
               opacity={0.45}
             >
               <line
@@ -531,7 +537,10 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
             {/* Listen needle — operator trains this. */}
             <g
               className="hydrophone-needle"
-              style={{ transform: `rotate(${listen}deg)`, transformOrigin: `${CX}px ${CY}px` }}
+              style={{
+                transform: `rotate(${listenRotateDeg}deg)`,
+                transformOrigin: `${CX}px ${CY}px`,
+              }}
             >
               <line
                 x1={CX}
