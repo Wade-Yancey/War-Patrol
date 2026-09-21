@@ -551,12 +551,19 @@ export function StationPage() {
     };
   }, [onControlsBridge, vessel, vessel?.bridgeDetonations, vessel?.stateVersion]);
 
-  // Own-ship sunk popup on Controls + Sensors (not umpire). Light delay when a
-  // Controls bridge blast cue is present so the killing one-shot can start first.
-  const ownShipSunk = vessel?.unit.condition === 'sunk';
+  // Own-ship sunk popup on Controls + Sensors — wait until audio-synced
+  // presentation reaches sunk (same delay as blast SFX / Damage report).
+  const ownShipSunk = syncedDamage.condition === 'sunk';
+  const presentationSunk = ownShipSunk;
+  /** Soften Sensors “sunk” copy until blast-synced presentation catches up. */
+  const sunkSetOfflineBlurb = presentationSunk
+    ? ' Set offline — unit sunk/destroyed.'
+    : ' Set offline.';
+  const sunkUnavailableLine = (label: string) =>
+    presentationSunk ? `${label} unavailable — sunk/destroyed` : `${label} unavailable`;
   const sunkCause = useMemo(
-    () => resolveSunkCause(vessel?.ownDamageLog),
-    [vessel?.ownDamageLog],
+    () => resolveSunkCause(syncedDamage.damageLog),
+    [syncedDamage.damageLog],
   );
   useEffect(() => {
     if (!vessel || !ownShipSunk) {
@@ -565,23 +572,9 @@ export function StationPage() {
       return;
     }
     if (sunkModalAckedRef.current) return;
-
-    const waitForBlast =
-      onControlsBridge &&
-      sunkCause !== 'implosion' &&
-      (vessel.bridgeDetonations?.length ?? 0) > 0;
-    // First DC/torpedo one-shot is scheduled at whenSec=0; short beat so audio leads.
-    const delayMs = waitForBlast ? 650 : 0;
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      if (!cancelled && !sunkModalAckedRef.current) setSunkModalOpen(true);
-    }, delayMs);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-    // Deliberately omit full `vessel` — SSE ticks must not restart the delay.
-  }, [ownShipSunk, vessel?.unit.id, onControlsBridge, sunkCause]);
+    setSunkModalOpen(true);
+    // Deliberately omit full `vessel` — SSE ticks must not re-open after ack.
+  }, [ownShipSunk, vessel?.unit.id]);
 
   // Sub Sensors: pick a sensible default tab from depth; follow depth-band changes.
   // Do not depend on the whole vessel object — mast raise/lower updates must
@@ -853,7 +846,7 @@ export function StationPage() {
                         : vessel.radarUnavailableReason === 'no_sensor'
                           ? ' No radar set installed on this vessel.'
                           : vessel.radarUnavailableReason === 'sunk'
-                            ? ' Set offline — unit sunk/destroyed.'
+                            ? sunkSetOfflineBlurb
                             : vessel.radarUnavailableReason === 'sensors_disabled'
                               ? ' Sensors disabled.'
                               : ''}
@@ -865,7 +858,7 @@ export function StationPage() {
                       {vessel.radarUnavailableReason === 'submerged'
                         ? 'Radar unavailable — submerged'
                         : vessel.radarUnavailableReason === 'sunk'
-                          ? 'Radar unavailable — sunk/destroyed'
+                          ? sunkUnavailableLine('Radar')
                           : vessel.radarUnavailableReason === 'sensors_disabled'
                             ? 'Radar unavailable — sensors disabled'
                             : vessel.radarUnavailableReason === 'no_sensor'
@@ -878,7 +871,9 @@ export function StationPage() {
                         : vessel.radarUnavailableReason === 'sensors_disabled'
                           ? 'Repair or re-enable the sensors subsystem to restore the PPI.'
                           : vessel.radarUnavailableReason === 'sunk'
-                            ? 'This unit no longer contributes to the sensor picture.'
+                            ? presentationSunk
+                              ? 'This unit no longer contributes to the sensor picture.'
+                              : 'Sensor set is offline.'
                             : 'This station has no usable radar picture.'}
                     </p>
                   </div>
@@ -906,7 +901,7 @@ export function StationPage() {
                         : vessel.periscopeUnavailableReason === 'no_sensor'
                           ? ' No lookout set installed.'
                           : vessel.periscopeUnavailableReason === 'sunk'
-                            ? ' Set offline — unit sunk/destroyed.'
+                            ? sunkSetOfflineBlurb
                             : ''
                       : vessel.periscopeOperational
                         ? ` Visual · ${vessel.periscopeMaxRangeNm ?? 6} nm · mast UP · depth ≤ ${PERISCOPE_DEPTH_M} m.`
@@ -917,7 +912,7 @@ export function StationPage() {
                             : vessel.periscopeUnavailableReason === 'no_sensor'
                               ? ' No lookout/periscope set installed.'
                               : vessel.periscopeUnavailableReason === 'sunk'
-                                ? ' Set offline — unit sunk/destroyed.'
+                                ? sunkSetOfflineBlurb
                                 : vessel.periscopeUnavailableReason === 'sensors_disabled'
                                   ? ' Sensors disabled.'
                                   : ''}
@@ -958,7 +953,7 @@ export function StationPage() {
                       {vessel.periscopeUnavailableReason === 'too_deep'
                         ? 'Periscope unavailable — too deep'
                         : vessel.periscopeUnavailableReason === 'sunk'
-                          ? `${opticsTabLabel} unavailable — sunk/destroyed`
+                          ? sunkUnavailableLine(opticsTabLabel)
                           : vessel.periscopeUnavailableReason === 'sensors_disabled'
                             ? `${opticsTabLabel} unavailable — sensors disabled`
                             : vessel.periscopeUnavailableReason === 'no_sensor'
@@ -1023,7 +1018,7 @@ export function StationPage() {
                         : vessel.hydrophoneUnavailableReason === 'no_sensor'
                           ? ' No hydrophone set installed.'
                           : vessel.hydrophoneUnavailableReason === 'sunk'
-                            ? ' Set offline — unit sunk/destroyed.'
+                            ? sunkSetOfflineBlurb
                             : vessel.hydrophoneUnavailableReason === 'sensors_disabled'
                               ? ' Sensors disabled.'
                               : ''}
@@ -1035,7 +1030,7 @@ export function StationPage() {
                       {vessel.hydrophoneUnavailableReason === 'surfaced'
                         ? 'Hydrophone unavailable — surfaced'
                         : vessel.hydrophoneUnavailableReason === 'sunk'
-                          ? 'Hydrophone unavailable — sunk/destroyed'
+                          ? sunkUnavailableLine('Hydrophone')
                           : vessel.hydrophoneUnavailableReason === 'sensors_disabled'
                             ? 'Hydrophone unavailable — sensors disabled'
                             : vessel.hydrophoneUnavailableReason === 'no_sensor'
@@ -1093,7 +1088,7 @@ export function StationPage() {
                   <div className="radar-unavailable" role="status">
                     <p className="readout" style={{ margin: 0 }}>
                       {vessel.sonarUnavailableReason === 'sunk'
-                        ? 'Sonar unavailable — sunk/destroyed'
+                        ? sunkUnavailableLine('Sonar')
                         : vessel.sonarUnavailableReason === 'sensors_disabled'
                           ? 'Sonar unavailable — sensors disabled'
                           : 'Sonar unavailable — no sensor'}
@@ -1154,12 +1149,12 @@ export function StationPage() {
         {vessel && isControls && !isSensors && (
           <div className="controls-station">
             <section className="panel controls-status-strip" aria-label="Own ship status">
-              {(vessel.bridgeDetonations?.length ?? 0) > 0 && (
+              {(syncedDamage.visibleBridgeDetonations.length ?? 0) > 0 && (
                 <div className="controls-bridge-dc-alert" role="status" aria-live="assertive">
                   <span className="controls-bridge-dc-alert-key">BRIDGE</span>
                   <span className="readout">
                     {(() => {
-                      const events = vessel.bridgeDetonations!;
+                      const events = syncedDamage.visibleBridgeDetonations;
                       const hits = events.filter((d) => d.kind === 'torpedo_hit').length;
                       const dcs = events.filter((d) => d.kind !== 'torpedo_hit').length;
                       const parts: string[] = [];
@@ -1481,16 +1476,16 @@ export function StationPage() {
                       <tr>
                         <th>Condition</th>
                         <td className="readout">
-                          {conditionLabel(vessel.unit.type, vessel.unit.condition)}
+                          {conditionLabel(vessel.unit.type, syncedDamage.condition)}
                         </td>
                       </tr>
                       <tr>
                         <th>Propulsion</th>
-                        <td className="readout">{vessel.unit.subsystems.propulsion}</td>
+                        <td className="readout">{syncedDamage.subsystems.propulsion}</td>
                       </tr>
                       <tr>
                         <th>Sensors</th>
-                        <td className="readout">{vessel.unit.subsystems.sensors}</td>
+                        <td className="readout">{syncedDamage.subsystems.sensors}</td>
                       </tr>
                       {vessel.unit.type === 'Aircraft' && (
                         <tr>

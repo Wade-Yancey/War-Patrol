@@ -217,15 +217,22 @@ export function buildVesselView(
   const ownDamage = buildOwnDamageLog(unit.id, save.combatLog);
   if (ownDamage.length) view.ownDamageLog = ownDamage;
 
-  // Controls bridge DC audio: every vessel in range of the blast, not only the dropper.
-  // Gate on Controls station (helm/weapons/torpedo OR station id), never on firerUnitId.
+  // Bridge blast cues: Controls plays audio; Sensors gets the same ids/delays so
+  // sunk popup + staged damage wait on arrival (no SFX on Sensors).
+  // Every vessel in range of the blast, not only the dropper / firer.
   const onControlsStation =
     stationId === 'controls' ||
     station.capabilities.includes('helm') ||
     station.capabilities.includes('weapons') ||
     station.capabilities.includes('torpedo') ||
     station.capabilities.includes('engineering');
-  if (onControlsStation) {
+  const onSensorsStation =
+    stationId === 'sensors' ||
+    station.capabilities.includes('radar') ||
+    station.capabilities.includes('hydrophone') ||
+    station.capabilities.includes('active_sonar') ||
+    station.capabilities.includes('lookout');
+  if (onControlsStation || onSensorsStation) {
     const bridge = buildBridgeDetonations(unit, save);
     if (bridge.length) view.bridgeDetonations = bridge;
   }
