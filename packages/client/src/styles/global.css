@@ -26,6 +26,14 @@
   --hit: 2.75rem;
   --font-display: 'Share Tech Mono', 'IBM Plex Mono', ui-monospace, monospace;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  /* Shared CRT console dial (radar / hydrophone / helm) — viewport-dominant square */
+  --crt-aux-w: 12.5rem;
+  --crt-aux-gap: 0.65rem;
+  --crt-dial-inset: 1.25rem;
+  --crt-dial-chrome: 5.25rem;
+  --crt-console-key-size: 0.65rem;
+  --crt-console-val-size: 1.15rem;
+  --crt-console-caption-size: 0.65rem;
   color: var(--ink);
   background: var(--bg-void);
   font-family: var(--font-mono);
@@ -835,15 +843,17 @@ label {
   font-size: clamp(1.55rem, 4.5vw, 2.1rem);
 }
 
-.radar-station-panel {
+.radar-station-panel,
+.station-instrument-panel {
   margin-top: 0;
   padding: 0.4rem 0.45rem 0.55rem;
   max-width: 100%;
   box-sizing: border-box;
 }
 
-.radar-station-panel.stack {
-  /* Override generic .stack full-bleed feel so the PPI row can hug. */
+.radar-station-panel.stack,
+.station-instrument-panel.stack {
+  /* Override generic .stack full-bleed feel so the PPI / dial row can hug. */
   align-items: stretch;
   gap: 0.35rem;
 }
@@ -858,7 +868,8 @@ label {
   justify-content: center;
 }
 
-.radar-station-head {
+.radar-station-head,
+.station-instrument-head {
   display: flex;
   flex-wrap: wrap;
   gap: 0.25rem 0.85rem;
@@ -866,11 +877,13 @@ label {
   margin-bottom: 0.15rem;
 }
 
-.radar-station-head h2 {
+.radar-station-head h2,
+.station-instrument-head h2 {
   margin: 0;
 }
 
-.radar-station-blurb {
+.radar-station-blurb,
+.station-instrument-blurb {
   margin: 0;
   font-size: 0.85rem;
 }
@@ -1066,11 +1079,13 @@ label {
     padding: 0.25rem 0.65rem 0.35rem;
   }
 
-  .radar-station-blurb {
+  .radar-station-blurb,
+  .station-instrument-blurb {
     display: none;
   }
 
-  .radar-station-panel {
+  .radar-station-panel,
+  .station-instrument-panel {
     padding: 0.25rem 0.2rem 0.4rem;
     border-color: transparent;
     background: transparent;
@@ -1085,8 +1100,8 @@ label {
     width: min(100%, min(calc(100vw - 0.9rem), calc(100dvh - 4.75rem)));
   }
 
-  /* Hydrophone: CRT console row — dial left, aux right; dial matches radar scale. */
-  .hydrophone-scope.radar-scope {
+  /* CRT console row (hydrophone / helm): dial left, aux right; dial matches radar scale. */
+  .crt-console.radar-scope {
     flex-direction: row;
     flex-wrap: nowrap;
     align-items: center;
@@ -1096,20 +1111,20 @@ label {
     max-width: 100%;
   }
 
-  .hydrophone-scope .radar-scope-plot {
+  .crt-console .radar-scope-plot {
     width: auto;
   }
 
-  .hydrophone-scope .radar-scope-svg {
+  .crt-console .radar-scope-svg {
     /* Same dominance as radar tablet SVG; subtract train-button aux panel. */
     width: min(calc(100vw - 14.5rem), calc(100dvh - 4.75rem));
     max-width: min(calc(100vw - 14.5rem), calc(100dvh - 4.75rem));
     max-height: min(calc(100vw - 14.5rem), calc(100dvh - 4.75rem));
   }
 
-  .hydrophone-scope .radar-side-panel {
-    width: 12.5rem;
-    max-width: 12.5rem;
+  .crt-console .radar-side-panel {
+    width: var(--crt-aux-w);
+    max-width: var(--crt-aux-w);
     max-height: min(calc(100vw - 14.5rem), calc(100dvh - 4.75rem));
     overflow-x: visible;
     overflow-y: auto;
@@ -1118,14 +1133,14 @@ label {
     justify-content: flex-start;
   }
 
-  .hydrophone-readouts {
+  .crt-console-readouts {
     flex-direction: column;
     align-items: flex-start;
     justify-content: flex-start;
     gap: 0.25rem;
   }
 
-  .hydrophone-caption {
+  .crt-console-caption {
     text-align: left;
   }
 
@@ -1172,16 +1187,16 @@ label {
     justify-content: flex-start;
   }
 
-  /* Hydrophone dial: exact radar PPI desktop scale (#33); train-button aux. */
-  .hydrophone-scope .radar-scope-svg {
+  /* CRT console dial: exact radar PPI desktop scale (#33); aux column. */
+  .crt-console .radar-scope-svg {
     width: min(78vh, 820px, calc(100vw - 15.5rem));
     max-width: min(78vh, 820px, calc(100vw - 15.5rem));
     max-height: min(78vh, 820px);
   }
 
-  .hydrophone-scope .radar-side-panel {
-    width: 12.5rem;
-    max-width: 12.5rem;
+  .crt-console .radar-side-panel {
+    width: var(--crt-aux-w);
+    max-width: var(--crt-aux-w);
     max-height: min(78vh, 820px);
   }
 
@@ -1228,14 +1243,14 @@ label {
     max-height: min(84vh, 920px);
   }
 
-  /* Hydrophone dial: exact radar PPI large-desktop scale (#33). */
-  .hydrophone-scope .radar-scope-svg {
+  /* CRT console dial: exact radar PPI large-desktop scale (#33). */
+  .crt-console .radar-scope-svg {
     width: min(84vh, 920px, calc(100vw - 16.5rem));
     max-width: min(84vh, 920px, calc(100vw - 16.5rem));
     max-height: min(84vh, 920px);
   }
 
-  .hydrophone-scope .radar-side-panel {
+  .crt-console .radar-side-panel {
     width: 13rem;
     max-width: 13rem;
     max-height: min(84vh, 920px);
@@ -1853,22 +1868,53 @@ label {
   margin-top: 0.2rem;
 }
 
-/* Helmsman gyro compass — one instrument, phosphor CRT language */
-.helm-compass {
+/* Helmsman gyro + shared CRT console readouts (hydrophone / helm) */
+.crt-console-readouts {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 0.55rem;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 0.25rem;
   width: 100%;
-  max-width: 22rem;
+}
+
+.crt-console-readout {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+.crt-console-key {
+  font-family: var(--font-display);
+  font-size: var(--crt-console-key-size);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--phosphor-dim);
+  min-width: 2.4rem;
+}
+
+.crt-console-val {
+  font-size: var(--crt-console-val-size);
+  letter-spacing: 0.04em;
+}
+
+.crt-console-caption {
+  margin: 0;
+  font-size: var(--crt-console-caption-size);
+  text-align: left;
+  line-height: 1.3;
+}
+
+/* Helmsman gyro compass — CRT console language (same scale/layout as hydrophone) */
+.helm-compass {
+  /* Layout from .crt-console / .radar-scope */
+  max-width: 100%;
   margin: 0 auto;
 }
 
 .helm-compass-svg {
-  display: block;
-  width: min(100%, 18rem);
-  height: auto;
-  aspect-ratio: 1 / 1;
+  /* Sizing from .crt-console .radar-scope-svg */
   touch-action: manipulation;
   user-select: none;
 }
@@ -1893,33 +1939,6 @@ label {
   }
 }
 
-.helm-compass-readouts {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.65rem 1.1rem;
-  width: 100%;
-}
-
-.helm-compass-readout {
-  display: flex;
-  align-items: baseline;
-  gap: 0.4rem;
-}
-
-.helm-compass-key {
-  font-family: var(--font-display);
-  font-size: 0.68rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--phosphor-dim);
-}
-
-.helm-compass-val {
-  font-size: 1.35rem;
-  letter-spacing: 0.04em;
-}
-
 .helm-compass-ok {
   font-family: var(--font-mono);
   font-size: 0.7rem;
@@ -1936,11 +1955,12 @@ label {
 .helm-compass-legend {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.55rem 1rem;
+  justify-content: flex-start;
+  gap: 0.45rem 0.75rem;
   font-family: var(--font-mono);
   font-size: 0.72rem;
   color: var(--ink-muted);
+  width: 100%;
 }
 
 .helm-compass-legend span {
@@ -1976,26 +1996,39 @@ label {
   background: transparent;
 }
 
-.helm-compass-caption {
-  margin: 0;
-  font-size: 0.75rem;
-  text-align: center;
-  line-height: 1.35;
+.helm-compass-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  width: 100%;
+  min-width: 0;
 }
 
-/* ——— Controls station (tablet-first): dominant helm, dive, EOT ——— */
+.helm-compass-actions .touch-num {
+  width: 100%;
+}
+
+.helm-compass-actions .control-actions {
+  margin: 0;
+}
+
+.helm-compass-actions .control-actions button {
+  width: 100%;
+  min-height: 2.5rem;
+}
+
+/* ——— Controls station (tablet-first): CRT console parity with Sensors ——— */
 .controls-station {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
   width: 100%;
-  max-width: 48rem;
+  max-width: 100%;
   margin: 0 auto;
 }
 
 .controls-section-head {
-  display: flex;
-  flex-direction: column;
+  /* Prefer .station-instrument-head row layout when both classes are present. */
   gap: 0.2rem;
 }
 
@@ -2005,27 +2038,11 @@ label {
 
 .controls-section-blurb {
   margin: 0;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   line-height: 1.35;
 }
 
-/* Helm dominates like radar/hydrophone instruments */
-.controls-helm-panel .helm-compass {
-  max-width: min(100%, 36rem);
-}
-
-.controls-helm-panel .helm-compass-svg {
-  width: min(100%, calc(100vw - 1.5rem), calc(100dvh - 11rem));
-  max-width: 100%;
-  max-height: min(calc(100vw - 1.5rem), calc(100dvh - 11rem), 34rem);
-}
-
-@media (min-width: 720px) {
-  .controls-helm-panel .helm-compass-svg {
-    width: min(100%, 32rem);
-    max-height: min(32rem, calc(100dvh - 10rem));
-  }
-}
+/* Helm uses shared .crt-console dial dominance — no one-off size caps */
 
 .controls-bridge-dc-alert {
   display: flex;
@@ -2081,7 +2098,7 @@ label {
 
 .controls-status-key {
   font-family: var(--font-display);
-  font-size: 0.65rem;
+  font-size: var(--crt-console-key-size);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--phosphor);
@@ -2271,15 +2288,15 @@ label {
 
 .dive-key {
   font-family: var(--font-display);
-  font-size: 0.68rem;
+  font-size: var(--crt-console-key-size);
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--phosphor);
+  color: var(--phosphor-dim);
   opacity: 0.8;
 }
 
 .dive-val {
-  font-size: 1.05rem;
+  font-size: var(--crt-console-val-size);
 }
 
 .dive-ok {
@@ -2419,35 +2436,33 @@ label {
   line-height: 1.35;
 }
 
-/* Hydrophone — CRT console: dial left, aux right; dial scale matches radar (#29/#33). */
-.hydrophone-scope.radar-scope {
+/* CRT console — dial left, aux right; dial scale matches radar (hydrophone + helm). */
+.crt-console.radar-scope {
   flex-direction: row;
   flex-wrap: nowrap;
   align-items: center;
   justify-content: center;
-  gap: 0.65rem;
+  gap: var(--crt-aux-gap);
   width: max-content;
   max-width: 100%;
 }
 
-.hydrophone-scope .radar-scope-plot {
+.crt-console .radar-scope-plot {
   flex: 0 0 auto;
   width: auto;
 }
 
-.hydrophone-scope .radar-scope-svg {
-  /* Match radar base dominance; subtract train-button aux panel. */
-  width: min(calc(100vw - 15rem), calc(100dvh - 5.25rem));
-  max-width: min(calc(100vw - 15rem), calc(100dvh - 5.25rem));
-  max-height: min(calc(100vw - 15rem), calc(100dvh - 5.25rem));
+.crt-console .radar-scope-svg {
+  /* Match radar base dominance; subtract aux panel. */
+  width: min(calc(100vw - 15rem), calc(100dvh - var(--crt-dial-chrome)));
+  max-width: min(calc(100vw - 15rem), calc(100dvh - var(--crt-dial-chrome)));
+  max-height: min(calc(100vw - 15rem), calc(100dvh - var(--crt-dial-chrome)));
 }
 
-.hydrophone-scope .radar-side-panel {
-  /* Train ◀/▶ buttons — no fine bearing slider track. */
-  width: 12.5rem;
-  max-width: 12.5rem;
-  max-height: min(calc(100vw - 15rem), calc(100dvh - 5.25rem));
-  /* Visible so large train buttons are not clipped; vertical scroll still allowed. */
+.crt-console .radar-side-panel {
+  width: var(--crt-aux-w);
+  max-width: var(--crt-aux-w);
+  max-height: min(calc(100vw - 15rem), calc(100dvh - var(--crt-dial-chrome)));
   overflow-x: visible;
   overflow-y: auto;
   padding: 0.15rem 0.35rem;
@@ -2455,6 +2470,7 @@ label {
   justify-content: flex-start;
 }
 
+/* Hydrophone-specific chrome (audio meter, train buttons). */
 .hydrophone-svg {
   touch-action: none;
   cursor: crosshair;
@@ -2470,38 +2486,8 @@ label {
   }
 }
 
-.hydrophone-readouts {
-  display: flex;
-  flex-direction: column;
-  flex-wrap: nowrap;
-  align-items: flex-start;
-  justify-content: flex-start;
-  gap: 0.25rem;
-  width: 100%;
-}
-
-.hydrophone-readout {
-  display: flex;
-  align-items: baseline;
-  gap: 0.35rem;
-}
-
 .hydrophone-readout--band .hydrophone-val {
   font-size: 0.85rem;
-}
-
-.hydrophone-key {
-  font-family: var(--font-display);
-  font-size: 0.65rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--phosphor-dim);
-  min-width: 2.4rem;
-}
-
-.hydrophone-val {
-  font-size: 1.15rem;
-  letter-spacing: 0.04em;
 }
 
 .hydrophone-meter {
@@ -2579,13 +2565,6 @@ label {
   background: var(--phosphor-deep);
 }
 
-.hydrophone-caption {
-  margin: 0;
-  font-size: 0.65rem;
-  text-align: left;
-  line-height: 1.3;
-}
-
 .hydrophone-meter-scale {
   display: flex;
   justify-content: space-between;
@@ -2621,20 +2600,20 @@ label {
 
 /* Very narrow phones: stack aux under dial; dial keeps radar-like full bleed. */
 @media (max-width: 520px) {
-  .hydrophone-scope.radar-scope {
+  .crt-console.radar-scope {
     flex-direction: column;
     width: 100%;
   }
 
-  .hydrophone-scope .radar-scope-svg {
-    width: min(100%, calc(100vw - 1.25rem), calc(100dvh - 10rem));
-    max-width: min(100%, calc(100vw - 1.25rem), calc(100dvh - 10rem));
-    max-height: min(calc(100vw - 1.25rem), calc(100dvh - 10rem));
+  .crt-console .radar-scope-svg {
+    width: min(100%, calc(100vw - var(--crt-dial-inset)), calc(100dvh - 10rem));
+    max-width: min(100%, calc(100vw - var(--crt-dial-inset)), calc(100dvh - 10rem));
+    max-height: min(calc(100vw - var(--crt-dial-inset)), calc(100dvh - 10rem));
   }
 
-  .hydrophone-scope .radar-side-panel {
-    width: min(100%, calc(100vw - 1.25rem));
-    max-width: min(100%, calc(100vw - 1.25rem));
+  .crt-console .radar-side-panel {
+    width: min(100%, calc(100vw - var(--crt-dial-inset)));
+    max-width: min(100%, calc(100vw - var(--crt-dial-inset)));
     max-height: none;
   }
 }
