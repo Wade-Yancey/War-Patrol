@@ -31,8 +31,39 @@ import {
 import { buildPeriscopeContacts } from './periscope.js';
 import { resolveWeaponsForTurn, appendCombatLog } from './weaponsResolve.js';
 
+/**
+ * Scenario-start / start-of-turn-1 state.
+ * Not an end-of-resolve history entry — those are labeled with the turn they finished.
+ */
+export function captureOpeningSnapshot(save: GameSave): TurnSnapshot {
+  const gameTimeSeconds = save.turn.gameTimeSeconds ?? 0;
+  return {
+    turnNumber: 1,
+    resolvedAt: save.createdAt,
+    stateVersion: save.stateVersion,
+    units: structuredClone(save.units),
+    turn: {
+      ...save.turn,
+      number: 1,
+      phase: 'open',
+      timerDeadline: null,
+      gameTimeSeconds,
+    },
+    gameTimeSeconds,
+    torpedoes: structuredClone(save.torpedoes ?? []),
+    depthCharges: structuredClone(save.depthCharges ?? []),
+  };
+}
+
 /** Apply simultaneous helm/EOT/depth/weapons orders and advance kinematics + tracks. */
 export function resolveTurn(save: GameSave): GameSave {
+  // Keep the scenario start. History appended below is the post-resolve state.
+  const openingSnapshot =
+    save.openingSnapshot ??
+    (save.turn.number === 1 && (save.history?.length ?? 0) === 0
+      ? captureOpeningSnapshot(save)
+      : undefined);
+
   const now = new Date().toISOString();
   const turnLength = resolveTurnLengthSeconds(save.turnLengthSeconds);
   const gameTimeSeconds = (save.turn.gameTimeSeconds ?? 0) + turnLength;
@@ -96,6 +127,7 @@ export function resolveTurn(save: GameSave): GameSave {
 
   const next: GameSave = {
     ...save,
+    openingSnapshot,
     updatedAt: now,
     stateVersion: save.stateVersion + 1,
     turnLengthSeconds: turnLength,
@@ -304,7 +336,36 @@ export function setTimerDeadline(seconds: number, from = Date.now()): string {
   return new Date(from + seconds * 1000).toISOString();
 }
 
+function restoreScenarioStart(save: GameSave, opening: TurnSnapshot): GameSave {
+  const units = clearInProgressOrders(structuredClone(opening.units));
+  const gameTimeSeconds = opening.gameTimeSeconds ?? opening.turn.gameTimeSeconds ?? 0;
+  return {
+    ...save,
+    updatedAt: new Date().toISOString(),
+    stateVersion: save.stateVersion + 1,
+    units,
+    torpedoes: structuredClone(opening.torpedoes ?? []),
+    depthCharges: structuredClone(opening.depthCharges ?? []),
+    recentDetonations: [],
+    combatLog: [],
+    turn: {
+      number: 1,
+      phase: 'open',
+      timerDeadline: null,
+      timerSeconds: save.turn.timerSeconds,
+      gameTimeSeconds,
+    },
+    history: [],
+  };
+}
+
 export function rollbackToTurn(save: GameSave, turnNumber: number): GameSave {
+  // history[0] is the end of turn 1. Rolling back to turn 1 must restore the
+  // scenario start, not that post-resolve snapshot (which reopens turn 2 unchanged).
+  if (turnNumber === 1 && save.openingSnapshot) {
+    return restoreScenarioStart(save, save.openingSnapshot);
+  }
+
   const snap = save.history.find((h) => h.turnNumber === turnNumber);
   if (!snap) {
     throw new Error(`No history snapshot for turn ${turnNumber}`);

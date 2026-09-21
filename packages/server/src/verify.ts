@@ -264,6 +264,9 @@ async function main() {
   });
   check('create game', created.status === 200 && typeof created.json.gameId === 'string');
   const gameId = created.json.gameId as string;
+  const scenarioStart = structuredClone(runtime.requireGame(gameId));
+  const startPorter = scenarioStart.units.find((u) => u.id === 'dd-101')!;
+  const startGato = scenarioStart.units.find((u) => u.id === 'ss-212')!;
 
   // 2. Auth umpire + vessels
   const umpireAuth = await api('POST', `/api/games/${gameId}/auth/umpire`, { password: 'umpire' });
@@ -1203,10 +1206,56 @@ async function main() {
   );
   check('rollback', rolled.status === 200);
   const rolledGame = runtime.requireGame(gameId);
-  check('rollback clears orders', Object.keys(rolledGame.units.find((u) => u.id === 'dd-101')!.orders).length === 0);
-  check('rollback turn number', rolledGame.turn.number === 2);
+  const rolledPorter = rolledGame.units.find((u) => u.id === 'dd-101')!;
+  const rolledGato = rolledGame.units.find((u) => u.id === 'ss-212')!;
+  const endPorter = after.history[0]?.units.find((u) => u.id === 'dd-101');
+  check('rollback clears orders', Object.keys(rolledPorter.orders).length === 0);
+  check('rollback to T1 reopens turn 1', rolledGame.turn.number === 1 && rolledGame.turn.phase === 'open');
+  check(
+    'rollback to T1 restores start clock',
+    rolledGame.turn.gameTimeSeconds === scenarioStart.turn.gameTimeSeconds,
+  );
+  check('rollback to T1 drops resolved history', rolledGame.history.length === 0);
+  check(
+    'turn 1 resolve moved Porter',
+    Boolean(endPorter && endPorter.position.lon !== startPorter.position.lon),
+  );
+  check(
+    'rollback to T1 restores Porter position',
+    rolledPorter.position.lat === startPorter.position.lat &&
+      rolledPorter.position.lon === startPorter.position.lon &&
+      rolledPorter.position.depth === startPorter.position.depth,
+  );
+  check(
+    'rollback to T1 restores Porter kinematics',
+    rolledPorter.heading === startPorter.heading &&
+      rolledPorter.speed === startPorter.speed &&
+      rolledPorter.eot === startPorter.eot &&
+      rolledPorter.orderedCourse === startPorter.orderedCourse,
+  );
+  check(
+    'rollback to T1 restores Porter orders',
+    Object.keys(rolledPorter.orders).length === 0 &&
+      Object.keys(startPorter.orders).length === 0,
+  );
+  check(
+    'rollback to T1 restores Gato position',
+    rolledGato.position.lat === startGato.position.lat &&
+      rolledGato.position.lon === startGato.position.lon &&
+      rolledGato.position.depth === startGato.position.depth,
+  );
+  check(
+    'rollback to T1 restores Gato orders',
+    Object.keys(rolledGato.orders).length === 0 &&
+      rolledGato.orderedDepth === startGato.orderedDepth &&
+      rolledGato.heading === startGato.heading &&
+      rolledGato.speed === startGato.speed &&
+      rolledGato.eot === startGato.eot,
+  );
 
-  // Resolve again then rollback with typed turn number
+  // Re-resolve turn 1 and turn 2, then rollback to end of T2
+  await api('POST', `/api/games/${gameId}/turn/resolve`, {}, umpireToken);
+  check('resolve after T1 rollback opens turn 2', runtime.requireGame(gameId).turn.number === 2);
   await api('POST', `/api/games/${gameId}/turn/resolve`, {}, umpireToken);
   const afterSecond = runtime.requireGame(gameId);
   check('second resolve turn', afterSecond.turn.number === 3);

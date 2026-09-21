@@ -48,6 +48,7 @@ import * as store from '../store/fileStore.js';
 import { SessionStore } from './sessions.js';
 import { SseHub } from './sse.js';
 import {
+  captureOpeningSnapshot,
   mergeOrders,
   resolveTurn,
   rollbackToTurn,
@@ -281,6 +282,21 @@ function normalizeUnit(unit: UnitState): UnitState {
   };
 }
 
+function normalizeSnapshot(snap: GameSave['history'][number], fallbackClock: number) {
+  const clock = snap.gameTimeSeconds ?? snap.turn?.gameTimeSeconds ?? fallbackClock;
+  return {
+    ...snap,
+    gameTimeSeconds: clock,
+    turn: {
+      ...snap.turn,
+      gameTimeSeconds: snap.turn?.gameTimeSeconds ?? clock,
+    },
+    units: snap.units.map((u) => normalizeUnit(structuredClone(u))),
+    torpedoes: snap.torpedoes ?? [],
+    depthCharges: snap.depthCharges ?? [],
+  };
+}
+
 function normalizeSave(save: GameSave): GameSave {
   const units = save.units.map((u) => normalizeUnit(structuredClone(u)));
   const turnLengthSeconds = resolveTurnLengthSeconds(save.turnLengthSeconds);
@@ -294,30 +310,39 @@ function normalizeSave(save: GameSave): GameSave {
       unitId: u.id,
       points: [{ lat: u.position.lat, lon: u.position.lon, turnNumber: 0 }],
     }));
+  const turn = {
+    ...save.turn,
+    gameTimeSeconds,
+  };
+  const history = (save.history ?? []).map((h) => normalizeSnapshot(h, gameTimeSeconds));
+  const torpedoes = save.torpedoes ?? [];
+  const depthCharges = save.depthCharges ?? [];
+  let openingSnapshot = save.openingSnapshot
+    ? normalizeSnapshot(save.openingSnapshot, gameTimeSeconds)
+    : undefined;
+  // Still at the start: record it so a later rollback to turn 1 can undo the first resolve.
+  if (!openingSnapshot && turn.number === 1 && history.length === 0) {
+    openingSnapshot = captureOpeningSnapshot({
+      ...save,
+      turn,
+      units,
+      torpedoes,
+      depthCharges,
+      history,
+    });
+  }
   return {
     ...save,
     turnLengthSeconds,
     startTrails,
-    turn: {
-      ...save.turn,
-      gameTimeSeconds,
-    },
+    turn,
     units,
-    torpedoes: save.torpedoes ?? [],
-    depthCharges: save.depthCharges ?? [],
+    torpedoes,
+    depthCharges,
     recentDetonations: save.recentDetonations ?? [],
     combatLog: save.combatLog ?? [],
-    history: (save.history ?? []).map((h) => ({
-      ...h,
-      gameTimeSeconds: h.gameTimeSeconds ?? h.turn?.gameTimeSeconds ?? gameTimeSeconds,
-      turn: {
-        ...h.turn,
-        gameTimeSeconds: h.turn?.gameTimeSeconds ?? h.gameTimeSeconds ?? gameTimeSeconds,
-      },
-      units: h.units.map((u) => normalizeUnit(structuredClone(u))),
-      torpedoes: h.torpedoes ?? [],
-      depthCharges: h.depthCharges ?? [],
-    })),
+    openingSnapshot,
+    history,
   };
 }
 
@@ -397,6 +422,7 @@ export class GameRuntime {
       combatLog: [],
       history: [],
     };
+    save.openingSnapshot = captureOpeningSnapshot(save);
     this.games.set(save.id, save);
     await store.writeSave(save);
     return save;

@@ -522,6 +522,13 @@ export interface GameSave {
    */
   startTrails: UnitTrail[];
   units: UnitState[];
+  /**
+   * Full state at scenario start (start of turn 1), before any resolve.
+   * `history` entries are post-resolve, so history turn 1 is the end of turn 1
+   * and cannot undo that turn. Rollback to turn 1 restores this snapshot.
+   * Absent only on saves that already resolved turn 1 before the field existed.
+   */
+  openingSnapshot?: TurnSnapshot;
   history: TurnSnapshot[];
   /** In-flight / sinking weapons (umpire ground truth + resolve tracking). */
   torpedoes: TorpedoTrack[];
