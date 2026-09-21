@@ -2538,6 +2538,10 @@ label {
   color: var(--accent-strong, #3dff6a);
 }
 
+.combat-log-line--torpedo_miss .combat-log-summary {
+  color: #c4b48a;
+}
+
 .combat-log-line--unit_sunk .combat-log-summary {
   color: #ff8a6a;
 }

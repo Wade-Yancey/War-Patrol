@@ -204,6 +204,14 @@ export interface TorpedoTrack {
   estimatedRangeNm: number;
   estimatedLengthM: number;
   /**
+   * Best horizontal closest-approach to an enemy hull while running (m),
+   * measured track→target center (same geometry as the hit gate miss check).
+   * Accumulated across turns for the umpire miss log when the fish expires.
+   */
+  closestApproachM?: number;
+  /** Unit id of {@link closestApproachM} (nearest approach this run). */
+  closestApproachUnitId?: string;
+  /**
    * Breadcrumb positions along the run (launch → current/end).
    * Umpire GT map polyline; includes launch as first point.
    */
@@ -525,6 +533,7 @@ export interface GameSave {
 export type CombatLogKind =
   | 'torpedo_launch'
   | 'torpedo_hit'
+  | 'torpedo_miss'
   | 'torpedo_expired'
   | 'depth_charge_drop'
   | 'depth_charge_detonation'

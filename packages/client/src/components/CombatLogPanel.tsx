@@ -11,6 +11,8 @@ function kindLabel(kind: CombatLogEntry['kind']): string {
       return 'TORP FIRE';
     case 'torpedo_hit':
       return 'TORP HIT';
+    case 'torpedo_miss':
+      return 'TORP MISS';
     case 'torpedo_expired':
       return 'TORP END';
     case 'depth_charge_drop':

@@ -119,6 +119,16 @@ export const TORPEDO_ASPECT_DAMAGE_TABLE: ReadonlyArray<{
  */
 export const TORPEDO_HIT_CONTROLS_REF_NM = 4;
 
+/**
+ * Umpire “near miss” band: horizontal CPA (track → target center) at or
+ * below this many meters. Farther approaches are logged as far misses.
+ * ~110 yd — inside a couple of ship lengths for destroyer/cruiser targets.
+ */
+export const TORPEDO_NEAR_MISS_M = 100;
+
+/** Naval yard (nm/2000) for umpire miss-distance parentheticals. */
+export const METERS_PER_NAVAL_YARD = METERS_PER_NM / 2000;
+
 // --- Depth charges (DD rack / thrower stub) ---
 
 /** Approximate sink rate (m/s) — ~10–15 ft/s order of magnitude. */
@@ -975,6 +985,65 @@ export function segmentClosestMissM(
   target: Pick<LatLonDepth, 'lat' | 'lon'>,
 ): number {
   return segmentClosestPoint(from, to, target).missM;
+}
+
+/** Near vs far band for umpire torpedo miss copy. */
+export function torpedoMissBand(missM: number): 'near' | 'far' {
+  return Math.max(0, missM) <= TORPEDO_NEAR_MISS_M ? 'near' : 'far';
+}
+
+/**
+ * Format horizontal CPA for the umpire combat log.
+ * Meters primary (matches hit-gate / DC miss); naval yards parenthetical.
+ */
+export function formatTorpedoMissDistance(missM: number): string {
+  const m = Math.max(0, Number(missM) || 0);
+  const yd = m / METERS_PER_NAVAL_YARD;
+  if (m < 1) {
+    return `${m.toFixed(1)} m (<1 yd)`;
+  }
+  return `${Math.round(m)} m (${Math.round(yd)} yd)`;
+}
+
+/**
+ * Record a closer horizontal approach on a running fish (persists across turns).
+ * Distance is track→target-center meters — same metric as {@link resolveTorpedoHit}.
+ */
+export function recordTorpedoClosestApproach(
+  fish: TorpedoTrack,
+  missM: number,
+  unitId: string,
+): TorpedoTrack {
+  const m = Math.max(0, Number(missM) || 0);
+  if (!(m >= 0) || !unitId) return fish;
+  if (fish.closestApproachM != null && m >= fish.closestApproachM) return fish;
+  return {
+    ...fish,
+    closestApproachM: m,
+    closestApproachUnitId: unitId,
+  };
+}
+
+/**
+ * Umpire CRT summary when a fish exhausts without a hit/dud.
+ * Includes firer, nearest approach target (if any), CPA, and near/far band.
+ */
+export function formatTorpedoMissLogSummary(opts: {
+  firerName: string;
+  targetName?: string;
+  closestApproachM?: number;
+}): string {
+  const firer = opts.firerName || 'unknown';
+  const cpa = opts.closestApproachM;
+  if (cpa == null || !(cpa >= 0) || Number.isNaN(cpa)) {
+    return `Torpedo from ${firer} exhausted run (miss / end)`;
+  }
+  const band = torpedoMissBand(cpa) === 'near' ? 'near miss' : 'far miss';
+  const dist = formatTorpedoMissDistance(cpa);
+  if (opts.targetName) {
+    return `Torpedo from ${firer} MISSED ${opts.targetName} — CPA ${dist} (${band})`;
+  }
+  return `Torpedo from ${firer} MISSED — CPA ${dist} (${band})`;
 }
 
 /**
