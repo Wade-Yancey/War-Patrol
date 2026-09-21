@@ -1,4 +1,5 @@
 import { memo, useMemo, type ReactNode } from 'react';
+import { useContinuousAngle } from '../hooks/useContinuousAngle';
 
 /** Shared CRT gyro rose geometry (HelmCompass + OpticsBearingCompass). */
 export const COMPASS_SIZE = 320;
@@ -170,10 +171,11 @@ function CrtCompassHdgNeedleInner({
   const CY = COMPASS_CY;
   const R = COMPASS_R;
   const full = intensity === 'full';
+  const rotateDeg = useContinuousAngle(bearing);
   return (
     <g
       className={className}
-      style={{ transform: `rotate(${bearing}deg)`, transformOrigin: `${CX}px ${CY}px` }}
+      style={{ transform: `rotate(${rotateDeg}deg)`, transformOrigin: `${CX}px ${CY}px` }}
     >
       <polygon
         points={`${CX},${CY - (R - 22)} ${CX - 7},${CY + 22} ${CX + 7},${CY + 22}`}
@@ -197,10 +199,11 @@ function CrtCompassDashedBugInner({
   const CX = COMPASS_CX;
   const CY = COMPASS_CY;
   const R = COMPASS_R;
+  const rotateDeg = useContinuousAngle(bearing);
   return (
     <g
       className={className}
-      style={{ transform: `rotate(${bearing}deg)`, transformOrigin: `${CX}px ${CY}px` }}
+      style={{ transform: `rotate(${rotateDeg}deg)`, transformOrigin: `${CX}px ${CY}px` }}
     >
       <line
         x1={CX}
