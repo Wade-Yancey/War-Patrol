@@ -3,7 +3,7 @@ import {
   RADAR_SIGNATURE_RANGE_FACTOR,
   RADAR_SIGNATURE_STRENGTH,
   bearingRangeNm,
-  canUseSensors,
+  canUseSensorStation,
   defaultRadarSignature,
   ensureContactLabel,
   findRadarSensor,
@@ -40,7 +40,7 @@ export function buildRadarContacts(own: UnitState, save: GameSave): RadarPicture
 
   const maxRangeNm = sensor.maxRangeNm ?? RADAR_MAX_RANGE_NM;
 
-  const sensorOk = canUseSensors(own);
+  const sensorOk = canUseSensorStation(own, 'radar');
   if (!sensorOk.ok) {
     return {
       contacts: [],

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  HEALTH_PROPULSION_DISABLED_BELOW,
-  HEALTH_SENSORS_DISABLED_BELOW,
+  defaultSubsystems,
   presentationHealthFromUnrevealedDamage,
+  presentationSubsystemsFromUnrevealed,
   type OwnDamageEvent,
   type UnitCondition,
   type UnitSubsystems,
@@ -33,8 +33,8 @@ export type SyncedDamagePresentation = {
  * Sim / vessel health stay at resolve-time truth; only presentation is held.
  * Entries without a live `bridgeDetonations` cue (or no `sourceDetonationId`)
  * reveal immediately. DC cues use the stagger `whenSec`; torpedo-hit cues use
- * `audioDelaySec` (compressed presentation delay from intercept fraction —
- * ≤ `TORPEDO_HIT_AUDIO_MAX_DELAY_SEC`). Umpire Action log is untouched.
+ * `audioDelaySec` (arrival inside the resolved turn). Umpire Action log is
+ * untouched.
  *
  * Reveals are scheduled from live `bridgeDetonations` (Sensors + Controls) and
  * again from Controls audio flush — first schedule wins (idempotent).
@@ -167,7 +167,7 @@ export function useAudioSyncedDamageReport(
         damageLog: log.filter((e) => revealedIds.has(e.id)),
         health: 100,
         condition: 'afloat' as const,
-        subsystems: { propulsion: 'intact' as const, sensors: 'intact' as const },
+        subsystems: defaultSubsystems(),
         scheduleRevealForDetonation,
         visibleBridgeDetonations,
       };
@@ -182,10 +182,7 @@ export function useAudioSyncedDamageReport(
     // Keep afloat while a linked fatal line is still waiting on its blast cue.
     const condition: UnitCondition = heldFatal || health > 0 ? 'afloat' : 'sunk';
 
-    const subsystems: UnitSubsystems = {
-      propulsion: health < HEALTH_PROPULSION_DISABLED_BELOW ? 'disabled' : 'intact',
-      sensors: health < HEALTH_SENSORS_DISABLED_BELOW ? 'disabled' : 'intact',
-    };
+    const subsystems = presentationSubsystemsFromUnrevealed(unit.subsystems, held);
 
     return {
       damageLog,

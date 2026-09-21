@@ -1,10 +1,13 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type {
   AuthSession,
+  DivePlanesState,
   EotSetting,
   Faction,
   FlightLevel,
   HullClass,
+  PropulsionState,
+  SteeringState,
   SubsystemState,
   UnitCondition,
   VesselType,
@@ -530,7 +533,18 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       faction?: string;
       flightLevel?: string;
       condition?: string;
-      subsystems?: { propulsion?: string; sensors?: string };
+      subsystems?: {
+        propulsion?: string;
+        sensors?: string;
+        radar?: string;
+        hydrophone?: string;
+        activeSonar?: string;
+        lookout?: string;
+        steering?: string;
+        divePlanes?: string;
+        rudderStuckHeading?: number;
+        divePlanesStuckDepth?: number;
+      };
       position?: { lat?: number; lon?: number; depth?: number };
     };
   }>('/api/games/:gameId/units/:unitId', async (request, reply) => {
@@ -550,8 +564,16 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         condition: body.condition as UnitCondition | undefined,
         subsystems: body.subsystems
           ? {
-              propulsion: body.subsystems.propulsion as SubsystemState | undefined,
+              propulsion: body.subsystems.propulsion as PropulsionState | undefined,
               sensors: body.subsystems.sensors as SubsystemState | undefined,
+              radar: body.subsystems.radar as SubsystemState | undefined,
+              hydrophone: body.subsystems.hydrophone as SubsystemState | undefined,
+              activeSonar: body.subsystems.activeSonar as SubsystemState | undefined,
+              lookout: body.subsystems.lookout as SubsystemState | undefined,
+              steering: body.subsystems.steering as SteeringState | undefined,
+              divePlanes: body.subsystems.divePlanes as DivePlanesState | undefined,
+              rudderStuckHeading: body.subsystems.rudderStuckHeading,
+              divePlanesStuckDepth: body.subsystems.divePlanesStuckDepth,
             }
           : undefined,
         position: body.position,

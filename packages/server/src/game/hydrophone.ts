@@ -1,6 +1,6 @@
 import {
   bearingRangeNm,
-  canUseSensors,
+  canUseSensorStation,
   DEPTH_CHARGE_HYDROPHONE_RANGE_NM,
   findHydrophoneSensor,
   isActiveSonarPinging,
@@ -41,7 +41,7 @@ export function buildHydrophoneContacts(own: UnitState, save: GameSave): Hydroph
 
   const maxRangeNm = resolveHydrophoneMaxRangeNm(sensor);
 
-  const sensorOk = canUseSensors(own);
+  const sensorOk = canUseSensorStation(own, 'hydrophone');
   if (!sensorOk.ok) {
     return {
       contacts: [],

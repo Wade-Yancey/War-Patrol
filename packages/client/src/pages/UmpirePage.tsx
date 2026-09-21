@@ -2,9 +2,12 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   DEFAULT_TURN_SECONDS,
+  DIVE_PLANES_STATES,
   FACTIONS,
   FLIGHT_LEVELS,
   HULL_CLASSES,
+  PROPULSION_STATES,
+  STEERING_STATES,
   SUBSYSTEM_STATES,
   TIMER_EXTEND_SECONDS,
   TIMER_STEP_SECONDS,
@@ -18,9 +21,12 @@ import {
   formatWallDuration,
   parseWallDuration,
   snapWallDuration,
+  type DivePlanesState,
   type Faction,
   type FlightLevel,
   type HullClass,
+  type PropulsionState,
+  type SteeringState,
   type SubsystemState,
   type UmpireView,
   type UnitCondition,
@@ -60,8 +66,13 @@ export function UmpirePage() {
   const [editDepth, setEditDepth] = useState(0);
   const [editFlightLevel, setEditFlightLevel] = useState<FlightLevel>('medium');
   const [editCondition, setEditCondition] = useState<UnitCondition>('afloat');
-  const [editPropulsion, setEditPropulsion] = useState<SubsystemState>('intact');
-  const [editSensors, setEditSensors] = useState<SubsystemState>('intact');
+  const [editPropulsion, setEditPropulsion] = useState<PropulsionState>('intact');
+  const [editRadar, setEditRadar] = useState<SubsystemState>('intact');
+  const [editHydrophone, setEditHydrophone] = useState<SubsystemState>('intact');
+  const [editActiveSonar, setEditActiveSonar] = useState<SubsystemState>('intact');
+  const [editLookout, setEditLookout] = useState<SubsystemState>('intact');
+  const [editSteering, setEditSteering] = useState<SteeringState>('intact');
+  const [editDivePlanes, setEditDivePlanes] = useState<DivePlanesState>('intact');
   const [editHeading, setEditHeading] = useState(0);
   const [editSpeed, setEditSpeed] = useState(0);
   const [editPassword, setEditPassword] = useState('');
@@ -155,7 +166,12 @@ export function UmpirePage() {
     setEditFlightLevel(u.flightLevel ?? 'medium');
     setEditCondition(u.condition ?? 'afloat');
     setEditPropulsion(u.subsystems?.propulsion ?? 'intact');
-    setEditSensors(u.subsystems?.sensors ?? 'intact');
+    setEditRadar(u.subsystems?.radar ?? 'intact');
+    setEditHydrophone(u.subsystems?.hydrophone ?? 'intact');
+    setEditActiveSonar(u.subsystems?.activeSonar ?? 'intact');
+    setEditLookout(u.subsystems?.lookout ?? 'intact');
+    setEditSteering(u.subsystems?.steering ?? 'intact');
+    setEditDivePlanes(u.subsystems?.divePlanes ?? 'intact');
     setEditHeading(Math.round(u.heading));
     setEditSpeed(Math.round(u.speed));
     setEditPassword(u.password ?? '');
@@ -984,7 +1000,59 @@ export function UmpirePage() {
                               value={editPropulsion}
                               onChange={(e) => {
                                 markDirty();
-                                setEditPropulsion(e.target.value as SubsystemState);
+                                setEditPropulsion(e.target.value as PropulsionState);
+                              }}
+                            >
+                              {PROPULSION_STATES.map((s) => (
+                                <option key={s} value={s}>
+                                  {s}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="unit-edit-select">
+                            Steering
+                            <select
+                              value={editSteering}
+                              onChange={(e) => {
+                                markDirty();
+                                setEditSteering(e.target.value as SteeringState);
+                              }}
+                            >
+                              {STEERING_STATES.map((s) => (
+                                <option key={s} value={s}>
+                                  {s}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        {editType === 'Submarine' && (
+                          <label className="unit-edit-select">
+                            Dive planes
+                            <select
+                              value={editDivePlanes}
+                              onChange={(e) => {
+                                markDirty();
+                                setEditDivePlanes(e.target.value as DivePlanesState);
+                              }}
+                            >
+                              {DIVE_PLANES_STATES.map((s) => (
+                                <option key={s} value={s}>
+                                  {s}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
+                        <div className="unit-edit-pair">
+                          <label className="unit-edit-select">
+                            Radar
+                            <select
+                              value={editRadar}
+                              onChange={(e) => {
+                                markDirty();
+                                setEditRadar(e.target.value as SubsystemState);
                               }}
                             >
                               {SUBSYSTEM_STATES.map((s) => (
@@ -994,26 +1062,64 @@ export function UmpirePage() {
                               ))}
                             </select>
                           </label>
+                          {editType === 'Submarine' ? (
+                            <label className="unit-edit-select">
+                              Hydrophone
+                              <select
+                                value={editHydrophone}
+                                onChange={(e) => {
+                                  markDirty();
+                                  setEditHydrophone(e.target.value as SubsystemState);
+                                }}
+                              >
+                                {SUBSYSTEM_STATES.map((s) => (
+                                  <option key={s} value={s}>
+                                    {s}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          ) : (
+                            <label className="unit-edit-select">
+                              Active sonar
+                              <select
+                                value={editActiveSonar}
+                                onChange={(e) => {
+                                  markDirty();
+                                  setEditActiveSonar(e.target.value as SubsystemState);
+                                }}
+                              >
+                                {SUBSYSTEM_STATES.map((s) => (
+                                  <option key={s} value={s}>
+                                    {s}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          )}
                         </div>
-                        <label className="unit-edit-select">
-                          Sensors
-                          <select
-                            value={editSensors}
-                            onChange={(e) => {
-                              markDirty();
-                              setEditSensors(e.target.value as SubsystemState);
-                            }}
-                          >
-                            {SUBSYSTEM_STATES.map((s) => (
-                              <option key={s} value={s}>
-                                {s}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
+                        {editType === 'Submarine' && (
+                          <label className="unit-edit-select">
+                            Periscope
+                            <select
+                              value={editLookout}
+                              onChange={(e) => {
+                                markDirty();
+                                setEditLookout(e.target.value as SubsystemState);
+                              }}
+                            >
+                              {SUBSYSTEM_STATES.map((s) => (
+                                <option key={s} value={s}>
+                                  {s}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
                         <p className="muted" style={{ margin: 0, fontSize: '0.75rem' }}>
-                          Sunk/destroyed stops movement and radar. Disabled propulsion forces stop; disabled
-                          sensors blank the PPI and remove useful emissions.
+                          Sunk/destroyed stops movement and sensors. Propulsion damaged halves max
+                          speed; disabled forces stop. Rudder stuck freezes helm; dive planes stuck
+                          freezes depth. Sensor stations fail independently (DD lookout immune).
                         </p>
                         <div className="control-actions">
                           <button
@@ -1027,7 +1133,18 @@ export function UmpirePage() {
                                     condition: editCondition,
                                     subsystems: {
                                       propulsion: editPropulsion,
-                                      sensors: editSensors,
+                                      radar: editRadar,
+                                      hydrophone: editHydrophone,
+                                      activeSonar: editActiveSonar,
+                                      lookout: editLookout,
+                                      steering: editSteering,
+                                      divePlanes: editDivePlanes,
+                                      ...(editSteering === 'stuck'
+                                        ? { rudderStuckHeading: editHeading }
+                                        : {}),
+                                      ...(editDivePlanes === 'stuck' || editDivePlanes === 'disabled'
+                                        ? { divePlanesStuckDepth: editDepth }
+                                        : {}),
                                     },
                                   }),
                                 'Condition applied',

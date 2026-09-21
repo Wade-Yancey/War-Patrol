@@ -196,7 +196,7 @@ function unitsSignature(units: UnitState[]): string {
   return units
     .map(
       (u) =>
-        `${u.id}:${u.position.lat.toFixed(5)},${u.position.lon.toFixed(5)},${u.heading.toFixed(1)},${normalizeHeading(u.orderedCourse ?? u.heading).toFixed(1)},${u.speed.toFixed(1)},${u.eot},${u.orders?.course ?? ''},${u.orders?.eot ?? ''},${u.orders?.depth ?? ''},${u.orderedDepth?.toFixed?.(0) ?? u.orderedDepth},${u.position.depth.toFixed(0)},${u.turnRate},${u.maxSpeed},${u.type},${u.class},${u.name},${u.faction},${u.condition},${u.subsystems?.propulsion},${u.subsystems?.sensors},${u.flightLevel ?? ''},${sensorsSignature(u)}`,
+        `${u.id}:${u.position.lat.toFixed(5)},${u.position.lon.toFixed(5)},${u.heading.toFixed(1)},${normalizeHeading(u.orderedCourse ?? u.heading).toFixed(1)},${u.speed.toFixed(1)},${u.eot},${u.orders?.course ?? ''},${u.orders?.eot ?? ''},${u.orders?.depth ?? ''},${u.orderedDepth?.toFixed?.(0) ?? u.orderedDepth},${u.position.depth.toFixed(0)},${u.turnRate},${u.maxSpeed},${u.type},${u.class},${u.name},${u.faction},${u.condition},${u.subsystems?.propulsion},${u.subsystems?.steering},${u.subsystems?.radar},${u.subsystems?.hydrophone},${u.subsystems?.activeSonar},${u.subsystems?.lookout},${u.subsystems?.divePlanes},${u.flightLevel ?? ''},${sensorsSignature(u)}`,
     )
     .join('|');
 }

@@ -1492,9 +1492,36 @@ export function StationPage() {
                         <td className="readout">{syncedDamage.subsystems.propulsion}</td>
                       </tr>
                       <tr>
-                        <th>Sensors</th>
-                        <td className="readout">{syncedDamage.subsystems.sensors}</td>
+                        <th>Steering</th>
+                        <td className="readout">{syncedDamage.subsystems.steering}</td>
                       </tr>
+                      {vessel.unit.type === 'Submarine' && (
+                        <tr>
+                          <th>Dive planes</th>
+                          <td className="readout">{syncedDamage.subsystems.divePlanes}</td>
+                        </tr>
+                      )}
+                      <tr>
+                        <th>Radar</th>
+                        <td className="readout">{syncedDamage.subsystems.radar}</td>
+                      </tr>
+                      {vessel.unit.type === 'Submarine' ? (
+                        <>
+                          <tr>
+                            <th>Hydrophone</th>
+                            <td className="readout">{syncedDamage.subsystems.hydrophone}</td>
+                          </tr>
+                          <tr>
+                            <th>Periscope</th>
+                            <td className="readout">{syncedDamage.subsystems.lookout}</td>
+                          </tr>
+                        </>
+                      ) : (
+                        <tr>
+                          <th>Active sonar</th>
+                          <td className="readout">{syncedDamage.subsystems.activeSonar}</td>
+                        </tr>
+                      )}
                       {vessel.unit.type === 'Aircraft' && (
                         <tr>
                           <th>Flight level</th>

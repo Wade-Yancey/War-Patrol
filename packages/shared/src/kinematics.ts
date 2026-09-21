@@ -12,6 +12,7 @@ import {
   stepSpeedTowardTarget,
 } from './performance.js';
 import type { LatLonDepth, UnitOrders, UnitState } from './types.js';
+import { propulsionSpeedFactor, resolveSubsystems } from './damage.js';
 import {
   canMakeWay,
   normalizePositionForType,
@@ -56,6 +57,7 @@ export function applyUnitKinematics(
   }
 
   const orders = unit.orders;
+  const subsystems = resolveSubsystems(unit.subsystems);
   let orderedCourse =
     typeof unit.orderedCourse === 'number' ? unit.orderedCourse : unit.heading;
   let orderedDepth = resolveOrderedDepth(unit.type, unit.position.depth, unit.orderedDepth);
@@ -64,13 +66,26 @@ export function applyUnitKinematics(
   let speed = unit.speed;
   let position = { ...unit.position };
 
-  // Helm order updates the persistent steering course immediately for this resolve.
-  if (orders.course !== undefined) {
+  // Rudder stuck: helm set-point frozen; ignore new course orders.
+  if (subsystems.steering === 'stuck') {
+    orderedCourse = normalizeHeading(
+      subsystems.rudderStuckHeading ?? orderedCourse,
+    );
+  } else if (orders.course !== undefined) {
+    // Helm order updates the persistent steering course immediately for this resolve.
     orderedCourse = normalizeHeading(orders.course);
   }
 
-  // Depth order updates the standing set-point; keel depth steps toward it this resolve.
-  if (orders.depth !== undefined && unit.type === 'Submarine') {
+  // Dive planes stuck/disabled: depth set-point frozen; ignore new depth orders.
+  if (
+    unit.type === 'Submarine' &&
+    (subsystems.divePlanes === 'stuck' || subsystems.divePlanes === 'disabled')
+  ) {
+    orderedDepth = clampSubmarineDepth(
+      subsystems.divePlanesStuckDepth ?? orderedDepth,
+    );
+  } else if (orders.depth !== undefined && unit.type === 'Submarine') {
+    // Depth order updates the standing set-point; keel depth steps toward it this resolve.
     orderedDepth = clampSubmarineDepth(orders.depth);
   }
   if (unit.type === 'Submarine') {
@@ -86,8 +101,11 @@ export function applyUnitKinematics(
   }
 
   // Turn toward ordered course (size-based turnRate deg/min × in-game minutes).
-  const maxDelta = unit.turnRate * (turnLengthSeconds / 60);
-  heading = turnToward(heading, orderedCourse, maxDelta);
+  // Steering disabled → no yaw this resolve.
+  if (subsystems.steering !== 'disabled') {
+    const maxDelta = unit.turnRate * (turnLengthSeconds / 60);
+    heading = turnToward(heading, orderedCourse, maxDelta);
+  }
 
   if (orders.eot !== undefined) {
     eot = orders.eot;
@@ -95,11 +113,13 @@ export function applyUnitKinematics(
 
   // Submarines deeper than surface band use submerged max (~9 kn), not hull maxSpeed.
   // Use post-dive depth so a dive+move in the same resolve uses submerged ceiling.
-  const speedCeiling = effectiveMaxSpeed({
-    type: unit.type,
-    maxSpeed: unit.maxSpeed,
-    depth: position.depth,
-  });
+  // Damaged propulsion halves the effective ceiling.
+  const speedCeiling =
+    effectiveMaxSpeed({
+      type: unit.type,
+      maxSpeed: unit.maxSpeed,
+      depth: position.depth,
+    }) * propulsionSpeedFactor(subsystems.propulsion);
   // Ships/subs: signed EOT target. Aircraft: loiter/cruise/full (never reverse).
   const target = targetSpeedForUnit(unit.type, eot, speedCeiling);
   // Speed steps toward target (class-scaled fraction of effective max per resolve).

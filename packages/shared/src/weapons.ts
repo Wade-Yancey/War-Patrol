@@ -1197,53 +1197,13 @@ export function isDepthChargeTarget(unit: UnitState): boolean {
   return unit.position.depth > RADAR_SURFACE_DEPTH_M;
 }
 
-/** Health below this → sensors subsystem disabled (combat damage cascade). */
-export const HEALTH_SENSORS_DISABLED_BELOW = 70;
-
-/** Health below this → propulsion subsystem disabled (combat damage cascade). */
-export const HEALTH_PROPULSION_DISABLED_BELOW = 35;
-
-export function applyHealthDamage(unit: UnitState, damage: number): UnitState {
-  if (damage <= 0 || unit.condition === 'sunk') return unit;
-  const health = Math.max(0, unit.health - damage);
-  if (health <= 0) {
-    return {
-      ...unit,
-      health: 0,
-      condition: 'sunk',
-      speed: 0,
-      eot: 'stop',
-      activeSonarEnabled: false,
-      periscopeRaised: false,
-      periscopeExposure: 0,
-      plotStampTurns: 0,
-      subsystems: { propulsion: 'disabled', sensors: 'disabled' },
-    };
-  }
-
-  const subsystems = { ...unit.subsystems };
-  if (health < HEALTH_SENSORS_DISABLED_BELOW) subsystems.sensors = 'disabled';
-  if (health < HEALTH_PROPULSION_DISABLED_BELOW) subsystems.propulsion = 'disabled';
-
-  const propulsionOut = subsystems.propulsion === 'disabled';
-  const sensorsOut = subsystems.sensors === 'disabled';
-  return {
-    ...unit,
-    health,
-    subsystems,
-    speed: propulsionOut ? 0 : unit.speed,
-    eot: propulsionOut ? 'stop' : unit.eot,
-    activeSonarEnabled: sensorsOut ? false : unit.activeSonarEnabled,
-    periscopeRaised: sensorsOut ? false : unit.periscopeRaised,
-    periscopeExposure: sensorsOut ? 0 : unit.periscopeExposure,
-    plotStampTurns: sensorsOut ? 0 : unit.plotStampTurns,
-  };
-}
-
 /**
  * HP actually removed by {@link applyHealthDamage} (0 when already sunk / no-op).
  * Combat-log `damage` and Controls staging must use this — not the rolled effect —
  * so overkill / finishing blows do not report more HP than the bar can drop.
+ *
+ * Casualty rolls live in {@link ./damage.js} (`applyHealthDamage` /
+ * `applyHealthDamageResult`).
  */
 export function healthDamageApplied(before: UnitState, after: UnitState): number {
   return Math.max(0, before.health - after.health);
@@ -1322,6 +1282,7 @@ export function buildOwnDamageLog(
       summary,
       damage: e.damage,
       ...(e.sourceDetonationId ? { sourceDetonationId: e.sourceDetonationId } : {}),
+      ...(e.casualtyEffect ? { casualtyEffect: e.casualtyEffect } : {}),
     });
   }
   return out;
