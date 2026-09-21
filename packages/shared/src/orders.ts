@@ -33,7 +33,8 @@ function formatTorpedoOrderSummary(
     count > 1
       ? ` ×${count}@${Math.round(fire.spreadDeg || 0)}°`
       : '';
-  return `TORP aim ${formatCourseDegrees(fire.aimHeading)}${spread} · CRS ${formatCourseDegrees(fire.estimatedCourse)} · ${Math.round(fire.estimatedSpeedKn)}kn · ${fire.estimatedRangeNm.toFixed(1)}nm · L${Math.round(fire.estimatedLengthM)}m`;
+  const room = fire.room === 'aft' ? 'aft' : 'fwd';
+  return `TORP ${room} aim ${formatCourseDegrees(fire.aimHeading)}${spread} · CRS ${formatCourseDegrees(fire.estimatedCourse)} · ${Math.round(fire.estimatedSpeedKn)}kn · ${fire.estimatedRangeNm.toFixed(1)}nm · L${Math.round(fire.estimatedLengthM)}m`;
 }
 
 function formatDepthChargeOrderSummary(

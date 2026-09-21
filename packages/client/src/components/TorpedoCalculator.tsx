@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import {
+  FLEET_SUB_TORPEDO_AFT,
+  FLEET_SUB_TORPEDO_FORWARD,
   RECOGNITION_MANUAL_ENTRIES,
   TORPEDO_MAX_RUN_NM,
+  TORPEDO_RELOAD_TURNS,
   TORPEDO_SPEED_KN,
   TORPEDO_SPREAD_DEFAULT_DEG,
   TORPEDO_SPREAD_MAX_COUNT,
@@ -10,19 +13,29 @@ import {
   torpedoFireHeadingFromSolution,
   trueBearingFromRelative,
   type TorpedoFireOrder,
+  type TorpedoRoomId,
   type TorpedoTrack,
 } from '@war-patrol/shared';
 import { formatRelBearing } from './OpticsBearingCompass';
 import { TouchNumber } from './TouchNumber';
 
+interface RoomState {
+  ready: number;
+  awaitingReload: boolean;
+  reloadTurnsRemaining: number;
+}
+
 interface Props {
   ownHeading: number;
-  torpedoLoad: number;
+  forward: RoomState;
+  aft: RoomState;
   pending?: TorpedoFireOrder;
   running?: TorpedoTrack[];
   disabled?: boolean;
+  reloadBusy?: boolean;
   onSubmit: (order: TorpedoFireOrder) => void;
   onClear?: () => void;
+  onReload?: (room: TorpedoRoomId) => void;
 }
 
 /** Fold to (−180, 180] for optics-style relative aim. */
@@ -45,6 +58,23 @@ function parseRelAim(raw: string): number | null {
   return Math.round(foldRelativeBearing(n));
 }
 
+function roomCanFire(room: RoomState): boolean {
+  return room.ready > 0 && !room.awaitingReload && room.reloadTurnsRemaining <= 0;
+}
+
+function roomStatus(room: RoomState, capacity: number): string {
+  if (room.reloadTurnsRemaining > 0) {
+    return `reloading · ${room.reloadTurnsRemaining} turn${room.reloadTurnsRemaining === 1 ? '' : 's'} left`;
+  }
+  if (room.awaitingReload) {
+    return 'awaiting reload';
+  }
+  if (room.ready <= 0) {
+    return 'empty — umpire rearm';
+  }
+  return `${room.ready}/${capacity} ready`;
+}
+
 /**
  * Torpedo firing calculator — all solution inputs are operator-entered.
  * Never auto-fills true course/speed/range/length from the sim (optics +
@@ -56,12 +86,15 @@ function parseRelAim(raw: string): number | null {
  */
 export function TorpedoCalculator({
   ownHeading,
-  torpedoLoad,
+  forward,
+  aft,
   pending,
   running = [],
   disabled,
+  reloadBusy,
   onSubmit,
   onClear,
+  onReload,
 }: Props) {
   // Relative aim matches optics (bow 0, stbd +, port −). Server still gets true aimHeading.
   const [aimRelative, setAimRelative] = useState(() =>
@@ -81,6 +114,7 @@ export function TorpedoCalculator({
   const [estimatedLengthM, setEstimatedLengthM] = useState(
     () => pending?.estimatedLengthM ?? 0,
   );
+  const [room, setRoom] = useState<TorpedoRoomId>(() => pending?.room ?? 'forward');
   const [spreadCount, setSpreadCount] = useState(
     () => pending?.spreadCount ?? 1,
   );
@@ -89,6 +123,8 @@ export function TorpedoCalculator({
   );
   const [manualOpen, setManualOpen] = useState(false);
 
+  const selected = room === 'aft' ? aft : forward;
+  const capacity = room === 'aft' ? FLEET_SUB_TORPEDO_AFT : FLEET_SUB_TORPEDO_FORWARD;
   const aimTrue = trueBearingFromRelative(ownHeading, aimRelative);
   const solution = torpedoFireHeadingFromSolution({
     aimHeading: aimTrue,
@@ -99,9 +135,9 @@ export function TorpedoCalculator({
   const fireHeading = solution.fireHeading;
   const gyro = ((fireHeading - ownHeading + 540) % 360) - 180;
   const lead = ((fireHeading - aimTrue + 540) % 360) - 180;
-  const maxCount = Math.max(1, Math.min(TORPEDO_SPREAD_MAX_COUNT, torpedoLoad || 1));
+  const maxCount = Math.max(1, Math.min(TORPEDO_SPREAD_MAX_COUNT, selected.ready || 1));
   const effectiveCount = Math.min(spreadCount, maxCount);
-  const loadBlocked = torpedoLoad <= 0;
+  const loadBlocked = !roomCanFire(selected);
   const canQueue =
     !disabled && !loadBlocked && estimatedRangeNm > 0 && estimatedLengthM > 0;
 
@@ -113,9 +149,69 @@ export function TorpedoCalculator({
           Aim uses the same relative bearing as optics (bow 0 · stbd + · port −) — not true
           compass. Enter target true course (not AOB), speed, range, and OA length from the
           recognition manual — wrong length shrinks the hit window. Fish run the computed
-          intercept. Load {torpedoLoad} fish · Mk14-ish {TORPEDO_SPEED_KN} kn /{' '}
+          intercept. Finite rooms: forward {FLEET_SUB_TORPEDO_FORWARD} / aft{' '}
+          {FLEET_SUB_TORPEDO_AFT}. After a salvo press Reload ({TORPEDO_RELOAD_TURNS} turns
+          before that room can fire again). Mk14-ish {TORPEDO_SPEED_KN} kn /{' '}
           {TORPEDO_MAX_RUN_NM} nm. Fire allowed with scope down.
         </p>
+      </div>
+
+      <fieldset className="weapons-plot-fieldset" disabled={disabled}>
+        <legend className="mono">Room</legend>
+        <div className="weapons-plot-row">
+          <button
+            type="button"
+            className={room === 'forward' ? 'primary' : undefined}
+            aria-pressed={room === 'forward'}
+            onClick={() => setRoom('forward')}
+          >
+            Forward ({forward.ready}/{FLEET_SUB_TORPEDO_FORWARD})
+          </button>
+          <button
+            type="button"
+            className={room === 'aft' ? 'primary' : undefined}
+            aria-pressed={room === 'aft'}
+            onClick={() => setRoom('aft')}
+          >
+            Aft ({aft.ready}/{FLEET_SUB_TORPEDO_AFT})
+          </button>
+        </div>
+        <p className="mono muted" style={{ margin: '0.35rem 0 0', fontSize: '0.8rem' }}>
+          FWD {roomStatus(forward, FLEET_SUB_TORPEDO_FORWARD)} · AFT{' '}
+          {roomStatus(aft, FLEET_SUB_TORPEDO_AFT)}
+        </p>
+      </fieldset>
+
+      <div className="control-actions">
+        {onReload && (
+          <>
+            <button
+              type="button"
+              disabled={
+                disabled ||
+                reloadBusy ||
+                !forward.awaitingReload ||
+                forward.reloadTurnsRemaining > 0
+              }
+              onClick={() => onReload('forward')}
+            >
+              Reload forward
+              {forward.reloadTurnsRemaining > 0
+                ? ` (${forward.reloadTurnsRemaining})`
+                : ''}
+            </button>
+            <button
+              type="button"
+              disabled={
+                disabled || reloadBusy || !aft.awaitingReload || aft.reloadTurnsRemaining > 0
+              }
+              onClick={() => onReload('aft')}
+            >
+              Reload aft
+              {aft.reloadTurnsRemaining > 0 ? ` (${aft.reloadTurnsRemaining})` : ''}
+            </button>
+          </>
+        )}
       </div>
 
       <TouchNumber
@@ -210,13 +306,13 @@ export function TorpedoCalculator({
             </p>
             <ul className="recognition-manual-list">
               {RECOGNITION_MANUAL_ENTRIES.map((entry) => {
-                const selected = estimatedLengthM === entry.lengthM;
+                const selectedLen = estimatedLengthM === entry.lengthM;
                 return (
                   <li key={entry.name}>
                     <button
                       type="button"
                       className={
-                        selected
+                        selectedLen
                           ? 'recognition-manual-row is-selected'
                           : 'recognition-manual-row'
                       }
@@ -264,6 +360,7 @@ export function TorpedoCalculator({
           disabled={!canQueue}
           onClick={() =>
             onSubmit({
+              room,
               aimHeading: aimTrue,
               estimatedCourse,
               estimatedSpeedKn,
@@ -275,7 +372,7 @@ export function TorpedoCalculator({
           }
         >
           Queue torpedo fire
-          {effectiveCount > 1 ? ` (×${effectiveCount})` : ''}
+          {effectiveCount > 1 ? ` (×${effectiveCount})` : ''} · {room === 'aft' ? 'aft' : 'fwd'}
         </button>
         {pending && onClear && (
           <button type="button" disabled={disabled} onClick={onClear}>
@@ -286,8 +383,9 @@ export function TorpedoCalculator({
 
       {pending && (
         <p className="mono readout" style={{ margin: 0 }}>
-          Of record: aim {formatRelBearing(relativeBearingDeg(ownHeading, pending.aimHeading))}{' '}
-          (true {String(Math.round(pending.aimHeading)).padStart(3, '0')}°)
+          Of record: {pending.room === 'aft' ? 'aft' : 'fwd'} · aim{' '}
+          {formatRelBearing(relativeBearingDeg(ownHeading, pending.aimHeading))} (true{' '}
+          {String(Math.round(pending.aimHeading)).padStart(3, '0')}°)
           {pending.spreadCount && pending.spreadCount > 1
             ? ` · ×${pending.spreadCount}@${pending.spreadDeg ?? 0}°`
             : ''}{' '}
@@ -306,6 +404,12 @@ export function TorpedoCalculator({
             ),
           ).padStart(3, '0')}
           °
+        </p>
+      )}
+
+      {loadBlocked && (
+        <p className="mono muted" style={{ margin: 0 }}>
+          Selected room: {roomStatus(selected, capacity)}
         </p>
       )}
 

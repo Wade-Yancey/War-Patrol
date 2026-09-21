@@ -5,8 +5,8 @@
   "description": "Torpedo calculator / convoy drill: Gato at periscope depth south of an eastbound column of four Cimarron-class (T3-S2-A1) U.S. Fleet Oilers (~1.5 nm, near-beam aspect on the column center). Recognition plate OA 169 m / beam 23 m. Passwords: umpire / red (Gato token gato-demo).",
   "mode": "pvp",
   "operatingArea": {
-    "minLat": 34.30,
-    "maxLat": 34.50,
+    "minLat": 34.3,
+    "maxLat": 34.5,
     "minLon": -120.18,
     "maxLon": -119.82
   },
@@ -23,7 +23,11 @@
       "classId": "cimarron-class",
       "type": "Ship",
       "class": "Oiler",
-      "position": { "lat": 34.4, "lon": -120.03, "depth": 0 },
+      "position": {
+        "lat": 34.4,
+        "lon": -120.03,
+        "depth": 0
+      },
       "heading": 90,
       "speed": 12,
       "eot": "ahead_standard",
@@ -37,7 +41,11 @@
         {
           "id": "controls",
           "name": "Controls",
-          "capabilities": ["helm", "engineering", "plot"]
+          "capabilities": [
+            "helm",
+            "engineering",
+            "plot"
+          ]
         }
       ]
     },
@@ -49,7 +57,11 @@
       "classId": "cimarron-class",
       "type": "Ship",
       "class": "Oiler",
-      "position": { "lat": 34.4, "lon": -120.01, "depth": 0 },
+      "position": {
+        "lat": 34.4,
+        "lon": -120.01,
+        "depth": 0
+      },
       "heading": 90,
       "speed": 12,
       "eot": "ahead_standard",
@@ -63,7 +75,11 @@
         {
           "id": "controls",
           "name": "Controls",
-          "capabilities": ["helm", "engineering", "plot"]
+          "capabilities": [
+            "helm",
+            "engineering",
+            "plot"
+          ]
         }
       ]
     },
@@ -75,7 +91,11 @@
       "classId": "cimarron-class",
       "type": "Ship",
       "class": "Oiler",
-      "position": { "lat": 34.4, "lon": -119.99, "depth": 0 },
+      "position": {
+        "lat": 34.4,
+        "lon": -119.99,
+        "depth": 0
+      },
       "heading": 90,
       "speed": 12,
       "eot": "ahead_standard",
@@ -89,7 +109,11 @@
         {
           "id": "controls",
           "name": "Controls",
-          "capabilities": ["helm", "engineering", "plot"]
+          "capabilities": [
+            "helm",
+            "engineering",
+            "plot"
+          ]
         }
       ]
     },
@@ -101,7 +125,11 @@
       "classId": "cimarron-class",
       "type": "Ship",
       "class": "Oiler",
-      "position": { "lat": 34.4, "lon": -119.97, "depth": 0 },
+      "position": {
+        "lat": 34.4,
+        "lon": -119.97,
+        "depth": 0
+      },
       "heading": 90,
       "speed": 12,
       "eot": "ahead_standard",
@@ -115,7 +143,11 @@
         {
           "id": "controls",
           "name": "Controls",
-          "capabilities": ["helm", "engineering", "plot"]
+          "capabilities": [
+            "helm",
+            "engineering",
+            "plot"
+          ]
         }
       ]
     },
@@ -127,7 +159,11 @@
       "classId": "gato-class",
       "type": "Submarine",
       "class": "Fleet Submarine",
-      "position": { "lat": 34.37504, "lon": -120.0, "depth": 20 },
+      "position": {
+        "lat": 34.37504,
+        "lon": -120.0,
+        "depth": 20
+      },
       "orderedDepth": 18,
       "heading": 0,
       "speed": 5,
@@ -139,22 +175,40 @@
       "lengthM": 95,
       "beamM": 8.3,
       "radarSignature": "small",
-      "torpedoLoad": 6,
       "sensors": [
-        { "kind": "radar", "maxRangeNm": 25 },
-        { "kind": "hydrophone", "maxRangeNm": 30 },
-        { "kind": "lookout", "maxRangeNm": 6 }
+        {
+          "kind": "radar",
+          "maxRangeNm": 25
+        },
+        {
+          "kind": "hydrophone",
+          "maxRangeNm": 30
+        },
+        {
+          "kind": "lookout",
+          "maxRangeNm": 6
+        }
       ],
       "stations": [
         {
           "id": "controls",
           "name": "Controls",
-          "capabilities": ["helm", "engineering", "plot", "weapons", "torpedo"]
+          "capabilities": [
+            "helm",
+            "engineering",
+            "plot",
+            "weapons",
+            "torpedo"
+          ]
         },
         {
           "id": "sensors",
           "name": "Sensors",
-          "capabilities": ["radar", "hydrophone", "lookout"]
+          "capabilities": [
+            "radar",
+            "hydrophone",
+            "lookout"
+          ]
         }
       ]
     }

@@ -94,6 +94,7 @@ export function StationPage() {
   const [controlsTab, setControlsTab] = useState<ControlsTab>('helm');
   const [sonarBusy, setSonarBusy] = useState(false);
   const [periBusy, setPeriBusy] = useState(false);
+  const [weaponReloadBusy, setWeaponReloadBusy] = useState(false);
   /** Own-ship sunk popup — open until Acknowledge; reset if hull returns afloat. */
   const [sunkModalOpen, setSunkModalOpen] = useState(false);
   const sunkModalAckedRef = useRef(false);
@@ -695,6 +696,32 @@ export function StationPage() {
       setActionError(err instanceof Error ? err.message : 'Periscope toggle failed');
     } finally {
       setPeriBusy(false);
+    }
+  };
+
+  const reloadTorpedoRoom = async (room: 'forward' | 'aft') => {
+    if (!token) return;
+    setActionError(null);
+    setWeaponReloadBusy(true);
+    try {
+      await api.startTorpedoReload(gameId, token, room);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Torpedo reload failed');
+    } finally {
+      setWeaponReloadBusy(false);
+    }
+  };
+
+  const reloadDepthCharges = async () => {
+    if (!token) return;
+    setActionError(null);
+    setWeaponReloadBusy(true);
+    try {
+      await api.startDepthChargeReload(gameId, token);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Depth-charge reload failed');
+    } finally {
+      setWeaponReloadBusy(false);
     }
   };
 
@@ -1350,22 +1377,37 @@ export function StationPage() {
                 {canTorpedo && (
                   <TorpedoCalculator
                     ownHeading={vessel.unit.heading}
-                    torpedoLoad={vessel.unit.torpedoLoad ?? 0}
+                    forward={{
+                      ready: vessel.unit.torpedoForward ?? 0,
+                      awaitingReload: Boolean(vessel.unit.torpedoForwardAwaitingReload),
+                      reloadTurnsRemaining: vessel.unit.torpedoForwardReloadTurnsRemaining ?? 0,
+                    }}
+                    aft={{
+                      ready: vessel.unit.torpedoAft ?? 0,
+                      awaitingReload: Boolean(vessel.unit.torpedoAftAwaitingReload),
+                      reloadTurnsRemaining: vessel.unit.torpedoAftReloadTurnsRemaining ?? 0,
+                    }}
                     pending={vessel.unit.orders.fireTorpedo}
                     running={vessel.ownTorpedoes}
                     disabled={!vessel.canSubmitOrders}
+                    reloadBusy={weaponReloadBusy}
                     onSubmit={(fireTorpedo) => void submit({ fireTorpedo })}
                     onClear={() => void submit({ fireTorpedo: null })}
+                    onReload={(room) => void reloadTorpedoRoom(room)}
                   />
                 )}
                 {canDepthCharges && (
                   <DepthChargeControls
                     depthChargeLoad={vessel.unit.depthChargeLoad ?? 0}
+                    awaitingReload={Boolean(vessel.unit.depthChargeAwaitingReload)}
+                    reloadTurnsRemaining={vessel.unit.depthChargeReloadTurnsRemaining ?? 0}
                     pending={vessel.unit.orders.dropDepthCharges}
                     tracks={vessel.ownDepthCharges}
                     disabled={!vessel.canSubmitOrders}
+                    reloadBusy={weaponReloadBusy}
                     onSubmit={(dropDepthCharges) => void submit({ dropDepthCharges })}
                     onClear={() => void submit({ dropDepthCharges: null })}
+                    onReload={() => void reloadDepthCharges()}
                   />
                 )}
                 <p className="muted controls-ambient-note">
@@ -1541,7 +1583,9 @@ export function StationPage() {
                         <tr>
                           <th>Ordnance</th>
                           <td className="readout">
-                            {canTorpedo ? `TORP ${vessel.unit.torpedoLoad ?? 0}` : ''}
+                            {canTorpedo
+                              ? `TORP F${vessel.unit.torpedoForward ?? 0}/A${vessel.unit.torpedoAft ?? 0}`
+                              : ''}
                             {canTorpedo && canDepthCharges ? ' · ' : ''}
                             {canDepthCharges ? `DC ${vessel.unit.depthChargeLoad ?? 0}` : ''}
                           </td>

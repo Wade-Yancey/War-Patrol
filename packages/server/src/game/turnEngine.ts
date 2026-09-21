@@ -8,6 +8,7 @@ import {
   normalizeHeading,
   clampTorpedoSpreadCount,
   clampTorpedoSpreadDeg,
+  normalizeTorpedoRoomId,
   resolveTurnLengthSeconds,
   type DepthChargeDropOrder,
   type EotSetting,
@@ -202,6 +203,7 @@ export function mergeOrders(
     delete next.fireTorpedo;
   } else if (patch.fireTorpedo) {
     next.fireTorpedo = {
+      room: normalizeTorpedoRoomId(patch.fireTorpedo.room),
       aimHeading: normalizeHeading(patch.fireTorpedo.aimHeading),
       estimatedCourse: normalizeHeading(patch.fireTorpedo.estimatedCourse),
       estimatedSpeedKn: Math.max(0, Number(patch.fireTorpedo.estimatedSpeedKn) || 0),

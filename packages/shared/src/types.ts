@@ -146,8 +146,16 @@ export interface StationDef {
 /** Depth-charge drop pattern (destroyer rack / thrower stub). */
 export type DepthChargePattern = 'single' | 'pair' | 'pattern_3' | 'pattern_5';
 
+/** Fleet-sub torpedo room (finite magazine). */
+export type TorpedoRoomId = 'forward' | 'aft';
+
 /** Pending torpedo shot for the current turn (fleet sub Controls). */
 export interface TorpedoFireOrder {
+  /**
+   * Which room / tube bank to fire from. Omitted → forward.
+   * Consumes fish from that room only; room must not be awaiting / mid reload.
+   */
+  room?: TorpedoRoomId;
   /**
    * Player LOS / aim bearing to the estimated present target (**true** °).
    * Client UI enters this as optics-style **relative** bearing (bow 0, stbd +,
@@ -425,15 +433,31 @@ export interface UnitState {
    */
   plotStampTurns: number;
   /**
-   * Ready torpedoes remaining (fleet subs). 0 for non-torpedo hulls.
-   * Consumed when a fire order launches on resolve.
+   * Total ready torpedoes (forward + aft). Kept in sync for display /
+   * legacy callers. Prefer room fields for fire / reload.
    */
   torpedoLoad: number;
+  /** Forward room fish remaining (fleet subs; capacity 6). */
+  torpedoForward: number;
+  /** Aft room fish remaining (fleet subs; capacity 4). */
+  torpedoAft: number;
+  /** True after a forward salvo until a reload cycle completes. */
+  torpedoForwardAwaitingReload: boolean;
+  /** True after an aft salvo until a reload cycle completes. */
+  torpedoAftAwaitingReload: boolean;
+  /** Resolved turns left on an in-progress forward reload (0 = not counting). */
+  torpedoForwardReloadTurnsRemaining: number;
+  /** Resolved turns left on an in-progress aft reload (0 = not counting). */
+  torpedoAftReloadTurnsRemaining: number;
   /**
    * Ready depth charges remaining (destroyers). 0 for non-DC hulls.
    * Consumed when a drop pattern launches on resolve.
    */
   depthChargeLoad: number;
+  /** True after a DC drop until a reload cycle completes. */
+  depthChargeAwaitingReload: boolean;
+  /** Resolved turns left on an in-progress DC rack reload. */
+  depthChargeReloadTurnsRemaining: number;
   /**
    * Own-ship FoW contact designation book (Contact N).
    * Keys are target unit ids — umpire/GT only; never copied onto vessel views.
@@ -490,8 +514,12 @@ export interface ScenarioUnitSeed {
   periscopeExposure?: number;
   /** Optional seed for plot stamp turns (default 0). */
   plotStampTurns?: number;
-  /** Optional ready torpedo count (fleet subs). */
+  /** Optional ready torpedo count (fleet subs) — legacy; prefer room seeds. */
   torpedoLoad?: number;
+  /** Optional forward room fish (fleet subs; default full = 6). */
+  torpedoForward?: number;
+  /** Optional aft room fish (fleet subs; default full = 4). */
+  torpedoAft?: number;
   /** Optional ready depth-charge count (destroyers). */
   depthChargeLoad?: number;
 }
@@ -825,7 +853,15 @@ export interface VesselView {
     | 'periscopeExposure'
     | 'plotStampTurns'
     | 'torpedoLoad'
+    | 'torpedoForward'
+    | 'torpedoAft'
+    | 'torpedoForwardAwaitingReload'
+    | 'torpedoAftAwaitingReload'
+    | 'torpedoForwardReloadTurnsRemaining'
+    | 'torpedoAftReloadTurnsRemaining'
     | 'depthChargeLoad'
+    | 'depthChargeAwaitingReload'
+    | 'depthChargeReloadTurnsRemaining'
   >;
   stationId: string;
   station: StationDef;
