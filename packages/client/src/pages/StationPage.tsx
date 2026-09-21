@@ -40,6 +40,7 @@ import { DamageReportPanel } from '../components/DamageReportPanel';
 import {
   DEPTH_CHARGE_AUDIO_SPREAD_SEC,
   DEPTH_CHARGE_CONTROLS_GAIN,
+  depthChargeControlsGain,
   depthChargeStaggerDelaySec,
   loadDepthChargeBuffer,
   playDepthChargeSample,
@@ -289,14 +290,14 @@ export function StationPage() {
           }
           const idx = dcBatchIndex.get(e.id) ?? 0;
           const whenSec = depthChargeStaggerDelaySec(idx, dcCount);
-          const proximity = Math.max(0.15, 1 - e.rangeNm / 0.6);
-          playDepthChargeSample(
-            ctx,
-            dcBuffer,
-            ctx.destination,
-            DEPTH_CHARGE_CONTROLS_GAIN * proximity,
-            { whenSec },
-          );
+          // Per-charge range attenuation (closer = louder); silent past hear radius.
+          const peak =
+            DEPTH_CHARGE_CONTROLS_GAIN * depthChargeControlsGain(e.rangeNm);
+          if (peak < 0.001) {
+            playedBridgeBlastRef.current.add(e.id);
+            continue;
+          }
+          playDepthChargeSample(ctx, dcBuffer, ctx.destination, peak, { whenSec });
           // Sub Controls: hull creak with *each* nearby charge (same schedule).
           if (onSubCreakBridge && creakBuffer) {
             playDcStressCreak(ctx, creakBuffer, whenSec);
@@ -1329,12 +1330,13 @@ export function StationPage() {
                 <p className="muted controls-ambient-note">
                   Bridge audio: quiet facility hum loops on this screen; nearby depth-charge
                   detonations play when within ~0.6 nm of own ship (any vessel — not only the
-                  dropper). Multi-charge patterns play one distant-explosion sample per charge,
-                  spaced evenly across ~{DEPTH_CHARGE_AUDIO_SPREAD_SEC / 60} minutes (not stacked).
-                  Torpedo hits play a procedural explosion for both firer and target Controls,
-                  attenuated by range. Submarine Controls also hear occasional hull creaks while
-                  submerged (depth &gt; {RADAR_SURFACE_DEPTH_M} m), denser toward test depth and{' '}
-                  <em>super frequent</em> near crush (~
+                  dropper), louder when closer and quieter toward the edge of that radius.
+                  Multi-charge patterns play one distant-explosion sample per charge, spaced
+                  evenly across ~{DEPTH_CHARGE_AUDIO_SPREAD_SEC / 60} minutes (not stacked),
+                  each at its own range volume. Torpedo hits play a procedural explosion for
+                  both firer and target Controls, attenuated by range. Submarine Controls also
+                  hear occasional hull creaks while submerged (depth &gt; {RADAR_SURFACE_DEPTH_M}{' '}
+                  m), denser toward test depth and <em>super frequent</em> near crush (~
                   {SUBMARINE_CREAK_INTERVAL_SHALLOW_SEC} s mean near the surface band down to ~
                   {SUBMARINE_CREAK_INTERVAL_AT_CRUSH_SEC} s at {FLEET_SUB_CRUSH_DEPTH_M} m crush),
                   plus a stress creak timed with <em>each</em> nearby depth-charge blast.
