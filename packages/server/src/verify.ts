@@ -1552,8 +1552,13 @@ async function main() {
       Math.abs(torpedoHullHalfBreadthM(115, 12, 90) - 57.5) < 0.01,
     );
     // Length ID: recognition-manual accuracy scales the true geometric gate.
+    // Ease tuning: ±15% full / ≥50% zero (was ±10% / ≥40%); pad 5 m (was 2).
     check('length ID exact = 1', torpedoLengthIdScale(115, 115) === 1);
-    check('length ID ±10% full', torpedoLengthIdScale(126, 115) === 1);
+    check('length ID ±15% full', torpedoLengthIdScale(132, 115) === 1);
+    check(
+      'length ID just over 15% partial',
+      torpedoLengthIdScale(133, 115) > 0 && torpedoLengthIdScale(133, 115) < 1,
+    );
     check('length ID zero when blank', torpedoLengthIdScale(0, 115) === 0);
     check(
       'length ID battleship-for-DD collapses',
@@ -1563,6 +1568,24 @@ async function main() {
       'length ID mid error partial',
       torpedoLengthIdScale(150, 115) > 0 && torpedoLengthIdScale(150, 115) < 1,
     );
+    // Quantify ease: Fletcher beam gate + pad, and mid-error scale vs old bands.
+    check(
+      'ease pad → Fletcher beam gate 62.5 m',
+      Math.abs(beamGate - 62.5) < 0.01,
+    );
+    check(
+      'ease pad → Fletcher end-on gate 11 m',
+      Math.abs(endGate - 11) < 0.01,
+    );
+    {
+      // 150 vs 115 ≈ 30.4% rel err → scale (0.5−0.304)/(0.5−0.15) ≈ 0.559
+      const midScale = torpedoLengthIdScale(150, 115);
+      check(
+        'ease length mid-error ~0.56 (was ~0.32)',
+        midScale > 0.55 && midScale < 0.57,
+        `scale=${midScale}`,
+      );
+    }
     check(
       'effective gate = true × scale',
       Math.abs(

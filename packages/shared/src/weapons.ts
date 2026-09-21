@@ -62,9 +62,14 @@ export const TORPEDO_SPREAD_DEFAULT_DEG = 2;
 /**
  * Horizontal miss distance (m) inside which a geometric hit is possible
  * is derived from hull length/beam via {@link torpedoHullHalfBreadthM}.
- * This constant is a small pad added to the projected half-breadth.
+ * This constant is a small pad added to the projected half-breadth
+ * (modest CPA forgiveness — not a free hit).
+ *
+ * Tuning (ease sub hits): pad was 2 m; raised to 5 m so a near-chord
+ * miss still contacts (~+3 m on every aspect). Fletcher beam gate
+ * 59.5 → 62.5 m; end-on 8 → 11 m.
  */
-export const TORPEDO_HIT_GATE_PAD_M = 2;
+export const TORPEDO_HIT_GATE_PAD_M = 5;
 
 /**
  * @deprecated Fixed 90 m gate removed — use beam/length half-breadth.
@@ -75,14 +80,20 @@ export const TORPEDO_HIT_GATE_M = 90;
 /**
  * Length-ID full credit: relative error |est−true|/true within this fraction
  * keeps the full geometric hit gate (recognition-manual class lengths match).
+ *
+ * Tuning (ease sub hits): was 0.10 (±10%); now 0.15 (±15%) so small
+ * recognition-manual rounding still keeps full chord.
  */
-export const TORPEDO_LENGTH_ID_FULL_FRAC = 0.1;
+export const TORPEDO_LENGTH_ID_FULL_FRAC = 0.15;
 
 /**
  * Length-ID zero credit: relative error at or above this collapses the
  * effective hit gate to 0 (wrong ID → miss even on geometric contact).
+ *
+ * Tuning (ease sub hits): was 0.40; now 0.50 so near-miss class picks
+ * (e.g. cruiser for DD) still keep a partial gate instead of hard zero.
  */
-export const TORPEDO_LENGTH_ID_ZERO_FRAC = 0.4;
+export const TORPEDO_LENGTH_ID_ZERO_FRAC = 0.5;
 
 /** Base damage applied on a successful (non-dud) torpedo hit (health points). */
 export const TORPEDO_HIT_DAMAGE = 45;
