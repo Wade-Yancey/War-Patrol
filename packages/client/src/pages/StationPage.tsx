@@ -343,8 +343,11 @@ export function StationPage() {
   const atPeriscopeDepth = depthM <= PERISCOPE_DEPTH_M;
 
   // Sub Sensors: pick a sensible default tab from depth; follow depth-band changes.
+  // Do not depend on the whole vessel object — mast raise/lower / exposure updates must
+  // not re-run this and kick the operator off Periscope.
+  const hasVessel = Boolean(vessel);
   useEffect(() => {
-    if (!vessel || !isSensors) return;
+    if (!hasVessel || !isSensors) return;
     if (canHydrophone && canRadar) {
       const preferred: SensorTab = surfaced
         ? 'radar'
@@ -353,7 +356,9 @@ export function StationPage() {
           : 'hydrophone';
       setSensorTab((prev) => {
         if (prev === 'radar' || prev === 'hydrophone' || prev === 'periscope') {
-          if (surfaced && (prev === 'hydrophone' || prev === 'periscope')) return 'radar';
+          // Hydrophone is unusable on the surface → leave it. Periscope stays valid
+          // at/above radar surface depth, so never force Radar while on Periscope.
+          if (surfaced && prev === 'hydrophone') return 'radar';
           if (!surfaced && prev === 'radar') {
             return canPeriscope && atPeriscopeDepth ? 'periscope' : 'hydrophone';
           }
@@ -378,7 +383,7 @@ export function StationPage() {
     else if (canHydrophone) setSensorTab('hydrophone');
     else if (canActiveSonar) setSensorTab('sonar');
   }, [
-    vessel,
+    hasVessel,
     isSensors,
     canHydrophone,
     canRadar,
