@@ -45,7 +45,6 @@ import {
   type CombatLogEntry,
   type CombatLogKind,
   type DepthChargeTrack,
-  type GameSave,
   type LatLonDepth,
   type TorpedoTrack,
   type UnitState,
@@ -138,7 +137,6 @@ export function resolveWeaponsForTurn(
   let units = unitsIn.map((u) => ({ ...u }));
   const byId = () => new Map(units.map((u) => [u.id, u]));
   const combatLogEntries: CombatLogEntry[] = [];
-  const nameOf = (id: string) => byId().get(id)?.name ?? id;
 
   // --- Launch from orders (consume load; clear weapon order fields after) ---
   const launchedFish: TorpedoTrack[] = [];
@@ -430,7 +428,7 @@ export function resolveWeaponsForTurn(
             actor: unitMap.get(fish.firerUnitId),
             target: cpaTarget,
             summary: formatTorpedoMissLogSummary({
-              firerName: nameOf(fish.firerUnitId),
+              firerName: unitMap.get(fish.firerUnitId)?.name ?? fish.firerUnitId,
               targetName: nearestName,
               closestApproachM: advanced.closestApproachM,
             }),
@@ -461,7 +459,7 @@ export function resolveWeaponsForTurn(
           gameTimeSeconds,
           actor: unitMap.get(advanced.firerUnitId),
           sourceDetonationId: dcDetonationId,
-          summary: `DC detonated at ${Math.round(advanced.depthSettingM)} m (from ${nameOf(advanced.firerUnitId)})`,
+          summary: `DC detonated at ${Math.round(advanced.depthSettingM)} m (from ${unitMap.get(advanced.firerUnitId)?.name ?? advanced.firerUnitId})`,
         }),
       );
       for (const [uid, target] of unitMap) {
@@ -550,10 +548,3 @@ export function appendCombatLog(
   return next.slice(next.length - COMBAT_LOG_MAX);
 }
 
-/** Ensure save weapon arrays exist (migration). */
-export function emptyWeaponsState(): Pick<
-  GameSave,
-  'torpedoes' | 'depthCharges' | 'recentDetonations' | 'combatLog'
-> {
-  return { torpedoes: [], depthCharges: [], recentDetonations: [], combatLog: [] };
-}

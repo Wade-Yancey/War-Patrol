@@ -642,12 +642,6 @@ export function defaultTorpedoRooms(
   return { forward: FLEET_SUB_TORPEDO_FORWARD, aft: FLEET_SUB_TORPEDO_AFT };
 }
 
-/** @deprecated Prefer {@link defaultTorpedoRooms}; kept as total-fish default. */
-export function defaultTorpedoLoad(unit: Pick<UnitState, 'class' | 'type'>): number {
-  const rooms = defaultTorpedoRooms(unit);
-  return rooms.forward + rooms.aft;
-}
-
 export function defaultDepthChargeLoad(unit: Pick<UnitState, 'class' | 'type'>): number {
   if (unit.class === 'Destroyer') return DESTROYER_DEPTH_CHARGE_LOAD;
   return 0;
@@ -1181,16 +1175,6 @@ export function torpedoDamageFactorFromAspect(aspectDeg: number): number {
       value: r.damageFactor,
     })),
   );
-}
-
-/**
- * @deprecated Old RNG aspect→hit% table removed. Prefer {@link torpedoDudPctFromAspect}.
- * Returns a legacy-shaped value for any residual callers (beam ≈ 50).
- */
-export function torpedoBaseHitPctFromAspect(aspectDeg: number): number {
-  // Map inverse of dud table into a rough “legacy hit feel” for tests migrating off.
-  const dud = torpedoDudPctFromAspect(aspectDeg);
-  return clamp(100 - dud * 4, 5, 50);
 }
 
 export type TorpedoHitRollInput = {
