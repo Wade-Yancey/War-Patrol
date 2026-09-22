@@ -22,12 +22,16 @@ async function request<T>(
 
 export const api = {
   health: () => request<{ ok: boolean }>('/api/health'),
-  scenarios: () =>
+  scenarios: (adminToken?: string) =>
     request<Array<{ id: string; name: string; description?: string; mode: string; unitCount: number }>>(
       '/api/scenarios',
+      { token: adminToken },
     ),
-  saves: () => request<Array<{ id: string; name: string; updatedAt: string }>>('/api/saves'),
-  createGame: (scenarioId: string, name?: string) =>
+  saves: (adminToken?: string) =>
+    request<Array<{ id: string; name: string; updatedAt: string }>>('/api/saves', {
+      token: adminToken,
+    }),
+  createGame: (scenarioId: string, name?: string, adminToken?: string) =>
     request<{
       gameId: string;
       name: string;
@@ -38,9 +42,16 @@ export const api = {
         passwordProtected: boolean;
         stations: Array<{ stationId: string; name: string; path: string }>;
       }>;
-    }>('/api/games', { method: 'POST', body: JSON.stringify({ scenarioId, name }) }),
-  loadSave: (saveId: string) =>
-    request<{ gameId: string; name: string }>(`/api/saves/${saveId}/load`, { method: 'POST' }),
+    }>('/api/games', {
+      method: 'POST',
+      token: adminToken,
+      body: JSON.stringify({ scenarioId, name }),
+    }),
+  loadSave: (saveId: string, adminToken?: string) =>
+    request<{ gameId: string; name: string }>(`/api/saves/${saveId}/load`, {
+      method: 'POST',
+      token: adminToken,
+    }),
   authUmpire: (gameId: string, password: string) =>
     request<{ token: string; role: string }>(`/api/games/${gameId}/auth/umpire`, {
       method: 'POST',
@@ -61,16 +72,21 @@ export const api = {
     }),
   saveGame: (gameId: string, token: string) =>
     request<{ ok: boolean }>(`/api/games/${gameId}/save`, { method: 'POST', token }),
-  deleteSave: (saveId: string) =>
+  deleteSave: (saveId: string, adminToken?: string) =>
     request<{ ok: boolean; deletedFile: boolean; unloaded: boolean }>(`/api/saves/${saveId}`, {
       method: 'DELETE',
+      token: adminToken,
     }),
-  deleteAllSaves: () =>
+  deleteAllSaves: (adminToken?: string) =>
     request<{ ok: boolean; deleted: number; unloaded: number }>('/api/saves', {
       method: 'DELETE',
+      token: adminToken,
     }),
-  deleteScenario: (scenarioId: string) =>
-    request<{ ok: boolean }>(`/api/scenarios/${scenarioId}`, { method: 'DELETE' }),
+  deleteScenario: (scenarioId: string, adminToken?: string) =>
+    request<{ ok: boolean }>(`/api/scenarios/${scenarioId}`, {
+      method: 'DELETE',
+      token: adminToken,
+    }),
   orders: (
     gameId: string,
     token: string,

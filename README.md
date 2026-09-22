@@ -76,3 +76,26 @@ Saves (auto after resolve): `packages/server/data/saves/`
 ## HTTPS
 
 Terminate TLS at a reverse proxy in front of the Node process for public deploy.
+
+## Hosting beyond LAN (internet-facing)
+
+By default the server binds `0.0.0.0:8787` and accepts host/disk admin
+requests (create game, load/delete saves, delete scenarios) from anyone who
+can reach it — fine for a trusted LAN party, not for the open internet. To
+expose stations to remote testers safely:
+
+```bash
+WAR_PATROL_ADMIN_TOKEN="$(openssl rand -hex 24)" pnpm start
+```
+
+This requires that token (`Authorization: Bearer <token>` or
+`x-admin-token:`) on the admin/disk routes above — the landing page has a
+collapsed **"Admin token"** field for entering it. Unset it (the default) to
+keep the original open LAN behavior.
+
+Optionally set `WAR_PATROL_CORS_ORIGIN=https://your-host` (comma-separated
+allowlist) to restrict cross-origin API access — unnecessary if you serve the
+client from the same origin as the API (`pnpm build && pnpm start`, as
+above). Put a TLS-terminating reverse proxy (Caddy/nginx/Cloudflare Tunnel)
+in front for HTTPS; disable proxy buffering / long timeouts on
+`/api/games/:gameId/events` (long-lived SSE).

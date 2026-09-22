@@ -1,7 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
-import { setAuthToken } from '../api/authStorage';
+import { getAuthToken, setAuthToken } from '../api/authStorage';
+
+/** Only sent to the server when `WAR_PATROL_ADMIN_TOKEN` is configured there; a no-op on LAN setups. */
+const ADMIN_TOKEN_KEY = 'wp-admin-token';
 import { CrtShell } from '../components/CrtShell';
 import { ConfirmAction } from '../components/ConfirmAction';
 
@@ -30,9 +33,15 @@ export function LandingPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
+  const [adminToken, setAdminTokenState] = useState(() => getAuthToken(ADMIN_TOKEN_KEY) ?? '');
+
+  const setAdminToken = (value: string) => {
+    setAdminTokenState(value);
+    setAuthToken(ADMIN_TOKEN_KEY, value);
+  };
 
   const refreshLists = async () => {
-    const [sc, sv] = await Promise.all([api.scenarios(), api.saves()]);
+    const [sc, sv] = await Promise.all([api.scenarios(adminToken), api.saves(adminToken)]);
     setScenarios(sc);
     setSaves(sv);
     if (sc.length && !sc.some((s) => s.id === scenarioId)) {
@@ -43,7 +52,7 @@ export function LandingPage() {
   useEffect(() => {
     void (async () => {
       try {
-        const [sc, sv] = await Promise.all([api.scenarios(), api.saves()]);
+        const [sc, sv] = await Promise.all([api.scenarios(adminToken), api.saves(adminToken)]);
         setScenarios(sc);
         setSaves(sv);
         if (sc[0]) setScenarioId(sc[0].id);
@@ -51,14 +60,15 @@ export function LandingPage() {
         setError(err instanceof Error ? err.message : 'Failed to load scenarios');
       }
     })();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminToken]);
 
   const createAndEnter = async (e?: FormEvent) => {
     e?.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      const created = await api.createGame(scenarioId, gameName || undefined);
+      const created = await api.createGame(scenarioId, gameName || undefined, adminToken);
       const auth = await api.authUmpire(created.gameId, umpirePassword);
       setAuthToken(`wp-token:${created.gameId}:umpire`, auth.token);
       navigate(`/g/${created.gameId}/umpire`);
@@ -73,7 +83,7 @@ export function LandingPage() {
     setBusy(true);
     setError(null);
     try {
-      const loaded = await api.loadSave(saveId);
+      const loaded = await api.loadSave(saveId, adminToken);
       const auth = await api.authUmpire(loaded.gameId, umpirePassword);
       setAuthToken(`wp-token:${loaded.gameId}:umpire`, auth.token);
       navigate(`/g/${loaded.gameId}/umpire`);
@@ -90,11 +100,11 @@ export function LandingPage() {
     setError(null);
     try {
       if (pendingDelete.kind === 'save') {
-        await api.deleteSave(pendingDelete.id);
+        await api.deleteSave(pendingDelete.id, adminToken);
       } else if (pendingDelete.kind === 'all-saves') {
-        await api.deleteAllSaves();
+        await api.deleteAllSaves(adminToken);
       } else {
-        await api.deleteScenario(pendingDelete.id);
+        await api.deleteScenario(pendingDelete.id, adminToken);
       }
       setPendingDelete(null);
       await refreshLists();
@@ -134,6 +144,26 @@ export function LandingPage() {
             </p>
           </div>
         </header>
+
+        <details className="panel" style={{ marginBottom: '1rem' }}>
+          <summary style={{ cursor: 'pointer' }}>Admin token (internet-hosted servers only)</summary>
+          <div className="stack" style={{ marginTop: '0.6rem', gap: '0.4rem' }}>
+            <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+              Only needed if this server was started with <span className="mono">WAR_PATROL_ADMIN_TOKEN</span>{' '}
+              set (e.g. hosting over the internet). LAN/local servers ignore this.
+            </p>
+            <label>
+              Admin token
+              <input
+                type="password"
+                value={adminToken}
+                onChange={(e) => setAdminToken(e.target.value)}
+                placeholder="Leave blank for local/LAN servers"
+                autoComplete="off"
+              />
+            </label>
+          </div>
+        </details>
 
         {error && <p className="error">{error}</p>}
 

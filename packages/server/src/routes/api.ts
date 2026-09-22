@@ -64,10 +64,37 @@ function requireUmpire(request: FastifyRequest, gameId?: string): AuthSession {
   return session;
 }
 
+/**
+ * Gate host/disk admin surface (create game, load/delete saves, delete scenarios,
+ * list saves/scenarios/games) behind `WAR_PATROL_ADMIN_TOKEN` when set.
+ *
+ * Unset (default): no-op, matching the existing LAN-party trust model exactly —
+ * this is the "clear config switch" that avoids weakening local play. Set it when
+ * exposing the server beyond a trusted LAN (see docs/internet-hosting.md upstream).
+ */
+function requireAdmin(request: FastifyRequest): void {
+  const adminToken = process.env.WAR_PATROL_ADMIN_TOKEN;
+  if (!adminToken) return;
+  const headerToken =
+    parseBearer(request.headers.authorization) ??
+    (typeof request.headers['x-admin-token'] === 'string'
+      ? (request.headers['x-admin-token'] as string)
+      : undefined);
+  if (headerToken !== adminToken) {
+    throw Object.assign(new Error('Admin token required'), { statusCode: 401 });
+  }
+}
+
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/health', async () => ({ ok: true }));
 
-  app.get('/api/scenarios', async () => {
+  app.get('/api/scenarios', async (request, reply) => {
+    try {
+      requireAdmin(request);
+    } catch (err) {
+      const e = httpError(err);
+      return reply.code(e.statusCode).send({ error: e.message });
+    }
     const scenarios = await store.listScenarios();
     return scenarios.map((s) => ({
       id: s.id,
@@ -80,10 +107,19 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/api/library', async () => store.listVesselClasses());
 
-  app.get('/api/saves', async () => store.listSaves());
-
-  app.delete('/api/saves', async (_request, reply) => {
+  app.get('/api/saves', async (request, reply) => {
     try {
+      requireAdmin(request);
+    } catch (err) {
+      const e = httpError(err);
+      return reply.code(e.statusCode).send({ error: e.message });
+    }
+    return store.listSaves();
+  });
+
+  app.delete('/api/saves', async (request, reply) => {
+    try {
+      requireAdmin(request);
       const result = await runtime.deleteAllSaves();
       return { ok: true, ...result };
     } catch (err) {
@@ -94,6 +130,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete<{ Params: { saveId: string } }>('/api/saves/:saveId', async (request, reply) => {
     try {
+      requireAdmin(request);
       const result = await runtime.deleteSave(request.params.saveId);
       return { ok: true, ...result };
     } catch (err) {
@@ -106,6 +143,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     '/api/scenarios/:scenarioId',
     async (request, reply) => {
       try {
+        requireAdmin(request);
         await runtime.deleteScenario(request.params.scenarioId);
         return { ok: true };
       } catch (err) {
@@ -115,10 +153,19 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  app.get('/api/games', async () => runtime.listActiveGames());
+  app.get('/api/games', async (request, reply) => {
+    try {
+      requireAdmin(request);
+    } catch (err) {
+      const e = httpError(err);
+      return reply.code(e.statusCode).send({ error: e.message });
+    }
+    return runtime.listActiveGames();
+  });
 
   app.post<{ Body: { scenarioId: string; name?: string } }>('/api/games', async (request, reply) => {
     try {
+      requireAdmin(request);
       const { scenarioId, name } = request.body ?? {};
       if (!scenarioId) {
         return reply.code(400).send({ error: 'scenarioId required' });
@@ -154,6 +201,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.post<{ Params: { saveId: string } }>('/api/saves/:saveId/load', async (request, reply) => {
     try {
+      requireAdmin(request);
       const save = await runtime.loadSaveIntoMemory(request.params.saveId);
       return { gameId: save.id, name: save.name, stateVersion: save.stateVersion };
     } catch (err) {
