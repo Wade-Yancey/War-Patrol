@@ -27,8 +27,18 @@ export async function buildApp() {
     },
   });
 
+  // `WAR_PATROL_CORS_ORIGIN`: comma-separated allowlist for public/internet deploys
+  // (e.g. `https://stations.example.com`). Unset (default) reflects any Origin —
+  // fine for the LAN-party flow where the client is served same-origin or from a
+  // trusted local Vite dev server; tighten this when exposing the API cross-origin
+  // to untrusted networks (see docs/internet-hosting.md).
+  const corsOriginEnv = process.env.WAR_PATROL_CORS_ORIGIN?.trim();
+  const corsOrigin =
+    corsOriginEnv && corsOriginEnv !== '*'
+      ? corsOriginEnv.split(',').map((o) => o.trim()).filter(Boolean)
+      : true;
   await app.register(cors, {
-    origin: true,
+    origin: corsOrigin,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
   });
 
