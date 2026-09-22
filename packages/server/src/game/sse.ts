@@ -115,9 +115,19 @@ export class SseHub {
     if (!this.viewBuilder) return;
     for (const client of this.clients.values()) {
       if (client.gameId !== gameId) continue;
-      const view = this.viewBuilder(client);
-      if (!view) continue;
-      this.send(client, stateVersion, view);
+      // One client's view build failing (e.g. transient bad state) must not
+      // abort the loop for every other connected station/umpire tab, and
+      // must not throw synchronously out of a `close`/`error` socket event
+      // listener (onConnectionsChanged is invoked from there) — an
+      // uncaught throw in that context is an uncaught exception, not a
+      // rejected promise a route handler can catch.
+      try {
+        const view = this.viewBuilder(client);
+        if (!view) continue;
+        this.send(client, stateVersion, view);
+      } catch {
+        /* skip this client this broadcast; next state push will retry */
+      }
     }
   }
 

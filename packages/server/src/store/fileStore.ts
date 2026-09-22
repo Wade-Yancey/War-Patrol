@@ -1,6 +1,7 @@
-import { mkdir, readdir, readFile, writeFile, access, unlink } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile, access, unlink, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
 import {
   SCHEMA_VERSION,
   type GameSave,
@@ -80,6 +81,29 @@ function scenarioPathForId(id: string): string {
   return filePath;
 }
 
+/**
+ * Write JSON to `filePath` atomically: write to a sibling temp file, then
+ * rename over the target. `rename` is atomic on the same filesystem (POSIX
+ * and NTFS), so a crash / power loss mid-write cannot leave a truncated or
+ * partially-written save/scenario on disk — readers see either the old
+ * complete file or the new complete file, never a half-written one.
+ */
+async function writeFileAtomic(filePath: string, contents: string): Promise<void> {
+  const dir = path.dirname(filePath);
+  const tmpPath = path.join(dir, `.${path.basename(filePath)}.${randomUUID()}.tmp`);
+  try {
+    await writeFile(tmpPath, contents, 'utf8');
+    await rename(tmpPath, filePath);
+  } catch (err) {
+    try {
+      await unlink(tmpPath);
+    } catch {
+      /* best effort cleanup */
+    }
+    throw err;
+  }
+}
+
 function assertSchemaVersion(doc: { schemaVersion?: number }, kind: string): void {
   if (doc.schemaVersion !== SCHEMA_VERSION) {
     throw new Error(
@@ -148,7 +172,7 @@ export async function writeSave(save: GameSave): Promise<void> {
   await ensureDirs();
   assertSchemaVersion(save, 'Save');
   const filePath = savePathForId(save.id);
-  await writeFile(filePath, JSON.stringify(save, null, 2), 'utf8');
+  await writeFileAtomic(filePath, JSON.stringify(save, null, 2));
 }
 
 /** Remove a save JSON file from disk. Returns false if missing. */
@@ -206,7 +230,7 @@ export async function writeScenario(scenario: Scenario): Promise<void> {
   await ensureDirs();
   assertSchemaVersion(scenario, 'Scenario');
   const filePath = scenarioPathForId(scenario.id);
-  await writeFile(filePath, JSON.stringify(scenario, null, 2), 'utf8');
+  await writeFileAtomic(filePath, JSON.stringify(scenario, null, 2));
 }
 
 export async function listVesselClasses(): Promise<VesselClassStub[]> {
