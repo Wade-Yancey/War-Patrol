@@ -209,8 +209,7 @@ function HelmCompassInner({
 
         {turnRate !== undefined && (
           <p className="crt-console-caption helm-compass-caption muted mono">
-            Turn rate {turnRate.toFixed(0)}°/min · ship yaws toward CRS each resolve
-            {interactive ? ' · click dial to set course' : ''}
+            Turn rate {turnRate.toFixed(0)}°/min
           </p>
         )}
       </div>

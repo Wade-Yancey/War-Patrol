@@ -250,11 +250,7 @@ function PeriscopeScopeInner({
             </ul>
           )}
         </div>
-        <p className="periscope-caption muted">
-          {blind
-            ? 'Mast lowered — raise to clear silhouettes and contacts. Compass idle.'
-            : 'Hull silhouette or periscope feather when selected. Range scales size; bow-right plates flip for port aspect.'}
-        </p>
+        {blind && <p className="periscope-caption muted">Mast lowered</p>}
       </aside>
     </div>
   );

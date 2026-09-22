@@ -16,7 +16,7 @@ export interface TouchNumberProps {
   format?: (value: number) => string;
   /** Parse typed readout text; when set, draft uses `format` (or String) instead of raw number. */
   parse?: (raw: string) => number | null;
-  /** Override the default “Tap readout…” hint. */
+  /** Override the default min–max range hint. */
   hint?: string;
 }
 
@@ -76,7 +76,7 @@ export function TouchNumber({
   };
 
   const display = format ? format(value) : `${value}${unit ? ` ${unit}` : ''}`;
-  const defaultHint = `Tap readout to type · ${min}–${max}${unit ? ` ${unit}` : ''}`;
+  const defaultHint = `${min}–${max}${unit ? ` ${unit}` : ''}`;
 
   return (
     <div className="touch-num">

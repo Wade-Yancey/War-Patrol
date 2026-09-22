@@ -319,7 +319,7 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
           </div>
           {maxRangeNm > 0 && scaleNm > maxRangeNm && (
             <p className="muted" style={{ margin: 0, fontSize: '0.75rem' }}>
-              Sensor max {maxRangeNm} nm — outer rings empty beyond detection.
+              Sensor max {maxRangeNm} nm.
             </p>
           )}
         </div>

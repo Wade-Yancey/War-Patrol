@@ -70,9 +70,7 @@ export function DepthChargeControls({
       <div className="station-instrument-head">
         <h2>Depth charges</h2>
         <p className="muted station-instrument-blurb">
-          Finite rack ({DESTROYER_DEPTH_CHARGE_LOAD} max). Pattern consumes charges on resolve.
-          After a drop press Reload ({DEPTH_CHARGE_RELOAD_TURNS} turns before the next drop).
-          Set depth from sonar estimate — match vs target keel drives effect. {rackStatus}.
+          Rack {rackStatus} · reload {DEPTH_CHARGE_RELOAD_TURNS} turns
         </p>
       </div>
 

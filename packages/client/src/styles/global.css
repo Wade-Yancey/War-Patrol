@@ -2163,11 +2163,6 @@ label {
   margin: 0;
 }
 
-.controls-ambient-note {
-  margin: 0;
-  font-size: 0.8rem;
-}
-
 .weapons-plot-fieldset {
   border: 1px solid var(--border, #1a4a28);
   padding: 0.55rem 0.65rem 0.7rem;
@@ -2232,12 +2227,6 @@ label {
   padding: 0.55rem 0.65rem 0.7rem;
   border: 1px solid var(--border, #1a4a28);
   background: color-mix(in srgb, var(--panel, #04140a) 88%, #000);
-}
-
-.recognition-manual-blurb {
-  margin: 0;
-  font-size: 0.82rem;
-  line-height: 1.35;
 }
 
 .recognition-manual-list {
@@ -3110,14 +3099,6 @@ label {
   border-right: 0.4rem solid transparent;
   border-bottom: 0.7rem solid #3dff6a;
   background: none;
-}
-
-.optics-bearing-compass-caption {
-  margin: 0;
-  max-width: 17rem;
-  font-size: 0.72rem;
-  line-height: 1.35;
-  text-align: center;
 }
 
 .optics-bearing-compass--empty .optics-bearing-compass-readouts .optics-bearing-compass-readout:last-child {

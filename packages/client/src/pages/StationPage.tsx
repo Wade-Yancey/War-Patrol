@@ -2,9 +2,6 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   EOT_LABELS,
-  DEPTH_CHARGE_CONTROLS_AUDIBLE_NM,
-  DEPTH_CHARGE_RANGE_FAR_M,
-  FLEET_SUB_CRUSH_DEPTH_M,
   PERISCOPE_DEPTH_M,
   RADAR_SURFACE_DEPTH_M,
   SUBMARINE_DEPTH_ORDER_STEP_M,
@@ -17,7 +14,6 @@ import {
   hasPendingOrders,
   isRadarSurfaced,
   normalizeHeading,
-  TORPEDO_HIT_AUDIO_MAX_DELAY_SEC,
   torpedoHitControlsGain,
   type DepthChargeDropOrder,
   type EotSetting,
@@ -43,7 +39,6 @@ import { DamageReportPanel } from '../components/DamageReportPanel';
 import { useAudioSyncedDamageReport } from '../hooks/useAudioSyncedDamageReport';
 import { resolveSunkCause, SunkModal } from '../components/SunkModal';
 import {
-  DEPTH_CHARGE_AUDIO_SPREAD_SEC,
   depthChargeBatchWhenSecById,
   depthChargeControlsPeakGain,
   loadDepthChargeBuffer,
@@ -64,8 +59,6 @@ import {
   SUBMARINE_CREAK_AMBIENT_GAIN,
   SUBMARINE_CREAK_DC_DURATION_SEC,
   SUBMARINE_CREAK_DC_GAIN,
-  SUBMARINE_CREAK_INTERVAL_AT_CRUSH_SEC,
-  SUBMARINE_CREAK_INTERVAL_SHALLOW_SEC,
   creakIntervalMsForDepth,
   jitterCreakIntervalMs,
   loadSubmarineCreakingBuffer,
@@ -561,9 +554,7 @@ export function StationPage() {
   const ownShipSunk = syncedDamage.condition === 'sunk';
   const presentationSunk = ownShipSunk;
   /** Soften Sensors “sunk” copy until blast-synced presentation catches up. */
-  const sunkSetOfflineBlurb = presentationSunk
-    ? ' Set offline — unit sunk/destroyed.'
-    : ' Set offline.';
+  const sunkSetOfflineBlurb = presentationSunk ? 'Set offline — sunk' : 'Set offline';
   const sunkUnavailableLine = (label: string) =>
     presentationSunk ? `${label} unavailable — sunk/destroyed` : `${label} unavailable`;
   const sunkCause = useMemo(
@@ -872,17 +863,16 @@ export function StationPage() {
                 <div className="station-instrument-head">
                   <h2>Radar · PPI</h2>
                   <p className="muted station-instrument-blurb">
-                    Call contacts by true bearing on the rim. Raw sensor picture only — no friend/foe identity.
                     {vessel.radarUnavailableReason === 'submerged'
                       ? ''
                       : vessel.radarOperational
-                        ? ` Surface search · ${vessel.radarMaxRangeNm ?? 25} nm.`
+                        ? `Surface search · ${vessel.radarMaxRangeNm ?? 25} nm`
                         : vessel.radarUnavailableReason === 'no_sensor'
-                          ? ' No radar set installed on this vessel.'
+                          ? 'No radar set installed'
                           : vessel.radarUnavailableReason === 'sunk'
                             ? sunkSetOfflineBlurb
                             : vessel.radarUnavailableReason === 'sensors_disabled'
-                              ? ' Sensors disabled.'
+                              ? 'Sensors disabled'
                               : ''}
                   </p>
                 </div>
@@ -898,17 +888,6 @@ export function StationPage() {
                             : vessel.radarUnavailableReason === 'no_sensor'
                               ? 'Radar unavailable — no sensor'
                               : 'Radar unavailable'}
-                    </p>
-                    <p className="muted" style={{ margin: '0.5rem 0 0', fontSize: '0.85rem' }}>
-                      {vessel.radarUnavailableReason === 'submerged'
-                        ? 'Surface (depth ≤ 5 m) to energize the set and paint contacts. Submerged hulls also do not return echoes to other radars.'
-                        : vessel.radarUnavailableReason === 'sensors_disabled'
-                          ? 'Repair or re-enable the sensors subsystem to restore the PPI.'
-                          : vessel.radarUnavailableReason === 'sunk'
-                            ? presentationSunk
-                              ? 'This unit no longer contributes to the sensor picture.'
-                              : 'Sensor set is offline.'
-                            : 'This station has no usable radar picture.'}
                     </p>
                   </div>
                 ) : (
@@ -928,27 +907,26 @@ export function StationPage() {
                     {opticsVariant === 'lookout' ? 'Lookout · Visual' : 'Periscope · Visual'}
                   </h2>
                   <p className="muted station-instrument-blurb">
-                    Short-range silhouettes only — relative bearing and approximate speed.
                     {opticsVariant === 'lookout'
                       ? vessel.periscopeOperational
-                        ? ` Visual · ${vessel.periscopeMaxRangeNm ?? 6} nm · bridge lookout.`
+                        ? `Visual · ${vessel.periscopeMaxRangeNm ?? 6} nm · bridge lookout`
                         : vessel.periscopeUnavailableReason === 'no_sensor'
-                          ? ' No lookout set installed.'
+                          ? 'No lookout set installed'
                           : vessel.periscopeUnavailableReason === 'sunk'
                             ? sunkSetOfflineBlurb
                             : ''
                       : vessel.periscopeOperational
-                        ? ` Visual · ${vessel.periscopeMaxRangeNm ?? 6} nm · mast UP · depth ≤ ${PERISCOPE_DEPTH_M} m.`
+                        ? `Visual · ${vessel.periscopeMaxRangeNm ?? 6} nm · mast UP · depth ≤ ${PERISCOPE_DEPTH_M} m`
                         : vessel.periscopeUnavailableReason === 'scope_down'
-                          ? ' Mast DOWN — optically blind. Raise to see.'
+                          ? 'Mast DOWN — blind'
                           : vessel.periscopeUnavailableReason === 'too_deep'
-                            ? ` Depth ≤ ${PERISCOPE_DEPTH_M} m (periscope / surface) required.`
+                            ? `Depth ≤ ${PERISCOPE_DEPTH_M} m required`
                             : vessel.periscopeUnavailableReason === 'no_sensor'
-                              ? ' No lookout/periscope set installed.'
+                              ? 'No periscope set installed'
                               : vessel.periscopeUnavailableReason === 'sunk'
                                 ? sunkSetOfflineBlurb
                                 : vessel.periscopeUnavailableReason === 'sensors_disabled'
-                                  ? ' Sensors disabled.'
+                                  ? 'Sensors disabled'
                                   : ''}
                   </p>
                 </div>
@@ -994,11 +972,6 @@ export function StationPage() {
                               ? `${opticsTabLabel} unavailable — no sensor`
                               : `${opticsTabLabel} unavailable`}
                     </p>
-                    <p className="muted" style={{ margin: '0.5rem 0 0', fontSize: '0.85rem' }}>
-                      {vessel.periscopeUnavailableReason === 'too_deep'
-                        ? `Come up to periscope depth or shallower (≤ ${PERISCOPE_DEPTH_M} m) to raise optics.`
-                        : `This station has no usable ${opticsVariant === 'lookout' ? 'lookout' : 'periscope'} picture.`}
-                    </p>
                   </div>
                 ) : (
                   <>
@@ -1016,11 +989,8 @@ export function StationPage() {
                     {(vessel.torpedoWakeCues?.length ?? 0) > 0 && (
                       <div className="wake-cues panel" role="status">
                         <h3 className="mono" style={{ margin: '0 0 0.35rem', fontSize: '0.9rem' }}>
-                          Wake sighting (FoW)
+                          Wake sighting
                         </h3>
-                        <p className="muted" style={{ margin: '0 0 0.5rem', fontSize: '0.8rem' }}>
-                          Possible torpedo wake direction — not a firm ID.
-                        </p>
                         <ul className="mono" style={{ margin: 0, paddingLeft: '1.2rem' }}>
                           {vessel.torpedoWakeCues!.map((w) => (
                             <li key={w.id}>
@@ -1043,18 +1013,16 @@ export function StationPage() {
                 <div className="station-instrument-head">
                   <h2>Hydrophone · Bearing listen</h2>
                   <p className="muted station-instrument-blurb">
-                    Train the needle by ear — no visual contacts. Underway propellers, active-sonar
-                    pings, and depth-charge detonations; volume falls with range and misalignment.
                     {vessel.hydrophoneOperational
-                      ? ` Passive · ${vessel.hydrophoneMaxRangeNm ?? 30} nm.`
+                      ? `Passive · ${vessel.hydrophoneMaxRangeNm ?? 30} nm`
                       : vessel.hydrophoneUnavailableReason === 'surfaced'
-                        ? ' Submerged only (depth &gt; 5 m).'
+                        ? 'Submerged only (depth > 5 m)'
                         : vessel.hydrophoneUnavailableReason === 'no_sensor'
-                          ? ' No hydrophone set installed.'
+                          ? 'No hydrophone set installed'
                           : vessel.hydrophoneUnavailableReason === 'sunk'
                             ? sunkSetOfflineBlurb
                             : vessel.hydrophoneUnavailableReason === 'sensors_disabled'
-                              ? ' Sensors disabled.'
+                              ? 'Sensors disabled'
                               : ''}
                   </p>
                 </div>
@@ -1070,11 +1038,6 @@ export function StationPage() {
                             : vessel.hydrophoneUnavailableReason === 'no_sensor'
                               ? 'Hydrophone unavailable — no sensor'
                               : 'Hydrophone unavailable'}
-                    </p>
-                    <p className="muted" style={{ margin: '0.5rem 0 0', fontSize: '0.85rem' }}>
-                      {vessel.hydrophoneUnavailableReason === 'surfaced'
-                        ? 'Dive below 5 m to listen. No hydrophone on the surface.'
-                        : 'This station has no usable hydrophone picture.'}
                     </p>
                   </div>
                 ) : (
@@ -1092,9 +1055,8 @@ export function StationPage() {
                 <div className="station-instrument-head">
                   <h2>Active search sonar</h2>
                   <p className="muted station-instrument-blurb">
-                    Forward cone only (±{vessel.sonarHalfAngleDeg ?? 30}° about heading). Toggle search to
-                    ping and paint anonymous contacts inside the cone.
-                    {vessel.sonarMaxRangeNm ? ` Max ${vessel.sonarMaxRangeNm} nm.` : ''}
+                    Cone ±{vessel.sonarHalfAngleDeg ?? 30}°
+                    {vessel.sonarMaxRangeNm ? ` · max ${vessel.sonarMaxRangeNm} nm` : ''}
                   </p>
                 </div>
                 <div className="sonar-toggle-row">
@@ -1133,9 +1095,6 @@ export function StationPage() {
                     <p className="readout" style={{ margin: 0 }}>
                       Active sonar standby — toggle ON to search
                     </p>
-                    <p className="muted" style={{ margin: '0.5rem 0 0', fontSize: '0.85rem' }}>
-                      No blips while the set is off. Pings are audible to listening hydrophones when ON.
-                    </p>
                   </div>
                 ) : (
                   <ActiveSonarScope
@@ -1164,12 +1123,12 @@ export function StationPage() {
                 </div>
               ) : (
                 <p className="muted mono" style={{ margin: 0, fontSize: '0.85rem' }}>
-                  No pending orders filed for this turn.
+                  No pending orders.
                 </p>
               )}
               {vessel.stationConnections.some((c) => c.count > 1) && (
                 <p className="mono" style={{ margin: 0, color: 'var(--accent-strong)' }}>
-                  Multi-connection: last write wins —{' '}
+                  Multi-connection —{' '}
                   {vessel.stationConnections
                     .filter((c) => c.count > 0)
                     .map((c) => `${c.stationId}×${c.count}`)
@@ -1193,9 +1152,7 @@ export function StationPage() {
                       const dcs = events.filter((d) => d.kind !== 'torpedo_hit').length;
                       const parts: string[] = [];
                       if (hits > 0) {
-                        parts.push(
-                          `TORPEDO HIT ×${hits} (attenuated · firer/target)`,
-                        );
+                        parts.push(`TORPEDO HIT ×${hits}`);
                       }
                       if (dcs > 0) {
                         parts.push(
@@ -1312,10 +1269,6 @@ export function StationPage() {
               <section className="panel stack controls-helm-panel station-instrument-panel">
                 <div className="station-instrument-head">
                   <h2>Helm</h2>
-                  <p className="muted station-instrument-blurb">
-                    Gyro compass dominates — click or drag the rose to set course, or hold ◀▶ to
-                    steer {COURSE_NUDGE_DEG}° at a time, then submit.
-                  </p>
                 </div>
                 {canHelm && (
                   <HelmCompass
@@ -1356,10 +1309,6 @@ export function StationPage() {
               <section className="panel stack controls-dive-panel station-instrument-panel">
                 <div className="station-instrument-head">
                   <h2>Dive plane</h2>
-                  <p className="muted station-instrument-blurb">
-                    Coarse {SUBMARINE_DEPTH_ORDER_STEP_M} m dial — presets and band marks (patrol /
-                    test / crush). You may order past crush; that risks implosion.
-                  </p>
                 </div>
                 <DiveControls
                   depth={vessel.unit.position.depth}
@@ -1414,30 +1363,6 @@ export function StationPage() {
                     onReload={() => void reloadDepthCharges()}
                   />
                 )}
-                <p className="muted controls-ambient-note">
-                  Bridge audio: quiet facility hum loops on this screen; nearby depth-charge
-                  detonations play when within ~{DEPTH_CHARGE_CONTROLS_AUDIBLE_NM} nm of own ship
-                  (any vessel — not only the dropper) — close blasts stay near peak, then fall
-                  off steeply with range (quiets quieter mid/far) toward silence at the
-                  hear-radius edge. Charges inside the damage / stun bands (≤
-                  {DEPTH_CHARGE_RANGE_FAR_M} m horizontal — close / med / far) get a modest
-                  extra gain boost so blasts that can hurt read louder than distant near-misses,
-                  capped just under 1.0 to avoid clipping.
-                  Multi-charge patterns play one distant-explosion sample per charge, spaced
-                  evenly across ~{DEPTH_CHARGE_AUDIO_SPREAD_SEC / 60} minutes (not stacked),
-                  each at its own range volume. Own-ship Damage report lines (and hull readout
-                  on that tab) appear with each blast cue — not all at once on resolve.
-                  Torpedo hits play the explosion for both firer and target Controls on a
-                  compressed run timeline (scaled into ≤{TORPEDO_HIT_AUDIO_MAX_DELAY_SEC} s —
-                  not the full wall-clock intercept), attenuated by range, and the Damage
-                  report for that hit waits for the same cue. Submarine Controls also
-                  hear occasional hull creaks while submerged (depth &gt; {RADAR_SURFACE_DEPTH_M}{' '}
-                  m), denser toward test depth and <em>super frequent</em> near crush (~
-                  {SUBMARINE_CREAK_INTERVAL_SHALLOW_SEC} s mean near the surface band down to ~
-                  {SUBMARINE_CREAK_INTERVAL_AT_CRUSH_SEC} s at {FLEET_SUB_CRUSH_DEPTH_M} m crush),
-                  plus a stress creak timed with <em>each</em> nearby depth-charge blast.
-                  Hydrophone hears the DC sample at longer range when submerged.
-                </p>
               </>
             )}
 
@@ -1458,9 +1383,6 @@ export function StationPage() {
                   <section className="panel stack controls-eot-panel station-instrument-panel">
                     <div className="station-instrument-head">
                       <h2>Engine orders</h2>
-                      <p className="muted station-instrument-blurb">
-                        Ring up a bell — acknowledged on resolve; hull speed ramps.
-                      </p>
                     </div>
                     <EotTelegraph
                       value={eot}
@@ -1598,17 +1520,17 @@ export function StationPage() {
                 </div>
               ) : (
                 <p className="muted mono" style={{ margin: 0, fontSize: '0.85rem' }}>
-                  No pending orders filed for this turn.
+                  No pending orders.
                 </p>
               )}
               {!vessel.canSubmitOrders && (
                 <p className="muted" style={{ margin: 0 }}>
-                  Ordering closed for this phase or this station cannot submit.
+                  Ordering closed.
                 </p>
               )}
               {vessel.stationConnections.some((c) => c.count > 1) && (
                 <p className="mono" style={{ margin: 0, color: 'var(--accent-strong)' }}>
-                  Multi-connection: last write wins —{' '}
+                  Multi-connection —{' '}
                   {vessel.stationConnections
                     .filter((c) => c.count > 0)
                     .map((c) => `${c.stationId}×${c.count}`)

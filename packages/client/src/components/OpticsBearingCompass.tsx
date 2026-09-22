@@ -100,10 +100,6 @@ function OpticsBearingCompassInner({ relativeBearing, ownHeading }: Props) {
           {contactTrueLabel ? ` ${contactTrueLabel}°` : ''}
         </span>
       </div>
-
-      <p className="optics-bearing-compass-caption muted mono">
-        Same north-up rose as helm · REL is contact angle from bow
-      </p>
     </div>
   );
 }
