@@ -16,6 +16,7 @@ import {
   formatPendingOrdersSummary,
   hasPendingOrders,
   isRadarSurfaced,
+  normalizeHeading,
   TORPEDO_HIT_AUDIO_MAX_DELAY_SEC,
   torpedoHitControlsGain,
   type DepthChargeDropOrder,
@@ -28,9 +29,9 @@ import { getAuthToken, setAuthToken } from '../api/authStorage';
 import { useGameStream } from '../hooks/useGameStream';
 import { TurnStatus } from '../components/TurnStatus';
 import { CrtShell } from '../components/CrtShell';
-import { TouchNumber } from '../components/TouchNumber';
 import { EotTelegraph } from '../components/EotTelegraph';
 import { HelmCompass } from '../components/HelmCompass';
+import { CrtTrainControl } from '../components/CrtTrainControl';
 import { DiveControls } from '../components/DiveControls';
 import { HydrophoneScope } from '../components/HydrophoneScope';
 import { PeriscopeScope } from '../components/PeriscopeScope';
@@ -74,6 +75,9 @@ import {
 function tokenKey(gameId: string, accessToken: string, stationId: string) {
   return `wp-token:${gameId}:${accessToken}:${stationId}`;
 }
+
+/** Course nudge step for the helm ◀ / ▶ train buttons (degrees). */
+const COURSE_NUDGE_DEG = 1;
 
 type SensorTab = 'radar' | 'hydrophone' | 'sonar' | 'periscope';
 type ControlsTab = 'helm' | 'eot' | 'dive' | 'weapons' | 'damage';
@@ -1309,8 +1313,8 @@ export function StationPage() {
                 <div className="station-instrument-head">
                   <h2>Helm</h2>
                   <p className="muted station-instrument-blurb">
-                    Gyro compass dominates — click or drag the rose to set course, or use the
-                    dial, then submit.
+                    Gyro compass dominates — click or drag the rose to set course, or hold ◀▶ to
+                    steer {COURSE_NUDGE_DEG}° at a time, then submit.
                   </p>
                 </div>
                 {canHelm && (
@@ -1322,17 +1326,16 @@ export function StationPage() {
                     disabled={!vessel.canSubmitOrders}
                     turnRate={vessel.unit.turnRate}
                   >
-                    <TouchNumber
-                      label="Ordered / steering course"
-                      value={course}
-                      onChange={setCourse}
-                      min={0}
-                      max={359}
-                      step={1}
-                      wrap
-                      unit="°"
+                    <CrtTrainControl
+                      label={`Steer · hold · ${COURSE_NUDGE_DEG}°`}
+                      onNudge={(dir) =>
+                        setCourse((prev) =>
+                          normalizeHeading(Math.round(prev) + dir * COURSE_NUDGE_DEG),
+                        )
+                      }
+                      decreaseLabel={`Steer course ${COURSE_NUDGE_DEG} degree to port. Hold to repeat.`}
+                      increaseLabel={`Steer course ${COURSE_NUDGE_DEG} degree to starboard. Hold to repeat.`}
                       disabled={!vessel.canSubmitOrders}
-                      format={(v) => `${String(v).padStart(3, '0')}°`}
                     />
                     <div className="control-actions">
                       <button
