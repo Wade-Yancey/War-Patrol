@@ -7,6 +7,7 @@ build/
 .env.local
 packages/server/data/saves/*
 !packages/server/data/saves/.gitkeep
+packages/server/data/.admin-token
 .vite/
 coverage/
 *.tsbuildinfo

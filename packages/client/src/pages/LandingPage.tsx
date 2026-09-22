@@ -40,6 +40,23 @@ export function LandingPage() {
     setAuthToken(ADMIN_TOKEN_KEY, value);
   };
 
+  // Auto-wire the admin token from a `?admin=<token>` query param — e.g. the
+  // join-ready URL the server prints on startup for `WAR_PATROL_INTERNET=1`
+  // — so the host never has to copy/paste it between shell and browser.
+  // Persisted the same way as manual entry, then scrubbed from the URL bar
+  // so it doesn't linger in browser history.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const fromQuery = params.get('admin');
+    if (!fromQuery) return;
+    setAdminToken(fromQuery);
+    params.delete('admin');
+    const rest = params.toString();
+    const cleanUrl = window.location.pathname + (rest ? `?${rest}` : '') + window.location.hash;
+    window.history.replaceState({}, '', cleanUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const refreshLists = async () => {
     const [sc, sv] = await Promise.all([api.scenarios(adminToken), api.saves(adminToken)]);
     setScenarios(sc);
@@ -145,12 +162,15 @@ export function LandingPage() {
           </div>
         </header>
 
-        <details className="panel" style={{ marginBottom: '1rem' }}>
+        <details className="panel" style={{ marginBottom: '1rem' }} open={Boolean(adminToken)}>
           <summary style={{ cursor: 'pointer' }}>Admin token (internet-hosted servers only)</summary>
           <div className="stack" style={{ marginTop: '0.6rem', gap: '0.4rem' }}>
             <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
               Only needed if this server was started with <span className="mono">WAR_PATROL_ADMIN_TOKEN</span>{' '}
-              set (e.g. hosting over the internet). LAN/local servers ignore this.
+              or <span className="mono">WAR_PATROL_INTERNET=1</span> (e.g. hosting over the
+              internet). LAN/local servers ignore this. Opening the join-ready URL the server
+              prints on startup (<span className="mono">?admin=...</span>) fills this in
+              automatically — no need to paste anything.
             </p>
             <label>
               Admin token

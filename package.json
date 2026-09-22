@@ -9,6 +9,8 @@
     "dev:server": "pnpm --filter @war-patrol/server run dev",
     "dev:client": "pnpm --filter @war-patrol/client run dev",
     "start": "pnpm --filter @war-patrol/server run start",
+    "host": "node scripts/host.mjs",
+    "expose": "node scripts/host.mjs",
     "verify": "pnpm --filter @war-patrol/server run verify",
     "verify:stability": "pnpm --filter @war-patrol/server run verify:stability",
     "typecheck": "pnpm -r run typecheck"

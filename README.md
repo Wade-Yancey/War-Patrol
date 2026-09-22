@@ -79,19 +79,34 @@ Terminate TLS at a reverse proxy in front of the Node process for public deploy.
 
 ## Hosting beyond LAN (internet-facing)
 
-By default the server binds `0.0.0.0:8787` and accepts host/disk admin
-requests (create game, load/delete saves, delete scenarios) from anyone who
-can reach it — fine for a trusted LAN party, not for the open internet. To
-expose stations to remote testers safely:
+Fastest path — one command:
+
+```bash
+pnpm host
+```
+
+Builds the same-origin production bundle and starts the server with
+`WAR_PATROL_INTERNET=1`, which auto-generates (and persists, so restarts
+reuse it) an admin token and prints a join-ready URL with it pre-filled
+(`http://<host>:<port>/?admin=<token>`) — open that link and the landing
+page's admin token is already wired in, no copy/paste. See
+[`docs/internet-hosting.md`](docs/internet-hosting.md) for the full walkthrough,
+an optional one-command `cloudflared` tunnel, and residual-risk notes.
+
+Manual path, same effect, explicit token:
 
 ```bash
 WAR_PATROL_ADMIN_TOKEN="$(openssl rand -hex 24)" pnpm start
 ```
 
-This requires that token (`Authorization: Bearer <token>` or
-`x-admin-token:`) on the admin/disk routes above — the landing page has a
-collapsed **"Admin token"** field for entering it. Unset it (the default) to
-keep the original open LAN behavior.
+Either way, by default the server binds `0.0.0.0:8787` and would otherwise
+accept host/disk admin requests (create game, load/delete saves, delete
+scenarios) from anyone who can reach it — fine for a trusted LAN party, not
+for the open internet, which is what the token above gates
+(`Authorization: Bearer <token>` or `x-admin-token:` on the admin/disk
+routes). Leave both `WAR_PATROL_INTERNET` and `WAR_PATROL_ADMIN_TOKEN` unset
+(the default, `pnpm start`/`pnpm dev`) to keep the original open LAN
+behavior unchanged.
 
 Optionally set `WAR_PATROL_CORS_ORIGIN=https://your-host` (comma-separated
 allowlist) to restrict cross-origin API access — unnecessary if you serve the
