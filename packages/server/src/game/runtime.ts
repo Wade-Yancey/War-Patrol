@@ -452,8 +452,11 @@ export class GameRuntime {
       history: [],
     };
     save.openingSnapshot = captureOpeningSnapshot(save);
-    this.games.set(save.id, save);
+    // Persist before registering in memory (see resolve()/rollback()): a
+    // failed write should not leave a game reachable in memory with no
+    // durable save behind it.
     await store.writeSave(save);
+    this.games.set(save.id, save);
     return save;
   }
 
@@ -961,9 +964,14 @@ export class GameRuntime {
           : current;
 
       const resolved = resolveTurn(structuredClone(prepared));
+      // Persist before swapping the in-memory copy: if the disk write fails,
+      // memory stays on the last-durable state instead of racing ahead of
+      // disk (previously replace+broadcast happened before the awaited
+      // write, so a write failure left memory and disk out of sync and a
+      // server restart would silently lose the resolved turn).
+      await store.writeSave(resolved);
       this.replace(gameId, resolved);
       this.sse.broadcast(gameId, resolved.stateVersion);
-      await store.writeSave(resolved);
       return resolved;
     });
   }
@@ -984,9 +992,11 @@ export class GameRuntime {
     return this.enqueueTurnMutation(gameId, async () => {
       this.clearTimer(gameId);
       const next = rollbackToTurn(this.requireGame(gameId), turnNumber);
+      // Persist before swapping in-memory state (see resolve() above) so a
+      // failed write cannot leave memory ahead of the last durable save.
+      await store.writeSave(next);
       this.replace(gameId, next);
       this.sse.broadcast(gameId, next.stateVersion);
-      await store.writeSave(next);
       return next;
     });
   }
