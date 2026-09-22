@@ -585,8 +585,7 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
         </div>
 
         <p className="crt-console-caption hydrophone-caption muted mono">
-          Click dial to jump · hold ◀▶ to train · RNG ≈ invert range falloff (R0=8 nm) when needle
-          is on contact · ~nm coarsened · max {maxRangeNm} nm ·{' '}
+          Max {maxRangeNm} nm ·{' '}
           {contacts.length === 0
             ? 'no acoustic contacts in range'
             : `${contacts.filter((c) => c.kind !== 'active_sonar_ping').length} prop · ${contacts.filter((c) => c.kind === 'active_sonar_ping').length} ping (audio only)`}

@@ -82,10 +82,7 @@ export function DamageReportPanel({
     <section className="panel stack controls-damage-panel station-instrument-panel" aria-label="Damage report">
       <div className="station-instrument-head">
         <h2>Damage report</h2>
-        <p className="muted station-instrument-blurb">
-          Own ship only — hull integrity and subsystem status known to {vesselName}. Not the enemy
-          damage board.
-        </p>
+        <p className="muted station-instrument-blurb">{vesselName} — own ship only</p>
       </div>
 
       <div className="damage-status-grid mono">
@@ -166,7 +163,7 @@ export function DamageReportPanel({
         <div className="damage-log-list mono" ref={listRef} role="log" aria-live="polite">
           {entries.length === 0 ? (
             <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-              No combat damage recorded against this hull yet.
+              No damage recorded.
             </p>
           ) : (
             <ul>

@@ -162,7 +162,7 @@ export function DiveControls({
           const n = Number(String(raw).replace(/[^\d.-]/g, ''));
           return Number.isFinite(n) ? n : null;
         }}
-        hint={`Coarse dial · ${orderStepM} m steps · 0–${maxDepthM} m (past crush allowed)`}
+        hint={`${orderStepM} m steps · 0–${maxDepthM} m`}
       />
 
       <div className="control-actions">
@@ -177,10 +177,8 @@ export function DiveControls({
       </div>
 
       <p className="crt-console-caption dive-caption muted mono">
-        Coarse {orderStepM} m orders — patrol {DIVE_BAND_MARKS[0].depthM} / test{' '}
-        {DIVE_BAND_MARKS[1].depthM} / crush {DIVE_BAND_MARKS[2].depthM} m. Keel
-        approaches ordered over resolves. Max {maxDepthM} m (past crush = implosion
-        risk).
+        Patrol {DIVE_BAND_MARKS[0].depthM} · test {DIVE_BAND_MARKS[1].depthM} · crush{' '}
+        {DIVE_BAND_MARKS[2].depthM} m · max {maxDepthM} m
       </p>
     </div>
   );

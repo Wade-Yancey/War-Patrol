@@ -203,14 +203,9 @@ export function TorpedoCalculator({
       <div className="station-instrument-head">
         <h2>Torpedo calculator</h2>
         <p className="muted station-instrument-blurb">
-          Aim uses the same relative bearing as optics (bow 0 · stbd + · port −) — not true
-          compass. Enter target true course (not AOB), speed, range, and OA length from the
-          recognition manual — wrong length shrinks the hit window. Fish run the computed
-          intercept. Finite rooms: forward {FLEET_SUB_TORPEDO_FORWARD} / aft{' '}
-          {FLEET_SUB_TORPEDO_AFT}. Bow tubes ±{TORPEDO_FORWARD_ARC_HALF_DEG}° ahead; stern
-          tubes ±{TORPEDO_AFT_ARC_HALF_DEG}° astern (gyro vs own HDG). After a salvo press
-          Reload ({TORPEDO_RELOAD_TURNS} turns before that room can fire again). Mk14-ish{' '}
-          {TORPEDO_SPEED_KN} kn / {TORPEDO_MAX_RUN_NM} nm. Fire allowed with scope down.
+          {TORPEDO_SPEED_KN} kn · {TORPEDO_MAX_RUN_NM} nm · bow ±
+          {TORPEDO_FORWARD_ARC_HALF_DEG}° / stern ±{TORPEDO_AFT_ARC_HALF_DEG}° · reload{' '}
+          {TORPEDO_RELOAD_TURNS} turns
         </p>
       </div>
 
@@ -240,7 +235,7 @@ export function TorpedoCalculator({
         </p>
         <p className="mono muted" style={{ margin: '0.25rem 0 0', fontSize: '0.8rem' }}>
           {room === 'aft' ? 'Aft' : 'Forward'} arc ±{arcHalf}°{' '}
-          {room === 'aft' ? 'astern' : 'ahead'} (gyro must stay inside cone)
+          {room === 'aft' ? 'astern' : 'ahead'}
         </p>
       </fieldset>
 
@@ -277,7 +272,7 @@ export function TorpedoCalculator({
       </div>
 
       <TouchNumber
-        label="Aim / LOS (relative — same as optics)"
+        label="Aim / LOS (relative)"
         value={aimRelative}
         onChange={(v) => setAimRelative(foldRelativeBearing(v))}
         min={-180}
@@ -288,7 +283,6 @@ export function TorpedoCalculator({
         disabled={disabled || loadBlocked}
         format={(v) => formatRelBearing(v)}
         parse={parseRelAim}
-        hint="Match optics: 000° rel / 090° stbd / 090° port — not true compass"
       />
       <p className="mono muted" style={{ margin: 0, fontSize: '0.85rem' }}>
         True LOS {String(Math.round(aimTrue)).padStart(3, '0')}° (own HDG{' '}
@@ -324,7 +318,6 @@ export function TorpedoCalculator({
         unit="°"
         disabled={disabled || loadBlocked}
         format={(v) => `${String(v).padStart(3, '0')}°`}
-        hint="Target's true heading on the compass — not angle-on-bow"
       />
       <TouchNumber
         label="Est. target speed"
@@ -355,7 +348,6 @@ export function TorpedoCalculator({
         step={5}
         unit="m"
         disabled={disabled || loadBlocked}
-        hint="From recognition manual — wrong class length shrinks the hit gate"
       />
 
       <div className="recognition-manual">
@@ -366,14 +358,10 @@ export function TorpedoCalculator({
           aria-expanded={manualOpen}
           onClick={() => setManualOpen((o) => !o)}
         >
-          Recognition manual — class OA lengths {manualOpen ? '▴' : '▾'}
+          Recognition manual {manualOpen ? '▴' : '▾'}
         </button>
         {manualOpen && (
           <div className="recognition-manual-body">
-            <p className="muted recognition-manual-blurb">
-              Identify the silhouette class, then tap a plate to set length. Longer hulls are
-              easier to hit when ID is correct; guessing hurts either way.
-            </p>
             <ul className="recognition-manual-list">
               {RECOGNITION_MANUAL_ENTRIES.map((entry) => {
                 const selectedLen = estimatedLengthM === entry.lengthM;
@@ -485,23 +473,21 @@ export function TorpedoCalculator({
 
       {arcBlocked && !loadBlocked && (
         <p className="mono muted" style={{ margin: 0 }}>
-          Cannot queue — {formatTorpedoArcRejectMessage(arcCheck)}. Switch room or change aim /
-          solution lead.
+          Cannot queue — {formatTorpedoArcRejectMessage(arcCheck)}
         </p>
       )}
 
       {courseArcWarning && !loadBlocked && (
         <p className="mono muted" style={{ margin: 0 }}>
-          Heads up — ordered course {String(Math.round(orderedCourse!)).padStart(3, '0')}° swings
-          this shot outside the ±{arcHalf}° {room === 'aft' ? 'stern' : 'bow'} arc; fire before
-          the turn or steady up.
+          Ordered course {String(Math.round(orderedCourse!)).padStart(3, '0')}° swings this shot
+          outside the ±{arcHalf}° {room === 'aft' ? 'stern' : 'bow'} arc
         </p>
       )}
 
       {pendingArcCheck && !pendingArcCheck.ok && (
         <p className="mono" style={{ margin: 0, color: 'var(--warn, #c45c26)' }}>
-          Order of record is now OUT OF ARC ({formatTorpedoArcRejectMessage(pendingArcCheck)}) —
-          it will not launch. Re-aim or clear it.
+          Order of record OUT OF ARC ({formatTorpedoArcRejectMessage(pendingArcCheck)}) — will not
+          launch
         </p>
       )}
 
