@@ -1893,6 +1893,56 @@ label {
   letter-spacing: 0.04em;
 }
 
+/* Shared CRT train pair (◀ / ▶ with hold-repeat) — hydrophone listen bearing and
+   helm course. Buttons flex inside the fixed-width aux column so the console never
+   grows past its track and forces horizontal page scroll. */
+.crt-train {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: visible;
+}
+
+.crt-train-row {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0.4rem;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: visible;
+}
+
+.crt-train-nudge {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 3.75rem;
+  padding: 0.55rem 0.5rem;
+  font-size: 1.45rem;
+  line-height: 1;
+  font-family: var(--font-display);
+  color: var(--phosphor);
+  background: var(--bezel-inset);
+  border: 1px solid color-mix(in srgb, var(--phosphor) 55%, transparent);
+  border-radius: 2px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.crt-train-nudge:hover:not(:disabled) {
+  border-color: var(--phosphor);
+  color: var(--accent-strong);
+}
+
+.crt-train-nudge:active:not(:disabled) {
+  background: var(--phosphor-deep);
+}
+
 .crt-console-caption {
   margin: 0;
   font-size: var(--crt-console-caption-size);
@@ -1996,19 +2046,20 @@ label {
   gap: 0.45rem;
   width: 100%;
   min-width: 0;
-}
-
-.helm-compass-actions .touch-num {
-  width: 100%;
+  max-width: 100%;
 }
 
 .helm-compass-actions .control-actions {
   margin: 0;
 }
 
+/* Submit matches the hydrophone listen toggle; train pair carries the scale. */
 .helm-compass-actions .control-actions button {
   width: 100%;
+  min-width: 0;
   min-height: 2.5rem;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.85rem;
 }
 
 /* ——— Controls station (tablet-first): CRT console parity with Sensors ——— */
@@ -2422,6 +2473,13 @@ label {
   justify-content: flex-start;
 }
 
+/* The console row is width: max-content — an aux child wider than the fixed aux
+   track spills the row and gives the station a horizontal scrollbar. */
+.crt-console .radar-side-panel > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
 /* Hydrophone-specific chrome (audio meter, train buttons). */
 .hydrophone-svg {
   touch-action: none;
@@ -2470,51 +2528,6 @@ label {
   min-height: 2.5rem;
   padding: 0.4rem 0.65rem;
   font-size: 0.85rem;
-}
-
-.hydrophone-fine {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  width: 100%;
-  min-width: 0;
-  overflow: visible;
-}
-
-.hydrophone-fine-row {
-  display: flex;
-  flex-direction: row;
-  align-items: stretch;
-  gap: 0.4rem;
-  width: 100%;
-  min-width: 0;
-  overflow: visible;
-}
-
-.hydrophone-nudge {
-  flex: 1 1 0;
-  min-width: 0;
-  min-height: 3.75rem;
-  padding: 0.55rem 0.5rem;
-  font-size: 1.45rem;
-  line-height: 1;
-  font-family: var(--font-display);
-  color: var(--phosphor);
-  background: var(--bezel-inset);
-  border: 1px solid color-mix(in srgb, var(--phosphor) 55%, transparent);
-  border-radius: 2px;
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-.hydrophone-nudge:hover:not(:disabled) {
-  border-color: var(--phosphor);
-  color: var(--accent-strong);
-}
-
-.hydrophone-nudge:active:not(:disabled) {
-  background: var(--phosphor-deep);
 }
 
 .hydrophone-meter-scale {

@@ -20,14 +20,11 @@ import {
   playDepthChargeSample,
 } from '../audio/depthCharge';
 import { useContinuousAngle } from '../hooks/useContinuousAngle';
+import { CrtTrainControl } from './CrtTrainControl';
 
 const PROP_SAMPLE_URL = '/audio/echo-propeller.wav';
 /** Bearing nudge step for ◀ / ▶ train buttons (degrees). */
 const BEARING_NUDGE_DEG = 1;
-/** Delay before continuous hold-repeat starts (ms). */
-const NUDGE_HOLD_DELAY_MS = 400;
-/** Tick interval while ◀ / ▶ are held (ms) — ~12.5 °/s at 1° step. */
-const NUDGE_HOLD_INTERVAL_MS = 80;
 
 interface Props {
   contacts: HydrophoneContact[];
@@ -99,8 +96,6 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
   const voicesRef = useRef<Map<string, ContactVoice>>(new Map());
   const listenRef = useRef(listenBearing);
   const contactsRef = useRef(contacts);
-  const nudgeHoldDelayRef = useRef<number | null>(null);
-  const nudgeHoldIntervalRef = useRef<number | null>(null);
   const pingTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -347,20 +342,8 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
     };
   }, [listening, playPingSamples]);
 
-  const stopNudgeHold = useCallback(() => {
-    if (nudgeHoldDelayRef.current != null) {
-      window.clearTimeout(nudgeHoldDelayRef.current);
-      nudgeHoldDelayRef.current = null;
-    }
-    if (nudgeHoldIntervalRef.current != null) {
-      window.clearInterval(nudgeHoldIntervalRef.current);
-      nudgeHoldIntervalRef.current = null;
-    }
-  }, []);
-
   useEffect(() => {
     return () => {
-      stopNudgeHold();
       stopAllVoices();
       if (pingTimerRef.current != null) {
         window.clearInterval(pingTimerRef.current);
@@ -369,7 +352,7 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
       audioCtxRef.current = null;
       pingBufferRef.current = null;
     };
-  }, [stopAllVoices, stopNudgeHold]);
+  }, [stopAllVoices]);
 
   const onPointerDown = (e: PointerEvent<SVGSVGElement>) => {
     const el = svgRef.current;
@@ -409,28 +392,6 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
   const nudgeBearing = useCallback((dir: -1 | 1) => {
     setListenBearing((prev) => normalizeHeading(Math.round(prev) + dir * BEARING_NUDGE_DEG));
   }, []);
-
-  const startNudgeHold = (dir: -1 | 1) => (e: PointerEvent<HTMLButtonElement>) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    // Capture so hold-repeat continues if the pointer slides off the hit target.
-    e.currentTarget.setPointerCapture(e.pointerId);
-    stopNudgeHold();
-    nudgeBearing(dir);
-    nudgeHoldDelayRef.current = window.setTimeout(() => {
-      nudgeHoldDelayRef.current = null;
-      nudgeHoldIntervalRef.current = window.setInterval(() => {
-        nudgeBearing(dir);
-      }, NUDGE_HOLD_INTERVAL_MS);
-    }, NUDGE_HOLD_DELAY_MS);
-  };
-
-  const endNudgeHold = (e: PointerEvent<HTMLButtonElement>) => {
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    }
-    stopNudgeHold();
-  };
 
   const listenLabel = String(Math.round(listen)).padStart(3, '0');
   const hdgLabel = String(Math.round(hdg)).padStart(3, '0');
@@ -615,42 +576,12 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
           >
             {listening ? 'Stop listening' : 'Start listening'}
           </button>
-          <div className="hydrophone-fine">
-            <span className="crt-console-key hydrophone-key">
-              Train · hold · {BEARING_NUDGE_DEG}°
-            </span>
-            <div className="hydrophone-fine-row">
-              <button
-                type="button"
-                className="hydrophone-nudge"
-                aria-label={`Decrease listen bearing ${BEARING_NUDGE_DEG} degree. Hold to repeat.`}
-                onPointerDown={startNudgeHold(-1)}
-                onPointerUp={endNudgeHold}
-                onPointerCancel={endNudgeHold}
-                onLostPointerCapture={stopNudgeHold}
-                onClick={(e) => {
-                  /* Keyboard activation only — pointer path already nudged on down. */
-                  if (e.detail === 0) nudgeBearing(-1);
-                }}
-              >
-                ◀
-              </button>
-              <button
-                type="button"
-                className="hydrophone-nudge"
-                aria-label={`Increase listen bearing ${BEARING_NUDGE_DEG} degree. Hold to repeat.`}
-                onPointerDown={startNudgeHold(1)}
-                onPointerUp={endNudgeHold}
-                onPointerCancel={endNudgeHold}
-                onLostPointerCapture={stopNudgeHold}
-                onClick={(e) => {
-                  if (e.detail === 0) nudgeBearing(1);
-                }}
-              >
-                ▶
-              </button>
-            </div>
-          </div>
+          <CrtTrainControl
+            label={`Train · hold · ${BEARING_NUDGE_DEG}°`}
+            onNudge={nudgeBearing}
+            decreaseLabel={`Decrease listen bearing ${BEARING_NUDGE_DEG} degree. Hold to repeat.`}
+            increaseLabel={`Increase listen bearing ${BEARING_NUDGE_DEG} degree. Hold to repeat.`}
+          />
         </div>
 
         <p className="crt-console-caption hydrophone-caption muted mono">
