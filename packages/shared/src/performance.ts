@@ -30,9 +30,6 @@ export const CLASS_MAX_SPEED_KNOTS: Record<HullClass, number> = {
   Bomber: 250,
 };
 
-/** @deprecated Prefer {@link CLASS_MAX_SPEED_KNOTS}. */
-export const CLASS_DEFAULT_MAX_SPEED = CLASS_MAX_SPEED_KNOTS;
-
 /**
  * Fleet-submarine submerged max (knots). Same depth band as radar surface:
  * depth > {@link RADAR_SURFACE_DEPTH_M} → submerged.

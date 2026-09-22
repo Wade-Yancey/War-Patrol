@@ -219,8 +219,3 @@ export async function listVesselClasses(): Promise<VesselClassStub[]> {
   }
   return out;
 }
-
-export async function exportScenarioJson(scenario: Scenario): Promise<string> {
-  assertSchemaVersion(scenario, 'Scenario');
-  return JSON.stringify(scenario, null, 2);
-}

@@ -29,12 +29,6 @@ export const METERS_PER_DEG_LAT = 111_320;
 export const KNOTS_TO_MPS = 0.514444;
 
 /**
- * @deprecated Prefer scenario/save `turnLengthSeconds` (default {@link DEFAULT_TURN_LENGTH_SECONDS}).
- * Kept as alias so older imports still compile during migration.
- */
-export const TURN_DURATION_SECONDS = DEFAULT_TURN_LENGTH_SECONDS;
-
-/**
  * Steady-turn rate (degrees per in-game minute) by radar signature / hull size.
  * Larger ships turn slower. Used when unit/class omit an explicit turnRate.
  */

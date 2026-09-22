@@ -25,17 +25,11 @@ function hasSensorKind(
 /** Health below this → eligible for per-station sensor knockout rolls. */
 export const HEALTH_SENSORS_CASUALTY_BELOW = 70;
 
-/** @deprecated Alias — prefer {@link HEALTH_SENSORS_CASUALTY_BELOW}. */
-export const HEALTH_SENSORS_DISABLED_BELOW = HEALTH_SENSORS_CASUALTY_BELOW;
-
 /** Health below this → eligible for steering / dive-plane casualty rolls. */
 export const HEALTH_CONTROL_CASUALTY_BELOW = 55;
 
 /** Health below this → eligible for propulsion damaged / disabled rolls. */
 export const HEALTH_PROPULSION_CASUALTY_BELOW = 35;
-
-/** @deprecated Alias — prefer {@link HEALTH_PROPULSION_CASUALTY_BELOW}. */
-export const HEALTH_PROPULSION_DISABLED_BELOW = HEALTH_PROPULSION_CASUALTY_BELOW;
 
 /** Max-speed multiplier when propulsion is `damaged` (not fully knocked out). */
 export const PROPULSION_DAMAGED_SPEED_FACTOR = 0.5;

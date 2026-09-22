@@ -28,9 +28,6 @@ export const SUBMARINE_CREAK_INTERVAL_AT_CRUSH_SEC = 2;
 /** Past crush: near-continuous ambient creaking. */
 export const SUBMARINE_CREAK_INTERVAL_PAST_CRUSH_SEC = 1.2;
 
-/** @deprecated Prefer {@link SUBMARINE_CREAK_INTERVAL_AT_CRUSH_SEC}. */
-export const SUBMARINE_CREAK_INTERVAL_DEEP_SEC = SUBMARINE_CREAK_INTERVAL_AT_CRUSH_SEC;
-
 /** Play this many seconds of the sample per ambient creak (random offset). */
 export const SUBMARINE_CREAK_AMBIENT_DURATION_SEC = 3.2;
 
