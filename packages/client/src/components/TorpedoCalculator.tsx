@@ -11,6 +11,8 @@ import {
   TORPEDO_SPREAD_DEFAULT_DEG,
   TORPEDO_SPREAD_MAX_COUNT,
   TORPEDO_SPREAD_MAX_DEG,
+  TORPEDO_SPREAD_MIN_DEG,
+  TORPEDO_SPREAD_STEP_DEG,
   checkTorpedoOrderArc,
   formatTorpedoArcBlockNotice,
   formatTorpedoArcRejectMessage,
@@ -404,9 +406,9 @@ export function TorpedoCalculator({
         label="Spread interval"
         value={spreadDeg}
         onChange={setSpreadDeg}
-        min={0}
+        min={TORPEDO_SPREAD_MIN_DEG}
         max={TORPEDO_SPREAD_MAX_DEG}
-        step={0.5}
+        step={TORPEDO_SPREAD_STEP_DEG}
         unit="°"
         disabled={disabled || loadBlocked || effectiveCount <= 1}
       />
