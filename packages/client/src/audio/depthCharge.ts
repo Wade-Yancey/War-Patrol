@@ -11,27 +11,40 @@ export const DEPTH_CHARGE_SAMPLE_URL = '/audio/depth-charge.wav';
 
 /**
  * Peak gain on Controls when a charge detonates on top of own ship (range ≈ 0)
- * before the damage-band multiplier. Slightly above 0.9 so nearby blasts read
- * over ambient/creak; still under 1.0 to avoid GainNode clipping on hot peaks.
+ * before the damage-band multiplier. Set to the max intentional ceiling (1.0)
+ * so a point-blank, damage-dealing charge reads as loud as the engine allows —
+ * dynamic range is carved out below this by quintic range falloff and the
+ * damage-band multiplier, not by holding this peak back.
  */
-export const DEPTH_CHARGE_CONTROLS_GAIN = 0.98;
+export const DEPTH_CHARGE_CONTROLS_GAIN = 1.0;
 
 /**
- * Hard ceiling for Controls DC one-shot gain after damage-band boost.
- * Keeps “this one hurt” loud without always slamming into GainNode clip.
+ * Hard ceiling for Controls DC one-shot gain after the damage-band multiplier.
+ * 1.0 — the max intentional gain — so a close, damage-dealing blast can sit
+ * exactly at the top of the curve. Every other range/band sits strictly below
+ * this via {@link depthChargeControlsGain} and {@link DEPTH_CHARGE_DAMAGE_BAND_GAIN}.
  */
-export const DEPTH_CHARGE_CONTROLS_PEAK_CEILING = 0.99;
+export const DEPTH_CHARGE_CONTROLS_PEAK_CEILING = 1.0;
 
 /**
- * Extra gain multipliers when the blast is inside the sim damage / stun bands
- * (horizontal miss ≤ {@link DEPTH_CHARGE_RANGE_CLOSE_M} / MED / FAR meters).
- * Applied on top of quintic range falloff so kill-radius charges read louder
- * than mid/far near-misses that are only acoustically audible.
+ * Gain multipliers from horizontal miss distance to the sim damage / stun
+ * bands (≤ {@link DEPTH_CHARGE_RANGE_CLOSE_M} / MED / FAR meters), stacked on
+ * top of range falloff ({@link depthChargeControlsGain}).
+ *
+ * All multipliers are ≥ 1 and step down monotonically close → med → far →
+ * outside (baseline 1.0), so this only ever adds gain on top of range falloff
+ * and never creates a volume jump as a blast crosses a band boundary. `close`
+ * — the band that actually deals damage — boosts hard enough that, combined
+ * with near-1 falloff at point-blank range, it clamps at
+ * {@link DEPTH_CHARGE_CONTROLS_PEAK_CEILING}: damaging hits sit at the very
+ * top of the curve. `med`/`far` add a much smaller boost, so most of the
+ * near-vs-far dynamic range comes from the steepened range falloff curve
+ * below, not from this multiplier.
  */
 export const DEPTH_CHARGE_DAMAGE_BAND_GAIN = {
-  close: 1.25,
-  med: 1.18,
-  far: 1.12,
+  close: 1.4,
+  med: 1.15,
+  far: 1.05,
 } as const;
 
 /**
@@ -74,9 +87,13 @@ export function depthChargeBatchWhenSecById(
  *
  * - Silent at / beyond {@link DEPTH_CHARGE_CONTROLS_AUDIBLE_NM} (server also
  *   filters bridge cues past this radius).
- * - Quintic falloff: `t = 1 - range / rMax`, factor = `t⁵` — wider near/far
- *   dynamic range than the prior cubic (`t³`): close blasts stay near peak,
- *   mid/far drop faster (half-range ≈ 1/32 loudness vs cubic’s ≈ 1/8).
+ * - `t = 1 - range / rMax`, factor = `t⁹` — widened further than the prior
+ *   quintic (`t⁵`) for a more dramatic near/far dynamic range: the sim damage
+ *   bands (≤ {@link DEPTH_CHARGE_RANGE_FAR_M}) are a small fraction of the
+ *   audible radius, so a higher-order falloff is needed for a "long range is
+ *   quiet" blast to read clearly quieter than a near-miss just outside the
+ *   damage bands, while still keeping point-blank ≈ 1 (half-range ≈ 1/512
+ *   loudness vs quintic's ≈ 1/32, cubic's ≈ 1/8).
  * Applied **per charge** (each pattern member uses its own `rangeNm`).
  *
  * Playback peak also multiplies {@link depthChargeDamageBandMultiplier} and is
@@ -88,14 +105,18 @@ export function depthChargeControlsGain(rangeNm: number): number {
   const rMax = DEPTH_CHARGE_CONTROLS_AUDIBLE_NM;
   if (!(rMax > 0) || r >= rMax) return 0;
   const t = 1 - r / rMax;
-  // t⁵ — steeper than cubic so quiets are quieter while near stays loud.
-  const t2 = t * t;
-  return t2 * t2 * t;
+  // t⁹ — steeper than the prior quintic so quiets are much quieter while
+  // near-point-blank stays at/near peak.
+  const t3 = t * t * t;
+  return t3 * t3 * t3;
 }
 
 /**
  * Damage / stun band multiplier from horizontal range to the blast (own ship).
- * 1.0 outside {@link DEPTH_CHARGE_RANGE_FAR_M}; stepped boost inside close/med/far.
+ * 1.0 (baseline — pure quintic range falloff) outside
+ * {@link DEPTH_CHARGE_RANGE_FAR_M}; stepped {@link DEPTH_CHARGE_DAMAGE_BAND_GAIN}
+ * inside close/med/far, boosting the damage-dealing close band up toward the
+ * ceiling and pulling the harmless-but-audible med/far near-miss bands down.
  */
 export function depthChargeDamageBandMultiplier(rangeNm: number): number {
   const rangeM = Math.max(0, rangeNm) * METERS_PER_NM;
@@ -109,8 +130,9 @@ export function depthChargeDamageBandMultiplier(rangeNm: number): number {
  * Final Controls DC one-shot peak gain for a bridge cue.
  *
  * `DEPTH_CHARGE_CONTROLS_GAIN × quintic(range) × damageBand(range)`, clamped to
- * {@link DEPTH_CHARGE_CONTROLS_PEAK_CEILING} so kill-radius blasts stay loud
- * without always clipping.
+ * {@link DEPTH_CHARGE_CONTROLS_PEAK_CEILING} (1.0). A close, damage-dealing
+ * charge lands at/near the ceiling; med/far near-misses and long-range blasts
+ * fall well below it, for a dramatic near-vs-far dynamic range.
  */
 export function depthChargeControlsPeakGain(rangeNm: number): number {
   const base = DEPTH_CHARGE_CONTROLS_GAIN * depthChargeControlsGain(rangeNm);
