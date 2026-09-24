@@ -1496,6 +1496,30 @@ label {
   white-space: nowrap;
 }
 
+.aar-turn-note {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0 0 0.65rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid rgba(224, 192, 80, 0.35);
+  background: rgba(224, 192, 80, 0.05);
+}
+
+.aar-turn-note-label {
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  color: #e0c050;
+}
+
+.aar-turn-note textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 2.4rem;
+  font-size: 0.85rem;
+}
+
 .umpire-gt-map .map-frame {
   width: 100%;
 }
