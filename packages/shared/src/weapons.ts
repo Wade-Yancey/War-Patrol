@@ -82,8 +82,15 @@ export const TORPEDO_FORWARD_ARC_HALF_DEG = 45;
  */
 export const TORPEDO_AFT_ARC_HALF_DEG = 45;
 
-/** Max fish in one queued spread order. */
-export const TORPEDO_SPREAD_MAX_COUNT = 4;
+/**
+ * Max fish in one queued spread order.
+ * Upper bound across both rooms — the forward (bow) room carries the larger
+ * magazine (`FLEET_SUB_TORPEDO_FORWARD` = 6); the aft room is separately
+ * capped by its own smaller ready count (`FLEET_SUB_TORPEDO_AFT` = 4) at
+ * every call site (`torpedoRoomReady` / `selected.ready`), so raising this
+ * shared ceiling to the forward capacity does not let aft over-fire.
+ */
+export const TORPEDO_SPREAD_MAX_COUNT = FLEET_SUB_TORPEDO_FORWARD;
 
 /** Max angular spacing between adjacent fish in a spread (degrees). */
 export const TORPEDO_SPREAD_MAX_DEG = 8;
