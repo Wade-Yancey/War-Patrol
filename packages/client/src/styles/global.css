@@ -133,7 +133,8 @@ button.hit-lg {
 }
 
 input,
-select {
+select,
+textarea {
   background: var(--bezel-inset);
   border: 1px solid var(--line);
   color: var(--ink);
@@ -142,10 +143,12 @@ select {
   border-radius: 2px;
   min-width: 0;
   caret-color: var(--phosphor);
+  font: inherit;
 }
 
 input:focus,
 select:focus,
+textarea:focus,
 button:focus-visible {
   outline: 1px solid var(--phosphor);
   outline-offset: 2px;

@@ -634,7 +634,7 @@ export function UmpirePage() {
                       </select>
                     </label>
                     <label>
-                      Task order (read to the crew / write on the tablet)
+                      Task order
                       <textarea
                         rows={2}
                         value={gopherText}
