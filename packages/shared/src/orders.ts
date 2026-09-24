@@ -31,10 +31,10 @@ function formatTorpedoOrderSummary(
   const count = Math.max(1, Math.floor(fire.spreadCount || 1));
   const spread =
     count > 1
-      ? ` ×${count}@${Math.round(fire.spreadDeg || 0)}°`
+      ? ` ×${count}@${(fire.spreadDeg || 0).toFixed(1)}°`
       : '';
   const room = fire.room === 'aft' ? 'aft' : 'fwd';
-  return `TORP ${room} aim ${formatCourseDegrees(fire.aimHeading)}${spread} · CRS ${formatCourseDegrees(fire.estimatedCourse)} · ${Math.round(fire.estimatedSpeedKn)}kn · ${fire.estimatedRangeNm.toFixed(1)}nm · L${Math.round(fire.estimatedLengthM)}m`;
+  return `TORP ${room} aim ${formatCourseDegrees(fire.aimHeading)}${spread} · CRS ${formatCourseDegrees(fire.estimatedCourse)} · ${fire.estimatedSpeedKn.toFixed(1)}kn · ${fire.estimatedRangeNm.toFixed(2)}nm · L${Math.round(fire.estimatedLengthM)}m`;
 }
 
 function formatDepthChargeOrderSummary(

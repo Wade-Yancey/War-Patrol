@@ -297,7 +297,7 @@ export function TorpedoCalculator({
         · tube gyro {gyro >= 0 ? '+' : ''}
         {Math.round(gyro)}° (vs {room === 'aft' ? 'stern' : 'bow'})
         {effectiveCount > 1
-          ? ` · fan ×${effectiveCount} @${spreadDeg}° (center fire)`
+          ? ` · fan ×${effectiveCount} @${spreadDeg.toFixed(1)}° (center fire)`
           : ''}
         {' · '}
         {arcBlocked ? (
@@ -327,7 +327,7 @@ export function TorpedoCalculator({
         onChange={setEstimatedSpeedKn}
         min={0}
         max={50}
-        step={1}
+        step={0.1}
         unit="kn"
         disabled={disabled || loadBlocked}
       />
@@ -337,7 +337,7 @@ export function TorpedoCalculator({
         onChange={setEstimatedRangeNm}
         min={0}
         max={8}
-        step={0.1}
+        step={0.01}
         unit="nm"
         disabled={disabled || loadBlocked}
       />
@@ -447,10 +447,10 @@ export function TorpedoCalculator({
           {formatRelBearing(relativeBearingDeg(ownHeading, pending.aimHeading))} (true{' '}
           {String(Math.round(pending.aimHeading)).padStart(3, '0')}°)
           {pending.spreadCount && pending.spreadCount > 1
-            ? ` · ×${pending.spreadCount}@${pending.spreadDeg ?? 0}°`
+            ? ` · ×${pending.spreadCount}@${(pending.spreadDeg ?? 0).toFixed(1)}°`
             : ''}{' '}
           · tgt CRS {String(Math.round(pending.estimatedCourse)).padStart(3, '0')}° ·{' '}
-          {Math.round(pending.estimatedSpeedKn)}kn · {pending.estimatedRangeNm.toFixed(1)}nm · L
+          {pending.estimatedSpeedKn.toFixed(1)}kn · {pending.estimatedRangeNm.toFixed(2)}nm · L
           {Math.round(pending.estimatedLengthM)}m
           {' → fire '}
           {String(

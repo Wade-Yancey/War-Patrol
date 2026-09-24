@@ -29,6 +29,27 @@ function clampOrWrap(n: number, min: number, max: number, wrap: boolean): number
   return Math.min(max, Math.max(min, n));
 }
 
+/** Decimal places implied by a step like `0.1` or `0.01` (0 for whole steps). */
+function stepDecimals(step: number): number {
+  if (!Number.isFinite(step) || step <= 0) return 0;
+  const s = step.toString();
+  const dot = s.indexOf('.');
+  return dot === -1 ? 0 : s.length - dot - 1;
+}
+
+/**
+ * Snap to the step's own decimal precision. Repeated +/- nudges or a typed
+ * value divided/multiplied by a fractional step (e.g. 0.1, 0.01) reliably
+ * reintroduce binary-float noise (0.1 + 0.2 -> 0.30000000000000004); without
+ * this, fine-grained controls would drift and display ugly long decimals.
+ */
+function snapToStep(n: number, step: number): number {
+  const decimals = stepDecimals(step);
+  if (decimals === 0) return n;
+  const factor = 10 ** decimals;
+  return Math.round(n * factor) / factor;
+}
+
 /** Large +/- / slider numeric control; typed entry is optional (tap readout). */
 export function TouchNumber({
   label,
@@ -66,13 +87,14 @@ export function TouchNumber({
       setEditing(false);
       return;
     }
-    onChange(clampOrWrap(Math.round(n / step) * step, min, max, wrap));
+    const snapped = snapToStep(Math.round(n / step) * step, step);
+    onChange(clampOrWrap(snapped, min, max, wrap));
     setEditing(false);
   };
 
   const nudge = (dir: -1 | 1) => {
     if (disabled) return;
-    onChange(clampOrWrap(value + dir * step, min, max, wrap));
+    onChange(clampOrWrap(snapToStep(value + dir * step, step), min, max, wrap));
   };
 
   const display = format ? format(value) : `${value}${unit ? ` ${unit}` : ''}`;
