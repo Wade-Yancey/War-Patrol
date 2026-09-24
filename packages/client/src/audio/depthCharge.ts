@@ -6,6 +6,10 @@ import {
   METERS_PER_NM,
 } from '@war-patrol/shared';
 
+/** {@link DEPTH_CHARGE_RANGE_FAR_M} expressed in NM — the outer edge of the sim
+ * damage/stun bands, used as the pivot for the extra long-range taper below. */
+const DEPTH_CHARGE_RANGE_FAR_NM = DEPTH_CHARGE_RANGE_FAR_M / METERS_PER_NM;
+
 /** Depth-charge detonation sample (hydrophone + close Controls bridge). */
 export const DEPTH_CHARGE_SAMPLE_URL = '/audio/depth-charge.wav';
 
@@ -87,13 +91,15 @@ export function depthChargeBatchWhenSecById(
  *
  * - Silent at / beyond {@link DEPTH_CHARGE_CONTROLS_AUDIBLE_NM} (server also
  *   filters bridge cues past this radius).
- * - `t = 1 - range / rMax`, factor = `t⁹` — widened further than the prior
- *   quintic (`t⁵`) for a more dramatic near/far dynamic range: the sim damage
- *   bands (≤ {@link DEPTH_CHARGE_RANGE_FAR_M}) are a small fraction of the
- *   audible radius, so a higher-order falloff is needed for a "long range is
- *   quiet" blast to read clearly quieter than a near-miss just outside the
- *   damage bands, while still keeping point-blank ≈ 1 (half-range ≈ 1/512
- *   loudness vs quintic's ≈ 1/32, cubic's ≈ 1/8).
+ * - `t = 1 - range / rMax`, factor = `t⁹` inside the sim damage/stun bands
+ *   (range ≤ {@link DEPTH_CHARGE_RANGE_FAR_M}) — unchanged from the prior
+ *   pass so close-range and damage-band peaks never move here.
+ * - Past the far damage band, an extra `(t / tFar)⁵` taper is layered on top
+ *   (continuous at the band edge — no jump), for an effective `t¹⁴` falloff.
+ *   The damage bands are a small fraction of the audible radius, so most of
+ *   the range beyond them was still reading unnecessarily audible; the extra
+ *   taper pushes that non-damaging long-range tail down toward silence much
+ *   faster without touching the near/damage-band shape or peak.
  * Applied **per charge** (each pattern member uses its own `rangeNm`).
  *
  * Playback peak also multiplies {@link depthChargeDamageBandMultiplier} and is
@@ -106,9 +112,21 @@ export function depthChargeControlsGain(rangeNm: number): number {
   if (!(rMax > 0) || r >= rMax) return 0;
   const t = 1 - r / rMax;
   // t⁹ — steeper than the prior quintic so quiets are much quieter while
-  // near-point-blank stays at/near peak.
+  // near-point-blank stays at/near peak. Left as-is through the far damage
+  // band so close/damage-band peaks are unaffected by the extra taper below.
   const t3 = t * t * t;
-  return t3 * t3 * t3;
+  const nonuple = t3 * t3 * t3;
+  if (r <= DEPTH_CHARGE_RANGE_FAR_NM) return nonuple;
+
+  // Beyond the far damage/stun band: layer on a further taper so the
+  // acoustically-audible-but-harmless long-range tail drops toward silence
+  // much faster, widening the overall dynamic range. `tFar` is `t` evaluated
+  // at the band edge, so `extra` is exactly 1 there (continuous — no jump in
+  // the middle of the curve) and shrinks toward 0 as range approaches rMax.
+  const tFar = 1 - DEPTH_CHARGE_RANGE_FAR_NM / rMax;
+  const extra = t / tFar;
+  const extra2 = extra * extra;
+  return nonuple * extra2 * extra2 * extra;
 }
 
 /**
