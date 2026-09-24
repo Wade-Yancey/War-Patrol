@@ -56,15 +56,11 @@ export function CombatLogPanel({ entries }: Props) {
     <div className="stack umpire-combat-log" aria-label="Action and damage log">
       <div className="umpire-combat-log-head">
         <h2>Action log</h2>
-        <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-          Weapon launches, detonations, hits, and damage — umpire GT only. Below the map so the
-          plot stays full-width.
-        </p>
       </div>
       <div className="umpire-combat-log-list mono" ref={listRef} role="log" aria-live="polite">
         {sorted.length === 0 ? (
           <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-            No combat events yet. Resolve a turn with weapons queued to populate.
+            No combat events yet.
           </p>
         ) : (
           <ul>
