@@ -23,6 +23,7 @@ import {
   SUBMARINE_IMPLOSION_CHANCE_PER_TURN,
   SUBMARINE_MAX_DEPTH_M,
   SUBMERGED_MAX_SPEED_KNOTS,
+  TORPEDO_SPREAD_MAX_DEG,
   applyCrushDepthImplosions,
   bearingRangeNm,
   clampSpeedToMax,
@@ -1866,6 +1867,7 @@ async function main() {
       truncateTorpedoAtHit,
       createTorpedoTrack,
       torpedoSpreadHeadings,
+      clampTorpedoSpreadDeg,
       torpedoFireHeadingFromSolution,
       checkTorpedoOrderArc,
       isTorpedoFireHeadingInRoomArc,
@@ -2187,6 +2189,13 @@ async function main() {
     );
     const fan = torpedoSpreadHeadings(0, 3, 2).map((h) => Math.round(h));
     check('spread 3×2° headings', fan[0] === 358 && fan[1] === 0 && fan[2] === 2);
+
+    // Spread interval control step is 1° (finer than the old ~5° jumps);
+    // clamp normalizes to that whole-degree grid and the 0–max bounds.
+    check('spread interval snaps to 1° grid', clampTorpedoSpreadDeg(3.4) === 3);
+    check('spread interval rounds up at .5', clampTorpedoSpreadDeg(3.5) === 4);
+    check('spread interval negative falls back to default', clampTorpedoSpreadDeg(-1) === 2);
+    check('spread interval clamps to max', clampTorpedoSpreadDeg(50) === TORPEDO_SPREAD_MAX_DEG);
 
     // Umpire miss-distance helpers (CPA format + near/far band + track accumulate).
     check('near miss band at 100 m', torpedoMissBand(TORPEDO_NEAR_MISS_M) === 'near');

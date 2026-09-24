@@ -92,8 +92,18 @@ export const TORPEDO_AFT_ARC_HALF_DEG = 45;
  */
 export const TORPEDO_SPREAD_MAX_COUNT = FLEET_SUB_TORPEDO_FORWARD;
 
+/** Min angular spacing between adjacent fish in a spread (degrees). */
+export const TORPEDO_SPREAD_MIN_DEG = 0;
+
 /** Max angular spacing between adjacent fish in a spread (degrees). */
 export const TORPEDO_SPREAD_MAX_DEG = 8;
+
+/**
+ * Calculator control step (degrees) for spread interval — whole-degree
+ * increments so operators can dial in a finer fan than the old coarse
+ * ~5° jumps while keeping readouts on clean, easily-called-out values.
+ */
+export const TORPEDO_SPREAD_STEP_DEG = 1;
 
 /** Default inter-fish spacing when operator leaves spreadDeg unset. */
 export const TORPEDO_SPREAD_DEFAULT_DEG = 2;
@@ -389,7 +399,8 @@ export function clampTorpedoSpreadCount(raw: unknown): number {
 export function clampTorpedoSpreadDeg(raw: unknown): number {
   const n = Number(raw);
   if (!Number.isFinite(n) || n < 0) return TORPEDO_SPREAD_DEFAULT_DEG;
-  return Math.min(TORPEDO_SPREAD_MAX_DEG, n);
+  const rounded = Math.round(n / TORPEDO_SPREAD_STEP_DEG) * TORPEDO_SPREAD_STEP_DEG;
+  return clamp(rounded, TORPEDO_SPREAD_MIN_DEG, TORPEDO_SPREAD_MAX_DEG);
 }
 
 /**
