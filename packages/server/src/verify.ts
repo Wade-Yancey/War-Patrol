@@ -1902,8 +1902,8 @@ async function main() {
       PROPULSION_DAMAGED_SPEED_FACTOR,
       DEPTH_CHARGE_DAMAGE_AMOUNT,
     } = await import('@war-patrol/shared');
-    check('beam aspect dud ~3%', Math.abs(torpedoDudPctFromAspect(90) - 3) < 0.01);
-    check('end-on dud ~18%', Math.abs(torpedoDudPctFromAspect(0) - 18) < 0.01);
+    check('beam aspect dud ~2%', Math.abs(torpedoDudPctFromAspect(90) - 2) < 0.01);
+    check('end-on dud ~10%', Math.abs(torpedoDudPctFromAspect(0) - 10) < 0.01);
     check('beam damage factor 1', Math.abs(torpedoDamageFactorFromAspect(90) - 1) < 0.01);
     check(
       'end-on damage factor 0.55',
@@ -2131,12 +2131,12 @@ async function main() {
       Math.abs(torpedoHullHalfBreadthM(115, 12, 90) - 57.5) < 0.01,
     );
     // Length ID: recognition-manual accuracy scales the true geometric gate.
-    // Ease tuning: ±15% full / ≥50% zero (was ±10% / ≥40%); pad 5 m (was 2).
+    // Museum / forgiveness tuning: ±25% full / ≥75% zero (was ±15% / ≥50%); pad 5 m unchanged.
     check('length ID exact = 1', torpedoLengthIdScale(115, 115) === 1);
-    check('length ID ±15% full', torpedoLengthIdScale(132, 115) === 1);
+    check('length ID ±25% full', torpedoLengthIdScale(143, 115) === 1);
     check(
-      'length ID just over 15% partial',
-      torpedoLengthIdScale(133, 115) > 0 && torpedoLengthIdScale(133, 115) < 1,
+      'length ID just over 25% partial',
+      torpedoLengthIdScale(145, 115) > 0 && torpedoLengthIdScale(145, 115) < 1,
     );
     check('length ID zero when blank', torpedoLengthIdScale(0, 115) === 0);
     check(
@@ -2157,11 +2157,11 @@ async function main() {
       Math.abs(endGate - 11) < 0.01,
     );
     {
-      // 150 vs 115 ≈ 30.4% rel err → scale (0.5−0.304)/(0.5−0.15) ≈ 0.559
+      // 150 vs 115 ≈ 30.4% rel err → scale 1 − (0.304−0.25)/(0.75−0.25) ≈ 0.891
       const midScale = torpedoLengthIdScale(150, 115);
       check(
-        'ease length mid-error ~0.56 (was ~0.32)',
-        midScale > 0.55 && midScale < 0.57,
+        'museum-tuning length mid-error ~0.89 (was ~0.56)',
+        midScale > 0.88 && midScale < 0.9,
         `scale=${midScale}`,
       );
     }

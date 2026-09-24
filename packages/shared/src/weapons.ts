@@ -113,19 +113,21 @@ export const TORPEDO_HIT_GATE_M = 90;
  * Length-ID full credit: relative error |est−true|/true within this fraction
  * keeps the full geometric hit gate (recognition-manual class lengths match).
  *
- * Tuning (ease sub hits): was 0.10 (±10%); now 0.15 (±15%) so small
- * recognition-manual rounding still keeps full chord.
+ * Museum / forgiveness tuning: was 0.10 (±10%), then 0.15 (±15%); now 0.25
+ * (±25%) so a reasonable-but-imperfect recognition-manual read (wrong sub-class,
+ * rounded plate value) still keeps the full intercept chord for first-time players.
  */
-export const TORPEDO_LENGTH_ID_FULL_FRAC = 0.15;
+export const TORPEDO_LENGTH_ID_FULL_FRAC = 0.25;
 
 /**
  * Length-ID zero credit: relative error at or above this collapses the
  * effective hit gate to 0 (wrong ID → miss even on geometric contact).
  *
- * Tuning (ease sub hits): was 0.40; now 0.50 so near-miss class picks
- * (e.g. cruiser for DD) still keep a partial gate instead of hard zero.
+ * Museum / forgiveness tuning: was 0.40, then 0.50; now 0.75 so a near-miss
+ * class pick (e.g. cruiser for DD) keeps a meaningful partial gate for much
+ * longer before collapsing — only a wildly wrong ID (battleship for a sub) zeroes out.
  */
-export const TORPEDO_LENGTH_ID_ZERO_FRAC = 0.5;
+export const TORPEDO_LENGTH_ID_ZERO_FRAC = 0.75;
 
 /** Base damage applied on a successful (non-dud) torpedo hit (health points). */
 export const TORPEDO_HIT_DAMAGE = 45;
@@ -133,12 +135,17 @@ export const TORPEDO_HIT_DAMAGE = 45;
 /**
  * Aspect → warhead dud % (track angle off target's bow-stern axis).
  * 90° = full beam (lowest dud); 0° = end-on (highest dud). Interpolate.
+ *
+ * Museum / forgiveness tuning: was end-on 18% → beam 3% (steeper falloff);
+ * now end-on 10% → beam 2% — lower rates across the board and a gentler
+ * (softer) curve between them so good geometry is rewarded more often,
+ * while a real dud chance is kept at every aspect (never removed).
  */
 export const TORPEDO_ASPECT_DUD_TABLE: ReadonlyArray<{ angleDeg: number; dudPct: number }> = [
-  { angleDeg: 0, dudPct: 18 },
-  { angleDeg: 15, dudPct: 12 },
-  { angleDeg: 45, dudPct: 6 },
-  { angleDeg: 90, dudPct: 3 },
+  { angleDeg: 0, dudPct: 10 },
+  { angleDeg: 15, dudPct: 7 },
+  { angleDeg: 45, dudPct: 4 },
+  { angleDeg: 90, dudPct: 2 },
 ];
 
 /**
