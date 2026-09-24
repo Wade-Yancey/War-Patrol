@@ -1,10 +1,10 @@
 import {
-  ACTIVE_SONAR_DEPTH_STEP_M,
   ACTIVE_SONAR_HALF_ANGLE_DEG,
   ACTIVE_SONAR_MAX_RANGE_NM,
   RADAR_SURFACE_DEPTH_M,
   SUBMARINE_MAX_DEPTH_M,
 } from './constants.js';
+import { clamp } from './geo.js';
 import { formatDepthMeters } from './orders.js';
 import { shortestBearingDelta } from './hydrophone.js';
 import type { HullClass, SensorDef, UnitState } from './types.js';
@@ -65,17 +65,16 @@ export function isActiveSonarPinging(
 }
 
 /**
- * FoW coarse keel-depth estimate for an active-sonar echo (meters, positive down).
- * Surface band (≤ {@link RADAR_SURFACE_DEPTH_M}) → 0. Otherwise nearest
- * {@link ACTIVE_SONAR_DEPTH_STEP_M} band, floored at one step so shallow
- * submerged contacts are not collapsed back to “surface”. Not ground truth —
- * operators set depth-charge rack depth from this readout.
+ * Precise keel-depth readout for an active-sonar echo (meters, positive
+ * down) — ground truth, rounded to the nearest whole meter for display.
+ * Surface band (≤ {@link RADAR_SURFACE_DEPTH_M}) → 0 (surfaced, no keel
+ * depth to report). Active sonar is 100% accurate, same as radar; the only
+ * "fog" here is the surfaced/submerged gate, not the depth number itself.
+ * Operators set depth-charge rack depth from this readout.
  */
 export function coarsenActiveSonarDepthM(depthM: number): number {
   if (!Number.isFinite(depthM) || depthM <= RADAR_SURFACE_DEPTH_M) return 0;
-  const step = Math.max(1, ACTIVE_SONAR_DEPTH_STEP_M);
-  const stepped = Math.round(depthM / step) * step;
-  return Math.max(step, Math.min(SUBMARINE_MAX_DEPTH_M, stepped));
+  return Math.round(clamp(depthM, 0, SUBMARINE_MAX_DEPTH_M));
 }
 
 /** CRT string for sonar estimated depth (e.g. `EST 050 m`). */

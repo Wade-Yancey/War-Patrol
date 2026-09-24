@@ -64,9 +64,9 @@ function contactKindLabel(c: PeriscopeContact): string {
   return c.kind === 'periscope' ? 'PERISCOPE' : `Contact`;
 }
 
-/** FoW approx true course (15° bands) — padded like own HDG readout. */
-function formatApproxCourse(courseDeg: number): string {
-  return `~${String(Math.round(courseDeg) % 360).padStart(3, '0')}°`;
+/** Precise true course readout — padded like own HDG readout. */
+function formatCourse(courseDeg: number): string {
+  return `${String(Math.round(courseDeg) % 360).padStart(3, '0')}°`;
 }
 
 function contactsKey(contacts: PeriscopeContact[]): string {
@@ -181,12 +181,12 @@ function PeriscopeScopeInner({
                   : `Contact ${selectedLabelN}`}
               </span>
               <span>{formatRelBearing(selected.relativeBearing)}</span>
-              <span className="muted">~{selected.rangeNm.toFixed(1)} nm</span>
-              {!isFeather && <span className="muted">~{selected.speedKn} kn</span>}
+              <span className="muted">{selected.rangeNm.toFixed(2)} nm</span>
+              {!isFeather && <span className="muted">{selected.speedKn.toFixed(1)} kn</span>}
               {!isFeather &&
                 selected.courseDeg != null &&
                 Number.isFinite(selected.courseDeg) && (
-                  <span className="muted">crs {formatApproxCourse(selected.courseDeg)}</span>
+                  <span className="muted">crs {formatCourse(selected.courseDeg)}</span>
                 )}
             </div>
           </div>
@@ -235,12 +235,12 @@ function PeriscopeScopeInner({
                       </span>
                       <span className="radar-contact-meta">
                         <span>{formatRelBearing(c.relativeBearing)}</span>
-                        <span>~{c.rangeNm.toFixed(1)} nm</span>
-                        {c.kind !== 'periscope' && <span>~{c.speedKn} kn</span>}
+                        <span>{c.rangeNm.toFixed(2)} nm</span>
+                        {c.kind !== 'periscope' && <span>{c.speedKn.toFixed(1)} kn</span>}
                         {c.kind !== 'periscope' &&
                           c.courseDeg != null &&
                           Number.isFinite(c.courseDeg) && (
-                            <span>crs {formatApproxCourse(c.courseDeg)}</span>
+                            <span>crs {formatCourse(c.courseDeg)}</span>
                           )}
                       </span>
                     </button>

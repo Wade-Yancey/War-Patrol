@@ -105,14 +105,6 @@ export const ACTIVE_SONAR_HALF_ANGLE_DEG = 30;
 export const ACTIVE_SONAR_PING_INTERVAL_SEC = 6;
 
 /**
- * FoW coarsening step (m) for destroyer active-sonar estimated contact depth.
- * Coarser than DC depth-setting dial (5 m) and dive-order step (10 m) so the
- * estimate is useful for rack settings without leaking keel GT.
- * Aligns roughly with depth-charge partial depth tolerance (25 m).
- */
-export const ACTIVE_SONAR_DEPTH_STEP_M = 25;
-
-/**
  * Periscope / lookout visual max range (nm) — short stub.
  * Shared by fleet-sub periscope and destroyer bridge lookout.
  * Silhouettes only; farther contacts shrink on the CRT.
