@@ -40,7 +40,12 @@ export type PeriscopePicture = {
  * Surface ships (DD lookout): available whenever not sunk — lookout is immune
  * to sensors-subsystem combat damage. DD lookout always sees raised enemy
  * periscope feathers (exposure &gt; 0) in visual range — deterministic FoW,
- * no spot roll. Spotted feathers use standard FoW coarsening only.
+ * no spot roll.
+ *
+ * Bearing / range / course / speed readouts are instrument-precise (ground
+ * truth, only display-rounded) — optics FoW is limited to *detection*
+ * (raised-mast feathers, depth/exposure gating) and Contact-N anonymity, not
+ * to smearing the numbers once a contact is visible.
  */
 export function buildPeriscopeContacts(own: UnitState, save: GameSave): PeriscopePicture {
   const sensor = findLookoutSensor(own);

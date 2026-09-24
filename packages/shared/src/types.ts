@@ -876,8 +876,10 @@ export interface RadarContact {
    */
   signature: RadarSignature;
   /**
-   * Active-sonar only: FoW-coarsened estimated keel depth (m, positive down).
-   * Omitted on radar contacts. Coarse bands — not ground-truth depth.
+   * Active-sonar only: precise estimated keel depth (m, positive down),
+   * ground truth rounded to the nearest whole meter for display — active
+   * sonar is 100% accurate, same as radar. Omitted on radar contacts (0 when
+   * the contact is on the surface).
    */
   estimatedDepthM?: number;
 }
@@ -1069,17 +1071,22 @@ export interface PeriscopeContact {
    */
   kind?: 'hull' | 'periscope';
   /**
-   * Relative bearing degrees (−180, 180], coarsened (e.g. 5° steps).
+   * Relative bearing degrees (−180, 180], instrument-precise (rounded to
+   * the nearest whole degree for display — not FoW-coarsened).
    * Bow = 0; starboard positive; port negative.
    */
   relativeBearing: number;
-  /** Approximate range in nautical miles (coarsened). */
+  /** Precise range in nautical miles (rounded to 0.01 nm for display). */
   rangeNm: number;
-  /** Approximate absolute speed in knots (coarsened). Always 0 for periscope feathers. */
+  /**
+   * Precise absolute speed in knots (rounded to 0.1 kn for display).
+   * Always 0 for periscope feathers.
+   */
   speedKn: number;
   /**
-   * Approximate true course degrees [0, 360), coarsened (15° bands).
-   * Visual estimate from hull aspect — not exact GT heading.
+   * Precise true course degrees [0, 360) (rounded to the nearest whole
+   * degree for display) — ground-truth heading read straight off the hull,
+   * not a coarse visual estimate.
    * Used with relative bearing to mirror bow-right silhouette plates for port AOB.
    * Omitted for periscope feathers (`kind: 'periscope'`).
    */

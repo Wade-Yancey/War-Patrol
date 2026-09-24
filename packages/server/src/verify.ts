@@ -17,7 +17,6 @@ import {
   FLEET_SUB_CRUSH_DEPTH_M,
   FLEET_SUB_PATROL_DEPTH_M,
   FLEET_SUB_TEST_DEPTH_M,
-  PERISCOPE_COURSE_STEP_DEG,
   SUBMARINE_DEPTH_ORDER_STEP_M,
   SUBMARINE_DEPTH_RATE_M_PER_MIN,
   SUBMARINE_IMPLOSION_CHANCE_PER_TURN,
@@ -29,6 +28,9 @@ import {
   clampSubmarineDepth,
   coarsenActiveSonarDepthM,
   coarsenPeriscopeCourseDeg,
+  coarsenPeriscopeRangeNm,
+  coarsenPeriscopeSpeedKn,
+  coarsenRelativeBearingDeg,
   editMaxSpeedForClass,
   effectiveMaxSpeed,
   ensureContactLabel,
@@ -69,22 +71,46 @@ async function main() {
   check('formatWallDuration minutes-first', formatWallDuration(180) === '3m');
   check('formatWallDuration with seconds', formatWallDuration(210) === '3m 30s');
   check('parseWallDuration bare minutes', parseWallDuration('3') === 180);
+  // Periscope / lookout optics readouts are instrument-precise (ground truth)
+  // — only whole-degree display rounding, not FoW banding.
+  check('periscope course precise 90 stays 90', coarsenPeriscopeCourseDeg(90) === 90);
+  check('periscope course precise 97 stays 97', coarsenPeriscopeCourseDeg(97) === 97);
+  check('periscope course precise 98 stays 98', coarsenPeriscopeCourseDeg(98) === 98);
+  check('periscope course precise 225 stays 225', coarsenPeriscopeCourseDeg(225) === 225);
+  check('periscope course precise 359 stays 359', coarsenPeriscopeCourseDeg(359) === 359);
+  check('periscope course precise 352 stays 352', coarsenPeriscopeCourseDeg(352) === 352);
   check(
-    'periscope course step 15°',
-    PERISCOPE_COURSE_STEP_DEG === 15,
+    'periscope course rounds sub-degree noise (97.6 → 98)',
+    coarsenPeriscopeCourseDeg(97.6) === 98,
   );
-  check('coarsen course 90 stays 90', coarsenPeriscopeCourseDeg(90) === 90);
-  check('coarsen course 97 → 90', coarsenPeriscopeCourseDeg(97) === 90);
-  check('coarsen course 98 → 105', coarsenPeriscopeCourseDeg(98) === 105);
-  check('coarsen course 225 stays 225', coarsenPeriscopeCourseDeg(225) === 225);
-  check('coarsen course 359 → 0', coarsenPeriscopeCourseDeg(359) === 0);
-  check('coarsen course 352 → 345', coarsenPeriscopeCourseDeg(352) === 345);
+  check(
+    'periscope range precise to 0.01 nm (12.344 → 12.34)',
+    coarsenPeriscopeRangeNm(12.344) === 12.34,
+  );
+  check(
+    'periscope range precise to 0.01 nm (12.346 → 12.35)',
+    coarsenPeriscopeRangeNm(12.346) === 12.35,
+  );
+  check(
+    'periscope speed precise to 0.1 kn (14.27 → 14.3)',
+    coarsenPeriscopeSpeedKn(14.27) === 14.3,
+  );
+  check(
+    'periscope relative bearing precise to 1° (12.6 → 13)',
+    coarsenRelativeBearingDeg(12.6) === 13,
+  );
+  // Active sonar depth is 100% accurate (ground truth, whole-meter display
+  // rounding) — surfaced gate only, no 25 m FoW banding.
   check('sonar depth surface band → 0', coarsenActiveSonarDepthM(0) === 0);
   check('sonar depth ≤5 m → 0', coarsenActiveSonarDepthM(5) === 0);
-  check('sonar depth 10 m → 25 (min submerged band)', coarsenActiveSonarDepthM(10) === 25);
-  check('sonar depth 40 m → 50', coarsenActiveSonarDepthM(40) === 50);
-  check('sonar depth 50 m → 50', coarsenActiveSonarDepthM(50) === 50);
-  check('sonar depth 90 m → 100', coarsenActiveSonarDepthM(90) === 100);
+  check('sonar depth precise 10 m stays 10', coarsenActiveSonarDepthM(10) === 10);
+  check('sonar depth precise 40 m stays 40', coarsenActiveSonarDepthM(40) === 40);
+  check('sonar depth precise 50 m stays 50', coarsenActiveSonarDepthM(50) === 50);
+  check('sonar depth precise 90 m stays 90', coarsenActiveSonarDepthM(90) === 90);
+  check(
+    'sonar depth rounds sub-meter noise (40.6 → 41)',
+    coarsenActiveSonarDepthM(40.6) === 41,
+  );
   check('parseWallDuration mm:ss', parseWallDuration('3:30') === 210);
   check('snapWallDuration 30s', snapWallDuration(200, 30) === 210);
 
@@ -507,7 +533,7 @@ async function main() {
           !('position' in ddLookoutContacts[0]),
       );
       check(
-        'destroyer lookout approx course 15° band',
+        'destroyer lookout precise course',
         ddLookoutContacts[0].courseDeg === 225,
         `got ${ddLookoutContacts[0].courseDeg}`,
       );
@@ -557,14 +583,10 @@ async function main() {
       sonarContacts[0].signature === 'large',
   );
   check(
-    'sonar contact estimated depth FoW band',
-    // Umpire placed Gato at depth 40 → coarsen to nearest 25 m band (50).
-    sonarContacts[0].estimatedDepthM === 50,
+    'sonar contact estimated depth is precise GT',
+    // Active sonar is 100% accurate — Gato placed at depth 40 reads exactly 40.
+    sonarContacts[0].estimatedDepthM === 40,
     `got ${sonarContacts[0].estimatedDepthM}`,
-  );
-  check(
-    'sonar contact estimated depth is not exact GT',
-    sonarContacts[0].estimatedDepthM !== 40,
   );
   await api(
     'POST',
@@ -651,23 +673,24 @@ async function main() {
       typeof periContacts[0].courseDeg === 'number',
   );
   check(
-    'periscope contact approx course 15° band',
+    'periscope contact precise course',
     periContacts[0].courseDeg === 90,
     `got ${periContacts[0].courseDeg}`,
   );
-  // Non-aligned GT heading must not leak exact degrees through optics FoW.
+  // Optics readouts are ground-truth precise (display-rounded to the nearest
+  // degree) — off-grid headings should read through exactly, not band to 15°.
   await api(
     'PATCH',
     `/api/games/${gameId}/units/dd-101`,
     { heading: 97 },
     umpireToken,
   );
-  const periCourseCoarse = await api('GET', `/api/games/${gameId}/view`, undefined, subSensorsToken);
-  const periCoarseContacts = (periCourseCoarse.json.view as Json).periscopeContacts as Array<Json>;
+  const periCourseExact = await api('GET', `/api/games/${gameId}/view`, undefined, subSensorsToken);
+  const periExactContacts = (periCourseExact.json.view as Json).periscopeContacts as Array<Json>;
   check(
-    'periscope course coarsens off-grid heading',
-    periCoarseContacts[0]?.courseDeg === 90,
-    `got ${periCoarseContacts[0]?.courseDeg}`,
+    'periscope course reads exact off-grid heading',
+    periExactContacts[0]?.courseDeg === 97,
+    `got ${periExactContacts[0]?.courseDeg}`,
   );
   await api(
     'PATCH',

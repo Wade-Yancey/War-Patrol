@@ -156,38 +156,41 @@ export function trueBearingFromRelative(
   return normalizeHeading(ownHeadingDeg + relativeBearingDeg);
 }
 
-/** FoW coarsen relative bearing to nearest 5°. */
+/**
+ * Optics readouts are instrument-precise (ground truth) — periscope / lookout
+ * glass shows the real bearing/range/course/speed, not an FoW-coarsened
+ * estimate. Only display rounding is applied (nearest whole degree, 0.01 nm,
+ * 0.1 kn) so numbers don't show spurious floating-point noise. Contact-N
+ * anonymity (no side/class/name leak) is enforced elsewhere via `labelN` /
+ * silhouette-only identity — precision here does not reveal hull identity.
+ */
+
+/** Round relative bearing to the nearest whole degree for display. */
 export function coarsenRelativeBearingDeg(relDeg: number): number {
   if (!Number.isFinite(relDeg)) return 0;
-  return Math.round(relDeg / 5) * 5;
+  return Math.round(relDeg);
 }
 
-/** FoW coarsen range to 0.5 nm steps. */
+/** Round range to the nearest 0.01 nm for display. */
 export function coarsenPeriscopeRangeNm(rangeNm: number): number {
   if (!Number.isFinite(rangeNm) || rangeNm < 0) return 0;
-  return Math.round(rangeNm * 2) / 2;
+  return Math.round(rangeNm * 100) / 100;
 }
 
-/** FoW coarsen absolute speed to 2 kn steps. */
+/** Round absolute speed to the nearest 0.1 kn for display. */
 export function coarsenPeriscopeSpeedKn(speedKn: number): number {
   if (!Number.isFinite(speedKn)) return 0;
-  return Math.round(Math.abs(speedKn) / 2) * 2;
+  return Math.round(Math.abs(speedKn) * 10) / 10;
 }
 
 /**
- * Visual estimate of contact true course — round to nearest 15°.
- * Coarser than relative bearing (5°) so optics readouts stay useful but imperfect;
- * not ground-truth heading. Feathers omit course (stick gives no aspect).
+ * Precise true course read straight off the observed hull, rounded to the
+ * nearest whole degree ([0, 360)) for display. Ground truth, not a coarse
+ * visual estimate. Feathers omit course (stick gives no aspect).
  */
-export const PERISCOPE_COURSE_STEP_DEG = 15;
-
-/** FoW coarsen true heading / course to {@link PERISCOPE_COURSE_STEP_DEG} bands ([0, 360)). */
 export function coarsenPeriscopeCourseDeg(headingDeg: number): number {
   if (!Number.isFinite(headingDeg)) return 0;
-  const stepped =
-    Math.round(normalizeHeading(headingDeg) / PERISCOPE_COURSE_STEP_DEG) *
-    PERISCOPE_COURSE_STEP_DEG;
-  return normalizeHeading(stepped);
+  return normalizeHeading(Math.round(normalizeHeading(headingDeg)));
 }
 
 /**

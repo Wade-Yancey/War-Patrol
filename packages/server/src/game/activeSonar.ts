@@ -29,7 +29,9 @@ export type ActiveSonarPicture = {
  * Forward-cone active search sonar picture (destroyer Sensors).
  * Only paints when the operator toggle is ON. Contacts are anonymous polar
  * echoes (Contact N / bearing / range / signature / estimated depth) like
- * radar, limited to the cone about own heading. Depth is FoW-coarsened — not GT.
+ * radar, limited to the cone about own heading. 100% accurate like radar —
+ * bearing / range / depth are ground truth (display-rounded only); FoW here
+ * is limited to detection gating (cone, range, toggle) and Contact-N anonymity.
  */
 export function buildActiveSonarContacts(own: UnitState, save: GameSave): ActiveSonarPicture {
   const sensor = findActiveSonarSensor(own);
