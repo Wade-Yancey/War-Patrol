@@ -39,10 +39,6 @@ function PendingOrdersPanelInner({ units }: { units: UnitState[] }) {
           {filed}/{total} filed
         </span>
       </div>
-      <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-        Live submissions for the current turn. CRS rings up immediately; engine orders apply on
-        Resolve. Gaps sort to the top.
-      </p>
       {total === 0 ? (
         <p className="muted mono" style={{ margin: 0 }}>
           No vessels in play.

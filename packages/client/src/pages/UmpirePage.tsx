@@ -382,10 +382,6 @@ export function UmpirePage() {
             <section className="panel stack">
               <h2>Turn status</h2>
               <TurnStatus turn={umpire.turn} turnLengthSeconds={umpire.turnLengthSeconds} />
-              <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-                Open = crews enter orders · Lock = freeze orders · Resolve = apply movement and open the next
-                turn.
-              </p>
             </section>
 
             <div style={{ marginTop: '1rem' }}>
@@ -397,13 +393,11 @@ export function UmpirePage() {
                 <div className="umpire-gt-map-title">
                   <h2>Ground truth</h2>
                   <TurnStatus turn={umpire.turn} turnLengthSeconds={umpire.turnLengthSeconds} />
-                  <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-                    Full operating picture — zoom/pan, trails, weapons tracks, true-north compass,
-                    optional sensor range bands (Ranges). Resolve here so the plot stays in view.
-                    {gtDisplay?.reviewing
-                      ? ' Map below is a read-only AAR snapshot — Resolve still advances LIVE.'
-                      : null}
-                  </p>
+                  {gtDisplay?.reviewing && (
+                    <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
+                      AAR snapshot — read-only. Resolve still advances LIVE.
+                    </p>
+                  )}
                 </div>
                 <div className="umpire-gt-map-actions" role="group" aria-label="Turn advance">
                   <button
@@ -492,10 +486,6 @@ export function UmpirePage() {
             <div className="umpire-controls" style={{ marginTop: '1rem' }}>
               <section className="panel stack umpire-control-group">
                 <h2>1 · Timer</h2>
-                <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-                  Counts down while the turn is open. Expiry auto-locks orders. Adjust in 30s or
-                  1‑minute steps.
-                </p>
                 <TouchNumber
                   label="Order timer"
                   value={timerSeconds}
@@ -568,10 +558,6 @@ export function UmpirePage() {
 
               <section className="panel stack umpire-control-group">
                 <h2>2 · Order lock</h2>
-                <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-                  Lock closes ordering. Reopen returns to open without moving ships. Also available
-                  above the ground-truth map.
-                </p>
                 <div className="control-actions">
                   <button
                     type="button"
@@ -592,10 +578,6 @@ export function UmpirePage() {
 
               <section className="panel stack umpire-control-group">
                 <h2>3 · Save &amp; rollback</h2>
-                <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-                  Persist the game or rewind history. Resolve &amp; advance lives on the ground-truth
-                  map so the plot stays visible.
-                </p>
                 <div className="control-actions">
                   <button
                     type="button"
@@ -608,8 +590,7 @@ export function UmpirePage() {
                 {umpire.historyTurnNumbers.length > 0 && (
                   <div className="stack" style={{ gap: '0.4rem' }}>
                     <span className="muted" style={{ fontSize: '0.8rem' }}>
-                      Rollback requires confirmation. T1 restores the scenario start (before turn 1
-                      resolved). Later buttons restore the end of that turn.
+                      T1 = scenario start · Tn = end of turn n
                     </span>
                     <div className="row">
                       {umpire.historyTurnNumbers.map((n) => (
@@ -631,10 +612,7 @@ export function UmpirePage() {
               <section className="panel stack umpire-control-group umpire-gopher-panel">
                 <h2>4 · Gopher task</h2>
                 <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-                  Live-museum errand — invent it on the fly, push the written order to a vessel
-                  (or every player hull), and mark it Complete once the crew reports back over the
-                  field phone. The phone call <em>is</em> the verification — never type the plaque
-                  answer here.
+                  Push an errand; Complete only after the crew reports back by phone.
                 </p>
                 <label className="unit-edit-select">
                   Target
@@ -853,10 +831,6 @@ export function UmpirePage() {
                       {dirty ? 'DRAFT' : 'LIVE'}
                     </span>
                   </div>
-                  <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-                    Tablet controls — steppers and selectors. Live SSE keeps fields fresh until you edit;
-                    apply writes to the server.
-                  </p>
 
                   <label className="unit-edit-select">
                     Unit
@@ -1125,9 +1099,6 @@ export function UmpirePage() {
                       {editType === 'Aircraft' && (
                         <div className="unit-edit-group">
                           <h3>Flight level</h3>
-                          <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-                            Aircraft use discrete elevation bands only — no free altitude.
-                          </p>
                           <div className="unit-edit-chip-row" role="group" aria-label="Flight level">
                             {FLIGHT_LEVELS.map((level) => (
                               <button
@@ -1308,9 +1279,8 @@ export function UmpirePage() {
                           </label>
                         )}
                         <p className="muted" style={{ margin: 0, fontSize: '0.75rem' }}>
-                          Sunk/destroyed stops movement and sensors. Propulsion damaged halves max
-                          speed; disabled forces stop. Rudder stuck freezes helm; dive planes stuck
-                          freezes depth. Sensor stations fail independently (DD lookout immune).
+                          Propulsion damaged halves speed, disabled stops. Steering/dive planes
+                          stuck freeze at current heading/depth.
                         </p>
                         <div className="control-actions">
                           <button
@@ -1388,9 +1358,7 @@ export function UmpirePage() {
                         <div className="unit-edit-group">
                           <h3>Ordnance rearm</h3>
                           <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-                            Live-event fiat after physical tube / rack load. Instantly restores
-                            full magazines for this hull (fwd 6 + aft 4 fish and/or DC rack 24)
-                            and clears reload timers. Players cannot self-rearm.
+                            Restores full magazines and clears reload timers.
                           </p>
                           <p className="mono muted" style={{ margin: 0, fontSize: '0.8rem' }}>
                             Now:{' '}

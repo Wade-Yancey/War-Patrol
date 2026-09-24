@@ -155,10 +155,6 @@ export function LandingPage() {
           <div>
             <span className="brand-mark">Naval simulation · terminal</span>
             <p className="brand">War Patrol</p>
-            <p className="subhead">
-              Hosted game shell — create an engagement, share vessel station links, and run
-              turn-based ordering without revealing ground truth to players.
-            </p>
           </div>
         </header>
 
@@ -166,11 +162,9 @@ export function LandingPage() {
           <summary style={{ cursor: 'pointer' }}>Admin token (internet-hosted servers only)</summary>
           <div className="stack" style={{ marginTop: '0.6rem', gap: '0.4rem' }}>
             <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-              Only needed if this server was started with <span className="mono">WAR_PATROL_ADMIN_TOKEN</span>{' '}
-              or <span className="mono">WAR_PATROL_INTERNET=1</span> (e.g. hosting over the
-              internet). LAN/local servers ignore this. Opening the join-ready URL the server
-              prints on startup (<span className="mono">?admin=...</span>) fills this in
-              automatically — no need to paste anything.
+              Only needed for <span className="mono">WAR_PATROL_ADMIN_TOKEN</span> /{' '}
+              <span className="mono">WAR_PATROL_INTERNET=1</span> servers. LAN servers ignore
+              this; the startup <span className="mono">?admin=...</span> URL fills it in.
             </p>
             <label>
               Admin token
