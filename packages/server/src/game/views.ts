@@ -212,6 +212,7 @@ export function buildVesselView(
       depthChargeLoad: unit.depthChargeLoad ?? 0,
       depthChargeAwaitingReload: Boolean(unit.depthChargeAwaitingReload),
       depthChargeReloadTurnsRemaining: unit.depthChargeReloadTurnsRemaining ?? 0,
+      ...(unit.gopherTask ? { gopherTask: unit.gopherTask } : {}),
     },
     stationId,
     station,

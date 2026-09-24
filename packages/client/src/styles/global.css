@@ -2706,6 +2706,62 @@ label {
   gap: 0.85rem;
 }
 
+.damage-gopher-task {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0 0 0.85rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--accent-strong);
+  background: rgba(61, 255, 106, 0.08);
+}
+
+.damage-gopher-task-key {
+  color: var(--accent-strong);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+}
+
+.damage-gopher-task-label {
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+.damage-gopher-task-text {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.damage-gopher-task-hint {
+  margin: 0;
+  font-size: 0.75rem;
+}
+
+.gopher-cue-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--accent-strong);
+  background: rgba(61, 255, 106, 0.08);
+  font-size: 0.85rem;
+}
+
+.gopher-cue-key {
+  color: var(--accent-strong);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+}
+
+.gopher-cue-jump {
+  margin-left: auto;
+}
+
 .damage-status-grid {
   display: grid;
   gap: 0.65rem;

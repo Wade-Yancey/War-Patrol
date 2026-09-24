@@ -63,7 +63,8 @@ export type WeaponsResolveResult = {
   combatLogEntries: CombatLogEntry[];
 };
 
-function logLine(opts: {
+/** Exported for immediate (non-turn-resolve) combat log lines, e.g. gopher tasks. */
+export function logLine(opts: {
   kind: CombatLogKind;
   turnNumber: number;
   gameTimeSeconds: number;

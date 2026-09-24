@@ -84,6 +84,10 @@ export function UmpirePage() {
   const [turnNoteDraft, setTurnNoteDraft] = useState('');
   const [turnNoteDirty, setTurnNoteDirty] = useState(false);
   const [turnNoteBusy, setTurnNoteBusy] = useState(false);
+  /** Gopher task push form — target unit id, or 'all' for every player vessel. */
+  const [gopherTargetId, setGopherTargetId] = useState<string>('');
+  const [gopherText, setGopherText] = useState('');
+  const [gopherLabel, setGopherLabel] = useState('');
 
   const { view, stateVersion, connected, error, refresh } = useGameStream({
     gameId,
@@ -620,6 +624,135 @@ export function UmpirePage() {
                         </button>
                       ))}
                     </div>
+                  </div>
+                )}
+              </section>
+
+              <section className="panel stack umpire-control-group umpire-gopher-panel">
+                <h2>4 · Gopher task</h2>
+                <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
+                  Live-museum errand — invent it on the fly, push the written order to a vessel
+                  (or every player hull), and mark it Complete once the crew reports back over the
+                  field phone. The phone call <em>is</em> the verification — never type the plaque
+                  answer here.
+                </p>
+                <label className="unit-edit-select">
+                  Target
+                  <select
+                    value={gopherTargetId}
+                    onChange={(e) => setGopherTargetId(e.target.value)}
+                  >
+                    <option value="">Select vessel…</option>
+                    <option value="__all__">All player vessels</option>
+                    {umpire.vesselLinks
+                      .filter((v) => v.playerVessel)
+                      .map((v) => (
+                        <option key={v.unitId} value={v.unitId}>
+                          {v.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <label>
+                  Task order (read to the crew / write on the tablet)
+                  <textarea
+                    rows={2}
+                    value={gopherText}
+                    onChange={(e) => setGopherText(e.target.value)}
+                    placeholder="Count the stairs in the forward torpedo room and report over the field phone."
+                  />
+                </label>
+                <label>
+                  Short label (optional — shown in the persistent cue)
+                  <input
+                    type="text"
+                    value={gopherLabel}
+                    onChange={(e) => setGopherLabel(e.target.value)}
+                    placeholder="Count the stairs"
+                    autoComplete="off"
+                  />
+                </label>
+                <div className="control-actions">
+                  <button
+                    className="primary"
+                    type="button"
+                    disabled={busy || !gopherTargetId || !gopherText.trim()}
+                    onClick={() =>
+                      void run(async () => {
+                        await api.pushGopherTask(gameId, token, {
+                          ...(gopherTargetId === '__all__'
+                            ? { allVessels: true }
+                            : { unitIds: [gopherTargetId] }),
+                          text: gopherText,
+                          label: gopherLabel,
+                        });
+                        setGopherText('');
+                        setGopherLabel('');
+                      }, 'Gopher task pushed')
+                    }
+                  >
+                    Push task
+                  </button>
+                </div>
+
+                {umpire.units.some((u) => u.gopherTask?.status === 'active') && (
+                  <div className="stack" style={{ gap: '0.5rem', marginTop: '0.25rem' }}>
+                    <span className="muted" style={{ fontSize: '0.8rem' }}>
+                      Active tasks
+                    </span>
+                    <ul className="mono" style={{ margin: 0, paddingLeft: '1.1rem' }}>
+                      {umpire.units
+                        .filter((u) => u.gopherTask?.status === 'active')
+                        .map((u) => (
+                          <li key={u.id} className="stack" style={{ gap: '0.35rem', marginBottom: '0.5rem' }}>
+                            <span className="readout">
+                              {u.name}
+                              {u.gopherTask?.label ? ` — ${u.gopherTask.label}` : ''}: "
+                              {u.gopherTask?.text}"
+                            </span>
+                            <div className="control-actions">
+                              <button
+                                className="primary"
+                                type="button"
+                                disabled={busy}
+                                onClick={() =>
+                                  void run(
+                                    () =>
+                                      api.resolveGopherTask(gameId, token, u.id, 'completed'),
+                                    'Gopher task completed',
+                                  )
+                                }
+                              >
+                                Complete
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() =>
+                                  void run(
+                                    () => api.resolveGopherTask(gameId, token, u.id, 'failed'),
+                                    'Gopher task failed/cancelled',
+                                  )
+                                }
+                              >
+                                Fail / cancel
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() =>
+                                  void run(
+                                    () => api.resolveGopherTask(gameId, token, u.id, 'cleared'),
+                                    'Gopher task cleared',
+                                  )
+                                }
+                              >
+                                Clear
+                              </button>
+                            </div>
+                          </li>
+                        ))}
+                    </ul>
                   </div>
                 )}
               </section>
