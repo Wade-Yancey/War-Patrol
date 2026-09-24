@@ -27,6 +27,12 @@ function kindLabel(kind: CombatLogEntry['kind']): string {
       return 'IMPLODE';
     case 'subsystem_casualty':
       return 'CASUALTY';
+    case 'gopher_task_pushed':
+      return 'GOPHER TASK';
+    case 'gopher_task_completed':
+      return 'GOPHER DONE';
+    case 'gopher_task_cleared':
+      return 'GOPHER CLEAR';
     default:
       return 'EVENT';
   }

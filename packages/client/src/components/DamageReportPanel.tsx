@@ -3,6 +3,7 @@ import {
   conditionLabel,
   formatGameClock,
   subsystemStateLabel,
+  type GopherTask,
   type OwnDamageEvent,
   type UnitCondition,
   type UnitSubsystems,
@@ -16,6 +17,8 @@ interface Props {
   condition: UnitCondition;
   subsystems: UnitSubsystems;
   damageLog?: OwnDamageEvent[];
+  /** Live-museum gopher task — shown prominently above the damage board when active. */
+  gopherTask?: GopherTask;
 }
 
 function kindLabel(kind: OwnDamageEvent['kind']): string {
@@ -53,6 +56,7 @@ export function DamageReportPanel({
   condition,
   subsystems,
   damageLog = [],
+  gopherTask,
 }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
   const entries = useMemo(() => [...damageLog], [damageLog]);
@@ -84,6 +88,17 @@ export function DamageReportPanel({
         <h2>Damage report</h2>
         <p className="muted station-instrument-blurb">{vesselName} — own ship only</p>
       </div>
+
+      {gopherTask && gopherTask.status === 'active' && (
+        <div className="damage-gopher-task" role="alert" aria-label="Active gopher task">
+          <span className="damage-gopher-task-key">DAMAGE CONTROL — UMPIRE TASK</span>
+          {gopherTask.label && <span className="damage-gopher-task-label">{gopherTask.label}</span>}
+          <p className="damage-gopher-task-text">{gopherTask.text}</p>
+          <p className="muted damage-gopher-task-hint">
+            Report the result over the field phone — umpire marks this Complete after verifying.
+          </p>
+        </div>
+      )}
 
       <div className="damage-status-grid mono">
         <div className="damage-status-item">

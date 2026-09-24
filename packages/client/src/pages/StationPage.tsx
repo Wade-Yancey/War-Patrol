@@ -789,6 +789,24 @@ export function StationPage() {
 
         {(error || actionError) && <p className="error">{error || actionError}</p>}
 
+        {vessel && vessel.unit.gopherTask?.status === 'active' && (
+          <div className="gopher-cue-banner" role="status" aria-live="polite">
+            <span className="gopher-cue-key">GOPHER TASK</span>
+            <span className="readout">
+              {vessel.unit.gopherTask.label ?? vessel.unit.gopherTask.text}
+            </span>
+            {isControls && controlsTab !== 'damage' && (
+              <button
+                type="button"
+                className="gopher-cue-jump"
+                onClick={() => setControlsTab('damage')}
+              >
+                View on Damage →
+              </button>
+            )}
+          </div>
+        )}
+
         {vessel && sunkModalOpen && (
           <SunkModal
             vesselName={vessel.unit.name}
@@ -1374,6 +1392,7 @@ export function StationPage() {
                 condition={syncedDamage.condition}
                 subsystems={syncedDamage.subsystems}
                 damageLog={syncedDamage.damageLog}
+                gopherTask={vessel.unit.gopherTask}
               />
             )}
 

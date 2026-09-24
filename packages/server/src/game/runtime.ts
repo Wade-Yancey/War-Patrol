@@ -49,8 +49,10 @@ import {
   sideFromFaction,
   isV1PlayerUnit,
   normalizeContactBook,
+  type CombatLogEntry,
   type EotSetting,
   type GameSave,
+  type GopherTask,
   type HullClass,
   type Scenario,
   type TurnSnapshot,
@@ -67,6 +69,7 @@ import {
   rollbackToTurn,
   setTimerDeadline,
 } from './turnEngine.js';
+import { appendCombatLog, logLine } from './weaponsResolve.js';
 import { buildViewForSession } from './views.js';
 
 function unitFromScenario(seed: Scenario['units'][number]): UnitState {
@@ -872,6 +875,107 @@ export class GameRuntime {
       const idx = save.units.findIndex((u) => u.id === unitId);
       if (idx < 0) throw Object.assign(new Error('Unit not found'), { statusCode: 404 });
       save.units[idx] = rearmUnitWeapons(save.units[idx]!);
+      return save;
+    });
+  }
+
+  /**
+   * Live-museum gopher task: umpire free-texts a physical errand and pushes it
+   * to one or more vessels (or all v1 player hulls). Field telephone is the
+   * verification — never a typed in-app answer. Replacing an active task
+   * auto-clears the prior one (logged as superseded) so the AAR history stays
+   * complete. Logs an umpire combat-log line so it shows in the Action log /
+   * AAR turn scrubber immediately.
+   */
+  pushGopherTask(
+    gameId: string,
+    unitIds: string[],
+    text: string,
+    label?: string,
+  ): GameSave {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      throw Object.assign(new Error('Task text required'), { statusCode: 400 });
+    }
+    return this.touch(gameId, (save) => {
+      if (!unitIds.length) {
+        throw Object.assign(new Error('No target vessel(s)'), { statusCode: 400 });
+      }
+      const trimmedLabel = label?.trim() || undefined;
+      const newEntries: CombatLogEntry[] = [];
+      for (const unitId of unitIds) {
+        const unit = save.units.find((u) => u.id === unitId);
+        if (!unit) continue;
+        if (unit.gopherTask?.status === 'active') {
+          newEntries.push(
+            logLine({
+              kind: 'gopher_task_cleared',
+              turnNumber: save.turn.number,
+              gameTimeSeconds: save.turn.gameTimeSeconds,
+              actor: unit,
+              summary: `Gopher task superseded on ${unit.name}: "${unit.gopherTask.text}"`,
+            }),
+          );
+        }
+        const task: GopherTask = {
+          id: `gt-${nanoid(8)}`,
+          text: trimmed,
+          label: trimmedLabel,
+          status: 'active',
+          pushedAt: new Date().toISOString(),
+          pushedTurn: save.turn.number,
+        };
+        unit.gopherTask = task;
+        newEntries.push(
+          logLine({
+            kind: 'gopher_task_pushed',
+            turnNumber: save.turn.number,
+            gameTimeSeconds: save.turn.gameTimeSeconds,
+            actor: unit,
+            summary: `Gopher task pushed to ${unit.name}${trimmedLabel ? ` — ${trimmedLabel}` : ''}: "${trimmed}"`,
+          }),
+        );
+      }
+      save.combatLog = appendCombatLog(save.combatLog, newEntries);
+      return save;
+    });
+  }
+
+  /**
+   * Umpire resolves the active gopher task after phone verification.
+   * `outcome` selects the AAR wording (`completed` vs a clear/cancel) —
+   * stored status always collapses to the two terminal states in
+   * {@link GopherTaskStatus} so player UI logic stays simple.
+   */
+  resolveGopherTask(
+    gameId: string,
+    unitId: string,
+    outcome: 'completed' | 'cleared' | 'failed',
+  ): GameSave {
+    return this.touch(gameId, (save) => {
+      const unit = save.units.find((u) => u.id === unitId);
+      if (!unit) throw Object.assign(new Error('Unit not found'), { statusCode: 404 });
+      const task = unit.gopherTask;
+      if (!task || task.status !== 'active') {
+        throw Object.assign(new Error('No active gopher task'), { statusCode: 400 });
+      }
+      const status = outcome === 'completed' ? 'completed' : 'cleared';
+      unit.gopherTask = {
+        ...task,
+        status,
+        resolvedAt: new Date().toISOString(),
+        resolvedTurn: save.turn.number,
+      };
+      const verb =
+        outcome === 'completed' ? 'completed' : outcome === 'failed' ? 'failed / cancelled' : 'cleared';
+      const entry = logLine({
+        kind: status === 'completed' ? 'gopher_task_completed' : 'gopher_task_cleared',
+        turnNumber: save.turn.number,
+        gameTimeSeconds: save.turn.gameTimeSeconds,
+        actor: unit,
+        summary: `Gopher task ${verb} on ${unit.name}: "${task.text}"`,
+      });
+      save.combatLog = appendCombatLog(save.combatLog, [entry]);
       return save;
     });
   }

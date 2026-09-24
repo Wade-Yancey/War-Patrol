@@ -210,6 +210,30 @@ export const api = {
         body: JSON.stringify({ turnNumber, note }),
       },
     ),
+  pushGopherTask: (
+    gameId: string,
+    token: string,
+    body: { unitIds?: string[]; allVessels?: boolean; text: string; label?: string },
+  ) =>
+    request<{ ok: boolean; stateVersion: number }>(`/api/games/${gameId}/gopher-task`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(body),
+    }),
+  resolveGopherTask: (
+    gameId: string,
+    token: string,
+    unitId: string,
+    outcome: 'completed' | 'cleared' | 'failed',
+  ) =>
+    request<{ ok: boolean; stateVersion: number }>(
+      `/api/games/${gameId}/units/${unitId}/gopher-task/resolve`,
+      {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ outcome }),
+      },
+    ),
   rotateToken: (gameId: string, token: string, unitId: string) =>
     request<{ accessToken: string }>(`/api/games/${gameId}/units/${unitId}/rotate-token`, {
       method: 'POST',

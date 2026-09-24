@@ -509,6 +509,54 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
+  // --- Live-museum gopher tasks (umpire fiat errand + field-phone verify) ---
+  app.post<{
+    Params: { gameId: string };
+    Body: { unitIds?: string[]; allVessels?: boolean; text: string; label?: string };
+  }>('/api/games/:gameId/gopher-task', async (request, reply) => {
+    try {
+      requireUmpire(request, request.params.gameId);
+      const body = request.body ?? ({} as { text?: string });
+      const text = typeof body.text === 'string' ? body.text : '';
+      if (!text.trim()) {
+        return reply.code(400).send({ error: 'text required' });
+      }
+      const save = runtime.requireGame(request.params.gameId);
+      const unitIds = body.allVessels
+        ? save.units.filter((u) => isV1PlayerUnit(u)).map((u) => u.id)
+        : Array.isArray(body.unitIds)
+          ? body.unitIds
+          : [];
+      if (!unitIds.length) {
+        return reply.code(400).send({ error: 'unitIds or allVessels required' });
+      }
+      const updated = runtime.pushGopherTask(request.params.gameId, unitIds, text, body.label);
+      return { ok: true, stateVersion: updated.stateVersion };
+    } catch (err) {
+      const e = httpError(err);
+      return reply.code(e.statusCode).send({ error: e.message });
+    }
+  });
+
+  app.post<{
+    Params: { gameId: string; unitId: string };
+    Body: { outcome: 'completed' | 'cleared' | 'failed' };
+  }>('/api/games/:gameId/units/:unitId/gopher-task/resolve', async (request, reply) => {
+    try {
+      requireUmpire(request, request.params.gameId);
+      const outcome = request.body?.outcome;
+      if (outcome !== 'completed' && outcome !== 'cleared' && outcome !== 'failed') {
+        return reply.code(400).send({ error: 'outcome must be completed | cleared | failed' });
+      }
+      const save = runtime.resolveGopherTask(request.params.gameId, request.params.unitId, outcome);
+      const unit = save.units.find((u) => u.id === request.params.unitId);
+      return { ok: true, stateVersion: save.stateVersion, gopherTask: unit?.gopherTask };
+    } catch (err) {
+      const e = httpError(err);
+      return reply.code(e.statusCode).send({ error: e.message });
+    }
+  });
+
   // --- Umpire turn controls ---
   app.post<{ Params: { gameId: string }; Body: { seconds: number } }>(
     '/api/games/:gameId/turn/timer',

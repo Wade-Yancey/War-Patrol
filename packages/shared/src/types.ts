@@ -319,6 +319,32 @@ export interface DepthChargeTrack {
   path: Array<{ lat: number; lon: number; depth: number }>;
 }
 
+/**
+ * Live-museum "gopher task" — umpire free-texts a physical errand
+ * ("count the stairs in the forward torpedo room and report over the field
+ * phone"); the field telephone call is the verification, not a typed
+ * in-app answer. Stored on the unit so it survives reconnects and shows on
+ * every station via the persistent cue + in full on Damage.
+ */
+export type GopherTaskStatus = 'active' | 'completed' | 'cleared';
+
+export interface GopherTask {
+  id: string;
+  /** Free-text umpire order (e.g. "Count the stairs in the fwd torpedo room"). */
+  text: string;
+  /** Optional short title shown in the persistent cue (falls back to a clipped text). */
+  label?: string;
+  status: GopherTaskStatus;
+  /** ISO wall-clock when pushed. */
+  pushedAt: string;
+  /** Turn number when pushed (for AAR context). */
+  pushedTurn: number;
+  /** ISO wall-clock when completed/cleared. */
+  resolvedAt?: string;
+  /** Turn number when completed/cleared. */
+  resolvedTurn?: number;
+}
+
 /** Recent weapon blast (audio + umpire truth). Cleared after a few turns. */
 export interface WeaponDetonationEvent {
   id: string;
@@ -492,6 +518,12 @@ export interface UnitState {
     nextLabel: number;
     byTargetId: Record<string, number>;
   };
+  /**
+   * Live-museum gopher task (umpire fiat errand). Absent when none ever
+   * pushed. Terminal statuses (`completed`/`cleared`) are kept until the
+   * next push replaces them — client cues only render while `active`.
+   */
+  gopherTask?: GopherTask;
 }
 
 export interface ScenarioUnitSeed {
@@ -671,7 +703,10 @@ export type CombatLogKind =
   | 'depth_charge_damage'
   | 'unit_sunk'
   | 'hull_implosion'
-  | 'subsystem_casualty';
+  | 'subsystem_casualty'
+  | 'gopher_task_pushed'
+  | 'gopher_task_completed'
+  | 'gopher_task_cleared';
 
 /** One umpire-visible action / damage line (CRT log). */
 export interface CombatLogEntry {
@@ -893,6 +928,7 @@ export interface VesselView {
     | 'depthChargeLoad'
     | 'depthChargeAwaitingReload'
     | 'depthChargeReloadTurnsRemaining'
+    | 'gopherTask'
   >;
   stationId: string;
   station: StationDef;
