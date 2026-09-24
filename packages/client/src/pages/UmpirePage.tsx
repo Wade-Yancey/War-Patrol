@@ -81,6 +81,9 @@ export function UmpirePage() {
   const [rollbackTarget, setRollbackTarget] = useState<number | null>(null);
   /** null = LIVE GT; number = read-only AAR review of that resolved turn. */
   const [reviewTurn, setReviewTurn] = useState<number | null>(null);
+  const [turnNoteDraft, setTurnNoteDraft] = useState('');
+  const [turnNoteDirty, setTurnNoteDirty] = useState(false);
+  const [turnNoteBusy, setTurnNoteBusy] = useState(false);
 
   const { view, stateVersion, connected, error, refresh } = useGameStream({
     gameId,
@@ -104,6 +107,28 @@ export function UmpirePage() {
     if (reviewTurn == null || !umpire) return null;
     return (umpire.historySnapshots ?? []).find((h) => h.turnNumber === reviewTurn) ?? null;
   }, [umpire, reviewTurn]);
+
+  // Load the reviewed turn's AAR note into the draft box; drop any unsaved
+  // edit when the umpire flips to a different turn (or back to LIVE).
+  useEffect(() => {
+    setTurnNoteDraft(reviewSnapshot?.umpireNote ?? '');
+    setTurnNoteDirty(false);
+  }, [reviewTurn, reviewSnapshot?.umpireNote]);
+
+  const saveTurnNote = async () => {
+    if (!umpire || !token || reviewTurn == null) return;
+    setTurnNoteBusy(true);
+    setActionError(null);
+    try {
+      await api.setTurnNote(gameId, token, reviewTurn, turnNoteDraft);
+      setTurnNoteDirty(false);
+      await refresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to save turn note');
+    } finally {
+      setTurnNoteBusy(false);
+    }
+  };
 
   /** Map / combat-log props: live umpire state, or frozen end-of-turn AAR snapshot. */
   const gtDisplay = useMemo(() => {
@@ -412,6 +437,39 @@ export function UmpirePage() {
                 reviewTurn={reviewTurn}
                 onReviewTurn={setReviewTurn}
               />
+              {reviewTurn != null && (
+                <div className="aar-turn-note" aria-label="AAR turn note">
+                  <label className="aar-turn-note-label" htmlFor="aar-turn-note-input">
+                    Umpire note · T{reviewTurn}
+                  </label>
+                  <textarea
+                    id="aar-turn-note-input"
+                    className="mono"
+                    rows={2}
+                    placeholder="Add a note for the After-Action Report (e.g. narrative context, ruling explanation)…"
+                    value={turnNoteDraft}
+                    onChange={(e) => {
+                      setTurnNoteDraft(e.target.value);
+                      setTurnNoteDirty(true);
+                    }}
+                  />
+                  <div className="control-actions">
+                    <button
+                      type="button"
+                      className="primary"
+                      disabled={turnNoteBusy || !turnNoteDirty}
+                      onClick={() => void saveTurnNote()}
+                    >
+                      {turnNoteBusy ? 'Saving…' : 'Save note'}
+                    </button>
+                    {!turnNoteDirty && reviewSnapshot?.umpireNote && (
+                      <span className="muted" style={{ fontSize: '0.8rem' }}>
+                        Saved
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
               <GroundTruthMap
                 area={umpire.operatingArea}
                 units={gtDisplay?.units ?? umpire.units}

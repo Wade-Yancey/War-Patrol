@@ -713,6 +713,26 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
+  app.post<{
+    Params: { gameId: string };
+    Body: { turnNumber: number; note?: string };
+  }>('/api/games/:gameId/turn-notes', async (request, reply) => {
+    try {
+      requireUmpire(request, request.params.gameId);
+      const turnNumber = Number(request.body?.turnNumber);
+      if (!Number.isFinite(turnNumber)) {
+        return reply.code(400).send({ error: 'turnNumber required' });
+      }
+      const note = typeof request.body?.note === 'string' ? request.body.note : '';
+      const save = runtime.setTurnNote(request.params.gameId, turnNumber, note);
+      const snap = save.history.find((h) => h.turnNumber === turnNumber);
+      return { ok: true, stateVersion: save.stateVersion, umpireNote: snap?.umpireNote ?? '' };
+    } catch (err) {
+      const e = httpError(err);
+      return reply.code(e.statusCode).send({ error: e.message });
+    }
+  });
+
   app.post<{ Params: { gameId: string; unitId: string } }>(
     '/api/games/:gameId/units/:unitId/rotate-token',
     async (request, reply) => {

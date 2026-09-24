@@ -145,6 +145,7 @@ export function buildUmpireView(save: GameSave, sse: SseHub): UmpireView {
       gameTimeSeconds: h.gameTimeSeconds ?? h.turn.gameTimeSeconds,
       torpedoes: h.torpedoes ?? [],
       depthCharges: h.depthCharges ?? [],
+      ...(h.umpireNote ? { umpireNote: h.umpireNote } : {}),
     })),
     vesselLinks: save.units.map((u) => vesselLinkForUnit(save, u)),
     connections: sse.connectionSummary(save.id),

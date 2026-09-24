@@ -12,15 +12,25 @@ import {
   METERS_PER_DEG_LAT,
   METERS_PER_NM,
   RADAR_MAX_RANGE_NM,
+  TORPEDO_MAX_RUN_NM,
   clamp,
+  findActiveSonarSensor,
   formatTorpedoMissTrackLabel,
+  isActiveSonarPinging,
+  isFleetSubTorpedoHull,
   metersPerDegLon,
+  moveAlongHeading,
   normalizeHeading,
   predictUnitMovePath,
   projectToUv,
+  resolveActiveSonarHalfAngleDeg,
+  resolveActiveSonarMaxRangeNm,
   resolveTurnLengthSeconds,
   torpedoMissNearestContactName,
+  torpedoRoomArcAxisHeading,
+  torpedoRoomArcHalfDeg,
   unprojectFromUv,
+  type TorpedoRoomId,
 } from '@war-patrol/shared';
 
 interface Props {
@@ -121,8 +131,14 @@ const COMPASS_CROSS_S = polarAt(COMPASS_CX, COMPASS_CY, 180, COMPASS_R - 28);
 const COMPASS_CROSS_E = polarAt(COMPASS_CX, COMPASS_CY, 90, COMPASS_R - 28);
 const COMPASS_CROSS_W = polarAt(COMPASS_CX, COMPASS_CY, 270, COMPASS_R - 28);
 
-/** Discrete zoom multipliers (higher = closer). Includes zoom-out below ×1. */
-const ZOOM_STEPS = [0.35, 0.5, 0.7, 1, 1.5, 2.25, 3.5, 5] as const;
+/**
+ * Discrete zoom multipliers (higher = closer). Includes zoom-out below ×1.
+ * Two extra zoom-out steps (×0.17 / ×0.24) below the old ×0.35 floor give the
+ * umpire ~4× more visible battlespace area at max zoom-out (area ∝ 1/zoom²),
+ * continuing the same ~×0.7-per-step progression so pan/zoom feel stays
+ * consistent rather than jumping.
+ */
+const ZOOM_STEPS = [0.17, 0.24, 0.35, 0.5, 0.7, 1, 1.5, 2.25, 3.5, 5] as const;
 /** Default framing = fit units (×1). */
 const DEFAULT_ZOOM_IDX = ZOOM_STEPS.indexOf(1);
 
@@ -152,15 +168,18 @@ function writeShowSensorRanges(on: boolean) {
 }
 
 /**
- * Installed sensors that already carry a detection radius.
- * Radar falls back to the stub max; other kinds only if maxRangeNm is set
- * (do not invent hydrophone / active-sonar ranges).
+ * Installed sensors that already carry a detection radius, drawn as omni
+ * range-band ellipses. Radar falls back to the stub max; other omni kinds
+ * only if maxRangeNm is set (do not invent hydrophone ranges).
+ * Active sonar is directional (search cone, not omni) — drawn separately
+ * by {@link sonarConeForUnit} instead of as a full ellipse here.
  */
 function sensorRangesForUnit(unit: UnitState): { kind: SensorDef['kind']; rangeNm: number }[] {
   const sensors = unit.sensors;
   if (!sensors?.length) return [];
   const out: { kind: SensorDef['kind']; rangeNm: number }[] = [];
   for (const s of sensors) {
+    if (s.kind === 'active_sonar') continue;
     if (s.kind === 'radar') {
       const rangeNm = s.maxRangeNm ?? RADAR_MAX_RANGE_NM;
       if (rangeNm > 0) out.push({ kind: 'radar', rangeNm });
@@ -171,6 +190,74 @@ function sensorRangesForUnit(unit: UnitState): { kind: SensorDef['kind']; rangeN
     }
   }
   return out;
+}
+
+/**
+ * Forward search-cone geometry for a unit's active sonar, when it is
+ * currently pinging — mirrors the server's cone gate
+ * ({@link isInsideActiveSonarCone}) so the umpire sees exactly the arc that
+ * can actually detect contacts this turn (not a 360° ring).
+ */
+function sonarConeForUnit(
+  unit: UnitState,
+): { rangeNm: number; halfAngleDeg: number; axisHeadingDeg: number } | null {
+  if (!isActiveSonarPinging(unit)) return null;
+  const sensor = findActiveSonarSensor(unit);
+  const rangeNm = resolveActiveSonarMaxRangeNm(sensor);
+  if (!(rangeNm > 0)) return null;
+  return {
+    rangeNm,
+    halfAngleDeg: resolveActiveSonarHalfAngleDeg(),
+    axisHeadingDeg: normalizeHeading(unit.heading),
+  };
+}
+
+/**
+ * Bow / stern torpedo firing-arc wedges for a unit, per the shared firing-arc
+ * rules ({@link torpedoRoomArcAxisHeading} / {@link torpedoRoomArcHalfDeg}).
+ * Fleet-sub hulls only; radius uses the fish's max run so the wedge reads as
+ * "where a fired fish can reach", not an arbitrary cosmetic length.
+ */
+function torpedoArcsForUnit(
+  unit: UnitState,
+): { room: TorpedoRoomId; rangeNm: number; halfAngleDeg: number; axisHeadingDeg: number }[] {
+  if (!isFleetSubTorpedoHull(unit)) return [];
+  const rooms: TorpedoRoomId[] = ['forward', 'aft'];
+  return rooms.map((room) => ({
+    room,
+    rangeNm: TORPEDO_MAX_RUN_NM,
+    halfAngleDeg: torpedoRoomArcHalfDeg(room),
+    axisHeadingDeg: torpedoRoomArcAxisHeading(unit.heading, room),
+  }));
+}
+
+/**
+ * Wedge polygon points (screen px) for a directional cone/arc: unit center,
+ * then a fan of points along the true-range circle from `axis - half` to
+ * `axis + half`, projected through the same lat/lon → screen pipeline as
+ * everything else on the plot so the wedge follows the view's ellipse
+ * distortion exactly (no separate rx/ry math needed).
+ */
+function wedgePolygonPoints(
+  originLat: number,
+  originLon: number,
+  axisHeadingDeg: number,
+  halfAngleDeg: number,
+  rangeNm: number,
+  view: BoundingBox,
+): string {
+  const rangeM = rangeNm * METERS_PER_NM;
+  const stepDeg = 6;
+  const steps = Math.max(2, Math.ceil((halfAngleDeg * 2) / stepDeg));
+  const pts: string[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const bearing = normalizeHeading(axisHeadingDeg - halfAngleDeg + (i * (halfAngleDeg * 2)) / steps);
+    const pt = moveAlongHeading({ lat: originLat, lon: originLon, depth: 0 }, bearing, rangeM);
+    const { u, v } = projectToUv(pt.lat, pt.lon, view);
+    pts.push(`${(u * W).toFixed(1)},${(v * H).toFixed(1)}`);
+  }
+  const { u: ou, v: ov } = projectToUv(originLat, originLon, view);
+  return `${(ou * W).toFixed(1)},${(ov * H).toFixed(1)} ${pts.join(' ')}`;
 }
 
 function sensorsSignature(unit: UnitState): string {
@@ -670,9 +757,13 @@ function GroundTruthMapInner({
   /**
    * Sensor detection radii — rings under trails; one stacked label block per unit
    * so radar + hydrophone readouts do not share the same glyph box.
+   * Sonar cones and torpedo firing arcs share the same "Ranges" toggle and
+   * label stack, but render as directional wedges (not full ellipses) so
+   * they stay visually distinct from omni range bands without adding a
+   * second toggle.
    */
-  const { rangeRings, rangeLabelGroups } = useMemo(() => {
-    if (!showSensorRanges) return { rangeRings: [], rangeLabelGroups: [] };
+  const { rangeRings, rangeWedges, rangeLabelGroups } = useMemo(() => {
+    if (!showSensorRanges) return { rangeRings: [], rangeWedges: [], rangeLabelGroups: [] };
     const rings: {
       key: string;
       x: number;
@@ -681,6 +772,11 @@ function GroundTruthMapInner({
       ry: number;
       color: string;
       fillOpacity: number;
+    }[] = [];
+    const wedges: {
+      key: string;
+      kind: 'sonar_cone' | 'torpedo_arc';
+      points: string;
     }[] = [];
     const labelGroups: {
       key: string;
@@ -694,10 +790,14 @@ function GroundTruthMapInner({
       hydrophone: 1,
       active_sonar: 2,
       lookout: 3,
+      sonar_cone: 4,
+      torpedo_arc: 5,
     };
     for (const unit of units) {
       const ranges = sensorRangesForUnit(unit);
-      if (!ranges.length) continue;
+      const sonarCone = sonarConeForUnit(unit);
+      const torpedoArcs = torpedoArcsForUnit(unit);
+      if (!ranges.length && !sonarCone && !torpedoArcs.length) continue;
       const { u, v } = projectToUv(unit.position.lat, unit.position.lon, view);
       // Skip sensors whose host is far off-plot (ring may still clip in).
       if (u < -0.6 || u > 1.6 || v < -0.6 || v > 1.6) continue;
@@ -705,7 +805,6 @@ function GroundTruthMapInner({
       const y = v * H;
       const color = unitAccent(unit);
       let maxRy = 0;
-      let anyRing = false;
       let anyOversized = false;
       let anyEdgeOnPlot = false;
       const lines: { kind: string; text: string; order: number }[] = [];
@@ -713,7 +812,6 @@ function GroundTruthMapInner({
         const { rx, ry } = rangeBandRadiiPx(unit.position.lat, r.rangeNm, view);
         // Cull rings that cannot intersect the plot (cheap).
         if (x + rx < -8 || x - rx > W + 8 || y + ry < -8 || y - ry > H + 8) continue;
-        anyRing = true;
         maxRy = Math.max(maxRy, ry);
         const edgeOnPlot =
           x - rx > 8 && x + rx < W - 8 && y - ry > 8 && y + ry < H - 8;
@@ -735,7 +833,48 @@ function GroundTruthMapInner({
           order: kindOrder[r.kind] ?? 9,
         });
       }
-      if (!anyRing || !lines.length) continue;
+      if (sonarCone) {
+        wedges.push({
+          key: `${unit.id}-sonar-cone`,
+          kind: 'sonar_cone',
+          points: wedgePolygonPoints(
+            unit.position.lat,
+            unit.position.lon,
+            sonarCone.axisHeadingDeg,
+            sonarCone.halfAngleDeg,
+            sonarCone.rangeNm,
+            view,
+          ),
+        });
+        lines.push({
+          kind: 'sonar_cone',
+          text: `SONAR CONE ${sonarCone.rangeNm} NM`,
+          order: kindOrder.sonar_cone ?? 9,
+        });
+      }
+      for (const arc of torpedoArcs) {
+        wedges.push({
+          key: `${unit.id}-torpedo-arc-${arc.room}`,
+          kind: 'torpedo_arc',
+          points: wedgePolygonPoints(
+            unit.position.lat,
+            unit.position.lon,
+            arc.axisHeadingDeg,
+            arc.halfAngleDeg,
+            arc.rangeNm,
+            view,
+          ),
+        });
+      }
+      if (torpedoArcs.length) {
+        const halfDeg = torpedoArcs[0]!.halfAngleDeg;
+        lines.push({
+          kind: 'torpedo_arc',
+          text: `TORP ARCS ±${halfDeg}° FWD/AFT`,
+          order: kindOrder.torpedo_arc ?? 9,
+        });
+      }
+      if (!lines.length) continue;
       lines.sort((a, b) => a.order - b.order || a.kind.localeCompare(b.kind));
       const lineH = 11;
       const stackH = lines.length * lineH;
@@ -752,7 +891,7 @@ function GroundTruthMapInner({
         lines: lines.map((l) => l.text),
       });
     }
-    return { rangeRings: rings, rangeLabelGroups: labelGroups };
+    return { rangeRings: rings, rangeWedges: wedges, rangeLabelGroups: labelGroups };
   }, [units, view, showSensorRanges]);
 
   /** Operating-area outline in the same world projection (when it intersects the view). */
@@ -941,7 +1080,7 @@ function GroundTruthMapInner({
 
           <text x={12} y={18} fill="#5a9a68" fontSize={10} fontFamily="IBM Plex Mono, monospace">
             GROUND TRUTH · LAT/LON · {GRID_STEP_DEG}° GRID · TRAILS · INTENDED MOVE · WEAPONS · TRUE N
-            {showSensorRanges ? ' · RANGES' : ''}
+            {showSensorRanges ? ' · RANGES · CONES/ARCS' : ''}
           </text>
 
           {/* Sensor rings only — under trails; labels painted after trails */}
@@ -959,6 +1098,22 @@ function GroundTruthMapInner({
                 strokeWidth={1.5}
                 strokeOpacity={0.65}
                 strokeDasharray="6 4"
+              />
+            ))}
+            {/* Directional wedges — sonar search cone / torpedo firing arcs.
+                Distinct hue + finer dash from omni range rings so the two
+                overlays stay readable together (ARCH-SP-02 wedge geometry). */}
+            {rangeWedges.map((w) => (
+              <polygon
+                key={w.key}
+                points={w.points}
+                fill={w.kind === 'sonar_cone' ? '#54e0ff' : '#ff9d4d'}
+                fillOpacity={w.kind === 'sonar_cone' ? 0.1 : 0.07}
+                stroke={w.kind === 'sonar_cone' ? '#54e0ff' : '#ff9d4d'}
+                strokeWidth={1}
+                strokeOpacity={0.55}
+                strokeDasharray={w.kind === 'sonar_cone' ? '2 2' : '1 3'}
+                strokeLinejoin="round"
               />
             ))}
           </g>

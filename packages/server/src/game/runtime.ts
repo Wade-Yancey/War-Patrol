@@ -1097,6 +1097,28 @@ export class GameRuntime {
     });
   }
 
+  /**
+   * Umpire AAR note for a resolved turn (one per turn; empty string clears it).
+   * Only valid for turns already in history (post-resolve) — the live/open
+   * turn has no snapshot yet to attach a note to.
+   */
+  setTurnNote(gameId: string, turnNumber: number, note: string): GameSave {
+    return this.touch(gameId, (save) => {
+      const idx = save.history.findIndex((h) => h.turnNumber === turnNumber);
+      if (idx < 0) {
+        throw Object.assign(new Error(`No history snapshot for turn ${turnNumber}`), {
+          statusCode: 404,
+        });
+      }
+      const trimmed = note.trim();
+      const snap = { ...save.history[idx]! };
+      if (trimmed) snap.umpireNote = trimmed;
+      else delete snap.umpireNote;
+      save.history = [...save.history.slice(0, idx), snap, ...save.history.slice(idx + 1)];
+      return save;
+    });
+  }
+
   setUmpirePassword(gameId: string, password: string): GameSave {
     return this.touch(gameId, (s) => {
       s.umpirePassword = password || undefined;

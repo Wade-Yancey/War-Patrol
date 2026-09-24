@@ -201,6 +201,15 @@ export const api = {
       token,
       body: JSON.stringify(body),
     }),
+  setTurnNote: (gameId: string, token: string, turnNumber: number, note: string) =>
+    request<{ ok: boolean; stateVersion: number; umpireNote: string }>(
+      `/api/games/${gameId}/turn-notes`,
+      {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ turnNumber, note }),
+      },
+    ),
   rotateToken: (gameId: string, token: string, unitId: string) =>
     request<{ accessToken: string }>(`/api/games/${gameId}/units/${unitId}/rotate-token`, {
       method: 'POST',

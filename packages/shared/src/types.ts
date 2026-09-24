@@ -597,6 +597,11 @@ export interface TurnSnapshot {
    */
   torpedoes?: TorpedoTrack[];
   depthCharges?: DepthChargeTrack[];
+  /**
+   * Umpire-authored note for this turn, shown alongside the resolve in the
+   * After-Action Report. One note per turn (edit overwrites); optional.
+   */
+  umpireNote?: string;
 }
 
 /** Lightweight lat/lon breadcrumb for umpire trails. */
