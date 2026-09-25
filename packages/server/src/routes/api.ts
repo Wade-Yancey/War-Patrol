@@ -904,7 +904,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(400).send({ error: 'turnNumber required' });
       }
       const note = typeof request.body?.note === 'string' ? request.body.note : '';
-      const save = runtime.setTurnNote(request.params.gameId, turnNumber, note);
+      const save = await runtime.setTurnNote(request.params.gameId, turnNumber, note);
       const snap = save.history.find((h) => h.turnNumber === turnNumber);
       return { ok: true, stateVersion: save.stateVersion, umpireNote: snap?.umpireNote ?? '' };
     } catch (err) {

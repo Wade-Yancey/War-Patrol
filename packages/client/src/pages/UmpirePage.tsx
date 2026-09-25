@@ -512,20 +512,19 @@ export function UmpirePage() {
                 />
                 {reviewTurn != null && (
                   <div className="aar-turn-note" aria-label="AAR turn note">
-                    <label className="aar-turn-note-label" htmlFor="aar-turn-note-input">
+                    <label htmlFor="aar-turn-note-input">
                       Umpire note · T{reviewTurn}
+                      <textarea
+                        id="aar-turn-note-input"
+                        rows={2}
+                        placeholder="Optional AAR note for this turn (narrative, ruling, context)…"
+                        value={turnNoteDraft}
+                        onChange={(e) => {
+                          setTurnNoteDraft(e.target.value);
+                          setTurnNoteDirty(true);
+                        }}
+                      />
                     </label>
-                    <textarea
-                      id="aar-turn-note-input"
-                      className="mono"
-                      rows={2}
-                      placeholder="Add a note for the After-Action Report (e.g. narrative context, ruling explanation)…"
-                      value={turnNoteDraft}
-                      onChange={(e) => {
-                        setTurnNoteDraft(e.target.value);
-                        setTurnNoteDirty(true);
-                      }}
-                    />
                     <div className="control-actions">
                       <button
                         type="button"

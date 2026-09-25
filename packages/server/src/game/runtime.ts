@@ -1587,22 +1587,25 @@ export class GameRuntime {
    * Umpire AAR note for a resolved turn (one per turn; empty string clears it).
    * Only valid for turns already in history (post-resolve) — the live/open
    * turn has no snapshot yet to attach a note to.
+   * Disk-persists immediately so notes survive restart without a separate Save.
    */
-  setTurnNote(gameId: string, turnNumber: number, note: string): GameSave {
-    return this.touch(gameId, (save) => {
-      const idx = save.history.findIndex((h) => h.turnNumber === turnNumber);
+  async setTurnNote(gameId: string, turnNumber: number, note: string): Promise<GameSave> {
+    const save = this.touch(gameId, (s) => {
+      const idx = s.history.findIndex((h) => h.turnNumber === turnNumber);
       if (idx < 0) {
         throw Object.assign(new Error(`No history snapshot for turn ${turnNumber}`), {
           statusCode: 404,
         });
       }
       const trimmed = note.trim();
-      const snap = { ...save.history[idx]! };
+      const snap = { ...s.history[idx]! };
       if (trimmed) snap.umpireNote = trimmed;
       else delete snap.umpireNote;
-      save.history = [...save.history.slice(0, idx), snap, ...save.history.slice(idx + 1)];
-      return save;
+      s.history = [...s.history.slice(0, idx), snap, ...s.history.slice(idx + 1)];
+      return s;
     });
+    await store.writeSave(save);
+    return save;
   }
 
   setUmpirePassword(gameId: string, password: string): GameSave {
