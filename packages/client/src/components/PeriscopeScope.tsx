@@ -11,6 +11,7 @@ import destroyerSilhouettePng from '../assets/silhouettes/destroyer.png';
 import kageroSilhouettePng from '../assets/silhouettes/kagero.png';
 import oilerSilhouettePng from '../assets/silhouettes/oiler.png';
 import submarineSilhouettePng from '../assets/silhouettes/submarine.png';
+import zekeSilhouettePng from '../assets/silhouettes/zeke.png';
 import {
   formatRelBearing,
   OpticsBearingCompass,
@@ -40,6 +41,7 @@ const SILHOUETTE_SIZE: Record<string, { width: number; height: number }> = {
   'Fleet Submarine': { width: 350, height: 55 },
   Oiler: { width: 510, height: 98 },
   'Aircraft Carrier': { width: 720, height: 87 },
+  zeke: { width: 655, height: 482 },
 };
 
 /**
@@ -51,6 +53,7 @@ function silhouetteSrcForContact(
   plate: string | undefined,
 ): string {
   if (plate === 'kagero') return kageroSilhouettePng;
+  if (plate === 'zeke') return zekeSilhouettePng;
   switch (hullClass) {
     case 'Fleet Submarine':
       return submarineSilhouettePng;
@@ -69,6 +72,7 @@ function silhouetteAlt(
   plate: string | undefined,
 ): string {
   if (plate === 'kagero') return 'Kagerō destroyer silhouette';
+  if (plate === 'zeke') return 'Mitsubishi Zeke fighter recognition plate';
   if (hullClass === 'Fleet Submarine') return 'Submarine silhouette';
   if (hullClass === 'Oiler') return 'Oiler silhouette';
   if (hullClass === 'Aircraft Carrier') return 'Aircraft carrier silhouette';
@@ -293,6 +297,7 @@ export const PeriscopeScope = memo(PeriscopeScopeInner, (prev, next) => {
         c.speedKn === o.speedKn &&
         c.courseDeg === o.courseDeg &&
         c.silhouetteClass === o.silhouetteClass &&
+        c.silhouettePlate === o.silhouettePlate &&
         (c.kind ?? 'hull') === (o.kind ?? 'hull')
       );
     })

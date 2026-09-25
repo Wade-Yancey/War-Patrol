@@ -1157,7 +1157,8 @@ export interface PeriscopeContact {
   courseDeg?: number;
   /**
    * Hull class for silhouette mapping only
-   * (Destroyer → destroyer.png, Fleet Submarine → submarine.png, Oiler → oiler.png).
+   * (Destroyer → destroyer.png, Fleet Submarine → submarine.png, Oiler → oiler.png,
+   * Aircraft Carrier → carrier.png; Fighter/Bomber use `silhouettePlate` when set).
    * Not a side/name; other classes fall back to the destroyer plate.
    * Periscope feathers (`kind: 'periscope'`) use a stick/feather SVG in the
    * optics viewer, not a hull plate — `silhouetteClass` is FoW metadata only.
@@ -1165,8 +1166,9 @@ export interface PeriscopeContact {
   silhouetteClass: HullClass;
   /**
    * Optional class-specific plate stem when multiple library hulls share a
-   * taxonomic class (e.g. Kagerō vs Fletcher both `Destroyer`).
-   * Values match public `/silhouettes/<plate>.png` (e.g. `"kagero"`).
+   * taxonomic class (e.g. Kagerō vs Fletcher both `Destroyer`; Zeke vs Hellcat
+   * both `Fighter`). Values match public `/silhouettes/<plate>.png`
+   * (e.g. `"kagero"`, `"zeke"`).
    * Identity is implied by the image only — not a side/name leak.
    */
   silhouettePlate?: string;

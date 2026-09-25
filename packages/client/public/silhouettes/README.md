@@ -1,6 +1,6 @@
 # Periscope / lookout silhouettes
 
-Side-profile recognition plates for the Sensors visual optics tab (sub periscope + DD lookout).
+Side-profile / recognition plates for the Sensors visual optics tab (sub periscope + DD lookout).
 
 | Hull class / plate | File | Notes |
 | --- | --- | --- |
@@ -9,12 +9,13 @@ Side-profile recognition plates for the Sensors visual optics tab (sub periscope
 | Fleet Submarine | `submarine.png` | Side-profile plate with alpha (halftone hull, bow right). Bundled via Vite at `packages/client/src/assets/silhouettes/submarine.png`. |
 | Oiler | `oiler.png` | Cimarron-class (T3-S2-A1) fleet oiler plate with alpha (halftone hull, bow right). Bundled via Vite at `packages/client/src/assets/silhouettes/oiler.png`. |
 | Aircraft Carrier | `carrier.png` | Shōkaku-class fleet carrier plate with alpha (grayscale hull, bow right; derived from port-side reference, flipped). Bundled via Vite at `packages/client/src/assets/silhouettes/carrier.png`. |
+| Fighter — Zeke plate | `zeke.png` | Mitsubishi A6M Zeke recognition plate (top-down + profile insets, grayscale midtones + alpha). Page white punched to transparency; **not** crushed to a black silhouette. Selected via `silhouettePlate: "zeke"` / `classId` containing `zeke` or `a6m`. Source: store `media/zeke-fighter-reference.jpg`. |
 
 Keep public + Vite asset copies byte-identical when updating a plate. Preserve PNG transparency (`tRNS` / alpha) so the plate composites over the optics sky/sea. CRT grain/scanlines are CSS overlays above the `<img>` — do not bake them into the PNG.
 
 ## Horizontal flip (port / starboard aspect)
 
-Plates are authored **bow right** (starboard-side elevation). The optics CRT mirrors them with CSS `scaleX(-1)` when the observed aspect is **port**:
+Plates are authored **bow right** (starboard-side elevation) where applicable. The optics CRT mirrors them with CSS `scaleX(-1)` when the observed aspect is **port**:
 
 1. `trueBearing = ownHeading + relativeBearing` (FoW coarsened relative bearing).
 2. Signed AOB = shortest turn from FoW `courseDeg` to `trueBearing + 180°` (bearing from target back to observer).
@@ -23,5 +24,5 @@ Plates are authored **bow right** (starboard-side elevation). The optics CRT mir
 
 Helper: `periscopeSilhouetteFlipX()` in `@war-patrol/shared`. UI class: `.periscope-silhouette--flip` in `PeriscopeScope`.
 
-Resolver (docs / verify): `silhouetteUrlForClass()` / `silhouetteUrlForOptics()` / `DESTROYER_SILHOUETTE_URL` / `KAGERO_SILHOUETTE_URL` / `SUBMARINE_SILHOUETTE_URL` / `OILER_SILHOUETTE_URL` / `CARRIER_SILHOUETTE_URL` in `@war-patrol/shared`.  
+Resolver (docs / verify): `silhouetteUrlForClass()` / `silhouetteUrlForOptics()` / `DESTROYER_SILHOUETTE_URL` / `KAGERO_SILHOUETTE_URL` / `SUBMARINE_SILHOUETTE_URL` / `OILER_SILHOUETTE_URL` / `CARRIER_SILHOUETTE_URL` / `ZEKE_SILHOUETTE_URL` in `@war-patrol/shared`.  
 Runtime UI: class + plate map of Vite imports in `PeriscopeScope.tsx` (bundled URLs). Unknown classes fall back to the destroyer plate.
