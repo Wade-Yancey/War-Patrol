@@ -53,6 +53,7 @@ import {
   snapWallDuration,
   stepDepthTowardOrdered,
   submarineDepthRisk,
+  turnToward,
 } from '@war-patrol/shared';
 import { buildPeriscopeContacts } from './game/periscope.js';
 import { buildRadarContacts } from './game/radar.js';
@@ -1465,6 +1466,88 @@ async function main() {
     'PATCH',
     `/api/games/${gameId}/units/dd-101`,
     { type: 'Ship', class: 'Destroyer', name: 'USS Porter', speed: 12 },
+    umpireToken,
+  );
+
+  // --- Umpire course override: gradual turn + persistence (Wade oiler reverse) ---
+  // Seed bow + standing course east, then umpire rings up reverse without snapping.
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { heading: 90, speed: 12 },
+    umpireToken,
+  );
+  // Stale station helm order that would otherwise reassert 090 on resolve.
+  await api('POST', `/api/games/${gameId}/orders`, { course: 90 }, blueToken);
+  const courseBefore = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
+  check('pre-course-override heading 090', Math.abs(courseBefore.heading - 90) < 0.01);
+  check(
+    'pre-course-override pending CRS 090',
+    courseBefore.orders?.course === 90,
+  );
+  const coursePatch = await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { orderedCourse: 270 },
+    umpireToken,
+  );
+  check('umpire orderedCourse patch ok', coursePatch.status === 200);
+  const courseApplied = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
+  check(
+    'umpire course does not snap heading',
+    Math.abs(courseApplied.heading - 90) < 0.01,
+    `hdg=${courseApplied.heading}`,
+  );
+  check(
+    'umpire course sets standing orderedCourse',
+    Math.abs(courseApplied.orderedCourse - 270) < 0.01,
+    `crs=${courseApplied.orderedCourse}`,
+  );
+  check(
+    'umpire course clears stale pending helm CRS',
+    courseApplied.orders?.course === undefined,
+    `pending=${courseApplied.orders?.course}`,
+  );
+  const turnLen = runtime.requireGame(gameId).turnLengthSeconds ?? 180;
+  const maxYaw = courseApplied.turnRate * (turnLen / 60);
+  const expectedHdg = turnToward(90, 270, maxYaw);
+  await api('POST', `/api/games/${gameId}/turn/lock`, {}, umpireToken);
+  await api('POST', `/api/games/${gameId}/turn/resolve`, {}, umpireToken);
+  const courseAfter = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
+  check(
+    'umpire course persists after resolve',
+    Math.abs(courseAfter.orderedCourse - 270) < 0.01,
+    `crs=${courseAfter.orderedCourse}`,
+  );
+  check(
+    'umpire course turns gradually (not snap, not revert to 090)',
+    Math.abs(courseAfter.heading - expectedHdg) < 0.05,
+    `hdg=${courseAfter.heading} want≈${expectedHdg} (from 90 toward 270, Δ≤${maxYaw})`,
+  );
+  check(
+    'umpire course heading left 090',
+    Math.abs(courseAfter.heading - 90) > 1,
+    `hdg=${courseAfter.heading}`,
+  );
+  // Fiat heading patch still teleports bow but also retargets orderedCourse (no drift-back).
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { heading: 45 },
+    umpireToken,
+  );
+  const fiatHdg = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
+  check('fiat heading snaps bow', Math.abs(fiatHdg.heading - 45) < 0.01);
+  check(
+    'fiat heading retargets orderedCourse',
+    Math.abs(fiatHdg.orderedCourse - 45) < 0.01,
+    `crs=${fiatHdg.orderedCourse}`,
+  );
+  // Restore porter eastbound for later tests.
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { heading: 90, speed: 12 },
     umpireToken,
   );
 

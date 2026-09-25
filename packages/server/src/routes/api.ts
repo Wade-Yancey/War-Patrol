@@ -684,6 +684,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     Body: {
       health?: number;
       heading?: number;
+      /** Standing helm course (gradual turn); preferred over fiat heading for Navigation. */
+      orderedCourse?: number;
       speed?: number;
       name?: string;
       password?: string;
@@ -713,6 +715,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       const save = runtime.updateUnit(request.params.gameId, request.params.unitId, {
         health: body.health,
         heading: body.heading,
+        orderedCourse: body.orderedCourse,
         speed: body.speed,
         name: body.name,
         password: body.password,

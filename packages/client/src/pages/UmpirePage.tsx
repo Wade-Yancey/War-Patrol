@@ -200,7 +200,8 @@ export function UmpirePage() {
     setEditLookout(u.subsystems?.lookout ?? 'intact');
     setEditSteering(u.subsystems?.steering ?? 'intact');
     setEditDivePlanes(u.subsystems?.divePlanes ?? 'intact');
-    setEditHeading(Math.round(u.heading));
+    // Navigation dial is the standing course (helm set-point), not instantaneous bow heading.
+    setEditHeading(Math.round(u.orderedCourse ?? u.heading));
     setEditSpeed(Math.round(u.speed));
     setEditPassword(u.password ?? '');
     setDirty(false);
@@ -962,7 +963,7 @@ export function UmpirePage() {
                       <div className="unit-edit-group">
                         <h3>Navigation</h3>
                         <TouchNumber
-                          label="Heading"
+                          label="Course"
                           value={editHeading}
                           onChange={(v) => {
                             markDirty();
@@ -974,6 +975,7 @@ export function UmpirePage() {
                           wrap
                           unit="°"
                           format={(v) => `${String(v).padStart(3, '0')}°`}
+                          hint="Standing helm course — turns at class rate on resolve (no instant snap)"
                         />
                         <TouchNumber
                           label={`Speed (max ${editMaxSpeed} kn)`}
@@ -1004,7 +1006,7 @@ export function UmpirePage() {
                               void run(
                                 () =>
                                   api.updateUnit(gameId, token, selectedUnit.id, {
-                                    heading: editHeading,
+                                    orderedCourse: editHeading,
                                     speed: clampSpeedToMax(editSpeed, editMaxSpeed),
                                   }),
                                 'Navigation applied',
@@ -1288,7 +1290,7 @@ export function UmpirePage() {
                                       steering: editSteering,
                                       divePlanes: editDivePlanes,
                                       ...(editSteering === 'stuck'
-                                        ? { rudderStuckHeading: editHeading }
+                                        ? { rudderStuckHeading: Math.round(selectedUnit.heading) }
                                         : {}),
                                       ...(editDivePlanes === 'stuck' || editDivePlanes === 'disabled'
                                         ? { divePlanesStuckDepth: editDepth }
