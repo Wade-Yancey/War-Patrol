@@ -830,6 +830,14 @@ async function main() {
   );
   {
     const here = path.dirname(fileURLToPath(import.meta.url));
+    const pngHasTransparency = (buf: Buffer): boolean => {
+      // Indexed/gray: optional tRNS. Truecolor/gray with alpha: IHDR color type 4 or 6.
+      if (buf.includes(Buffer.from('tRNS'))) return true;
+      const ihdr = buf.indexOf(Buffer.from('IHDR'));
+      if (ihdr < 0 || ihdr + 17 > buf.length) return false;
+      const colorType = buf[ihdr + 13]; // bit depth @ +12, color type @ +13 after 'IHDR'
+      return colorType === 4 || colorType === 6;
+    };
     const assertSilhouettePng = (name: string, minBytes: number) => {
       const candidates = [
         path.resolve(here, `../../client/public/silhouettes/${name}`),
@@ -837,7 +845,7 @@ async function main() {
       ];
       const resolved = candidates.find((p) => fs.existsSync(p));
       const buf = resolved ? fs.readFileSync(resolved) : null;
-      // PNG signature + tRNS (indexed alpha) or RGBA — keep transparency for optics.
+      // PNG signature + tRNS (indexed alpha) or RGBA/gray+A — keep transparency for optics.
       const isPng = Boolean(
         buf &&
           buf[0] === 0x89 &&
@@ -845,11 +853,11 @@ async function main() {
           buf[2] === 0x4e &&
           buf[3] === 0x47,
       );
-      const hasTrns = Boolean(buf && buf.includes(Buffer.from('tRNS')));
+      const hasAlpha = Boolean(buf && pngHasTransparency(buf));
       check(
         `${name.replace('.png', '')} silhouette PNG present`,
-        isPng && Boolean(buf && buf.length > minBytes) && hasTrns,
-        resolved ? `${resolved} ${buf?.length ?? 0} bytes trns=${hasTrns}` : 'missing',
+        isPng && Boolean(buf && buf.length > minBytes) && hasAlpha,
+        resolved ? `${resolved} ${buf?.length ?? 0} bytes alpha=${hasAlpha}` : 'missing',
       );
       // After `pnpm build`, Vite copies public/ → client/dist/; production serves dist.
       const distCandidates = [
@@ -864,11 +872,11 @@ async function main() {
           distBuf[1] === 0x50 &&
           distBuf[2] === 0x4e &&
           distBuf[3] === 0x47;
-        const distTrns = distBuf.includes(Buffer.from('tRNS'));
+        const distAlpha = pngHasTransparency(distBuf);
         check(
           `${name.replace('.png', '')} silhouette in client dist`,
-          distIsPng && distBuf.length > minBytes && distTrns,
-          `${distPng} ${distBuf.length} bytes trns=${distTrns}`,
+          distIsPng && distBuf.length > minBytes && distAlpha,
+          `${distPng} ${distBuf.length} bytes alpha=${distAlpha}`,
         );
       }
     };

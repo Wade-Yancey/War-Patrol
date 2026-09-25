@@ -5,7 +5,7 @@ Side-profile recognition plates for the Sensors visual optics tab (sub periscope
 | Hull class / plate | File | Notes |
 | --- | --- | --- |
 | Destroyer (Fletcher default) | `destroyer.png` | Side-profile plate with alpha (stippled hull, bow right). Bundled via Vite at `packages/client/src/assets/silhouettes/destroyer.png`. |
-| Destroyer — Kagerō plate | `kagero.png` | IJN Kagerō-class plate with alpha (solid black hull, bow right; derived from port-side reference, flipped). Selected via `silhouettePlate: "kagero"` / `classId` containing `kagero`. Does **not** overwrite Fletcher `destroyer.png`. |
+| Destroyer — Kagerō plate | `kagero.png` | IJN Kagerō-class plate as Wade’s provided RGBA profile (grayscale detail + alpha, bow right) — shipped lossless, not quantized/inverted. Selected via `silhouettePlate: "kagero"` / `classId` containing `kagero`. Does **not** overwrite Fletcher `destroyer.png`. |
 | Fleet Submarine | `submarine.png` | Side-profile plate with alpha (halftone hull, bow right). Bundled via Vite at `packages/client/src/assets/silhouettes/submarine.png`. |
 | Oiler | `oiler.png` | Cimarron-class (T3-S2-A1) fleet oiler plate with alpha (halftone hull, bow right). Bundled via Vite at `packages/client/src/assets/silhouettes/oiler.png`. |
 | Aircraft Carrier | `carrier.png` | Shōkaku-class fleet carrier plate with alpha (grayscale hull, bow right; derived from port-side reference, flipped). Bundled via Vite at `packages/client/src/assets/silhouettes/carrier.png`. |
