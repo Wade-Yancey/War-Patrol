@@ -55,6 +55,7 @@ import {
   isV1PlayerHullClass,
   isV1PlayerUnit,
   isHydrophoneEmitter,
+  isPeriscopeTargetable,
   snapWallDuration,
   stepDepthTowardOrdered,
   submarineDepthRisk,
@@ -787,6 +788,11 @@ async function main() {
       silhouettePlateForClassId('fletcher-class') === undefined,
   );
   check(
+    'zeke plate stem from classId',
+    silhouettePlateForClassId('zeke-fighter') === 'zeke' &&
+      silhouettePlateForClassId('hellcat-fighter') === undefined,
+  );
+  check(
     'kagero optics plate distinct from Fletcher destroyer',
     silhouetteUrlForOptics({ hullClass: 'Destroyer', classId: 'kagero-class' }) ===
       '/silhouettes/kagero.png' &&
@@ -794,6 +800,15 @@ async function main() {
         '/silhouettes/destroyer.png' &&
       periscopeSilhouetteUrl('Destroyer', { classId: 'kagero-class' }) ===
         '/silhouettes/kagero.png',
+  );
+  check(
+    'zeke optics plate for Fighter classId',
+    silhouetteUrlForOptics({ hullClass: 'Fighter', classId: 'zeke-fighter' }) ===
+      '/silhouettes/zeke.png' &&
+      silhouetteUrlForOptics({ hullClass: 'Fighter', classId: 'hellcat-fighter' }) === null &&
+      periscopeSilhouetteUrl('Fighter', { classId: 'zeke-fighter' }) ===
+        '/silhouettes/zeke.png' &&
+      periscopeSilhouetteUrl('Fighter') === '/silhouettes/destroyer.png',
   );
   check(
     'periscope silhouette class map + destroyer fallback',
@@ -886,6 +901,7 @@ async function main() {
     assertSilhouettePng('oiler.png', 1000);
     assertSilhouettePng('carrier.png', 1000);
     assertSilhouettePng('kagero.png', 1000);
+    assertSilhouettePng('zeke.png', 1000);
   }
   check(
     'controls has no periscope picture',
@@ -1878,6 +1894,26 @@ async function main() {
   check(
     'bomber is not a hydrophone emitter',
     isHydrophoneEmitter({ type: 'Aircraft', condition: 'afloat', speed: 250 }) === false,
+  );
+  check(
+    'fighter is optically targetable (lookout/peri)',
+    isPeriscopeTargetable(asFighter) === true,
+  );
+  check(
+    'bomber is optically targetable (lookout/peri)',
+    isPeriscopeTargetable({
+      type: 'Aircraft',
+      condition: 'afloat',
+      position: { lat: 0, lon: 0, depth: 0 },
+    }) === true,
+  );
+  check(
+    'destroyed aircraft not optically targetable',
+    isPeriscopeTargetable({
+      type: 'Aircraft',
+      condition: 'sunk',
+      position: { lat: 0, lon: 0, depth: 0 },
+    }) === false,
   );
   check(
     'underway destroyer is a hydrophone emitter',
@@ -3494,11 +3530,38 @@ async function main() {
       const periContacts = (periView.json.view as { periscopeContacts?: Array<Json> })
         .periscopeContacts;
       check(
-        'philippine-sea peri sees carrier + kagero escort',
+        'philippine-sea peri sees carrier + kagero escort + zeke CAP',
         Array.isArray(periContacts) &&
           periContacts.some((c) => c.silhouetteClass === 'Aircraft Carrier') &&
           periContacts.some(
             (c) => c.silhouetteClass === 'Destroyer' && c.silhouettePlate === 'kagero',
+          ) &&
+          periContacts.some(
+            (c) => c.silhouetteClass === 'Fighter' && c.silhouettePlate === 'zeke',
+          ),
+      );
+
+      // Urakaze bridge lookout — same visual pipeline; Zeke CAP in range (~1.85 nm).
+      const ddAuthLookout = await api('POST', `/api/games/${psId}/auth/vessel`, {
+        accessToken: 'urakaze-demo',
+        password: 'red',
+        stationId: 'sensors',
+      });
+      check('philippine-sea urakaze sensors auth', ddAuthLookout.status === 200);
+      const ddLookoutView = await api(
+        'GET',
+        `/api/games/${psId}/view`,
+        undefined,
+        String(ddAuthLookout.json.token),
+      );
+      const ddLookoutContacts = (
+        ddLookoutView.json.view as { periscopeContacts?: Array<Json> }
+      ).periscopeContacts;
+      check(
+        'philippine-sea urakaze lookout sees zeke CAP',
+        Array.isArray(ddLookoutContacts) &&
+          ddLookoutContacts.some(
+            (c) => c.silhouetteClass === 'Fighter' && c.silhouettePlate === 'zeke',
           ),
       );
     }

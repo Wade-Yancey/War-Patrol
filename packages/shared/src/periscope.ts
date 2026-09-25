@@ -86,9 +86,11 @@ export function isPeriscopeDepthOk(
 }
 
 /**
- * Targets visible as full hull silhouettes through periscope / lookout:
- * waterborne hulls that are not sunk; submerged submarines are hidden
- * (depth &gt; radar surface band). Aircraft skipped for v1.
+ * Targets visible as full hull / airframe silhouettes through periscope / lookout:
+ * waterborne hulls and airborne aircraft that are not sunk; submerged
+ * submarines are hidden (depth &gt; radar surface band). Aircraft (Fighter /
+ * Bomber) are optically visible when in range — hydrophone remains blind to
+ * them. Flight-level bands do not hide airframes by default.
  *
  * Raised periscope feathers on submerged boats are handled separately via
  * {@link isRaisedPeriscopeSpottable}.
@@ -97,7 +99,6 @@ export function isPeriscopeTargetable(
   unit: Pick<UnitState, 'type' | 'condition' | 'position'>,
 ): boolean {
   if (unit.condition === 'sunk') return false;
-  if (unit.type === 'Aircraft') return false;
   if (unit.type === 'Submarine' && unit.position.depth > RADAR_SURFACE_DEPTH_M) {
     return false;
   }
@@ -245,16 +246,20 @@ export const OILER_SILHOUETTE_URL = '/silhouettes/oiler.png';
 export const CARRIER_SILHOUETTE_URL = '/silhouettes/carrier.png';
 /** Kagerō-class IJN destroyer plate (distinct from US Fletcher `destroyer.png`). */
 export const KAGERO_SILHOUETTE_URL = '/silhouettes/kagero.png';
+/** Mitsubishi A6M Zeke recognition plate (distinct from generic Fighter fallback). */
+export const ZEKE_SILHOUETTE_URL = '/silhouettes/zeke.png';
 
 /**
  * Class-specific optics plate stem when multiple library hulls share a taxonomic
- * class (Kagerō vs Fletcher both `Destroyer`). Matches `/silhouettes/<plate>.png`.
+ * class (Kagerō vs Fletcher both `Destroyer`; Zeke vs Hellcat both `Fighter`).
+ * Matches `/silhouettes/<plate>.png`.
  */
 export function silhouettePlateForClassId(
   classId: string | undefined,
 ): string | undefined {
   const id = typeof classId === 'string' ? classId.toLowerCase() : '';
   if (id.includes('kagero') || id.includes('kagerō')) return 'kagero';
+  if (id.includes('zeke') || id.includes('a6m')) return 'zeke';
   return undefined;
 }
 
@@ -267,19 +272,22 @@ export function silhouetteUrlForPlate(plate: string | undefined): string | null 
   switch (plate) {
     case 'kagero':
       return KAGERO_SILHOUETTE_URL;
+    case 'zeke':
+      return ZEKE_SILHOUETTE_URL;
     default:
       return null;
   }
 }
 
 /**
- * Public asset path for a hull-class silhouette (side profile).
+ * Public asset path for a hull-class silhouette (side profile / recognition plate).
  * Destroyer → {@link DESTROYER_SILHOUETTE_URL} (Fletcher default);
  * Fleet Submarine → {@link SUBMARINE_SILHOUETTE_URL};
  * Oiler → {@link OILER_SILHOUETTE_URL} (Cimarron-class plate);
- * Aircraft Carrier → {@link CARRIER_SILHOUETTE_URL} (Shōkaku-class plate).
+ * Aircraft Carrier → {@link CARRIER_SILHOUETTE_URL} (Shōkaku-class plate);
+ * Fighter / Bomber → null until a plate stem is selected (Zeke via classId).
  * Other classes → null (UI falls back to the destroyer PNG).
- * Prefer {@link silhouetteUrlForOptics} when `classId` / plate may select Kagerō art.
+ * Prefer {@link silhouetteUrlForOptics} when `classId` / plate may select Kagerō / Zeke art.
  */
 export function silhouetteUrlForClass(
   hullClass: HullClass | string | undefined,
@@ -300,7 +308,7 @@ export function silhouetteUrlForClass(
 }
 
 /**
- * Optics plate URL: class-specific plate (Kagerō) wins over taxonomic class map.
+ * Optics plate URL: class-specific plate (Kagerō / Zeke) wins over taxonomic class map.
  */
 export function silhouetteUrlForOptics(opts: {
   hullClass?: HullClass | string;
