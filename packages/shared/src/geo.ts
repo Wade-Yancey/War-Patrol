@@ -71,6 +71,20 @@ export function eastNorthMeters(
   return { east, north };
 }
 
+/**
+ * Linear interpolation between two positions on the equirectangular plane
+ * (lat/lon/depth each lerp independently — fine for the short, straight-line
+ * per-turn moves this sim uses). `t` is clamped to [0, 1].
+ */
+export function lerpLatLonDepth(a: LatLonDepth, b: LatLonDepth, t: number): LatLonDepth {
+  const f = clamp(t, 0, 1);
+  return {
+    lat: a.lat + (b.lat - a.lat) * f,
+    lon: a.lon + (b.lon - a.lon) * f,
+    depth: a.depth + (b.depth - a.depth) * f,
+  };
+}
+
 /** True bearing (degrees) and range (nm) from `from` to `to`. */
 export function bearingRangeNm(
   from: Pick<LatLonDepth, 'lat' | 'lon'>,

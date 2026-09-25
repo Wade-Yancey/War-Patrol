@@ -23,6 +23,7 @@ import {
   horizontalMissMeters,
   isDepthChargeTarget,
   isTorpedoTarget,
+  lerpLatLonDepth,
   makeDetonationEvent,
   torpedoHitAudioDelaySec,
   normalizeDepthChargePattern,
@@ -290,8 +291,29 @@ export function resolveWeaponsForTurn(
   const newDetonations: WeaponDetonationEvent[] = [];
   const dt = turnLengthSeconds / WEAPON_SUBSTEPS;
 
+  /**
+   * Targets (and the firer's own hull, for arc/launch bookkeeping) move
+   * across the *whole* turn during kinematics, before this substep loop
+   * ever runs — `units` already holds each hull's end-of-turn position.
+   * Without this, every contact sits frozen at its final position for
+   * the entire weapon run, so a fish arriving mid-turn checks against a
+   * target that (from its perspective) hasn't moved yet this turn but
+   * (from the sim's) has already finished moving — a silent, otherwise
+   * unaccounted-for miss even when the player's solution was exact.
+   * Interpolate straight-line between the pre-move snapshot and the
+   * final position so collision checks see the target where it truly
+   * was at that fraction of the turn.
+   */
+  const interpolatedPosition = (unitId: string, endPosition: LatLonDepth, frac: number): LatLonDepth => {
+    const start = startPositions?.get(unitId);
+    if (!start) return endPosition;
+    return lerpLatLonDepth(start, endPosition, frac);
+  };
+
   for (let step = 0; step < WEAPON_SUBSTEPS; step++) {
     const unitMap = byId();
+    // Fraction of the turn elapsed once this substep's advance completes.
+    const frac = (step + 1) / WEAPON_SUBSTEPS;
 
     torpedoes = torpedoes.map((fish) => {
       if (fish.status !== 'running') return fish;
@@ -312,7 +334,8 @@ export function resolveWeaponsForTurn(
       for (const [uid, target] of unitMap) {
         if (uid === fish.firerUnitId) continue;
         if (!isTorpedoTarget(target)) continue;
-        const closest = segmentClosestPoint(before, advanced.position, target.position);
+        const targetPos = interpolatedPosition(uid, target.position, frac);
+        const closest = segmentClosestPoint(before, advanced.position, targetPos);
         // CPA is always vs nearest eligible contact (not the aimed solution target).
         advanced = recordTorpedoClosestApproach(advanced, closest.missM, uid, target.name);
 
@@ -320,9 +343,9 @@ export function resolveWeaponsForTurn(
         if (advanced.status !== 'running') continue;
 
         const depthOk =
-          target.type === 'Ship' || target.position.depth <= RADAR_SURFACE_DEPTH_M
+          target.type === 'Ship' || targetPos.depth <= RADAR_SURFACE_DEPTH_M
             ? advanced.runDepthM <= 8
-            : Math.abs(advanced.runDepthM - target.position.depth) <= 6;
+            : Math.abs(advanced.runDepthM - targetPos.depth) <= 6;
         const { lengthM, beamM } = unitLengthBeam(target);
         const roll = resolveTorpedoHit({
           missDistanceM: closest.missM,
@@ -465,8 +488,9 @@ export function resolveWeaponsForTurn(
       );
       for (const [uid, target] of unitMap) {
         if (!isDepthChargeTarget(target)) continue;
-        const horiz = horizontalMissMeters(advanced.position, target.position);
-        const depthErr = advanced.depthSettingM - target.position.depth;
+        const targetPos = interpolatedPosition(uid, target.position, frac);
+        const horiz = horizontalMissMeters(advanced.position, targetPos);
+        const depthErr = advanced.depthSettingM - targetPos.depth;
         const { damage } = resolveDepthChargeEffect({
           horizontalMissM: horiz,
           depthErrorM: depthErr,

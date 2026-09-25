@@ -2753,6 +2753,84 @@ async function main() {
       );
     }
 
+    // Perfect-solution geometric hit vs a *moving* convoy target (regression for the
+    // "accurate periscope inputs still miss" report): aim/course/speed/range taken
+    // straight from ground truth right before firing must produce a geometric hit,
+    // not a several-hundred-meter miss from targets/firer drifting during the
+    // resolving turn. Force the dud roll off by checking CPA against the gate
+    // directly instead of asserting on RNG-dependent `status: 'hit'`.
+    {
+      const perfectGame = await api('POST', '/api/games', {
+        scenarioId: 'cimarron-convoy-torpedo-test',
+        name: 'Verify Perfect Solution Hit',
+      });
+      check('perfect-solution game create', perfectGame.status === 200);
+      const perfectId = String(perfectGame.json.gameId);
+      const perfectUmp = await api('POST', `/api/games/${perfectId}/auth/umpire`, {
+        password: 'umpire',
+      });
+      const perfectUTok = String(perfectUmp.json.token);
+      const perfectSub = await api('POST', `/api/games/${perfectId}/auth/vessel`, {
+        accessToken: 'gato-demo',
+        password: 'red',
+        stationId: 'controls',
+      });
+      const perfectTok = String(perfectSub.json.token);
+
+      const perfectSave = runtime.requireGame(perfectId);
+      const perfectGato = perfectSave.units.find((u) => u.id === 'ss-212')!;
+      const perfectTarget = perfectSave.units.find((u) => u.id === 'ao-23')!; // USS Neosho
+      const perfectLos = bearingRangeNm(perfectGato.position, perfectTarget.position);
+
+      // Exactly what the operator would read off the periscope + recognition
+      // manual right now, converted to true the same way the calculator does.
+      const perfectOrder = {
+        room: 'forward' as const,
+        aimHeading: perfectLos.bearing,
+        estimatedCourse: perfectTarget.heading,
+        estimatedSpeedKn: perfectTarget.speed,
+        estimatedRangeNm: perfectLos.rangeNm,
+        estimatedLengthM: perfectTarget.lengthM,
+        spreadCount: 1,
+        spreadDeg: 2,
+      };
+      const perfectFire = await api(
+        'POST',
+        `/api/games/${perfectId}/orders`,
+        { fireTorpedo: perfectOrder },
+        perfectTok,
+      );
+      check('perfect-solution queue torpedo fire', perfectFire.status === 200);
+      await api('POST', `/api/games/${perfectId}/turn/lock`, {}, perfectUTok);
+      const perfectResolve = await api(
+        'POST',
+        `/api/games/${perfectId}/turn/resolve`,
+        {},
+        perfectUTok,
+      );
+      check('perfect-solution resolve', perfectResolve.status === 200);
+
+      const perfectAfter = runtime.requireGame(perfectId);
+      const perfectFish = perfectAfter.torpedoes.find(
+        (t) => t.launchedTurn === 1 && t.firerUnitId === 'ss-212',
+      );
+      check('perfect-solution fish launched', !!perfectFish);
+      const perfectGate = perfectTarget.beamM != null && perfectTarget.lengthM != null ? 90 : 0;
+      check(
+        'perfect solution lands within the geometric hit gate (CPA vs Neosho)',
+        !!perfectFish &&
+          perfectFish.closestApproachUnitId === 'ao-23' &&
+          (perfectFish.closestApproachM ?? Infinity) <= perfectGate,
+        `status=${perfectFish?.status} cpa=${perfectFish?.closestApproachM} target=${perfectFish?.closestApproachUnitId}`,
+      );
+      check(
+        'perfect solution actually detonates (hit or dud — never a clean miss)',
+        perfectFish?.status === 'hit' || perfectFish?.status === 'duded',
+        `status=${perfectFish?.status}`,
+      );
+      await api('DELETE', `/api/saves/${perfectId}`);
+    }
+
     {
       const deepDcGame = await api('POST', '/api/games', {
         scenarioId: 'deep-dc-test',
