@@ -9,6 +9,7 @@ import {
   type VesselView,
 } from '@war-patrol/shared';
 import { depthChargeBatchWhenSecById } from '../audio/depthCharge';
+import { deckGunFireBatchWhenSecById } from '../audio/deckGunFire';
 import { torpedoHitBatchWhenSecById } from '../audio/torpedoHit';
 
 export type ScheduleDamageReveal = (detonationId: string, whenSec: number) => void;
@@ -126,6 +127,8 @@ export function useAudioSyncedDamageReport(
     const dcWhenById = depthChargeBatchWhenSecById(dcBatch);
     const hitBatch = events.filter((e) => e.kind === 'torpedo_hit');
     const hitWhenById = torpedoHitBatchWhenSecById(hitBatch);
+    const gunFireBatch = events.filter((e) => e.kind === 'deck_gun_fire');
+    const gunFireWhenById = deckGunFireBatchWhenSecById(gunFireBatch);
     for (const e of events) {
       if (scheduledDetonationIdsRef.current.has(e.id)) continue;
       let whenSec = 0;
@@ -134,7 +137,7 @@ export function useAudioSyncedDamageReport(
       } else if (e.kind === 'aircraft_bomb' || e.kind === 'deck_gun_hit') {
         whenSec = Math.max(0, e.audioDelaySec ?? 0);
       } else if (e.kind === 'deck_gun_fire') {
-        whenSec = 0;
+        whenSec = gunFireWhenById.get(e.id) ?? Math.max(0, e.audioDelaySec ?? 0);
       } else {
         whenSec = dcWhenById.get(e.id) ?? 0;
       }

@@ -6,6 +6,7 @@ import {
   RADAR_SURFACE_DEPTH_M,
   defaultDeckGunLoad,
   formatDeckGunFireBlockNotice,
+  maxDeckGunShotsPerTurn,
   relativeBearingDeg,
   torpedoFireHeadingFromSolution,
   trueBearingFromRelative,
@@ -58,6 +59,7 @@ function parseRelAim(raw: string): number | null {
  * Deck-gun firing panel — destroyer + fleet-sub surface engagement.
  * Same calculator language as torpedoes (relative aim + course/speed/range
  * solution). Never auto-fills from sim truth. Sub fire requires surfaced/awash.
+ * Shot count (1…class max) fires a multi-round salvo — 1 shell each.
  */
 export function DeckGunControls({
   ownHeading,
@@ -76,6 +78,7 @@ export function DeckGunControls({
   onReload,
 }: Props) {
   const capacity = defaultDeckGunLoad({ class: hullClass, type: vesselType });
+  const maxShots = maxDeckGunShotsPerTurn({ class: hullClass, type: vesselType });
   const [aimRelative, setAimRelative] = useState(() =>
     pending ? Math.round(relativeBearingDeg(ownHeading, pending.aimHeading)) : 0,
   );
@@ -88,6 +91,11 @@ export function DeckGunControls({
   const [estimatedRangeNm, setEstimatedRangeNm] = useState(
     () => pending?.estimatedRangeNm ?? 0,
   );
+  const [shotCount, setShotCount] = useState(() => {
+    const pendingN = Math.floor(Number(pending?.shotCount) || 1);
+    const cap = Math.max(1, Math.min(maxShots, Math.max(1, deckGunLoad || 1)));
+    return Math.min(cap, Math.max(1, pendingN));
+  });
 
   const aimTrue = trueBearingFromRelative(ownHeading, aimRelative);
   const solution = torpedoFireHeadingFromSolution({
@@ -104,18 +112,22 @@ export function DeckGunControls({
     vesselType === 'Submarine' && keelDepthM > RADAR_SURFACE_DEPTH_M;
   const magBlocked =
     awaitingReload || reloadTurnsRemaining > 0 || deckGunLoad <= 0;
+  const shotCap = Math.max(1, Math.min(maxShots, Math.max(1, deckGunLoad)));
+  const effectiveShots = Math.min(shotCap, Math.max(1, Math.floor(shotCount) || 1));
   const canQueue =
     !disabled &&
     !magBlocked &&
     !submerged &&
     estimatedRangeNm > 0 &&
-    estimatedRangeNm <= DECK_GUN_MAX_RANGE_NM;
+    estimatedRangeNm <= DECK_GUN_MAX_RANGE_NM &&
+    effectiveShots >= 1 &&
+    effectiveShots <= deckGunLoad;
 
-  let magStatus = `${deckGunLoad}/${capacity} ready`;
+  let magStatus = `${deckGunLoad}/${capacity} shells ready`;
   if (reloadTurnsRemaining > 0) {
-    magStatus = `reloading · ${reloadTurnsRemaining} turn${reloadTurnsRemaining === 1 ? '' : 's'} left`;
+    magStatus = `reloading · ${reloadTurnsRemaining} turn${reloadTurnsRemaining === 1 ? '' : 's'} left · ${deckGunLoad}/${capacity} left`;
   } else if (awaitingReload) {
-    magStatus = 'awaiting reload';
+    magStatus = `awaiting reload · ${deckGunLoad}/${capacity} left`;
   } else if (deckGunLoad <= 0) {
     magStatus = 'empty — umpire rearm';
   }
@@ -127,8 +139,8 @@ export function DeckGunControls({
       <div className="station-instrument-head">
         <h2>Guns</h2>
         <p className="muted station-instrument-blurb">
-          Deck gun · mag {magStatus} · reload {DECK_GUN_RELOAD_TURNS} turns · max{' '}
-          {DECK_GUN_MAX_RANGE_NM} nm · surface only
+          Deck gun · {magStatus} · max {maxShots}/turn · reload {DECK_GUN_RELOAD_TURNS} turns ·
+          max {DECK_GUN_MAX_RANGE_NM} nm · surface only
         </p>
       </div>
 
@@ -214,6 +226,21 @@ export function DeckGunControls({
         unit="nm"
         disabled={inputsDisabled}
       />
+      <TouchNumber
+        label="Rounds this turn"
+        value={effectiveShots}
+        onChange={(v) => setShotCount(Math.min(shotCap, Math.max(1, Math.floor(v) || 1)))}
+        min={1}
+        max={shotCap}
+        step={1}
+        unit=""
+        disabled={inputsDisabled}
+      />
+      <p className="mono muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+        Salvo {effectiveShots} · consumes {effectiveShots} shell
+        {effectiveShots === 1 ? '' : 's'} · {Math.max(0, deckGunLoad - effectiveShots)}/
+        {capacity} left after fire · class max {maxShots}/turn
+      </p>
 
       <div className="control-actions">
         <button
@@ -226,10 +253,12 @@ export function DeckGunControls({
               estimatedCourse,
               estimatedSpeedKn,
               estimatedRangeNm,
+              shotCount: effectiveShots,
             })
           }
         >
           Queue deck-gun fire
+          {effectiveShots > 1 ? ` ×${effectiveShots}` : ''}
         </button>
         {pending && onClear && (
           <button type="button" disabled={disabled} onClick={onClear}>
@@ -240,7 +269,9 @@ export function DeckGunControls({
 
       {pending && (
         <p className="mono readout" style={{ margin: 0 }}>
-          Of record: aim {String(Math.round(pending.aimHeading)).padStart(3, '0')}° · CRS{' '}
+          Of record: {Math.max(1, Math.floor(Number(pending.shotCount) || 1))} rd
+          {Math.max(1, Math.floor(Number(pending.shotCount) || 1)) === 1 ? '' : 's'} · aim{' '}
+          {String(Math.round(pending.aimHeading)).padStart(3, '0')}° · CRS{' '}
           {String(Math.round(pending.estimatedCourse)).padStart(3, '0')}° ·{' '}
           {pending.estimatedSpeedKn.toFixed(1)} kn · {pending.estimatedRangeNm.toFixed(2)} nm
         </p>

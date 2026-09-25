@@ -2262,10 +2262,17 @@ async function main() {
       DEPTH_CHARGE_DAMAGE_AMOUNT,
       DESTROYER_DECK_GUN_LOAD,
       FLEET_SUB_DECK_GUN_LOAD,
+      DESTROYER_DECK_GUN_MAX_SHOTS_PER_TURN,
+      FLEET_SUB_DECK_GUN_MAX_SHOTS_PER_TURN,
+      DECK_GUN_FIRE_STAGGER_SEC,
       DECK_GUN_HIT_DAMAGE,
       DECK_GUN_MAX_RANGE_NM,
       DECK_GUN_RELOAD_TURNS,
       defaultDeckGunLoad,
+      maxDeckGunShotsPerTurn,
+      clampDeckGunShotCount,
+      deckGunSalvoFireFractions,
+      consumeDeckGunShells,
       canDeckGunFireFromDepth,
       canFireDeckGun,
       resolveDeckGunShot,
@@ -2304,6 +2311,50 @@ async function main() {
       'fleet sub deck gun load 20',
       defaultDeckGunLoad({ class: 'Fleet Submarine', type: 'Submarine' }) === FLEET_SUB_DECK_GUN_LOAD,
     );
+    check('DD deck gun max shots/turn 6', DESTROYER_DECK_GUN_MAX_SHOTS_PER_TURN === 6);
+    check('fleet sub deck gun max shots/turn 3', FLEET_SUB_DECK_GUN_MAX_SHOTS_PER_TURN === 3);
+    check(
+      'maxDeckGunShotsPerTurn DD',
+      maxDeckGunShotsPerTurn({ class: 'Destroyer', type: 'Ship' }) === 6,
+    );
+    check(
+      'maxDeckGunShotsPerTurn sub',
+      maxDeckGunShotsPerTurn({ class: 'Fleet Submarine', type: 'Submarine' }) === 3,
+    );
+    check('deck gun fire stagger 250ms', DECK_GUN_FIRE_STAGGER_SEC === 0.25);
+    check(
+      'clamp deck gun shot count to ammo',
+      clampDeckGunShotCount(6, { class: 'Destroyer', type: 'Ship', deckGunLoad: 4 }) === 4,
+    );
+    check(
+      'clamp deck gun shot count to class max',
+      clampDeckGunShotCount(99, { class: 'Fleet Submarine', type: 'Submarine', deckGunLoad: 20 }) === 3,
+    );
+    check(
+      'clamp deck gun shot count default 1',
+      clampDeckGunShotCount(undefined, { class: 'Destroyer', type: 'Ship', deckGunLoad: 40 }) === 1,
+    );
+    check(
+      'deck gun salvo fractions single',
+      JSON.stringify(deckGunSalvoFireFractions(1)) === JSON.stringify([0]),
+    );
+    check(
+      'deck gun salvo fractions triple',
+      JSON.stringify(deckGunSalvoFireFractions(3)) === JSON.stringify([0, 0.5, 1]),
+    );
+    {
+      const mag = {
+        id: 'dd-test',
+        class: 'Destroyer' as const,
+        type: 'Ship' as const,
+        deckGunLoad: 40,
+        deckGunAwaitingReload: false,
+        deckGunReloadTurnsRemaining: 0,
+      };
+      const after = consumeDeckGunShells(mag as never, 6);
+      check('consumeDeckGunShells takes 6', after.deckGunLoad === 34);
+      check('consumeDeckGunShells awaits reload', after.deckGunAwaitingReload === true);
+    }
     check('deck gun max range 8 nm', DECK_GUN_MAX_RANGE_NM === 8);
     check('deck gun reload 2 turns', DECK_GUN_RELOAD_TURNS === 2);
     check('deck gun hit damage 14', DECK_GUN_HIT_DAMAGE === 14);
@@ -5714,6 +5765,96 @@ async function main() {
     check(
       'deck-gun reload countdown 2',
       (gunReload.json as { deckGunReloadTurnsRemaining?: number }).deckGunReloadTurnsRemaining === 2,
+    );
+
+    // Multi-shot salvo: 3 rounds from surfaced Gato — 1 shell each + staggered fire cues.
+    await api('POST', `/api/games/${gunId}/units/ss-212/rearm`, {}, gunUTok);
+    await api(
+      'PATCH',
+      `/api/games/${gunId}/units/ss-212`,
+      { position: { depth: 0 }, orderedDepth: 0, speed: 0 },
+      gunUTok,
+    );
+    await api(
+      'PATCH',
+      `/api/games/${gunId}/units/dd-101`,
+      { speed: 0 },
+      gunUTok,
+    );
+    await api('POST', `/api/games/${gunId}/orders`, { eot: 'stop' }, gunSubTok);
+    await api('POST', `/api/games/${gunId}/orders`, { eot: 'stop' }, gunDdTok);
+    const salvoView = await api('GET', `/api/games/${gunId}/view`, undefined, gunUTok);
+    const salvoUnits = (salvoView.json.view as {
+      units: Array<{
+        id: string;
+        position: { lat: number; lon: number; depth: number };
+        heading: number;
+        speed: number;
+        deckGunLoad?: number;
+      }>;
+    }).units;
+    const porterSalvo = salvoUnits.find((u) => u.id === 'dd-101')!;
+    const gatoSalvo = salvoUnits.find((u) => u.id === 'ss-212')!;
+    const losSalvo = bearingRangeNm(gatoSalvo.position, porterSalvo.position);
+    const subSalvo = await api(
+      'POST',
+      `/api/games/${gunId}/orders`,
+      {
+        eot: 'stop',
+        fireDeckGun: {
+          aimHeading: losSalvo.bearing,
+          estimatedCourse: porterSalvo.heading,
+          estimatedSpeedKn: porterSalvo.speed,
+          estimatedRangeNm: Math.round(losSalvo.rangeNm * 100) / 100,
+          shotCount: 3,
+        },
+      },
+      gunSubTok,
+    );
+    check('surfaced sub queues 3-round salvo', subSalvo.status === 200, `status=${subSalvo.status}`);
+    await api('POST', `/api/games/${gunId}/turn/lock`, {}, gunUTok);
+    await api('POST', `/api/games/${gunId}/turn/resolve`, {}, gunUTok);
+    const afterSalvoUmp = await api('GET', `/api/games/${gunId}/view`, undefined, gunUTok);
+    const afterSalvoUmpView = afterSalvoUmp.json.view as {
+      combatLog?: Array<{ kind: string; summary: string }>;
+      units: Array<{ id: string; deckGunLoad?: number; deckGunAwaitingReload?: boolean }>;
+    };
+    const afterSalvoSub = await api('GET', `/api/games/${gunId}/view`, undefined, gunSubTok);
+    const afterSalvoSubView = afterSalvoSub.json.view as {
+      unit?: { deckGunLoad?: number; deckGunAwaitingReload?: boolean };
+      bridgeDetonations?: Array<{ kind: string; audioDelaySec?: number }>;
+    };
+    const salvoLog = afterSalvoUmpView.combatLog ?? [];
+    check(
+      'combat log notes ×3 salvo',
+      salvoLog.some((e) => e.kind === 'deck_gun_fire' && (e.summary ?? '').includes('×3')),
+      `log=${JSON.stringify(salvoLog.filter((e) => String(e.kind).startsWith('deck_gun')).slice(-8))}`,
+    );
+    const gatoSalvoAfter = afterSalvoUmpView.units.find((u) => u.id === 'ss-212');
+    check(
+      '3-round salvo consumes 3 shells',
+      gatoSalvoAfter?.deckGunLoad === 17 && gatoSalvoAfter?.deckGunAwaitingReload === true,
+      `load=${gatoSalvoAfter?.deckGunLoad} awaiting=${gatoSalvoAfter?.deckGunAwaitingReload}`,
+    );
+    check(
+      'vessel view ammo matches salvo spend',
+      afterSalvoSubView.unit?.deckGunLoad === 17,
+      `load=${afterSalvoSubView.unit?.deckGunLoad}`,
+    );
+    const fireCues = (afterSalvoSubView.bridgeDetonations ?? []).filter((d) => d.kind === 'deck_gun_fire');
+    check(
+      '3 staggered deck-gun fire cues',
+      fireCues.length === 3,
+      `cues=${JSON.stringify(fireCues)}`,
+    );
+    const fireDelays = fireCues.map((c) => c.audioDelaySec ?? 0).sort((a, b) => a - b);
+    check(
+      'deck-gun fire stagger steps 250ms',
+      fireDelays.length === 3 &&
+        Math.abs(fireDelays[0]!) < 0.001 &&
+        Math.abs(fireDelays[1]! - 0.25) < 0.001 &&
+        Math.abs(fireDelays[2]! - 0.5) < 0.001,
+      `delays=${JSON.stringify(fireDelays)}`,
     );
 
     // Destroyer fire vs submerged contact → miss (no useful surface engagement).

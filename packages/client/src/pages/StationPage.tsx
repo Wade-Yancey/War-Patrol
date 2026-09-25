@@ -61,6 +61,7 @@ import {
 } from '../audio/torpedoHit';
 import {
   DECK_GUN_FIRE_CONTROLS_PEAK_GAIN,
+  deckGunFireBatchWhenSecById,
   loadDeckGunFireBuffer,
   playDeckGunFireSample,
 } from '../audio/deckGunFire';
@@ -348,6 +349,12 @@ export function StationPage() {
     );
     const hitWhenById = torpedoHitBatchWhenSecById(hitBatch);
 
+    // Multi-round deck-gun salvos: one cannon report per shot, staggered ~250 ms.
+    const gunFireBatch = pending.filter(
+      (e) => e.kind === 'deck_gun_fire' && !playedBridgeBlastRef.current.has(e.id),
+    );
+    const gunFireWhenById = deckGunFireBatchWhenSecById(gunFireBatch);
+
     for (const e of pending) {
       if (playedBridgeBlastRef.current.has(e.id)) continue;
       try {
@@ -361,7 +368,7 @@ export function StationPage() {
             gunFireBuffer,
             ctx.destination,
             DECK_GUN_FIRE_CONTROLS_PEAK_GAIN,
-            { whenSec: 0 },
+            { whenSec: gunFireWhenById.get(e.id) ?? Math.max(0, e.audioDelaySec ?? 0) },
           );
         } else if (isExplosionCue(e.kind)) {
           if (!hitBuffer) {
