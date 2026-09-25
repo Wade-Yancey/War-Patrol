@@ -94,23 +94,43 @@ export const TORPEDO_SPREAD_MAX_COUNT = FLEET_SUB_TORPEDO_FORWARD;
 
 /**
  * Min angular spacing between adjacent fish in a spread (degrees).
- * Must stay above zero — a 0° "spread" would stack every fish on the same
- * heading, which defeats the point of a fan and is never a real order.
+ * Must stay well above zero — a 0° / 0.1° "spread" stacks every fish on the
+ * same heading (at 1 nm, 0.1° is only ~3 m of lateral separation — tracks
+ * look identical on the GT map). Floor at 1° (~32 m / ~35 yd at 1 nm) so
+ * even the tightest legal fan is visibly separated while still fitting
+ * multiple fish inside a destroyer beam hit gate at typical ranges.
+ *
+ * Lateral ≈ rangeNm · 1852 · tan(spreadDeg°) between adjacent fish.
  */
-export const TORPEDO_SPREAD_MIN_DEG = 0.1;
+export const TORPEDO_SPREAD_MIN_DEG = 1;
 
-/** Max angular spacing between adjacent fish in a spread (degrees). */
+/**
+ * Max angular spacing between adjacent fish in a spread (degrees).
+ * Wide fans for convoy columns / intentional single-fish-per-hull shots —
+ * not the default for a concentrated salvo on one target.
+ */
 export const TORPEDO_SPREAD_MAX_DEG = 8;
 
 /**
- * Calculator control step (degrees) for spread interval — tenth-of-a-degree
- * increments so operators can dial in a much finer fan than the old whole
- * degree (before that ~5°) jumps.
+ * Calculator control step (degrees) for spread interval. Half-degree jumps
+ * keep the dial coarse enough for museum play — the old 0.1° grid invited
+ * microscopic fans that stacked on the plot.
  */
-export const TORPEDO_SPREAD_STEP_DEG = 0.1;
+export const TORPEDO_SPREAD_STEP_DEG = 0.5;
 
-/** Default inter-fish spacing when operator leaves spreadDeg unset. */
-export const TORPEDO_SPREAD_DEFAULT_DEG = 2;
+/**
+ * Default inter-fish spacing when operator leaves spreadDeg unset.
+ *
+ * Tuned for museum multi-hit on one hull (Wade): at 1 nm ≈ 48 m between
+ * adjacent tips — visibly separated vs the old 0.1° stack (~3 m), yet still
+ * inside a Fletcher beam gate (~62.5 m) and well inside an oiler/carrier
+ * gate (~90 m). At the common 1.5 nm drill range, outer fish still fit
+ * Cimarron / Shōkaku (~73 m < 90 m gate) so a centered solution can score
+ * 2–3 hits on a long hull; Fletcher is center-only at 1.5 nm (gate tighter
+ * than the fan) — dial down to 1° for DD multi-hit at that range, or up
+ * toward max for a wide convoy fan.
+ */
+export const TORPEDO_SPREAD_DEFAULT_DEG = 1.5;
 
 /**
  * Horizontal miss distance (m) inside which a geometric hit is possible
@@ -405,15 +425,32 @@ export function clampTorpedoSpreadDeg(raw: unknown): number {
   if (!Number.isFinite(n) || n < 0) return TORPEDO_SPREAD_DEFAULT_DEG;
   const rounded = Math.round(n / TORPEDO_SPREAD_STEP_DEG) * TORPEDO_SPREAD_STEP_DEG;
   // Re-round to the step's own decimal precision — dividing/multiplying by a
-  // non-power-of-two step like 0.1 reliably reintroduces float noise
-  // (e.g. 3 -> 3.0000000000000004), which would otherwise leak into readouts.
+  // non-power-of-two step (0.5, formerly 0.1) reliably reintroduces float
+  // noise (e.g. 3 -> 3.0000000000000004), which would otherwise leak into
+  // readouts.
   const snapped = Math.round(rounded * 10) / 10;
   return clamp(snapped, TORPEDO_SPREAD_MIN_DEG, TORPEDO_SPREAD_MAX_DEG);
 }
 
 /**
+ * Expected lateral separation (meters) between adjacent fish tips after
+ * running `rangeNm` along their spread headings — flat-plane tan(δ) model
+ * matching equirectangular track geometry. Useful for museum-range tuning
+ * and verify coverage (e.g. 4° at 1 nm ≈ 130 m).
+ */
+export function torpedoSpreadLateralSeparationM(
+  rangeNm: number,
+  spreadDeg: number,
+): number {
+  const r = Math.max(0, Number(rangeNm) || 0);
+  const spacing = clampTorpedoSpreadDeg(spreadDeg);
+  return r * METERS_PER_NM * Math.tan((spacing * Math.PI) / 180);
+}
+
+/**
  * True headings for a fan centered on `centerHeading` (usually the
  * solution-derived fire heading, not raw LOS aim).
+ * `spreadDeg` is the **inter-fish** interval (not total fan width).
  * Odd counts put one fish on the center axis; even counts straddle it.
  */
 export function torpedoSpreadHeadings(

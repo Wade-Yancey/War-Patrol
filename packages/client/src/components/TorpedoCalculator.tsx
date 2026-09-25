@@ -19,6 +19,7 @@ import {
   relativeBearingDeg,
   torpedoFireHeadingFromSolution,
   torpedoRoomArcHalfDeg,
+  torpedoSpreadLateralSeparationM,
   trueBearingFromRelative,
   type TorpedoArcBlock,
   type TorpedoFireOrder,
@@ -403,7 +404,7 @@ export function TorpedoCalculator({
         disabled={disabled || loadBlocked}
       />
       <TouchNumber
-        label="Spread interval"
+        label="Spread interval (inter-fish °)"
         value={spreadDeg}
         onChange={setSpreadDeg}
         min={TORPEDO_SPREAD_MIN_DEG}
@@ -412,6 +413,18 @@ export function TorpedoCalculator({
         unit="°"
         disabled={disabled || loadBlocked || effectiveCount <= 1}
       />
+      {effectiveCount > 1 && estimatedRangeNm > 0 && (
+        <p className="mono muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+          ≈{Math.round(torpedoSpreadLateralSeparationM(estimatedRangeNm, spreadDeg))} m
+          between adjacent fish at est. {estimatedRangeNm.toFixed(2)} nm
+          {effectiveCount >= 3
+            ? ` · outer span ≈${Math.round(
+                torpedoSpreadLateralSeparationM(estimatedRangeNm, spreadDeg) *
+                  (effectiveCount - 1),
+              )} m`
+            : ''}
+        </p>
+      )}
 
       <div className="control-actions">
         <button

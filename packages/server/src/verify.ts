@@ -2045,6 +2045,8 @@ async function main() {
       createTorpedoTrack,
       torpedoSpreadHeadings,
       clampTorpedoSpreadDeg,
+      torpedoSpreadLateralSeparationM,
+      TORPEDO_SPREAD_DEFAULT_DEG,
       torpedoFireHeadingFromSolution,
       checkTorpedoOrderArc,
       isTorpedoFireHeadingInRoomArc,
@@ -2390,20 +2392,169 @@ async function main() {
           e.name.includes('Essex'),
       ),
     );
-    const fan = torpedoSpreadHeadings(0, 3, 2).map((h) => Math.round(h));
-    check('spread 3×2° headings', fan[0] === 358 && fan[1] === 0 && fan[2] === 2);
+    // Default 1.5° fan: odd count puts one fish on the center axis.
+    const fan = torpedoSpreadHeadings(0, 3, TORPEDO_SPREAD_DEFAULT_DEG).map(
+      (h) => Math.round(h * 10) / 10,
+    );
+    check(
+      'spread 3×default headings',
+      fan[0] === 358.5 && fan[1] === 0 && fan[2] === 1.5,
+      `got ${fan.join(',')}`,
+    );
+    // Even counts straddle the center axis (no fish on fire heading).
+    const evenFan = torpedoSpreadHeadings(90, 2, 2).map((h) => Math.round(h * 10) / 10);
+    check(
+      'spread 2×2° straddles center',
+      evenFan[0] === 89 && evenFan[1] === 91,
+      `got ${evenFan.join(',')}`,
+    );
 
-    // Spread interval control step is 0.1° (finer than the old whole-degree,
-    // before that ~5°, jumps); clamp normalizes to that grid and the
-    // min–max bounds. Min is > 0 so a spread order can never stack every
-    // fish on the same heading.
-    check('spread interval snaps to 0.1° grid', clampTorpedoSpreadDeg(3.42) === 3.4);
-    check('spread interval rounds to nearest 0.1° step', clampTorpedoSpreadDeg(3.36) === 3.4);
-    check('spread interval negative falls back to default', clampTorpedoSpreadDeg(-1) === 2);
+    // Museum-range lateral separation: adjacent tips after running R nm should
+    // be ≈ R·1852·tan(δ). Old 0.1° min was only ~3 m at 1 nm (tracks stacked).
+    // Default 1.5° keeps multi-hit on one hull (Wade) while staying visible.
+    {
+      const { moveAlongHeading, eastNorthMeters, METERS_PER_NM } = await import(
+        '@war-patrol/shared'
+      );
+      const origin = { lat: 0, lon: 0, depth: 0 };
+      const rangeNm = 1;
+      const spacing = TORPEDO_SPREAD_DEFAULT_DEG;
+      const expectedM = torpedoSpreadLateralSeparationM(rangeNm, spacing);
+      check(
+        'default spread lateral at 1 nm ≈ 48 m',
+        expectedM > 45 && expectedM < 52,
+        `got ${expectedM.toFixed(1)} m`,
+      );
+      // Tiny legacy-scale fans must stay well below the museum min.
+      const microscopic = rangeNm * METERS_PER_NM * Math.tan((0.1 * Math.PI) / 180);
+      check(
+        'legacy 0.1° fan at 1 nm is negligible (~3 m)',
+        microscopic < 4,
+        `got ${microscopic.toFixed(1)} m`,
+      );
+      check(
+        'museum min lateral at 1 nm ≥ ~30 m',
+        torpedoSpreadLateralSeparationM(rangeNm, TORPEDO_SPREAD_MIN_DEG) >= 30,
+      );
+
+      const headings = torpedoSpreadHeadings(0, 3, spacing);
+      const tips = headings.map((h) =>
+        moveAlongHeading(origin, h, rangeNm * METERS_PER_NM),
+      );
+      const left = eastNorthMeters(tips[1]!, tips[0]!);
+      const right = eastNorthMeters(tips[1]!, tips[2]!);
+      const leftSep = Math.hypot(left.east, left.north);
+      const rightSep = Math.hypot(right.east, right.north);
+      check(
+        '3-fish tip separation matches tan model (left)',
+        Math.abs(leftSep - expectedM) < 1,
+        `got ${leftSep.toFixed(1)} want ${expectedM.toFixed(1)}`,
+      );
+      check(
+        '3-fish tip separation matches tan model (right)',
+        Math.abs(rightSep - expectedM) < 1,
+        `got ${rightSep.toFixed(1)} want ${expectedM.toFixed(1)}`,
+      );
+
+      // Multi-hit geometry (Wade): default fan at 1 nm puts outer fish inside
+      // a Fletcher beam gate (~62.5 m); a wide 4° fan does not.
+      const fletcherBeamGate = torpedoEffectiveHitGateM(115, 12, 90, 115);
+      check(
+        'default outer CPA inside Fletcher beam gate (multi-hit)',
+        expectedM <= fletcherBeamGate,
+        `sep=${expectedM.toFixed(1)} gate=${fletcherBeamGate.toFixed(1)}`,
+      );
+      const centerRoll = resolveTorpedoHit({
+        missDistanceM: 0,
+        fishHeading: 0,
+        targetHeading: 90,
+        trueLengthM: 115,
+        trueBeamM: 12,
+        estimatedLengthM: 115,
+        depthOk: true,
+        seed: 'spread-center',
+      });
+      const outerDefaultRoll = resolveTorpedoHit({
+        missDistanceM: expectedM,
+        fishHeading: headings[0]!,
+        targetHeading: 90,
+        trueLengthM: 115,
+        trueBeamM: 12,
+        estimatedLengthM: 115,
+        depthOk: true,
+        seed: 'spread-outer-default',
+      });
+      check(
+        'spread center fish geometric contact',
+        !centerRoll.geometricMiss,
+        `geoMiss=${centerRoll.geometricMiss} hit=${centerRoll.hit} dud=${centerRoll.dud}`,
+      );
+      check(
+        'spread outer fish geometric contact at default (multi-hit)',
+        !outerDefaultRoll.geometricMiss,
+        `geoMiss=${outerDefaultRoll.geometricMiss} gate=${outerDefaultRoll.hitGateM}`,
+      );
+
+      const wideSep = torpedoSpreadLateralSeparationM(rangeNm, 4);
+      const outerWideRoll = resolveTorpedoHit({
+        missDistanceM: wideSep,
+        fishHeading: -4,
+        targetHeading: 90,
+        trueLengthM: 115,
+        trueBeamM: 12,
+        estimatedLengthM: 115,
+        depthOk: true,
+        seed: 'spread-outer-wide',
+      });
+      check(
+        'wide 4° outer fish geometric miss on Fletcher',
+        outerWideRoll.geometricMiss,
+        `sep=${wideSep.toFixed(1)} gate=${outerWideRoll.hitGateM}`,
+      );
+
+      // At 1.5 nm museum drill range, default still multi-hits a Cimarron
+      // (~90 m gate) even though Fletcher goes center-only.
+      const oilerSep15 = torpedoSpreadLateralSeparationM(1.5, spacing);
+      const oilerGate = torpedoEffectiveHitGateM(169, 23, 90, 169);
+      const oilerOuter = resolveTorpedoHit({
+        missDistanceM: oilerSep15,
+        fishHeading: -spacing,
+        targetHeading: 90,
+        trueLengthM: 169,
+        trueBeamM: 23,
+        estimatedLengthM: 169,
+        depthOk: true,
+        seed: 'spread-oiler-15',
+      });
+      check(
+        'default outer at 1.5 nm still hits Cimarron (multi-hit large hull)',
+        oilerSep15 <= oilerGate && !oilerOuter.geometricMiss,
+        `sep=${oilerSep15.toFixed(1)} gate=${oilerGate.toFixed(1)}`,
+      );
+      check(
+        'default outer at 1.5 nm misses Fletcher (DD gate tighter)',
+        torpedoSpreadLateralSeparationM(1.5, spacing) >
+          torpedoEffectiveHitGateM(115, 12, 90, 115),
+      );
+    }
+
+    // Spread interval control step is 0.5° (museum dial — was 0.1°, before
+    // that whole degrees / ~5° jumps); clamp normalizes to that grid and the
+    // min–max bounds. Min is ≥ 1° so microscopic fans cannot stack tracks.
+    check('spread interval snaps to 0.5° grid', clampTorpedoSpreadDeg(3.6) === 3.5);
+    check('spread interval rounds to nearest 0.5° step', clampTorpedoSpreadDeg(3.2) === 3);
+    check(
+      'spread interval negative falls back to default',
+      clampTorpedoSpreadDeg(-1) === TORPEDO_SPREAD_DEFAULT_DEG,
+    );
     check('spread interval clamps to max', clampTorpedoSpreadDeg(50) === TORPEDO_SPREAD_MAX_DEG);
     check(
       'spread interval of 0 clamps up to min (never 0°)',
-      clampTorpedoSpreadDeg(0) === TORPEDO_SPREAD_MIN_DEG && TORPEDO_SPREAD_MIN_DEG > 0,
+      clampTorpedoSpreadDeg(0) === TORPEDO_SPREAD_MIN_DEG && TORPEDO_SPREAD_MIN_DEG >= 1,
+    );
+    check(
+      'spread below min snaps up to min',
+      clampTorpedoSpreadDeg(0.5) === TORPEDO_SPREAD_MIN_DEG,
     );
 
     // Umpire miss-distance helpers (CPA format + near/far band + track accumulate).
