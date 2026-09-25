@@ -6,7 +6,7 @@
   "maxSpeed": 11,
   "lengthM": 135,
   "beamM": 17,
-  "turnRate": 7,
+  "turnRate": 3,
   "radarSignature": "medium",
   "defaultStations": [
     { "id": "controls", "name": "Controls", "capabilities": ["helm", "engineering", "plot"] }

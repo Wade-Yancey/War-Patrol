@@ -29,13 +29,37 @@ export const METERS_PER_DEG_LAT = 111_320;
 export const KNOTS_TO_MPS = 0.514444;
 
 /**
- * Steady-turn rate (degrees per in-game minute) by radar signature / hull size.
- * Larger ships turn slower. Used when unit/class omit an explicit turnRate.
+ * Steady-turn rate (degrees per in-game minute) by radar signature band.
+ * Legacy 3-band fallback (small/medium/large), kept for hull classes that
+ * have no explicit per-class entry in {@link TURN_RATE_DEG_PER_MIN_BY_CLASS}
+ * (e.g. Fighter/Bomber). Radar signature is a radar-cross-section proxy, not
+ * a maneuverability proxy — most ship classes should use the per-class table
+ * instead, since e.g. a destroyer and an oiler can share a "medium" radar
+ * signature while having very different turning agility.
  */
 export const TURN_RATE_DEG_PER_MIN = {
   small: 12,
   medium: 7,
   large: 4,
+} as const;
+
+/**
+ * Steady-turn rate (degrees per in-game minute) by hull class — the source of
+ * truth for ship/sub turning agility. Historically-plausible ordering:
+ * destroyers are the snappiest surface combatants; fleet submarines sit
+ * between destroyers and capital ships; large auxiliaries (oilers, merchant
+ * hulls) and capital ships (cruisers/battleships/carriers) are sluggish.
+ * Classes omitted here (Fighter, Bomber) fall back to their radarSignature
+ * band in {@link TURN_RATE_DEG_PER_MIN}.
+ */
+export const TURN_RATE_DEG_PER_MIN_BY_CLASS = {
+  Destroyer: 7,
+  'Fleet Submarine': 6,
+  Cruiser: 4,
+  'Aircraft Carrier': 4,
+  Battleship: 4,
+  Oiler: 4,
+  Merchant: 3,
 } as const;
 
 /** Meters in one nautical mile. */

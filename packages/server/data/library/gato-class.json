@@ -6,7 +6,7 @@
   "maxSpeed": 21,
   "lengthM": 95,
   "beamM": 8.3,
-  "turnRate": 12,
+  "turnRate": 6,
   "radarSignature": "small",
   "sensors": [
     { "kind": "radar", "maxRangeNm": 25 },
