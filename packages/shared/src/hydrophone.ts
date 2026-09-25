@@ -33,7 +33,9 @@ export function isHydrophoneDepthOk(
 
 /**
  * Hulls that emit underwater propeller noise when underway.
- * Aircraft are skipped (airborne — not a waterborne contact for v1 hydrophone).
+ * Aircraft (Fighter / Bomber / any `type: Aircraft`) are skipped — airborne,
+ * not a waterborne contact for v1 hydrophone. Server `buildHydrophoneContacts`
+ * also early-continues on Aircraft so pings/props never attach to airframes.
  */
 export function isHydrophoneEmitter(
   unit: Pick<UnitState, 'type' | 'condition' | 'speed'>,

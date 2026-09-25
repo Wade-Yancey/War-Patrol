@@ -1,0 +1,13 @@
+{
+  "id": "zeke-fighter",
+  "name": "Mitsubishi A6M Zeke Fighter",
+  "type": "Aircraft",
+  "class": "Fighter",
+  "defaultFaction": "Red",
+  "maxSpeed": 305,
+  "lengthM": 9,
+  "beamM": 12,
+  "turnRate": 12,
+  "radarSignature": "small",
+  "defaultStations": []
+}

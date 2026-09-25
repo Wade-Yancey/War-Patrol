@@ -54,6 +54,7 @@ import {
   silhouetteUrlForOptics,
   isV1PlayerHullClass,
   isV1PlayerUnit,
+  isHydrophoneEmitter,
   snapWallDuration,
   stepDepthTowardOrdered,
   submarineDepthRisk,
@@ -1870,6 +1871,18 @@ async function main() {
   );
   const asFighter = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
   check('aircraft class Fighter', asFighter.type === 'Aircraft' && asFighter.class === 'Fighter');
+  check(
+    'fighter is not a hydrophone emitter',
+    isHydrophoneEmitter(asFighter) === false,
+  );
+  check(
+    'bomber is not a hydrophone emitter',
+    isHydrophoneEmitter({ type: 'Aircraft', condition: 'afloat', speed: 250 }) === false,
+  );
+  check(
+    'underway destroyer is a hydrophone emitter',
+    isHydrophoneEmitter({ type: 'Ship', condition: 'afloat', speed: 12 }) === true,
+  );
   const fighterLinks = (
     (await api('GET', `/api/games/${gameId}/view`, undefined, umpireToken)).json.view as Json
   ).vesselLinks as Array<{ unitId: string; playerVessel?: boolean; stations: unknown[] }>;
@@ -3014,6 +3027,31 @@ async function main() {
             kagero.defaultFaction === 'Red',
         ),
       );
+      const zeke = libArr.find((c) => c.id === 'zeke-fighter');
+      check('library has zeke-fighter', Boolean(zeke), `count=${libArr.length}`);
+      check(
+        'zeke-fighter is IJN Fighter NPC airframe',
+        Boolean(
+          zeke &&
+            zeke.class === 'Fighter' &&
+            zeke.maxSpeed === 305 &&
+            zeke.lengthM === 9 &&
+            zeke.beamM === 12 &&
+            zeke.turnRate === 12 &&
+            zeke.defaultFaction === 'Red',
+        ),
+      );
+      const hellcat = libArr.find((c) => c.id === 'hellcat-fighter');
+      check('library has hellcat-fighter', Boolean(hellcat), `count=${libArr.length}`);
+      check(
+        'hellcat-fighter is Fighter NPC airframe',
+        Boolean(
+          hellcat &&
+            hellcat.class === 'Fighter' &&
+            hellcat.maxSpeed === 320 &&
+            hellcat.turnRate === 12,
+        ),
+      );
     }
 
     {
@@ -3270,6 +3308,8 @@ async function main() {
           radarSignature?: string;
           accessToken?: string;
           position?: { lat: number; lon: number; depth: number };
+          type?: string;
+          flightLevel?: string;
         }>;
         vesselLinks?: Array<{
           unitId: string;
@@ -3287,9 +3327,11 @@ async function main() {
       const cv = psUnits.find((u) => u.id === 'cv-shokaku');
       const dd = psUnits.find((u) => u.id === 'dd-urakaze');
       const ss = psUnits.find((u) => u.id === 'ss-cavalla');
+      const zekeCap = psUnits.find((u) => u.id === 'ac-zeke-cap');
       check('philippine-sea shokaku present', Boolean(cv));
       check('philippine-sea urakaze present', Boolean(dd));
       check('philippine-sea cavalla present', Boolean(ss));
+      check('philippine-sea zeke CAP present', Boolean(zekeCap));
       check(
         'philippine-sea shokaku NPC SE-bound seed',
         cv?.class === 'Aircraft Carrier' &&
@@ -3301,6 +3343,21 @@ async function main() {
           cv.beamM === 26 &&
           cv.maxSpeed === 34 &&
           !cv.accessToken,
+      );
+      check(
+        'philippine-sea zeke CAP NPC seed',
+        zekeCap?.class === 'Fighter' &&
+          zekeCap.classId === 'zeke-fighter' &&
+          zekeCap.faction === 'Red' &&
+          zekeCap.name === 'Zeke CAP' &&
+          zekeCap.maxSpeed === 305 &&
+          zekeCap.lengthM === 9 &&
+          zekeCap.beamM === 12 &&
+          zekeCap.turnRate === 12 &&
+          zekeCap.radarSignature === 'small' &&
+          zekeCap.heading === 225 &&
+          zekeCap.speed === 198 &&
+          !zekeCap.accessToken,
       );
       check(
         'philippine-sea urakaze playable Kagerō seed',
@@ -3329,9 +3386,19 @@ async function main() {
         const cvUnit = psSave.units.find((u) => u.id === 'cv-shokaku')!;
         const ddUnit = psSave.units.find((u) => u.id === 'dd-urakaze')!;
         const ssUnit = psSave.units.find((u) => u.id === 'ss-cavalla')!;
+        const zekeUnit = psSave.units.find((u) => u.id === 'ac-zeke-cap')!;
         check(
           'philippine-sea shokaku not player hull',
           !isV1PlayerHullClass(cvUnit.class) && !isV1PlayerUnit(cvUnit),
+        );
+        check(
+          'philippine-sea zeke CAP is Aircraft Fighter NPC',
+          zekeUnit.type === 'Aircraft' &&
+            zekeUnit.class === 'Fighter' &&
+            zekeUnit.flightLevel === 'medium' &&
+            !isV1PlayerHullClass(zekeUnit.class) &&
+            !isV1PlayerUnit(zekeUnit) &&
+            isHydrophoneEmitter(zekeUnit) === false,
         );
         check(
           'philippine-sea urakaze is player Destroyer',
@@ -3350,11 +3417,18 @@ async function main() {
       const cvLink = psLinks.find((l) => l.unitId === 'cv-shokaku');
       const ddLink = psLinks.find((l) => l.unitId === 'dd-urakaze');
       const ssLink = psLinks.find((l) => l.unitId === 'ss-cavalla');
+      const zekeLink = psLinks.find((l) => l.unitId === 'ac-zeke-cap');
       check(
         'philippine-sea shokaku link non-player',
         cvLink?.playerVessel === false &&
           Array.isArray(cvLink.stations) &&
           cvLink.stations.length === 0,
+      );
+      check(
+        'philippine-sea zeke CAP link non-player',
+        zekeLink?.playerVessel === false &&
+          Array.isArray(zekeLink.stations) &&
+          zekeLink.stations.length === 0,
       );
       check(
         'philippine-sea urakaze link playable',
@@ -3383,6 +3457,32 @@ async function main() {
       });
       check('philippine-sea cavalla sensors auth', ssAuth.status === 200);
       const ssTok = String(ssAuth.json.token);
+
+      // Cavalla at PD (18 m) — hydrophone operational; hears Shōkaku + Urakaze
+      // propellers only. Zeke CAP must never appear (aircraft excluded).
+      const hydroView = await api('GET', `/api/games/${psId}/view`, undefined, ssTok);
+      const hydroPic = hydroView.json.view as {
+        hydrophoneOperational?: boolean;
+        hydrophoneContacts?: Array<{ kind?: string; bearing?: number; rangeNm?: number }>;
+      };
+      check(
+        'philippine-sea cavalla hydrophone operational at PD',
+        hydroPic.hydrophoneOperational === true,
+      );
+      const propContacts = (hydroPic.hydrophoneContacts ?? []).filter(
+        (c) => c.kind === 'propeller',
+      );
+      check(
+        'philippine-sea hydrophone hears two waterborne hulls only',
+        propContacts.length === 2,
+        `got ${propContacts.length}`,
+      );
+      check(
+        'philippine-sea hydrophone skips Zeke CAP fighter',
+        propContacts.length === 2 &&
+          (hydroPic.hydrophoneContacts ?? []).every((c) => c.kind !== undefined),
+      );
+
       const raisePsPeri = await api(
         'POST',
         `/api/games/${psId}/periscope`,

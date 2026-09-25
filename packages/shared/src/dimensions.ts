@@ -13,7 +13,7 @@ import { isHullClass, resolveVesselIdentity } from './vessel.js';
  * - Merchant ~ Liberty OA ~135 m
  * - Oiler ~ Cimarron OA ~169 m
  * - Battleship ~ Iowa OA ~270 m
- * - Fighter ~ Hellcat fuselage ~10 m
+ * - Fighter ~ Hellcat fuselage ~10 m (library also: A6M Zeke OA ~9 m)
  * - Bomber ~ Avenger fuselage ~12 m
  */
 export const CLASS_LENGTH_M: Record<HullClass, number> = {
@@ -40,7 +40,7 @@ export const CLASS_LENGTH_M: Record<HullClass, number> = {
  * - Merchant ~ Liberty ~17 m
  * - Oiler ~ Cimarron ~23 m
  * - Battleship ~ Iowa ~33 m
- * - Fighter ~ Hellcat wingspan ~13 m
+ * - Fighter ~ Hellcat wingspan ~13 m (library also: A6M Zeke span ~12 m)
  * - Bomber ~ Avenger wingspan ~17 m
  */
 export const CLASS_BEAM_M: Record<HullClass, number> = {
