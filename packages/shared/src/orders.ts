@@ -48,7 +48,7 @@ function formatDepthChargeOrderSummary(
       : drop.pattern === 'pattern_3'
         ? 'P6'
         : drop.pattern === 'pair'
-          ? 'PAIR4'
+          ? 'PAIR'
           : '1';
   return `DC ${pat} · SET ${formatDepthMeters(drop.depthSettingM)}`;
 }

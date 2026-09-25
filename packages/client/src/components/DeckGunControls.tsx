@@ -125,10 +125,10 @@ export function DeckGunControls({
   return (
     <section className="panel stack controls-weapons-panel station-instrument-panel">
       <div className="station-instrument-head">
-        <h2>Deck gun</h2>
+        <h2>Guns</h2>
         <p className="muted station-instrument-blurb">
-          Mag {magStatus} · reload {DECK_GUN_RELOAD_TURNS} turns · max{' '}
-          {DECK_GUN_MAX_RANGE_NM} nm · surface targets only
+          Deck gun · mag {magStatus} · reload {DECK_GUN_RELOAD_TURNS} turns · max{' '}
+          {DECK_GUN_MAX_RANGE_NM} nm · surface only
         </p>
       </div>
 

@@ -2699,7 +2699,7 @@ label {
 
 .sensor-tabs button {
   min-height: 2.75rem;
-  min-width: 6.5rem;
+  min-width: 5.75rem;
   touch-action: manipulation;
 }
 

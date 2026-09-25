@@ -61,6 +61,8 @@ import {
   isV1PlayerUnit,
   isHydrophoneEmitter,
   isPeriscopeTargetable,
+  controlsInstrumentTabsForHull,
+  formatPendingOrdersSummary,
   snapWallDuration,
   stepDepthTowardOrdered,
   submarineDepthRisk,
@@ -567,6 +569,43 @@ async function main() {
           (s.capabilities as string[]).includes('lookout'),
       ),
   );
+  {
+    const ddTabs = controlsInstrumentTabsForHull('Destroyer').map((t) => t.id);
+    const subTabs = controlsInstrumentTabsForHull('Fleet Submarine').map((t) => t.id);
+    check(
+      'destroyer Controls tabs: Guns + Depth charges (no Weapons lump)',
+      ddTabs.includes('guns') &&
+        ddTabs.includes('depth_charges') &&
+        !ddTabs.includes('torpedoes') &&
+        !ddTabs.some((id) => String(id) === 'weapons'),
+    );
+    check(
+      'sub Controls tabs: Torpedoes + Guns (no Depth charges / Weapons lump)',
+      subTabs.includes('torpedoes') &&
+        subTabs.includes('guns') &&
+        !subTabs.includes('depth_charges') &&
+        !subTabs.some((id) => String(id) === 'weapons'),
+    );
+    check(
+      'Controls tab labels stay first-class weapon names',
+      controlsInstrumentTabsForHull('Destroyer').some((t) => t.id === 'guns' && t.label === 'Guns') &&
+        controlsInstrumentTabsForHull('Destroyer').some(
+          (t) => t.id === 'depth_charges' && t.label === 'Depth charges',
+        ) &&
+        controlsInstrumentTabsForHull('Fleet Submarine').some(
+          (t) => t.id === 'torpedoes' && t.label === 'Torpedoes',
+        ),
+    );
+    check(
+      'DC pair pending summary is PAIR not PAIR4',
+      formatPendingOrdersSummary({
+        dropDepthCharges: { pattern: 'pair', depthSettingM: 50 },
+      }).includes('DC PAIR ·') &&
+        !formatPendingOrdersSummary({
+          dropDepthCharges: { pattern: 'pair', depthSettingM: 50 },
+        }).includes('PAIR4'),
+    );
+  }
   check(
     'destroyer has radar sensor',
     Array.isArray(porter.sensors) &&
