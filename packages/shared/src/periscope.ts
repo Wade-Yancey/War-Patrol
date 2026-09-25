@@ -243,14 +243,43 @@ export const DESTROYER_SILHOUETTE_URL = '/silhouettes/destroyer.png';
 export const SUBMARINE_SILHOUETTE_URL = '/silhouettes/submarine.png';
 export const OILER_SILHOUETTE_URL = '/silhouettes/oiler.png';
 export const CARRIER_SILHOUETTE_URL = '/silhouettes/carrier.png';
+/** Kagerō-class IJN destroyer plate (distinct from US Fletcher `destroyer.png`). */
+export const KAGERO_SILHOUETTE_URL = '/silhouettes/kagero.png';
+
+/**
+ * Class-specific optics plate stem when multiple library hulls share a taxonomic
+ * class (Kagerō vs Fletcher both `Destroyer`). Matches `/silhouettes/<plate>.png`.
+ */
+export function silhouettePlateForClassId(
+  classId: string | undefined,
+): string | undefined {
+  const id = typeof classId === 'string' ? classId.toLowerCase() : '';
+  if (id.includes('kagero') || id.includes('kagerō')) return 'kagero';
+  return undefined;
+}
+
+/**
+ * Public asset path for a class-specific plate stem (e.g. `"kagero"`).
+ * Unknown plates → null (caller falls back to taxonomic class map).
+ */
+export function silhouetteUrlForPlate(plate: string | undefined): string | null {
+  if (!plate) return null;
+  switch (plate) {
+    case 'kagero':
+      return KAGERO_SILHOUETTE_URL;
+    default:
+      return null;
+  }
+}
 
 /**
  * Public asset path for a hull-class silhouette (side profile).
- * Destroyer → {@link DESTROYER_SILHOUETTE_URL};
+ * Destroyer → {@link DESTROYER_SILHOUETTE_URL} (Fletcher default);
  * Fleet Submarine → {@link SUBMARINE_SILHOUETTE_URL};
  * Oiler → {@link OILER_SILHOUETTE_URL} (Cimarron-class plate);
  * Aircraft Carrier → {@link CARRIER_SILHOUETTE_URL} (Shōkaku-class plate).
  * Other classes → null (UI falls back to the destroyer PNG).
+ * Prefer {@link silhouetteUrlForOptics} when `classId` / plate may select Kagerō art.
  */
 export function silhouetteUrlForClass(
   hullClass: HullClass | string | undefined,
@@ -271,13 +300,33 @@ export function silhouetteUrlForClass(
 }
 
 /**
+ * Optics plate URL: class-specific plate (Kagerō) wins over taxonomic class map.
+ */
+export function silhouetteUrlForOptics(opts: {
+  hullClass?: HullClass | string;
+  classId?: string;
+  silhouettePlate?: string;
+}): string | null {
+  const plate =
+    opts.silhouettePlate ?? silhouettePlateForClassId(opts.classId) ?? undefined;
+  return silhouetteUrlForPlate(plate) ?? silhouetteUrlForClass(opts.hullClass);
+}
+
+/**
  * URL to show for a selected periscope / lookout contact: class map when present,
  * otherwise the destroyer PNG so the left panel never goes blank.
  */
 export function periscopeSilhouetteUrl(
   hullClass: HullClass | string | undefined,
+  opts?: { classId?: string; silhouettePlate?: string },
 ): string {
-  return silhouetteUrlForClass(hullClass) ?? DESTROYER_SILHOUETTE_URL;
+  return (
+    silhouetteUrlForOptics({
+      hullClass,
+      classId: opts?.classId,
+      silhouettePlate: opts?.silhouettePlate,
+    }) ?? DESTROYER_SILHOUETTE_URL
+  );
 }
 
 /**

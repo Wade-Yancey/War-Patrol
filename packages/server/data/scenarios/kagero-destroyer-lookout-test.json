@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "id": "kagero-destroyer-lookout-test",
+  "name": "Kagerō destroyer lookout / torpedo test",
+  "description": "Playable IJN destroyer drill: Gato at periscope depth south of an eastbound Kagerō-class destroyer (~1.5 nm, near-beam aspect). Kagerō is a v1 player Destroyer seat (Controls + Sensors join URLs) alongside Fletcher. Recognition plate OA ~119 m / beam ~11 m; Kagerō silhouette. Passwords: umpire / red / red (tokens kagero-demo / gato-demo).",
+  "mode": "pvp",
+  "operatingArea": {
+    "minLat": 34.32,
+    "maxLat": 34.48,
+    "minLon": -120.12,
+    "maxLon": -119.88
+  },
+  "umpirePassword": "umpire",
+  "defaultTurnSeconds": 180,
+  "turnLengthSeconds": 180,
+  "startGameTimeSeconds": 28800,
+  "units": [
+    {
+      "id": "dd-kagero",
+      "name": "Kagerō",
+      "side": "red",
+      "faction": "Red",
+      "classId": "kagero-class",
+      "type": "Ship",
+      "class": "Destroyer",
+      "position": {
+        "lat": 34.4,
+        "lon": -120.0,
+        "depth": 0
+      },
+      "heading": 90,
+      "speed": 18,
+      "eot": "ahead_standard",
+      "accessToken": "kagero-demo",
+      "password": "red",
+      "health": 100,
+      "maxSpeed": 35,
+      "lengthM": 119,
+      "beamM": 11,
+      "radarSignature": "medium",
+      "activeSonarEnabled": false,
+      "depthChargeLoad": 16,
+      "sensors": [
+        {
+          "kind": "radar",
+          "maxRangeNm": 25
+        },
+        {
+          "kind": "active_sonar",
+          "maxRangeNm": 8
+        },
+        {
+          "kind": "lookout",
+          "maxRangeNm": 6
+        }
+      ],
+      "stations": [
+        {
+          "id": "controls",
+          "name": "Controls",
+          "capabilities": [
+            "helm",
+            "engineering",
+            "plot",
+            "weapons"
+          ]
+        },
+        {
+          "id": "sensors",
+          "name": "Sensors",
+          "capabilities": [
+            "radar",
+            "active_sonar",
+            "lookout"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ss-212",
+      "name": "USS Gato",
+      "side": "red",
+      "faction": "Red",
+      "classId": "gato-class",
+      "type": "Submarine",
+      "class": "Fleet Submarine",
+      "position": {
+        "lat": 34.37504,
+        "lon": -120.0,
+        "depth": 20
+      },
+      "orderedDepth": 18,
+      "heading": 0,
+      "speed": 5,
+      "eot": "ahead_2",
+      "accessToken": "gato-demo",
+      "password": "red",
+      "health": 100,
+      "maxSpeed": 21,
+      "lengthM": 95,
+      "beamM": 8.3,
+      "radarSignature": "small",
+      "sensors": [
+        {
+          "kind": "radar",
+          "maxRangeNm": 25
+        },
+        {
+          "kind": "hydrophone",
+          "maxRangeNm": 30
+        },
+        {
+          "kind": "lookout",
+          "maxRangeNm": 6
+        }
+      ],
+      "stations": [
+        {
+          "id": "controls",
+          "name": "Controls",
+          "capabilities": [
+            "helm",
+            "engineering",
+            "plot",
+            "weapons"
+          ]
+        },
+        {
+          "id": "sensors",
+          "name": "Sensors",
+          "capabilities": [
+            "radar",
+            "hydrophone",
+            "lookout"
+          ]
+        }
+      ]
+    }
+  ]
+}

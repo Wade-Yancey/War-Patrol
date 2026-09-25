@@ -14,6 +14,7 @@ import {
   relativeBearingDeg,
   resolvePeriscopeMaxRangeNm,
   resolveVesselIdentity,
+  silhouettePlateForClassId,
   type GameSave,
   type HullClass,
   type PeriscopeContact,
@@ -102,7 +103,9 @@ export function buildPeriscopeContacts(own: UnitState, save: GameSave): Periscop
       const { class: silhouetteClass } = resolveVesselIdentity({
         type: other.type,
         class: other.class,
+        classId: other.classId,
       });
+      const silhouettePlate = silhouettePlateForClassId(other.classId);
 
       contacts.push({
         id: `p-${hashTrackId(own.id, other.id)}`,
@@ -113,6 +116,7 @@ export function buildPeriscopeContacts(own: UnitState, save: GameSave): Periscop
         speedKn: coarsenPeriscopeSpeedKn(other.speed),
         courseDeg: coarsenPeriscopeCourseDeg(other.heading),
         silhouetteClass: silhouetteClass as HullClass,
+        ...(silhouettePlate ? { silhouettePlate } : {}),
       });
       continue;
     }

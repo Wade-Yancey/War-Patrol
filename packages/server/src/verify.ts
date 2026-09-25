@@ -49,8 +49,11 @@ import {
   rollSubmarineImplosion,
   periscopeSilhouetteUrl,
   periscopeSilhouetteFlipX,
+  silhouettePlateForClassId,
   silhouetteUrlForClass,
+  silhouetteUrlForOptics,
   isV1PlayerHullClass,
+  isV1PlayerUnit,
   snapWallDuration,
   stepDepthTowardOrdered,
   submarineDepthRisk,
@@ -778,6 +781,20 @@ async function main() {
     silhouetteUrlForClass('Aircraft Carrier') === '/silhouettes/carrier.png',
   );
   check(
+    'kagero plate stem from classId',
+    silhouettePlateForClassId('kagero-class') === 'kagero' &&
+      silhouettePlateForClassId('fletcher-class') === undefined,
+  );
+  check(
+    'kagero optics plate distinct from Fletcher destroyer',
+    silhouetteUrlForOptics({ hullClass: 'Destroyer', classId: 'kagero-class' }) ===
+      '/silhouettes/kagero.png' &&
+      silhouetteUrlForOptics({ hullClass: 'Destroyer', classId: 'fletcher-class' }) ===
+        '/silhouettes/destroyer.png' &&
+      periscopeSilhouetteUrl('Destroyer', { classId: 'kagero-class' }) ===
+        '/silhouettes/kagero.png',
+  );
+  check(
     'periscope silhouette class map + destroyer fallback',
     periscopeSilhouetteUrl('Fleet Submarine') === '/silhouettes/submarine.png' &&
       periscopeSilhouetteUrl('Destroyer') === '/silhouettes/destroyer.png' &&
@@ -859,6 +876,7 @@ async function main() {
     assertSilhouettePng('submarine.png', 1000);
     assertSilhouettePng('oiler.png', 1000);
     assertSilhouettePng('carrier.png', 1000);
+    assertSilhouettePng('kagero.png', 1000);
   }
   check(
     'controls has no periscope picture',
@@ -2333,6 +2351,12 @@ async function main() {
       RECOGNITION_MANUAL_ENTRIES.some((e) => e.class === 'Destroyer' && e.lengthM === 115),
     );
     check(
+      'recognition manual has Kagerō 119×11',
+      RECOGNITION_MANUAL_ENTRIES.some(
+        (e) => e.class === 'Destroyer' && e.lengthM === 119 && e.beamM === 11,
+      ),
+    );
+    check(
       'recognition manual has Cimarron 169×23',
       RECOGNITION_MANUAL_ENTRIES.some(
         (e) => e.class === 'Oiler' && e.lengthM === 169 && e.beamM === 23,
@@ -2776,6 +2800,10 @@ async function main() {
       scArr.some((s) => s.id === 'shokaku-carrier-lookout-test'),
     );
     check(
+      'kagero-destroyer-lookout-test scenario listed',
+      scArr.some((s) => s.id === 'kagero-destroyer-lookout-test'),
+    );
+    check(
       'deep-dc-test scenario listed',
       scArr.some((s) => s.id === 'deep-dc-test'),
     );
@@ -2807,6 +2835,20 @@ async function main() {
             shokaku.beamM === 26 &&
             shokaku.turnRate === 4 &&
             shokaku.defaultFaction === 'Red',
+        ),
+      );
+      const kagero = libArr.find((c) => c.id === 'kagero-class');
+      check('library has kagero-class', Boolean(kagero), `count=${libArr.length}`);
+      check(
+        'kagero-class is Destroyer playable IJN hull',
+        Boolean(
+          kagero &&
+            kagero.class === 'Destroyer' &&
+            kagero.maxSpeed === 35 &&
+            kagero.lengthM === 119 &&
+            kagero.beamM === 11 &&
+            kagero.turnRate === 7 &&
+            kagero.defaultFaction === 'Red',
         ),
       );
     }
@@ -2917,6 +2959,123 @@ async function main() {
         'shokaku peri paints carrier silhouette class',
         Array.isArray(periContacts) &&
           periContacts.some((c) => c.silhouetteClass === 'Aircraft Carrier'),
+      );
+    }
+
+    {
+      const kgGame = await api('POST', '/api/games', {
+        scenarioId: 'kagero-destroyer-lookout-test',
+        name: 'Verify Kagerō Destroyer',
+      });
+      check('kagero destroyer scenario create', kgGame.status === 200);
+      const kgId = String(kgGame.json.gameId);
+      const kgUmp = await api('POST', `/api/games/${kgId}/auth/umpire`, {
+        password: 'umpire',
+      });
+      const kgUTok = String(kgUmp.json.token);
+      const kgView = await api('GET', `/api/games/${kgId}/view`, undefined, kgUTok);
+      const kgUmpireView = kgView.json.view as {
+        units?: Array<{
+          id: string;
+          class?: string;
+          classId?: string;
+          faction?: string;
+          lengthM?: number;
+          beamM?: number;
+          maxSpeed?: number;
+          turnRate?: number;
+          radarSignature?: string;
+          accessToken?: string;
+        }>;
+        vesselLinks?: Array<{
+          unitId: string;
+          playerVessel?: boolean;
+          stations?: unknown[];
+          accessToken?: string;
+        }>;
+      };
+      const kgUnits = kgUmpireView.units ?? [];
+      const dd = kgUnits.find((u) => u.id === 'dd-kagero');
+      check('kagero unit present', Boolean(dd));
+      check(
+        'kagero seeded 119×11 / 35 kn / medium / turnRate 7',
+        dd?.class === 'Destroyer' &&
+          dd.classId === 'kagero-class' &&
+          dd.faction === 'Red' &&
+          dd.lengthM === 119 &&
+          dd.beamM === 11 &&
+          dd.maxSpeed === 35 &&
+          dd.turnRate === 7 &&
+          dd.radarSignature === 'medium',
+      );
+      check('kagero has vessel accessToken (playable)', Boolean(dd?.accessToken));
+      {
+        const kgSave = runtime.requireGame(kgId);
+        const kgUnit = kgSave.units.find((u) => u.id === 'dd-kagero')!;
+        check(
+          'kagero is a v1 player Destroyer unit',
+          isV1PlayerHullClass(kgUnit.class) &&
+            isV1PlayerUnit(kgUnit) &&
+            kgUnit.class === 'Destroyer',
+        );
+        check(
+          'kagero turnRate destroyer band (7°/min)',
+          kgUnit.turnRate === 7 &&
+            kgUnit.turnRate === defaultTurnRateForClass('Destroyer'),
+        );
+      }
+      const kgLinks = kgUmpireView.vesselLinks ?? [];
+      const kgLink = kgLinks.find((l) => l.unitId === 'dd-kagero');
+      const kgGatoLink = kgLinks.find((l) => l.unitId === 'ss-212');
+      check(
+        'kagero vessel link is playable (Controls + Sensors joins)',
+        kgLink?.playerVessel === true &&
+          Array.isArray(kgLink.stations) &&
+          (kgLink.stations as unknown[]).length === 2,
+      );
+      check(
+        'gato remains playable in kagero scenario',
+        kgGatoLink?.playerVessel === true &&
+          Array.isArray(kgGatoLink.stations) &&
+          (kgGatoLink.stations as unknown[]).length === 2,
+      );
+
+      const kgDdAuth = await api('POST', `/api/games/${kgId}/auth/vessel`, {
+        accessToken: 'kagero-demo',
+        password: 'red',
+        stationId: 'controls',
+      });
+      check('kagero controls station auth', kgDdAuth.status === 200);
+
+      await api(
+        'PATCH',
+        `/api/games/${kgId}/units/ss-212`,
+        { position: { lat: 34.37504, lon: -120.0, depth: 18 } },
+        kgUTok,
+      );
+      const kgGatoAuth = await api('POST', `/api/games/${kgId}/auth/vessel`, {
+        accessToken: 'gato-demo',
+        password: 'red',
+        stationId: 'sensors',
+      });
+      check('kagero scenario gato sensors auth', kgGatoAuth.status === 200);
+      const kgGatoTok = String(kgGatoAuth.json.token);
+      const raiseKgPeri = await api(
+        'POST',
+        `/api/games/${kgId}/periscope`,
+        { raised: true },
+        kgGatoTok,
+      );
+      check('kagero scenario raise periscope', raiseKgPeri.status === 200);
+      const kgPeriView = await api('GET', `/api/games/${kgId}/view`, undefined, kgGatoTok);
+      const kgPeriContacts = (kgPeriView.json.view as { periscopeContacts?: Array<Json> })
+        .periscopeContacts;
+      check(
+        'kagero peri paints destroyer class + kagero plate',
+        Array.isArray(kgPeriContacts) &&
+          kgPeriContacts.some(
+            (c) => c.silhouetteClass === 'Destroyer' && c.silhouettePlate === 'kagero',
+          ),
       );
     }
 

@@ -423,8 +423,12 @@ export interface UnitState {
   speed: number;
   /** Current acknowledged EOT setting. */
   eot: EotSetting;
-  /** Access token embedded in vessel join URLs. */
-  accessToken: string;
+  /**
+   * Access token embedded in vessel join URLs.
+   * Omitted for umpire/NPC hulls that are not v1 player classes (oilers, carriers, …).
+   * Playable Destroyer / Fleet Submarine units (Fletcher, Kagerō, Gato) always have one.
+   */
+  accessToken?: string;
   /** Optional vessel password (plain for Phase 1 local demo). */
   password?: string;
   stations: StationDef[];
@@ -584,7 +588,11 @@ export interface ScenarioUnitSeed {
   orderedDepth?: number;
   speed: number;
   eot?: EotSetting;
-  accessToken: string;
+  /**
+   * Vessel join token. Required for playable Destroyer / Fleet Submarine seats
+   * (Fletcher, Kagerō, Gato). Omit for umpire/NPC-only hulls (oilers, carriers, aircraft).
+   */
+  accessToken?: string;
   password?: string;
   stations: StationDef[];
   health?: number;
@@ -886,7 +894,7 @@ export interface UmpireView {
   vesselLinks: Array<{
     unitId: string;
     name: string;
-    accessToken: string;
+    accessToken?: string;
     passwordProtected: boolean;
     /**
      * True when this hull is a v1 player vessel (Destroyer / Fleet Submarine).
@@ -1155,6 +1163,13 @@ export interface PeriscopeContact {
    * optics viewer, not a hull plate — `silhouetteClass` is FoW metadata only.
    */
   silhouetteClass: HullClass;
+  /**
+   * Optional class-specific plate stem when multiple library hulls share a
+   * taxonomic class (e.g. Kagerō vs Fletcher both `Destroyer`).
+   * Values match public `/silhouettes/<plate>.png` (e.g. `"kagero"`).
+   * Identity is implied by the image only — not a side/name leak.
+   */
+  silhouettePlate?: string;
 }
 
 export type ClientView = UmpireView | VesselView;

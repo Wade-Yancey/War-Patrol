@@ -145,7 +145,12 @@ export function resolveVesselIdentity(input: {
   if (classId.includes('gato') || classId.includes('sub')) {
     return { type: 'Submarine', class: 'Fleet Submarine' };
   }
-  if (classId.includes('fletcher') || classId.includes('destroy')) {
+  if (
+    classId.includes('fletcher') ||
+    classId.includes('kagero') ||
+    classId.includes('kagerō') ||
+    classId.includes('destroy')
+  ) {
     return { type: 'Ship', class: 'Destroyer' };
   }
   if (

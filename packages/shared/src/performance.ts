@@ -9,7 +9,7 @@ import { isHullClass, resolveVesselIdentity } from './vessel.js';
  *
  * Representative references (order-of-magnitude):
  * - Fleet Submarine ~ Gato surfaced ~20 kn; submerged ~9 kn
- * - Destroyer ~ Fletcher ~36 kn
+ * - Destroyer ~ Fletcher ~36 kn (library also: Kagerō ~35 kn)
  * - Cruiser ~ Cleveland / Baltimore ~32 kn
  * - Aircraft Carrier ~ Essex ~33 kn (library also: Shōkaku ~34 kn)
  * - Merchant ~ Liberty ~11 kn
