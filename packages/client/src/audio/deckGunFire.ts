@@ -6,10 +6,10 @@ export const DECK_GUN_FIRE_CONTROLS_PEAK_GAIN = 0.7;
 
 /**
  * Wall-clock gap (seconds) between cannon onsets in a multi-shot salvo.
- * Kept in sync with shared DECK_GUN_FIRE_STAGGER_SEC (250 ms) — same
- * countable spacing as torpedo same-moment hit stagger.
+ * Kept in sync with shared DECK_GUN_FIRE_STAGGER_SEC (2 s) — slow enough that
+ * reports are clearly separated, matching the reduced ROF feel.
  */
-export const DECK_GUN_FIRE_SAME_MOMENT_STAGGER_SEC = 0.25;
+export const DECK_GUN_FIRE_SAME_MOMENT_STAGGER_SEC = 2;
 
 export async function loadDeckGunFireBuffer(ctx: AudioContext): Promise<AudioBuffer> {
   const res = await fetch(DECK_GUN_FIRE_SAMPLE_URL);

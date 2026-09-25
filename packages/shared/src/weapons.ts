@@ -382,27 +382,28 @@ export const DESTROYER_DECK_GUN_LOAD = 40;
 export const FLEET_SUB_DECK_GUN_LOAD = 20;
 
 /**
- * Max rounds a destroyer may fire in one 3-min turn (museum-paced).
- * Fletcher 5"/38 cyclic ~15–22 rpm; short bursts are faster still — we cap at
- * **6** (~2 rpm averaged over the turn) so the 40-shell mag lasts several
- * engagements and the Guns CRT stays countable.
+ * Max rounds a destroyer may fire in one 3-min turn (slow-firing museum pace).
+ * Fletcher 5"/38 cyclic ~15–22 rpm is not the design target — Wade asked for a
+ * deliberate slow gun. Cap at **3** (~1 rpm averaged over the turn) so each
+ * report is an event, the 40-shell mag lasts many engagements, and salvos do
+ * not feel like a 3-minute machine-gun.
  */
-export const DESTROYER_DECK_GUN_MAX_SHOTS_PER_TURN = 6;
+export const DESTROYER_DECK_GUN_MAX_SHOTS_PER_TURN = 3;
 
 /**
  * Max rounds a fleet-sub deck gun may fire in one 3-min turn.
- * Gato 4"/50 is slower on a rolling casing with a small exposed crew —
- * **3** rounds (~1 rpm) keeps the boat's 20-shell mag meaningful.
+ * Gato 4"/50 on a wet casing with a small exposed crew is slower still —
+ * **2** rounds (~0.7 rpm) keeps the boat's 20-shell mag meaningful.
  */
-export const FLEET_SUB_DECK_GUN_MAX_SHOTS_PER_TURN = 3;
+export const FLEET_SUB_DECK_GUN_MAX_SHOTS_PER_TURN = 2;
 
 /**
  * Wall-clock gap (seconds) between cannon-fire onsets for a multi-shot salvo
- * on Controls. Mirrors the torpedo same-moment hit stagger (250 ms) so crews
- * can count distinct reports. Physics still spaces shots across the turn
+ * on Controls. Spaced so reports are clearly separated (not a rapid volley) and
+ * match the slow ROF feel. Physics still spaces shots across the turn
  * timeline; this is presentation only.
  */
-export const DECK_GUN_FIRE_STAGGER_SEC = 0.25;
+export const DECK_GUN_FIRE_STAGGER_SEC = 2;
 
 /**
  * Resolved turns after Reload before the deck gun can fire again.
@@ -425,6 +426,38 @@ export const DECK_GUN_HIT_DAMAGE = 14;
 
 /** Umpire / crew near-miss band for shell CPA (m). */
 export const DECK_GUN_NEAR_MISS_M = 80;
+
+/**
+ * Hit probability when the impact sits on the geometric gate center.
+ * Museum-fun — good solutions usually hit; not a guaranteed bullseye once the
+ * shell is off the dead-center band ({@link DECK_GUN_BULLSEYE_MISS_M}).
+ */
+export const DECK_GUN_HIT_CHANCE_CENTER = 0.85;
+
+/**
+ * Hit probability when the impact sits at the gate edge.
+ * Linearly lerped with center chance by miss/gate closeness.
+ */
+export const DECK_GUN_HIT_CHANCE_EDGE = 0.5;
+
+/**
+ * Horizontal miss (m) at/under which a gate-qualified shell is an automatic hit.
+ * Keeps near-perfect solutions reliable for play / verify while still letting
+ * edge-of-gate rounds roll the museum hit chance.
+ */
+export const DECK_GUN_BULLSEYE_MISS_M = 10;
+
+/**
+ * ± fraction of estimated range used when placing a **miss splash** after a
+ * failed hit roll (or out-of-gate). Keeps umpire GT splash near the aim point
+ * without yanking geometrically-good solutions out of the gate.
+ */
+export const DECK_GUN_SCATTER_RANGE_FRAC = 0.04;
+
+/**
+ * ± degrees of bearing used for miss-splash placement (with range scatter).
+ */
+export const DECK_GUN_SCATTER_BEARING_DEG = 1.5;
 
 /**
  * Short delay (s) after the cannon fire cue before the hit explosion plays on
@@ -2165,6 +2198,48 @@ export function deckGunMissBand(missM: number): 'near' | 'far' {
 }
 
 /**
+ * Seeded splash offset around the solution point (range ± frac, bearing ± deg).
+ * Used for miss/near-miss GT markers — not applied before the geometric gate.
+ */
+export function deckGunScatterImpact(opts: {
+  firerPosition: LatLonDepth;
+  fireHeading: number;
+  rangeNm: number;
+  seed: string;
+}): LatLonDepth {
+  const rangeNm = Math.max(0, opts.rangeNm);
+  const rangeJitter =
+    (weaponRng01(`${opts.seed}|rng`) * 2 - 1) * DECK_GUN_SCATTER_RANGE_FRAC;
+  const brgJitter =
+    (weaponRng01(`${opts.seed}|brg`) * 2 - 1) * DECK_GUN_SCATTER_BEARING_DEG;
+  const scatteredRangeNm = Math.max(0, rangeNm * (1 + rangeJitter));
+  const scatteredHdg = normalizeHeading(opts.fireHeading + brgJitter);
+  const impact = moveAlongHeading(
+    { ...opts.firerPosition, depth: 0 },
+    scatteredHdg,
+    scatteredRangeNm * METERS_PER_NM,
+  );
+  return { ...impact, depth: 0 };
+}
+
+/**
+ * Hit probability given how centered the miss sits inside the gate.
+ * Dead-center (≤ {@link DECK_GUN_BULLSEYE_MISS_M}) → 1. Otherwise lerp
+ * {@link DECK_GUN_HIT_CHANCE_CENTER} … {@link DECK_GUN_HIT_CHANCE_EDGE}.
+ */
+export function deckGunHitChance(missM: number, gateM: number): number {
+  const gate = Math.max(1, gateM);
+  const miss = Math.max(0, missM);
+  if (miss > gate) return 0;
+  if (miss <= DECK_GUN_BULLSEYE_MISS_M) return 1;
+  const closeness = 1 - miss / gate;
+  return (
+    DECK_GUN_HIT_CHANCE_EDGE +
+    closeness * (DECK_GUN_HIT_CHANCE_CENTER - DECK_GUN_HIT_CHANCE_EDGE)
+  );
+}
+
+/**
  * Hit gate from true hull breadth × aspect (no length-ID scale — gun fire
  * does not use recognition-manual length the way torpedoes do).
  */
@@ -2243,8 +2318,9 @@ export type DeckGunResolveResult = {
 
 /**
  * Same-turn deck-gun resolution: impact from solution vs surface contacts.
- * Nearest eligible contact within its aspect gate scores a hit; otherwise miss
- * with CPA to the nearest surface hull (AAR / combat log).
+ * Nearest eligible contact within its aspect gate must also pass a museum-fun
+ * hit roll (center ~85%, edge ~50%). Failures and out-of-gate land as misses;
+ * miss splash positions get a small seeded scatter for umpire GT / AAR.
  */
 export function resolveDeckGunShot(input: DeckGunResolveInput): DeckGunResolveResult {
   const fire = normalizeDeckGunFireOrder(input.fire);
@@ -2274,8 +2350,9 @@ export function resolveDeckGunShot(input: DeckGunResolveInput): DeckGunResolveRe
   let bestMiss = Number.POSITIVE_INFINITY;
   let bestId: string | undefined;
   let bestName: string | undefined;
-  let hitId: string | undefined;
-  let hitMiss = Number.POSITIVE_INFINITY;
+  let candId: string | undefined;
+  let candMiss = Number.POSITIVE_INFINITY;
+  let candGate = 0;
 
   for (const contact of input.contacts) {
     if (contact.id === input.firer.id) continue;
@@ -2292,30 +2369,42 @@ export function resolveDeckGunShot(input: DeckGunResolveInput): DeckGunResolveRe
     const { lengthM, beamM } = unitLengthBeam(contact);
     const aspect = torpedoAspectAngleDeg(ballistics.fireHeading, contact.heading);
     const gate = deckGunHitGateM(lengthM, beamM, aspect);
-    if (miss <= gate && miss < hitMiss) {
-      hitMiss = miss;
-      hitId = contact.id;
+    if (miss <= gate && miss < candMiss) {
+      candMiss = miss;
+      candId = contact.id;
+      candGate = gate;
     }
   }
 
-  if (hitId) {
-    return {
-      outcome: 'hit',
-      fireHeading: ballistics.fireHeading,
-      impact: ballistics.impact,
-      rangeNm: ballistics.rangeNm,
-      damage: DECK_GUN_HIT_DAMAGE,
-      missDistanceM: hitMiss,
-      hitUnitId: hitId,
-      closestApproachUnitId: bestId,
-      closestApproachUnitName: bestName,
-    };
+  if (candId) {
+    const pHit = deckGunHitChance(candMiss, candGate);
+    const roll = weaponRng01(input.seed);
+    if (roll < pHit) {
+      return {
+        outcome: 'hit',
+        fireHeading: ballistics.fireHeading,
+        impact: ballistics.impact,
+        rangeNm: ballistics.rangeNm,
+        damage: DECK_GUN_HIT_DAMAGE,
+        missDistanceM: candMiss,
+        hitUnitId: candId,
+        closestApproachUnitId: bestId,
+        closestApproachUnitName: bestName,
+      };
+    }
   }
 
-  return {
-    outcome: bestId ? 'miss' : 'miss',
+  const splash = deckGunScatterImpact({
+    firerPosition: input.firer.position,
     fireHeading: ballistics.fireHeading,
-    impact: ballistics.impact,
+    rangeNm: ballistics.rangeNm,
+    seed: input.seed,
+  });
+
+  return {
+    outcome: 'miss',
+    fireHeading: ballistics.fireHeading,
+    impact: splash,
     rangeNm: ballistics.rangeNm,
     damage: 0,
     missDistanceM: Number.isFinite(bestMiss) ? bestMiss : Number.POSITIVE_INFINITY,
@@ -2676,14 +2765,17 @@ export function makeDetonationEvent(opts: {
     | 'torpedo_hit'
     | 'aircraft_bomb'
     | 'deck_gun_fire'
-    | 'deck_gun_hit';
+    | 'deck_gun_hit'
+    | 'deck_gun_miss';
   position: LatLonDepth;
   turnNumber: number;
   firerUnitId: string;
   targetUnitId?: string;
+  aimHeading?: number;
   audioDelaySec?: number;
 }): WeaponDetonationEvent {
   const delay = opts.audioDelaySec;
+  const aim = opts.aimHeading;
   return {
     id: opts.id,
     kind: opts.kind ?? 'depth_charge',
@@ -2691,6 +2783,7 @@ export function makeDetonationEvent(opts: {
     turnNumber: opts.turnNumber,
     firerUnitId: opts.firerUnitId,
     ...(opts.targetUnitId ? { targetUnitId: opts.targetUnitId } : {}),
+    ...(aim != null && Number.isFinite(aim) ? { aimHeading: normalizeHeading(aim) } : {}),
     ...(delay != null && delay > 0 ? { audioDelaySec: delay } : {}),
   };
 }

@@ -6,6 +6,7 @@ import type {
   TorpedoTrack,
   UnitState,
   UnitTrail,
+  WeaponDetonationEvent,
 } from '@war-patrol/shared';
 import {
   DEFAULT_TURN_LENGTH_SECONDS,
@@ -42,6 +43,11 @@ interface Props {
   torpedoes?: TorpedoTrack[];
   /** Full-truth depth-charge tracks (drop → sink/detonate). */
   depthCharges?: DepthChargeTrack[];
+  /**
+   * Recent weapon detonations (deck-gun fire / hit / miss splash) for umpire
+   * GT aim lines — live resolve cues; pruned after a few turns.
+   */
+  detonations?: WeaponDetonationEvent[];
   /**
    * In-game seconds per resolve — used for entire-turn move prediction.
    * Defaults to scenario default when omitted.
@@ -301,6 +307,7 @@ function trailsSignature(trails: UnitTrail[] | undefined): string {
 function weaponsSignature(
   torpedoes: TorpedoTrack[] | undefined,
   depthCharges: DepthChargeTrack[] | undefined,
+  detonations?: WeaponDetonationEvent[] | undefined,
 ): string {
   const t = (torpedoes ?? [])
     .map(
@@ -314,7 +321,17 @@ function weaponsSignature(
         `${c.id}:${c.status}:${c.position.lat.toFixed(5)},${c.position.lon.toFixed(5)},${c.position.depth.toFixed(0)}`,
     )
     .join('|');
-  return `${t}#${d}`;
+  const g = (detonations ?? [])
+    .filter(
+      (e) =>
+        e.kind === 'deck_gun_fire' || e.kind === 'deck_gun_hit' || e.kind === 'deck_gun_miss',
+    )
+    .map(
+      (e) =>
+        `${e.id}:${e.kind}:${e.position.lat.toFixed(5)},${e.position.lon.toFixed(5)}:${e.aimHeading ?? ''}:${e.firerUnitId}:${e.targetUnitId ?? ''}`,
+    )
+    .join('|');
+  return `${t}#${d}#${g}`;
 }
 
 function areaSignature(area: BoundingBox): string {
@@ -418,6 +435,7 @@ function GroundTruthMapInner({
   trails = [],
   torpedoes = [],
   depthCharges = [],
+  detonations = [],
   turnLengthSeconds = DEFAULT_TURN_LENGTH_SECONDS,
   showMovePrediction = true,
 }: Props) {
@@ -638,8 +656,49 @@ function GroundTruthMapInner({
         };
       });
 
-    return { fish, charges, dropTrails };
-  }, [torpedoes, depthCharges, view, unitAccentById, units]);
+    // Deck-gun GT: muzzle pip + aim/fire line to splash (hit / miss).
+    const unitById = new Map(units.map((u) => [u.id, u]));
+    const nameById = new Map(units.map((u) => [u.id, u.name]));
+    const guns = detonations
+      .filter(
+        (e) =>
+          e.kind === 'deck_gun_fire' || e.kind === 'deck_gun_hit' || e.kind === 'deck_gun_miss',
+      )
+      .map((e) => {
+        const color = unitAccentById.get(e.firerUnitId) ?? '#e8c07a';
+        const firer = unitById.get(e.firerUnitId);
+        const originPos = firer?.position ?? e.position;
+        const origin = toXy(originPos.lat, originPos.lon);
+        const tip = toXy(e.position.lat, e.position.lon);
+        const aim =
+          e.aimHeading != null && Number.isFinite(e.aimHeading)
+            ? String(Math.round(normalizeHeading(e.aimHeading))).padStart(3, '0')
+            : null;
+        const targetName = e.targetUnitId ? nameById.get(e.targetUnitId) : undefined;
+        let label = 'GUN';
+        if (e.kind === 'deck_gun_fire') {
+          label = aim ? `GUN FIRE · ${aim}°` : 'GUN FIRE';
+        } else if (e.kind === 'deck_gun_hit') {
+          label = `GUN HIT${targetName ? ` ${targetName}` : ''}${aim ? ` · ${aim}°` : ''}`;
+        } else {
+          label = `GUN MISS${targetName ? ` ${targetName}` : ''}${aim ? ` · ${aim}°` : ''}`;
+        }
+        return {
+          id: e.id,
+          kind: e.kind,
+          color,
+          origin,
+          tip,
+          showLine: e.kind !== 'deck_gun_fire',
+          label,
+          onPlot:
+            (origin.u >= -0.1 && origin.u <= 1.1 && origin.v >= -0.1 && origin.v <= 1.1) ||
+            (tip.u >= -0.1 && tip.u <= 1.1 && tip.v >= -0.1 && tip.v <= 1.1),
+        };
+      });
+
+    return { fish, charges, dropTrails, guns };
+  }, [torpedoes, depthCharges, detonations, view, unitAccentById, units]);
 
   /**
    * Entire intended move for this resolve — helm turn + EOT speed over turn length,
@@ -1303,6 +1362,70 @@ function GroundTruthMapInner({
                   </text>
                 </g>
               ))}
+
+            {weaponOverlays.guns
+              .filter((g) => g.onPlot)
+              .map((g) => (
+                <g key={`gun-${g.id}`} opacity={0.9}>
+                  {g.showLine && (
+                    <line
+                      x1={g.origin.x}
+                      y1={g.origin.y}
+                      x2={g.tip.x}
+                      y2={g.tip.y}
+                      stroke="#e8c07a"
+                      strokeWidth={1.35}
+                      strokeOpacity={0.75}
+                      strokeDasharray="4 3"
+                      strokeLinecap="round"
+                    />
+                  )}
+                  {/* Muzzle / firer pip */}
+                  <circle
+                    cx={g.origin.x}
+                    cy={g.origin.y}
+                    r={3}
+                    fill="none"
+                    stroke="#e8c07a"
+                    strokeWidth={1.25}
+                  />
+                  <circle cx={g.origin.x} cy={g.origin.y} r={1.25} fill="#e8c07a" />
+                  {g.kind === 'deck_gun_fire' ? null : (
+                    <>
+                      <circle
+                        cx={g.tip.x}
+                        cy={g.tip.y}
+                        r={g.kind === 'deck_gun_hit' ? 5.5 : 4}
+                        fill={g.kind === 'deck_gun_hit' ? '#ff6a4a' : '#a89060'}
+                        stroke="#061a0e"
+                        strokeWidth={1}
+                      />
+                      <text
+                        className="map-plot-label"
+                        x={g.tip.x + 8}
+                        y={g.tip.y - 6}
+                        fill="#e8c07a"
+                        fontSize={8}
+                        fontFamily="IBM Plex Mono, monospace"
+                      >
+                        {g.label}
+                      </text>
+                    </>
+                  )}
+                  {g.kind === 'deck_gun_fire' && (
+                    <text
+                      className="map-plot-label"
+                      x={g.origin.x + 8}
+                      y={g.origin.y - 8}
+                      fill="#e8c07a"
+                      fontSize={8}
+                      fontFamily="IBM Plex Mono, monospace"
+                    >
+                      {g.label}
+                    </text>
+                  )}
+                </g>
+              ))}
           </g>
 
           {/* Combined per-unit sensor readout — above trails so rings stay labeled */}
@@ -1485,8 +1608,8 @@ export const GroundTruthMap = memo(GroundTruthMapInner, (prev, next) => {
   if ((prev.showMovePrediction !== false) !== (next.showMovePrediction !== false)) return false;
   if (trailsSignature(prev.trails) !== trailsSignature(next.trails)) return false;
   if (
-    weaponsSignature(prev.torpedoes, prev.depthCharges) !==
-    weaponsSignature(next.torpedoes, next.depthCharges)
+    weaponsSignature(prev.torpedoes, prev.depthCharges, prev.detonations) !==
+    weaponsSignature(next.torpedoes, next.depthCharges, next.detonations)
   ) {
     return false;
   }

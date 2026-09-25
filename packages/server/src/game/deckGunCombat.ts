@@ -100,6 +100,7 @@ type PendingSalvo = {
  * Consumes one shell per round in the salvo; submerged fleet boats block
  * with no ammo spent. Multi-shot salvos space rounds across the turn
  * timeline (per-shot hit checks) and emit one staggered muzzle report each.
+ * Hit/miss splash detonations carry aim heading for umpire GT map lines.
  */
 export function resolveDeckGunsForTurn(opts: {
   units: UnitState[];
@@ -173,6 +174,7 @@ export function resolveDeckGunsForTurn(opts: {
                 position: { ...unit.position, depth: 0 },
                 turnNumber,
                 firerUnitId: unit.id,
+                aimHeading: fire.aimHeading,
                 ...(i > 0 ? { audioDelaySec: i * DECK_GUN_FIRE_STAGGER_SEC } : {}),
               }),
             );
@@ -204,6 +206,7 @@ export function resolveDeckGunsForTurn(opts: {
         fireTurnFraction: fireFrac,
       });
       const fireLabel = String(Math.round(normalizeHeading(result.fireHeading))).padStart(3, '0');
+      const aimLabel = String(Math.round(normalizeHeading(salvo.fire.aimHeading))).padStart(3, '0');
       const roundTag = salvo.shotCount > 1 ? ` r${i + 1}/${salvo.shotCount}` : '';
       const fireAudioDelay = i * DECK_GUN_FIRE_STAGGER_SEC;
       if (result.outcome === 'hit' && result.hitUnitId && result.damage > 0) {
@@ -222,6 +225,7 @@ export function resolveDeckGunsForTurn(opts: {
                 turnNumber,
                 firerUnitId: firer.id,
                 targetUnitId: damaged.id,
+                aimHeading: result.fireHeading,
                 audioDelaySec: fireAudioDelay + DECK_GUN_HIT_AUDIO_DELAY_SEC,
               }),
             );
@@ -233,7 +237,7 @@ export function resolveDeckGunsForTurn(opts: {
                 actor: firer,
                 target: damaged,
                 damage: applied,
-                summary: `${firer.name} deck gun HIT${roundTag} ${target.name} −${applied} HP (FIRE ${fireLabel}° · miss ${result.missDistanceM.toFixed(0)} m)`,
+                summary: `${firer.name} deck gun HIT${roundTag} ${target.name} −${applied} HP (aim ${aimLabel}° · FIRE ${fireLabel}° · miss ${result.missDistanceM.toFixed(0)} m)`,
                 sourceDetonationId: detId,
               }),
             );
@@ -265,6 +269,20 @@ export function resolveDeckGunsForTurn(opts: {
             : result.outcome === 'out_of_range'
               ? ' — no range solution'
               : ' — no surface target in gate';
+        const detId = `dgmiss-${nanoid(8)}`;
+        detonations.push(
+          makeDetonationEvent({
+            id: detId,
+            kind: 'deck_gun_miss',
+            position: result.impact,
+            turnNumber,
+            firerUnitId: firer.id,
+            ...(result.closestApproachUnitId
+              ? { targetUnitId: result.closestApproachUnitId }
+              : {}),
+            aimHeading: result.fireHeading,
+          }),
+        );
         combatLogEntries.push(
           gunLogLine({
             kind: 'deck_gun_miss',
@@ -274,7 +292,8 @@ export function resolveDeckGunsForTurn(opts: {
             target: result.closestApproachUnitId
               ? units.find((u) => u.id === result.closestApproachUnitId)
               : undefined,
-            summary: `${firer.name} deck gun MISS${roundTag} (FIRE ${fireLabel}°)${cpaLabel}`,
+            summary: `${firer.name} deck gun MISS${roundTag} (aim ${aimLabel}° · FIRE ${fireLabel}°)${cpaLabel}`,
+            sourceDetonationId: detId,
           }),
         );
       }

@@ -139,8 +139,8 @@ export function DeckGunControls({
       <div className="station-instrument-head">
         <h2>Guns</h2>
         <p className="muted station-instrument-blurb">
-          Deck gun · {magStatus} · max {maxShots}/turn · reload {DECK_GUN_RELOAD_TURNS} turns ·
-          max {DECK_GUN_MAX_RANGE_NM} nm · surface only
+          Deck gun · {magStatus} · max {maxShots}/turn (slow fire) · reload{' '}
+          {DECK_GUN_RELOAD_TURNS} turns · max {DECK_GUN_MAX_RANGE_NM} nm · surface only
         </p>
       </div>
 
@@ -237,9 +237,9 @@ export function DeckGunControls({
         disabled={inputsDisabled}
       />
       <p className="mono muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-        Salvo {effectiveShots} · consumes {effectiveShots} shell
-        {effectiveShots === 1 ? '' : 's'} · {Math.max(0, deckGunLoad - effectiveShots)}/
-        {capacity} left after fire · class max {maxShots}/turn
+        Slow-firing gun · max {maxShots} rd/turn · salvo {effectiveShots} · consumes{' '}
+        {effectiveShots} shell{effectiveShots === 1 ? '' : 's'} ·{' '}
+        {Math.max(0, deckGunLoad - effectiveShots)}/{capacity} left after fire
       </p>
 
       <div className="control-actions">
