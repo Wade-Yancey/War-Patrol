@@ -21,6 +21,12 @@ function kindLabel(kind: CombatLogEntry['kind']): string {
       return 'DC DET';
     case 'depth_charge_damage':
       return 'DC DMG';
+    case 'aircraft_attack':
+      return 'AIR RUN';
+    case 'aircraft_attack_damage':
+      return 'AIR HIT';
+    case 'aircraft_attack_miss':
+      return 'AIR MISS';
     case 'unit_sunk':
       return 'SUNK';
     case 'hull_implosion':

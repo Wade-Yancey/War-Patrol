@@ -9,6 +9,11 @@ import { fileURLToPath } from 'node:url';
 import { buildApp } from './app.js';
 import { runtime } from './game/runtime.js';
 import {
+  AIRCRAFT_INTERCEPT_DAMAGE,
+  resolveAircraftAttackEffect,
+  aircraftAttackModesForClass,
+  canOrderAircraftAttack,
+  isAircraftAttackTarget,
   CLASS_BEAM_M,
   CLASS_LENGTH_M,
   CLASS_MAX_SPEED_KNOTS,
@@ -124,6 +129,64 @@ async function main() {
   );
   check('parseWallDuration mm:ss', parseWallDuration('3:30') === 210);
   check('snapWallDuration 30s', snapWallDuration(200, 30) === 210);
+
+  {
+    const closeHit = resolveAircraftAttackEffect({
+      mode: 'intercept',
+      missDistanceM: 50,
+      targetDepthM: 0,
+      targetType: 'Ship',
+      seed: 'ac-hit-seed',
+    });
+    check(
+      'aircraft intercept close can damage',
+      closeHit.outcome === 'hit' || closeHit.outcome === 'near_miss',
+      `outcome=${closeHit.outcome} dmg=${closeHit.damage}`,
+    );
+    const deepGuns = resolveAircraftAttackEffect({
+      mode: 'intercept',
+      missDistanceM: 20,
+      targetDepthM: 80,
+      targetType: 'Submarine',
+      seed: 'ac-deep',
+    });
+    check(
+      'aircraft intercept ineffective vs deep sub',
+      deepGuns.outcome === 'ineffective' && deepGuns.damage === 0,
+    );
+    const bombHit = resolveAircraftAttackEffect({
+      mode: 'bombing_run',
+      missDistanceM: 40,
+      targetDepthM: 0,
+      targetType: 'Ship',
+      seed: 'bomb-close-a',
+    });
+    check(
+      'aircraft bombing close can damage',
+      (bombHit.outcome === 'hit' && bombHit.damage > 0) || bombHit.outcome === 'near_miss',
+      `outcome=${bombHit.outcome} dmg=${bombHit.damage}`,
+    );
+    check(
+      'fighter attack modes lead with intercept',
+      aircraftAttackModesForClass('Fighter')[0] === 'intercept',
+    );
+    check(
+      'bomber attack modes lead with bombing run',
+      aircraftAttackModesForClass('Bomber')[0] === 'bombing_run',
+    );
+    check(
+      'aircraft can order attack when afloat',
+      canOrderAircraftAttack({ type: 'Aircraft', condition: 'afloat' }),
+    );
+    check(
+      'ships are aircraft attack targets',
+      isAircraftAttackTarget({ type: 'Ship', condition: 'afloat' }),
+    );
+    check(
+      'intercept damage constant museum-scale',
+      AIRCRAFT_INTERCEPT_DAMAGE === 14,
+    );
+  }
 
   {
     const host: { contactBook?: { nextLabel: number; byTargetId: Record<string, number> } } = {};
@@ -4956,6 +5019,169 @@ async function main() {
       );
       await api('DELETE', `/api/saves/${reloadId}`);
     }
+  }
+
+  // Aircraft attack runs (umpire intercept / bombing) — order + resolve outcome
+  {
+    const airGame = await api('POST', '/api/games', {
+      scenarioId: 'cavalla-shokaku-philippine-sea',
+      name: 'Verify Aircraft Attack Run',
+    });
+    check('aircraft-attack scenario create', airGame.status === 200);
+    const airId = String(airGame.json.gameId);
+    const airUmp = await api('POST', `/api/games/${airId}/auth/umpire`, {
+      password: 'umpire',
+    });
+    const airTok = String(airUmp.json.token);
+
+    // Place Zeke CAP on top of Urakaze so CPA is a close pass this turn.
+    const place = await api(
+      'PATCH',
+      `/api/games/${airId}/units/ac-zeke-cap`,
+      {
+        position: { lat: 11.85, lon: 137.52, depth: 0 },
+        heading: 135,
+        orderedCourse: 135,
+        speed: 305,
+        eot: 'ahead_flank',
+      },
+      airTok,
+    );
+    check('place zeke on urakaze', place.status === 200);
+
+    const placeDd = await api(
+      'PATCH',
+      `/api/games/${airId}/units/dd-urakaze`,
+      {
+        position: { lat: 11.85, lon: 137.52, depth: 0 },
+        heading: 135,
+        orderedCourse: 135,
+        speed: 0,
+        eot: 'stop',
+        health: 100,
+      },
+      airTok,
+    );
+    check('park urakaze under zeke', placeDd.status === 200);
+
+    const orderIntercept = await api(
+      'POST',
+      `/api/games/${airId}/units/ac-zeke-cap/orders`,
+      { aircraftAttack: { mode: 'intercept', targetUnitId: 'dd-urakaze' } },
+      airTok,
+    );
+    check('queue zeke intercept order', orderIntercept.status === 200);
+    const pendingOrders = (orderIntercept.json as { orders?: { aircraftAttack?: { mode?: string; targetUnitId?: string }; eot?: string } })
+      .orders;
+    check(
+      'intercept order pending on unit',
+      pendingOrders?.aircraftAttack?.mode === 'intercept' &&
+        pendingOrders?.aircraftAttack?.targetUnitId === 'dd-urakaze',
+    );
+    check(
+      'intercept auto-rings full band',
+      pendingOrders?.eot === 'ahead_flank',
+    );
+
+    await api('POST', `/api/games/${airId}/turn/lock`, {}, airTok);
+    const airResolve = await api('POST', `/api/games/${airId}/turn/resolve`, {}, airTok);
+    check('resolve aircraft intercept turn', airResolve.status === 200);
+
+    const airView = await api('GET', `/api/games/${airId}/view`, undefined, airTok);
+    const airCombat = (airView.json.view as {
+      combatLog?: Array<{ kind?: string; summary?: string; damage?: number; targetUnitId?: string }>;
+      units?: Array<{ id: string; health?: number; orders?: { aircraftAttack?: unknown } }>;
+    });
+    const log = airCombat.combatLog ?? [];
+    check(
+      'combat log has aircraft_attack run',
+      log.some((e) => e.kind === 'aircraft_attack' && (e.summary ?? '').includes('intercept')),
+    );
+    const hitOrMiss = log.some(
+      (e) => e.kind === 'aircraft_attack_damage' || e.kind === 'aircraft_attack_miss',
+    );
+    check('combat log has aircraft attack outcome', hitOrMiss);
+    const zekeAfter = airCombat.units?.find((u) => u.id === 'ac-zeke-cap');
+    check(
+      'aircraft attack order cleared after resolve',
+      !zekeAfter?.orders?.aircraftAttack,
+    );
+
+    // Far miss: park bomber far from Cavalla → out-of-reach miss.
+    await api(
+      'PATCH',
+      `/api/games/${airId}/units/ac-zeke-cap`,
+      {
+        type: 'Aircraft',
+        class: 'Bomber',
+        classId: 'avenger-bomber',
+        position: { lat: 11.0, lon: 136.5, depth: 0 },
+        heading: 45,
+        orderedCourse: 45,
+        speed: 250,
+        eot: 'ahead_flank',
+      },
+      airTok,
+    );
+    await api(
+      'PATCH',
+      `/api/games/${airId}/units/ss-cavalla`,
+      {
+        position: { lat: 12.5, lon: 138.5, depth: 18 },
+        health: 100,
+      },
+      airTok,
+    );
+    const bombOrder = await api(
+      'POST',
+      `/api/games/${airId}/units/ac-zeke-cap/orders`,
+      { aircraftAttack: { mode: 'bombing_run', targetUnitId: 'ss-cavalla' } },
+      airTok,
+    );
+    check('queue bombing run order', bombOrder.status === 200);
+    await api('POST', `/api/games/${airId}/turn/lock`, {}, airTok);
+    const bombResolve = await api('POST', `/api/games/${airId}/turn/resolve`, {}, airTok);
+    check('resolve bombing run turn', bombResolve.status === 200);
+    const bombView = await api('GET', `/api/games/${airId}/view`, undefined, airTok);
+    const bombLog =
+      (bombView.json.view as { combatLog?: Array<{ kind?: string; summary?: string }> })
+        .combatLog ?? [];
+    check(
+      'combat log has bombing run line',
+      bombLog.some(
+        (e) => e.kind === 'aircraft_attack' && (e.summary ?? '').includes('bombing run'),
+      ),
+    );
+    check(
+      'bombing far geometry yields miss outcome',
+      bombLog.some(
+        (e) =>
+          e.kind === 'aircraft_attack_miss' &&
+          ((e.summary ?? '').includes('out of reach') ||
+            (e.summary ?? '').includes('near miss') ||
+            (e.summary ?? '').includes('too deep')),
+      ),
+    );
+
+    // Hydrophone still blind to aircraft after attack resolve.
+    const ssAuth = await api('POST', `/api/games/${airId}/auth/vessel`, {
+      accessToken: 'cavalla-demo',
+      password: 'blue',
+      stationId: 'sensors',
+    });
+    check('cavalla sensors auth after air attack', ssAuth.status === 200);
+    const ssTok = String(ssAuth.json.token);
+    const hydroView = await api('GET', `/api/games/${airId}/view`, undefined, ssTok);
+    const hydroPic = hydroView.json.view as {
+      hydrophoneContacts?: Array<{ kind?: string }>;
+    };
+    check(
+      'hydrophone still skips aircraft after attack runs',
+      Array.isArray(hydroPic.hydrophoneContacts) &&
+        (hydroPic.hydrophoneContacts ?? []).every((c) => c.kind !== undefined),
+    );
+
+    await api('DELETE', `/api/saves/${airId}`);
   }
 
   // Ground-truth multi-turn stability (separate game; cleans up its save)

@@ -226,6 +226,15 @@ export interface DepthChargeDropOrder {
   depthSettingM: number;
 }
 
+/** Umpire-ordered aircraft attack run (intercept strafe or bombing). */
+export type AircraftAttackMode = 'intercept' | 'bombing_run';
+
+export interface AircraftAttackOrder {
+  mode: AircraftAttackMode;
+  /** Target hull id (ship / submarine — never another aircraft). */
+  targetUnitId: string;
+}
+
 export interface UnitOrders {
   /** Desired course in degrees true (0–360). */
   course?: number;
@@ -240,6 +249,11 @@ export interface UnitOrders {
   fireTorpedo?: TorpedoFireOrder;
   /** Drop a depth-charge pattern this resolve (consumes rack load). */
   dropDepthCharges?: DepthChargeDropOrder;
+  /**
+   * Umpire aircraft attack run — resolves after kinematics this turn
+   * (course toward target + full band usually set with the order).
+   */
+  aircraftAttack?: AircraftAttackOrder;
   updatedAt?: string;
   updatedByStationId?: string;
 }
@@ -760,6 +774,9 @@ export type CombatLogKind =
   | 'depth_charge_drop'
   | 'depth_charge_detonation'
   | 'depth_charge_damage'
+  | 'aircraft_attack'
+  | 'aircraft_attack_damage'
+  | 'aircraft_attack_miss'
   | 'unit_sunk'
   | 'hull_implosion'
   | 'subsystem_casualty'
@@ -805,6 +822,7 @@ export interface OwnDamageEvent {
     CombatLogKind,
     | 'torpedo_hit'
     | 'depth_charge_damage'
+    | 'aircraft_attack_damage'
     | 'unit_sunk'
     | 'hull_implosion'
     | 'subsystem_casualty'

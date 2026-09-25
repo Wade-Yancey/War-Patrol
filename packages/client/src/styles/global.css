@@ -2762,11 +2762,13 @@ label {
 }
 
 .combat-log-line--torpedo_hit .combat-log-summary,
-.combat-log-line--depth_charge_damage .combat-log-summary {
+.combat-log-line--depth_charge_damage .combat-log-summary,
+.combat-log-line--aircraft_attack_damage .combat-log-summary {
   color: var(--accent-strong, #3dff6a);
 }
 
-.combat-log-line--torpedo_miss .combat-log-summary {
+.combat-log-line--torpedo_miss .combat-log-summary,
+.combat-log-line--aircraft_attack_miss .combat-log-summary {
   color: #c4b48a;
 }
 

@@ -10,7 +10,8 @@ export function hasPendingOrders(orders: UnitOrders | undefined | null): boolean
     orders.eot !== undefined ||
     orders.depth !== undefined ||
     orders.fireTorpedo !== undefined ||
-    orders.dropDepthCharges !== undefined
+    orders.dropDepthCharges !== undefined ||
+    orders.aircraftAttack !== undefined
   );
 }
 
@@ -51,6 +52,13 @@ function formatDepthChargeOrderSummary(
   return `DC ${pat} · SET ${formatDepthMeters(drop.depthSettingM)}`;
 }
 
+function formatAircraftAttackOrderSummary(
+  attack: NonNullable<UnitOrders['aircraftAttack']>,
+): string {
+  const mode = attack.mode === 'bombing_run' ? 'BOMB' : 'INT';
+  return `AIR ${mode} → ${attack.targetUnitId}`;
+}
+
 /**
  * Compact of-record summary for a unit's in-progress orders.
  * Missing halves show as `—` so the umpire sees partial submissions.
@@ -68,6 +76,9 @@ export function formatPendingOrdersSummary(orders: UnitOrders | undefined | null
   }
   if (orders!.dropDepthCharges) {
     parts.push(formatDepthChargeOrderSummary(orders!.dropDepthCharges));
+  }
+  if (orders!.aircraftAttack) {
+    parts.push(formatAircraftAttackOrderSummary(orders!.aircraftAttack));
   }
   return parts.join(' · ');
 }

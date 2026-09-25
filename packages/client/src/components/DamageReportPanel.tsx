@@ -27,6 +27,8 @@ function kindLabel(kind: OwnDamageEvent['kind']): string {
       return 'TORP HIT';
     case 'depth_charge_damage':
       return 'DC SHOCK';
+    case 'aircraft_attack_damage':
+      return 'AIR ATTACK';
     case 'unit_sunk':
       return 'SUNK';
     case 'hull_implosion':
