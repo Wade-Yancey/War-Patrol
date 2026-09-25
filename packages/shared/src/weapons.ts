@@ -403,6 +403,12 @@ export const DECK_GUN_HIT_DAMAGE = 14;
 export const DECK_GUN_NEAR_MISS_M = 80;
 
 /**
+ * Short delay (s) after the cannon fire cue before the hit explosion plays on
+ * Controls — keeps the muzzle report leading the blast for firer/target.
+ */
+export const DECK_GUN_HIT_AUDIO_DELAY_SEC = 0.85;
+
+/**
  * Along-track release fractions in [0, 1] from move start→end for a pattern.
  * Spaced so a multi-charge rack leaves a trail, not one midpoint dump.
  */
@@ -2588,7 +2594,12 @@ export function torpedoHitAudioDelaySec(
 
 export function makeDetonationEvent(opts: {
   id: string;
-  kind?: 'depth_charge' | 'torpedo_hit' | 'aircraft_bomb';
+  kind?:
+    | 'depth_charge'
+    | 'torpedo_hit'
+    | 'aircraft_bomb'
+    | 'deck_gun_fire'
+    | 'deck_gun_hit';
   position: LatLonDepth;
   turnNumber: number;
   firerUnitId: string;

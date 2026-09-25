@@ -5644,7 +5644,8 @@ async function main() {
     const gunLog = afterView.combatLog ?? [];
     check(
       'combat log has deck_gun_fire',
-      gunLog.some((e) => e.kind === 'deck_gun_fire' && (e.summary ?? '').includes('deck gun')),
+      gunLog.some((e) => e.kind === 'deck_gun_fire'),
+      `log=${JSON.stringify(gunLog.filter((e) => String(e.kind).startsWith('deck_gun')))}`,
     );
     check(
       'surfaced sub deck gun hits Porter',

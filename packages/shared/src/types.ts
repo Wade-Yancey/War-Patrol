@@ -410,13 +410,19 @@ export interface GopherTask {
 /** Recent weapon blast (audio + umpire truth). Cleared after a few turns. */
 export interface WeaponDetonationEvent {
   id: string;
-  kind: 'depth_charge' | 'torpedo_hit' | 'aircraft_bomb';
+  kind:
+    | 'depth_charge'
+    | 'torpedo_hit'
+    | 'aircraft_bomb'
+    | 'deck_gun_fire'
+    | 'deck_gun_hit';
   position: LatLonDepth;
   turnNumber: number;
   firerUnitId: string;
   /**
-   * Hit / aim target for torpedo_hit / aircraft_bomb — involved hulls get
-   * Controls audio cues (aircraft firer is NPC and has no station).
+   * Hit / aim target for torpedo_hit / aircraft_bomb / deck_gun_hit —
+   * involved hulls get Controls audio cues (aircraft firer is NPC and has no
+   * station). Deck-gun fire cues are firer-only.
    */
   targetUnitId?: string;
   /**
@@ -425,6 +431,8 @@ export interface WeaponDetonationEvent {
    * presentation delay from intercept fraction within the turn (capped — see
    * `TORPEDO_HIT_AUDIO_MAX_DELAY_SEC`). Depth charges omit this and use the
    * client stagger schedule instead. Aircraft bombs use CPA fraction (same cap).
+   * Deck-gun fire is immediate (0); deck-gun hit may use a short delay so the
+   * cannon cue leads the explosion.
    */
   audioDelaySec?: number;
 }
@@ -1128,7 +1136,12 @@ export interface VesselView {
     id: string;
     bearing: number;
     rangeNm: number;
-    kind: 'depth_charge' | 'torpedo_hit' | 'aircraft_bomb';
+    kind:
+      | 'depth_charge'
+      | 'torpedo_hit'
+      | 'aircraft_bomb'
+      | 'deck_gun_fire'
+      | 'deck_gun_hit';
     /**
      * Seconds after the cue is heard before the one-shot (and Damage-tab line)
      * should play. Torpedo hits / aircraft bombs: compressed arrival delay (≤
