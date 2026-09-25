@@ -813,6 +813,12 @@ export class GameRuntime {
             { statusCode: 400 },
           );
         }
+        if (patch.fireDeckGun.shotCount !== undefined && patch.fireDeckGun.shotCount !== null) {
+          const n = Math.floor(Number(patch.fireDeckGun.shotCount));
+          if (!Number.isFinite(n) || n < 1) {
+            throw Object.assign(new Error('Deck-gun shot count must be ≥ 1'), { statusCode: 400 });
+          }
+        }
         // Fresh order supersedes any earlier blocked-shot notice.
         delete unit.deckGunFireBlock;
       }

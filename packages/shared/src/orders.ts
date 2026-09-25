@@ -56,7 +56,9 @@ function formatDepthChargeOrderSummary(
 function formatDeckGunOrderSummary(
   fire: NonNullable<UnitOrders['fireDeckGun']>,
 ): string {
-  return `GUN aim ${formatCourseDegrees(fire.aimHeading)} · CRS ${formatCourseDegrees(fire.estimatedCourse)} · ${fire.estimatedSpeedKn.toFixed(1)}kn · ${fire.estimatedRangeNm.toFixed(2)}nm`;
+  const n = Math.max(1, Math.floor(Number(fire.shotCount) || 1));
+  const salvo = n > 1 ? ` ×${n}` : '';
+  return `GUN${salvo} aim ${formatCourseDegrees(fire.aimHeading)} · CRS ${formatCourseDegrees(fire.estimatedCourse)} · ${fire.estimatedSpeedKn.toFixed(1)}kn · ${fire.estimatedRangeNm.toFixed(2)}nm`;
 }
 
 function formatAircraftAttackOrderSummary(

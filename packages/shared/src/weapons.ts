@@ -375,15 +375,39 @@ export const DECK_GUN_SHELL_SPEED_KN = 800;
  */
 export const DECK_GUN_MAX_RANGE_NM = 8;
 
-/** Fletcher / Kagerō ready magazine (finite; depletes one shell per fire). */
+/** Fletcher / Kagerō ready magazine (finite; depletes one shell per shot). */
 export const DESTROYER_DECK_GUN_LOAD = 40;
 
 /** Gato / fleet-sub ready magazine (smaller than DD). */
 export const FLEET_SUB_DECK_GUN_LOAD = 20;
 
 /**
+ * Max rounds a destroyer may fire in one 3-min turn (museum-paced).
+ * Fletcher 5"/38 cyclic ~15–22 rpm; short bursts are faster still — we cap at
+ * **6** (~2 rpm averaged over the turn) so the 40-shell mag lasts several
+ * engagements and the Guns CRT stays countable.
+ */
+export const DESTROYER_DECK_GUN_MAX_SHOTS_PER_TURN = 6;
+
+/**
+ * Max rounds a fleet-sub deck gun may fire in one 3-min turn.
+ * Gato 4"/50 is slower on a rolling casing with a small exposed crew —
+ * **3** rounds (~1 rpm) keeps the boat's 20-shell mag meaningful.
+ */
+export const FLEET_SUB_DECK_GUN_MAX_SHOTS_PER_TURN = 3;
+
+/**
+ * Wall-clock gap (seconds) between cannon-fire onsets for a multi-shot salvo
+ * on Controls. Mirrors the torpedo same-moment hit stagger (250 ms) so crews
+ * can count distinct reports. Physics still spaces shots across the turn
+ * timeline; this is presentation only.
+ */
+export const DECK_GUN_FIRE_STAGGER_SEC = 0.25;
+
+/**
  * Resolved turns after Reload before the deck gun can fire again.
  * Faster than tube/rack reload ({@link TORPEDO_RELOAD_TURNS}) — gun crew pace.
+ * Applies once per **salvo** (not per individual round).
  */
 export const DECK_GUN_RELOAD_TURNS = 2;
 
@@ -782,6 +806,40 @@ export function defaultDeckGunLoad(unit: Pick<UnitState, 'class' | 'type'>): num
   if (unit.class === 'Destroyer') return DESTROYER_DECK_GUN_LOAD;
   if (isFleetSubTorpedoHull(unit)) return FLEET_SUB_DECK_GUN_LOAD;
   return 0;
+}
+
+/** Class max rounds per turn (0 if the hull has no deck gun). */
+export function maxDeckGunShotsPerTurn(unit: Pick<UnitState, 'class' | 'type'>): number {
+  if (unit.class === 'Destroyer') return DESTROYER_DECK_GUN_MAX_SHOTS_PER_TURN;
+  if (isFleetSubTorpedoHull(unit)) return FLEET_SUB_DECK_GUN_MAX_SHOTS_PER_TURN;
+  return 0;
+}
+
+/**
+ * Clamp ordered shot count to [1, min(class max, ready ammo)].
+ * Legacy / missing `shotCount` → 1. Empty mag → 0 (caller should not fire).
+ */
+export function clampDeckGunShotCount(
+  raw: number | undefined,
+  unit: Pick<UnitState, 'class' | 'type' | 'deckGunLoad'>,
+): number {
+  const ammo = Math.max(0, Math.floor(Number(unit.deckGunLoad) || 0));
+  if (ammo <= 0) return 0;
+  const cap = Math.min(maxDeckGunShotsPerTurn(unit), ammo);
+  if (cap <= 0) return 0;
+  const n = Math.floor(Number(raw));
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(cap, n);
+}
+
+/**
+ * Even fire fractions across the turn for a multi-shot salvo.
+ * Single shot → [0] (legacy: impact uses shell TOF only). Multi → 0 … 1 inclusive.
+ */
+export function deckGunSalvoFireFractions(shotCount: number): number[] {
+  const n = Math.max(1, Math.floor(shotCount));
+  if (n === 1) return [0];
+  return Array.from({ length: n }, (_, i) => i / (n - 1));
 }
 
 export function torpedoRoomReady(
@@ -1263,8 +1321,15 @@ export function canFireDeckGun(
 }
 
 export function consumeDeckGunShell(unit: UnitState): UnitState {
+  return consumeDeckGunShells(unit, 1);
+}
+
+/** Consume `count` shells (1 each) and mark the gun awaiting reload after the salvo. */
+export function consumeDeckGunShells(unit: UnitState, count: number): UnitState {
   if (!isDeckGunHull(unit)) return unit;
-  const next = Math.max(0, (unit.deckGunLoad ?? 0) - 1);
+  const n = Math.max(0, Math.floor(Number(count) || 0));
+  if (n <= 0) return unit;
+  const next = Math.max(0, (unit.deckGunLoad ?? 0) - n);
   return {
     ...unit,
     deckGunLoad: next,
@@ -2062,11 +2127,17 @@ export function clampDeckGunRangeNm(rangeNm: number): number {
 }
 
 export function normalizeDeckGunFireOrder(raw: DeckGunFireOrder): DeckGunFireOrder {
+  const shotRaw = raw.shotCount;
+  const shotCount =
+    shotRaw === undefined || shotRaw === null
+      ? undefined
+      : Math.max(1, Math.floor(Number(shotRaw) || 1));
   return {
     aimHeading: normalizeHeading(raw.aimHeading),
     estimatedCourse: normalizeHeading(raw.estimatedCourse),
     estimatedSpeedKn: Math.max(0, Number(raw.estimatedSpeedKn) || 0),
     estimatedRangeNm: Math.max(0, Number(raw.estimatedRangeNm) || 0),
+    ...(shotCount !== undefined ? { shotCount } : {}),
   };
 }
 
@@ -2151,6 +2222,11 @@ export type DeckGunResolveInput = {
   startPositions?: ReadonlyMap<string, LatLonDepth>;
   turnLengthSeconds: number;
   seed: string;
+  /**
+   * Fraction of the turn [0, 1] when this round leaves the muzzle.
+   * Contact interpolation uses fireFrac + shell-TOF/turn (clamped). Default 0.
+   */
+  fireTurnFraction?: number;
 };
 
 export type DeckGunResolveResult = {
@@ -2192,7 +2268,8 @@ export function resolveDeckGunShot(input: DeckGunResolveInput): DeckGunResolveRe
   }
 
   const turnSec = Math.max(1, Number(input.turnLengthSeconds) || 180);
-  const flightT = clamp(ballistics.interceptSec / turnSec, 0, 1);
+  const fireFrac = clamp(Number(input.fireTurnFraction) || 0, 0, 1);
+  const flightT = clamp(fireFrac + ballistics.interceptSec / turnSec, 0, 1);
 
   let bestMiss = Number.POSITIVE_INFINITY;
   let bestId: string | undefined;

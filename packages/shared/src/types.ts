@@ -227,9 +227,10 @@ export interface DepthChargeDropOrder {
 }
 
 /**
- * Pending deck-gun shot for the current turn (destroyer + fleet-sub Controls).
+ * Pending deck-gun salvo for the current turn (destroyer + fleet-sub Controls).
  * Mirror of the torpedo calculator language: aim LOS + estimated course/speed/range
  * drive a same-turn fire solution — never auto-filled from sim truth.
+ * `shotCount` is how many rounds to fire this turn (1 shell each; class-capped).
  */
 export interface DeckGunFireOrder {
   /**
@@ -243,6 +244,11 @@ export interface DeckGunFireOrder {
   estimatedSpeedKn: number;
   /** Player-entered estimated range to target (nautical miles). */
   estimatedRangeNm: number;
+  /**
+   * Rounds to fire this turn (1 shell each). Clamped to class max shots/turn
+   * and ready magazine. Default 1 when omitted (legacy orders).
+   */
+  shotCount?: number;
 }
 
 /**
@@ -295,7 +301,7 @@ export interface UnitOrders {
   fireTorpedo?: TorpedoFireOrder;
   /** Drop a depth-charge pattern this resolve (consumes rack load). */
   dropDepthCharges?: DepthChargeDropOrder;
-  /** Fire the deck gun this resolve (consumes one shell on launch). */
+  /** Fire the deck gun this resolve (consumes one shell per shot in the salvo). */
   fireDeckGun?: DeckGunFireOrder;
   /**
    * Umpire aircraft attack run — resolves after kinematics this turn
