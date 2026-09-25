@@ -179,7 +179,7 @@ export function StationPage() {
     Array<{
       id: string;
       rangeNm: number;
-      kind: 'depth_charge' | 'torpedo_hit';
+      kind: 'depth_charge' | 'torpedo_hit' | 'aircraft_bomb';
       audioDelaySec?: number;
     }>
   >([]);
@@ -248,15 +248,17 @@ export function StationPage() {
     });
   };
 
-  /** Play queued bridge blasts (close DC + torpedo hits for firer/target). */
+  /** Play queued bridge blasts (close DC + torpedo/aircraft-bomb hits). */
   const flushBridgeBlastAudio = async (): Promise<void> => {
     const pending = pendingBridgeBlastRef.current;
     if (!pending.length) return;
     const ctx = await ensureBridgeAudioCtx();
     if (ctx.state !== 'running') return;
 
-    const needsDc = pending.some((e) => e.kind !== 'torpedo_hit');
-    const needsHit = pending.some((e) => e.kind === 'torpedo_hit');
+    const isExplosionCue = (kind: string) =>
+      kind === 'torpedo_hit' || kind === 'aircraft_bomb';
+    const needsDc = pending.some((e) => !isExplosionCue(e.kind));
+    const needsHit = pending.some((e) => isExplosionCue(e.kind));
     // Load samples independently — a DC fetch failure must not block torpedo hits
     // (and vice versa). Same unlock/queue pattern as the nearby-DC bridge fix.
     if (needsDc && !bridgeAudioRef.current.buffer) {
@@ -284,14 +286,14 @@ export function StationPage() {
     const still: Array<{
       id: string;
       rangeNm: number;
-      kind: 'depth_charge' | 'torpedo_hit';
+      kind: 'depth_charge' | 'torpedo_hit' | 'aircraft_bomb';
       audioDelaySec?: number;
     }> = [];
 
     // Multi-charge patterns arrive as one hear-batch after resolve — stagger
     // one distant-explosion one-shot per charge across ~1.5 minutes (not stacked).
     const dcBatch = pending
-      .filter((e) => e.kind !== 'torpedo_hit' && !playedBridgeBlastRef.current.has(e.id))
+      .filter((e) => !isExplosionCue(e.kind) && !playedBridgeBlastRef.current.has(e.id))
       .slice()
       .sort((a, b) => a.id.localeCompare(b.id));
     const dcWhenById = depthChargeBatchWhenSecById(dcBatch);
@@ -299,7 +301,7 @@ export function StationPage() {
     for (const e of pending) {
       if (playedBridgeBlastRef.current.has(e.id)) continue;
       try {
-        if (e.kind === 'torpedo_hit') {
+        if (isExplosionCue(e.kind)) {
           if (!hitBuffer) {
             still.push(e);
             continue;
@@ -1166,16 +1168,25 @@ export function StationPage() {
                   <span className="readout">
                     {(() => {
                       const events = syncedDamage.visibleBridgeDetonations;
-                      const hits = events.filter((d) => d.kind === 'torpedo_hit').length;
-                      const dcs = events.filter((d) => d.kind !== 'torpedo_hit').length;
+                      const hits = events.filter(
+                        (d) => d.kind === 'torpedo_hit' || d.kind === 'aircraft_bomb',
+                      ).length;
+                      const bombs = events.filter((d) => d.kind === 'aircraft_bomb').length;
+                      const dcs = events.filter((d) => d.kind === 'depth_charge').length;
                       const parts: string[] = [];
-                      if (hits > 0) {
-                        parts.push(`TORPEDO HIT ×${hits}`);
+                      if (hits > 0 && bombs === hits) {
+                        parts.push(`BOMB ×${bombs}`);
+                      } else if (hits > 0) {
+                        parts.push(
+                          bombs > 0
+                            ? `HIT ×${hits - bombs} · BOMB ×${bombs}`
+                            : `TORPEDO HIT ×${hits}`,
+                        );
                       }
                       if (dcs > 0) {
                         parts.push(
                           `DEPTH CHARGE ×${dcs} within ~${Math.max(
-                            ...events.filter((d) => d.kind !== 'torpedo_hit').map((d) => d.rangeNm),
+                            ...events.filter((d) => d.kind === 'depth_charge').map((d) => d.rangeNm),
                           ).toFixed(2)} nm`,
                         );
                       }

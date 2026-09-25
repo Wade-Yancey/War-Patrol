@@ -7,7 +7,7 @@
  * adds a small warhead dud chance — not the old 5–50% “did you hit” RNG table.
  * Fire headings come from the player's entered TDC solution (aim + course /
  * speed / range intercept) — never auto-filled from sim truth.
- * Aircraft attacks are umpire-ordered intercept / bombing runs that resolve
+ * Aircraft attacks are umpire-ordered intercept / strafe / bombing runs that resolve
  * on turn advance from CPA geometry (depth-charge-like bands).
  * See docs/simulation-physics.md in the project store.
  */
@@ -41,6 +41,7 @@ import type {
   WeaponDetonationEvent,
 } from './types.js';
 import { resolveBeamM, resolveLengthM } from './dimensions.js';
+import { rearmBombLoad } from './aircraft.js';
 
 // --- Torpedo (Mk 14–ish fleet-sub fish) ---
 
@@ -1136,6 +1137,7 @@ export function rearmDepthChargeRack(unit: UnitState): UnitState {
 export function rearmUnitWeapons(unit: UnitState): UnitState {
   let next = rearmTorpedoRooms(unit);
   next = rearmDepthChargeRack(next);
+  next = rearmBombLoad(next);
   return next;
 }
 
@@ -1853,7 +1855,7 @@ export function isDepthChargeTarget(unit: UnitState): boolean {
   return unit.position.depth > RADAR_SURFACE_DEPTH_M;
 }
 
-// --- Aircraft attack runs (umpire intercept / bombing) ---
+// --- Aircraft attack runs (umpire intercept / strafe / bombing) ---
 
 /** Horizontal CPA (m) for a solid gun/bomb effect. */
 export const AIRCRAFT_ATTACK_HIT_M = 280;
@@ -1864,13 +1866,15 @@ export const AIRCRAFT_ATTACK_FAR_M = 2200;
 
 /** Strafe / intercept gun damage (museum-scale). */
 export const AIRCRAFT_INTERCEPT_DAMAGE = 14;
+/** Explicit gun-strafe alias (same museum HP as intercept). */
+export const AIRCRAFT_STRAFE_DAMAGE = AIRCRAFT_INTERCEPT_DAMAGE;
 /** Bombing-run solid hit damage. */
 export const AIRCRAFT_BOMBING_DAMAGE = 28;
 /** Bombing near-miss splash / concussion. */
 export const AIRCRAFT_BOMBING_NEAR_DAMAGE = 8;
 
 /**
- * Guns / intercept: only effective vs surface ships and subs at / above PD
+ * Guns / intercept / strafe: only effective vs surface ships and subs at / above PD
  * ({@link PERISCOPE_DEPTH_M}). Deeper boats are underwater — ineffective.
  */
 export const AIRCRAFT_INTERCEPT_MAX_TARGET_DEPTH_M = PERISCOPE_DEPTH_M;
@@ -1888,11 +1892,11 @@ export function canOrderAircraftAttack(
 
 /**
  * Class-appropriate attack buttons: fighters lead with intercept; bombers with
- * bombing run. Both modes remain available for umpire flexibility.
+ * bombing run. Strafe (guns) is always listed; does not consume the bomb.
  */
 export function aircraftAttackModesForClass(hullClass: HullClass): AircraftAttackMode[] {
-  if (hullClass === 'Bomber') return ['bombing_run', 'intercept'];
-  return ['intercept', 'bombing_run'];
+  if (hullClass === 'Bomber') return ['bombing_run', 'strafe', 'intercept'];
+  return ['intercept', 'strafe', 'bombing_run'];
 }
 
 export function isAircraftAttackTarget(
@@ -1904,7 +1908,14 @@ export function isAircraftAttackTarget(
 }
 
 export function normalizeAircraftAttackMode(raw: unknown): AircraftAttackMode {
-  return raw === 'bombing_run' ? 'bombing_run' : 'intercept';
+  if (raw === 'bombing_run') return 'bombing_run';
+  if (raw === 'strafe') return 'strafe';
+  return 'intercept';
+}
+
+/** True when the mode uses guns (no bomb expenditure). */
+export function isAircraftGunAttackMode(mode: AircraftAttackMode): boolean {
+  return mode === 'intercept' || mode === 'strafe';
 }
 
 export type AircraftAttackEffectInput = {
@@ -1920,6 +1931,7 @@ export type AircraftAttackOutcome = 'hit' | 'near_miss' | 'far_miss' | 'ineffect
 /**
  * Aircraft attack effect from horizontal CPA + depth eligibility.
  * Deterministic seed (same pattern as depth charges) for museum replay.
+ * Intercept and strafe share gun rules / damage; bombing uses the bomb table.
  */
 export function resolveAircraftAttackEffect(input: AircraftAttackEffectInput): {
   damage: number;
@@ -1929,8 +1941,9 @@ export function resolveAircraftAttackEffect(input: AircraftAttackEffectInput): {
   const miss = Math.max(0, Number(input.missDistanceM) || 0);
   const depth = Math.max(0, Number(input.targetDepthM) || 0);
   const mode = normalizeAircraftAttackMode(input.mode);
+  const guns = isAircraftGunAttackMode(mode);
 
-  if (mode === 'intercept' && input.targetType === 'Submarine' && depth > AIRCRAFT_INTERCEPT_MAX_TARGET_DEPTH_M) {
+  if (guns && input.targetType === 'Submarine' && depth > AIRCRAFT_INTERCEPT_MAX_TARGET_DEPTH_M) {
     return { damage: 0, outcome: 'ineffective', effectPct: 0 };
   }
   if (
@@ -1976,11 +1989,15 @@ export function resolveAircraftAttackEffect(input: AircraftAttackEffectInput): {
     const damage = close ? AIRCRAFT_BOMBING_DAMAGE : AIRCRAFT_BOMBING_NEAR_DAMAGE;
     return { damage, outcome: 'hit', effectPct };
   }
-  // Intercept: solid only on close pass; outer band is near-miss / tracers.
+  // Guns (intercept / strafe): solid only on close pass; outer band is near-miss / tracers.
   if (!close) {
     return { damage: 0, outcome: 'near_miss', effectPct };
   }
-  return { damage: AIRCRAFT_INTERCEPT_DAMAGE, outcome: 'hit', effectPct };
+  return {
+    damage: mode === 'strafe' ? AIRCRAFT_STRAFE_DAMAGE : AIRCRAFT_INTERCEPT_DAMAGE,
+    outcome: 'hit',
+    effectPct,
+  };
 }
 
 /**
@@ -2036,7 +2053,9 @@ export function aircraftAttackClosestApproach(opts: {
 }
 
 export function formatAircraftAttackModeLabel(mode: AircraftAttackMode): string {
-  return mode === 'bombing_run' ? 'bombing run' : 'intercept';
+  if (mode === 'bombing_run') return 'bombing run';
+  if (mode === 'strafe') return 'strafe';
+  return 'intercept';
 }
 
 /**
@@ -2176,7 +2195,7 @@ export function torpedoHitAudioDelaySec(
 
 export function makeDetonationEvent(opts: {
   id: string;
-  kind?: 'depth_charge' | 'torpedo_hit';
+  kind?: 'depth_charge' | 'torpedo_hit' | 'aircraft_bomb';
   position: LatLonDepth;
   turnNumber: number;
   firerUnitId: string;

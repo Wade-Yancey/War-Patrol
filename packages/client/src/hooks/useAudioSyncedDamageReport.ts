@@ -120,12 +120,14 @@ export function useAudioSyncedDamageReport(
       return changed ? next : prev;
     });
 
-    const dcBatch = events.filter((e) => e.kind !== 'torpedo_hit');
+    const dcBatch = events.filter(
+      (e) => e.kind !== 'torpedo_hit' && e.kind !== 'aircraft_bomb',
+    );
     const dcWhenById = depthChargeBatchWhenSecById(dcBatch);
     for (const e of events) {
       if (scheduledDetonationIdsRef.current.has(e.id)) continue;
       const whenSec =
-        e.kind === 'torpedo_hit'
+        e.kind === 'torpedo_hit' || e.kind === 'aircraft_bomb'
           ? Math.max(0, e.audioDelaySec ?? 0)
           : (dcWhenById.get(e.id) ?? 0);
       scheduleRevealForDetonation(e.id, whenSec);

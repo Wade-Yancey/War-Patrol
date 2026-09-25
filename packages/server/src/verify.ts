@@ -154,6 +154,29 @@ async function main() {
       'aircraft intercept ineffective vs deep sub',
       deepGuns.outcome === 'ineffective' && deepGuns.damage === 0,
     );
+    const strafeDeep = resolveAircraftAttackEffect({
+      mode: 'strafe',
+      missDistanceM: 20,
+      targetDepthM: 80,
+      targetType: 'Submarine',
+      seed: 'strafe-deep',
+    });
+    check(
+      'aircraft strafe ineffective vs deep sub',
+      strafeDeep.outcome === 'ineffective' && strafeDeep.damage === 0,
+    );
+    const strafeSurf = resolveAircraftAttackEffect({
+      mode: 'strafe',
+      missDistanceM: 40,
+      targetDepthM: 0,
+      targetType: 'Ship',
+      seed: 'strafe-surf',
+    });
+    check(
+      'aircraft strafe surface can damage like intercept',
+      strafeSurf.outcome === 'hit' || strafeSurf.outcome === 'near_miss',
+      `outcome=${strafeSurf.outcome} dmg=${strafeSurf.damage}`,
+    );
     const bombHit = resolveAircraftAttackEffect({
       mode: 'bombing_run',
       missDistanceM: 40,
@@ -169,6 +192,10 @@ async function main() {
     check(
       'fighter attack modes lead with intercept',
       aircraftAttackModesForClass('Fighter')[0] === 'intercept',
+    );
+    check(
+      'fighter attack modes include strafe',
+      aircraftAttackModesForClass('Fighter').includes('strafe'),
     );
     check(
       'bomber attack modes lead with bombing run',
@@ -5162,6 +5189,184 @@ async function main() {
             (e.summary ?? '').includes('too deep')),
       ),
     );
+
+    // Far miss does not consume the bomb — still have load for a close drop next.
+    const afterFar = (
+      bombView.json.view as {
+        units?: Array<{ id: string; bombLoad?: number }>;
+      }
+    ).units?.find((u) => u.id === 'ac-zeke-cap');
+    check(
+      'far-miss bombing keeps bomb load',
+      (afterFar?.bombLoad ?? 0) === 1,
+      `bombLoad=${afterFar?.bombLoad}`,
+    );
+
+    // Close bombing: consume ammo + emit aircraft_bomb detonation cue.
+    await api(
+      'PATCH',
+      `/api/games/${airId}/units/ac-zeke-cap`,
+      {
+        type: 'Aircraft',
+        class: 'Bomber',
+        classId: 'avenger-bomber',
+        position: { lat: 11.9, lon: 137.55, depth: 0 },
+        heading: 90,
+        orderedCourse: 90,
+        speed: 250,
+        eot: 'ahead_flank',
+      },
+      airTok,
+    );
+    await api(
+      'PATCH',
+      `/api/games/${airId}/units/dd-urakaze`,
+      {
+        position: { lat: 11.9, lon: 137.55, depth: 0 },
+        heading: 90,
+        orderedCourse: 90,
+        speed: 0,
+        eot: 'stop',
+        health: 100,
+      },
+      airTok,
+    );
+    const closeBomb = await api(
+      'POST',
+      `/api/games/${airId}/units/ac-zeke-cap/orders`,
+      { aircraftAttack: { mode: 'bombing_run', targetUnitId: 'dd-urakaze' } },
+      airTok,
+    );
+    check('queue close bombing run', closeBomb.status === 200);
+    await api('POST', `/api/games/${airId}/turn/lock`, {}, airTok);
+    const closeBombResolve = await api('POST', `/api/games/${airId}/turn/resolve`, {}, airTok);
+    check('resolve close bombing run', closeBombResolve.status === 200);
+    const closeBombView = await api('GET', `/api/games/${airId}/view`, undefined, airTok);
+    const closeBombUv = closeBombView.json.view as {
+      recentDetonations?: Array<{ kind?: string; targetUnitId?: string }>;
+      units?: Array<{ id: string; bombLoad?: number }>;
+      combatLog?: Array<{ kind?: string; summary?: string }>;
+    };
+    const zekeSpent = closeBombUv.units?.find((u) => u.id === 'ac-zeke-cap');
+    check(
+      'bombing drop consumes bomb load',
+      (zekeSpent?.bombLoad ?? -1) === 0,
+      `bombLoad=${zekeSpent?.bombLoad}`,
+    );
+    check(
+      'bombing emit aircraft_bomb detonation',
+      (closeBombUv.recentDetonations ?? []).some(
+        (d) => d.kind === 'aircraft_bomb' && d.targetUnitId === 'dd-urakaze',
+      ),
+    );
+
+    // Ammo gate: cannot queue another bombing run until rearm.
+    const emptyBomb = await api(
+      'POST',
+      `/api/games/${airId}/units/ac-zeke-cap/orders`,
+      { aircraftAttack: { mode: 'bombing_run', targetUnitId: 'dd-urakaze' } },
+      airTok,
+    );
+    check('empty bomb load rejects bombing order', emptyBomb.status === 400);
+
+    // Strafe still works with empty bomb rack (guns).
+    const strafeOrder = await api(
+      'POST',
+      `/api/games/${airId}/units/ac-zeke-cap/orders`,
+      { aircraftAttack: { mode: 'strafe', targetUnitId: 'dd-urakaze' } },
+      airTok,
+    );
+    check('strafe allowed with empty bomb rack', strafeOrder.status === 200);
+    await api('POST', `/api/games/${airId}/turn/lock`, {}, airTok);
+    const strafeResolve = await api('POST', `/api/games/${airId}/turn/resolve`, {}, airTok);
+    check('resolve strafe turn', strafeResolve.status === 200);
+    const strafeView = await api('GET', `/api/games/${airId}/view`, undefined, airTok);
+    const strafeLog =
+      (strafeView.json.view as { combatLog?: Array<{ kind?: string; summary?: string }> })
+        .combatLog ?? [];
+    check(
+      'combat log has strafe run',
+      strafeLog.some(
+        (e) => e.kind === 'aircraft_attack' && (e.summary ?? '').includes('strafe'),
+      ),
+    );
+    const afterStrafe = (
+      strafeView.json.view as { units?: Array<{ id: string; bombLoad?: number }> }
+    ).units?.find((u) => u.id === 'ac-zeke-cap');
+    check(
+      'strafe does not consume bomb',
+      (afterStrafe?.bombLoad ?? -1) === 0,
+      `bombLoad=${afterStrafe?.bombLoad}`,
+    );
+
+    // Umpire rearm restores bomb.
+    const rearm = await api(
+      'POST',
+      `/api/games/${airId}/units/ac-zeke-cap/rearm`,
+      {},
+      airTok,
+    );
+    check('umpire rearm aircraft bombs', rearm.status === 200);
+    const rearmedView = await api('GET', `/api/games/${airId}/view`, undefined, airTok);
+    const rearmedZeke = (
+      rearmedView.json.view as { units?: Array<{ id: string; bombLoad?: number }> }
+    ).units?.find((u) => u.id === 'ac-zeke-cap');
+    check('rearm restores bomb load', (rearmedZeke?.bombLoad ?? 0) === 1);
+
+    // Loiter standing order persists across turns.
+    const loiterStart = await api(
+      'POST',
+      `/api/games/${airId}/units/ac-zeke-cap/orders`,
+      { aircraftLoiter: { centerUnitId: 'cv-shokaku' } },
+      airTok,
+    );
+    check('queue loiter over shokaku', loiterStart.status === 200);
+    const loiterPending = await api('GET', `/api/games/${airId}/view`, undefined, airTok);
+    const loiterUnit = (
+      loiterPending.json.view as {
+        units?: Array<{
+          id: string;
+          aircraftLoiter?: { centerUnitId?: string; radiusM?: number };
+          orderedCourse?: number;
+        }>;
+      }
+    ).units?.find((u) => u.id === 'ac-zeke-cap');
+    check(
+      'loiter state on unit',
+      loiterUnit?.aircraftLoiter?.centerUnitId === 'cv-shokaku',
+    );
+    await api('POST', `/api/games/${airId}/turn/lock`, {}, airTok);
+    await api('POST', `/api/games/${airId}/turn/resolve`, {}, airTok);
+    await api('POST', `/api/games/${airId}/turn/lock`, {}, airTok);
+    await api('POST', `/api/games/${airId}/turn/resolve`, {}, airTok);
+    const loiterAfter = await api('GET', `/api/games/${airId}/view`, undefined, airTok);
+    const loiterUnit2 = (
+      loiterAfter.json.view as {
+        units?: Array<{
+          id: string;
+          aircraftLoiter?: { centerUnitId?: string };
+          orderedCourse?: number;
+        }>;
+      }
+    ).units?.find((u) => u.id === 'ac-zeke-cap');
+    check(
+      'loiter persists across turns',
+      loiterUnit2?.aircraftLoiter?.centerUnitId === 'cv-shokaku',
+    );
+    const cancelLoiter = await api(
+      'POST',
+      `/api/games/${airId}/units/ac-zeke-cap/orders`,
+      { aircraftLoiter: null },
+      airTok,
+    );
+    check('cancel loiter', cancelLoiter.status === 200);
+    const loiterCleared = await api('GET', `/api/games/${airId}/view`, undefined, airTok);
+    const loiterUnit3 = (
+      loiterCleared.json.view as {
+        units?: Array<{ id: string; aircraftLoiter?: unknown }>;
+      }
+    ).units?.find((u) => u.id === 'ac-zeke-cap');
+    check('loiter cleared', !loiterUnit3?.aircraftLoiter);
 
     // Hydrophone still blind to aircraft after attack resolve.
     const ssAuth = await api('POST', `/api/games/${airId}/auth/vessel`, {

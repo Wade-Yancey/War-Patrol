@@ -1,5 +1,6 @@
 import {
   PERISCOPE_DEPTH_M,
+  applyAircraftLoiterStandingOrders,
   applyCrushDepthImplosions,
   applyUnitKinematics,
   clampDepthChargeSetting,
@@ -66,8 +67,11 @@ export function resolveTurn(save: GameSave): GameSave {
     save.units.map((u) => [u.id, { ...u.position } as const]),
   );
 
+  // Standing aircraft loiter injects orbit course (+ loiter EOT) before kinematics.
+  const loiterReady = applyAircraftLoiterStandingOrders(save.units);
+
   // Kinematics first (orders still present for weapon launch snapshot).
-  const movedUnits = save.units.map((unit) => applyUnitOrders(unit, turnLength, false));
+  const movedUnits = loiterReady.map((unit) => applyUnitOrders(unit, turnLength, false));
 
   // Periscope auto-lower when too deep; plot stamp accrue/reset (no frozen bonus).
   const stampedUnits = applyPeriscopePlotStamps(movedUnits, save);
