@@ -204,7 +204,7 @@ export function TorpedoCalculator({
   return (
     <section className="panel stack controls-weapons-panel station-instrument-panel">
       <div className="station-instrument-head">
-        <h2>Torpedo calculator</h2>
+        <h2>Torpedoes</h2>
         <p className="muted station-instrument-blurb">
           {TORPEDO_SPEED_KN} kn · {TORPEDO_MAX_RUN_NM} nm · bow ±
           {TORPEDO_FORWARD_ARC_HALF_DEG}° / stern ±{TORPEDO_AFT_ARC_HALF_DEG}° · reload{' '}

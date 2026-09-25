@@ -8,6 +8,7 @@ import {
   SUBMARINE_MAX_DEPTH_M,
   clampSubmarineDepth,
   conditionLabel,
+  controlsInstrumentTabsForHull,
   effectiveMaxSpeed,
   formatCoarseDepthMeters,
   formatPendingOrdersSummary,
@@ -15,6 +16,7 @@ import {
   isRadarSurfaced,
   normalizeHeading,
   torpedoHitControlsGain,
+  type ControlsInstrumentTab,
   type DepthChargeDropOrder,
   type DeckGunFireOrder,
   type EotSetting,
@@ -81,7 +83,7 @@ function tokenKey(gameId: string, accessToken: string, stationId: string) {
 const COURSE_NUDGE_DEG = 1;
 
 type SensorTab = 'radar' | 'hydrophone' | 'sonar' | 'periscope';
-type ControlsTab = 'helm' | 'eot' | 'dive' | 'weapons' | 'damage';
+type ControlsTab = ControlsInstrumentTab;
 
 export function StationPage() {
   const { gameId = '', accessToken = '', stationId = '' } = useParams();
@@ -161,6 +163,10 @@ export function StationPage() {
     (vessel?.unit.class === 'Destroyer' ||
       vessel?.unit.class === 'Fleet Submarine' ||
       vessel?.unit.type === 'Submarine');
+  const controlsTabs = useMemo(
+    () => controlsInstrumentTabsForHull(vessel?.unit.class ?? vessel?.unit.type),
+    [vessel?.unit.class, vessel?.unit.type],
+  );
   /** Surface ships use lookout (always available); subs use depth-gated periscope. */
   const opticsVariant: 'periscope' | 'lookout' =
     vessel?.unit.type === 'Submarine' ? 'periscope' : 'lookout';
@@ -634,7 +640,17 @@ export function StationPage() {
     // Deliberately omit full `vessel` — SSE ticks must not re-open after ack.
   }, [ownShipSunk, vessel?.unit.id]);
 
+  // Controls: keep active instrument tab valid for this hull (no generic Weapons).
+  useEffect(() => {
+    if (!vessel || !isControls || isSensors) return;
+    const ids = new Set(controlsTabs.map((t) => t.id));
+    if (!ids.has(controlsTab)) {
+      setControlsTab('helm');
+    }
+  }, [vessel, isControls, isSensors, controlsTabs, controlsTab]);
+
   // Sub Sensors: pick a sensible default tab from depth; follow depth-band changes.
+
   // Do not depend on the whole vessel object — mast raise/lower updates must
   // not re-run this and kick the operator off Periscope.
   const hasVessel = Boolean(vessel);
@@ -1315,57 +1331,27 @@ export function StationPage() {
             </section>
 
             <div className="sensor-tabs" role="tablist" aria-label="Controls instruments">
-              <button
-                type="button"
-                role="tab"
-                className={controlsTab === 'helm' ? 'primary' : undefined}
-                aria-selected={controlsTab === 'helm'}
-                onClick={() => setControlsTab('helm')}
-              >
-                Helm
-              </button>
-              {canEot && (
-                <button
-                  type="button"
-                  role="tab"
-                  className={controlsTab === 'eot' ? 'primary' : undefined}
-                  aria-selected={controlsTab === 'eot'}
-                  onClick={() => setControlsTab('eot')}
-                >
-                  Engine orders
-                </button>
-              )}
-              {canHelm && vessel.unit.type === 'Submarine' && (
-                <button
-                  type="button"
-                  role="tab"
-                  className={controlsTab === 'dive' ? 'primary' : undefined}
-                  aria-selected={controlsTab === 'dive'}
-                  onClick={() => setControlsTab('dive')}
-                >
-                  Dive Plane
-                </button>
-              )}
-              {(canTorpedo || canDepthCharges || canDeckGun) && (
-                <button
-                  type="button"
-                  role="tab"
-                  className={controlsTab === 'weapons' ? 'primary' : undefined}
-                  aria-selected={controlsTab === 'weapons'}
-                  onClick={() => setControlsTab('weapons')}
-                >
-                  Weapons
-                </button>
-              )}
-              <button
-                type="button"
-                role="tab"
-                className={controlsTab === 'damage' ? 'primary' : undefined}
-                aria-selected={controlsTab === 'damage'}
-                onClick={() => setControlsTab('damage')}
-              >
-                Damage
-              </button>
+              {controlsTabs.map((tab) => {
+                if (tab.id === 'eot' && !canEot) return null;
+                if (tab.id === 'dive' && !(canHelm && vessel.unit.type === 'Submarine')) {
+                  return null;
+                }
+                if (tab.id === 'torpedoes' && !canTorpedo) return null;
+                if (tab.id === 'guns' && !canDeckGun) return null;
+                if (tab.id === 'depth_charges' && !canDepthCharges) return null;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    className={controlsTab === tab.id ? 'primary' : undefined}
+                    aria-selected={controlsTab === tab.id}
+                    onClick={() => setControlsTab(tab.id)}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
             </div>
 
             {controlsTab === 'helm' && (
@@ -1426,65 +1412,63 @@ export function StationPage() {
               </section>
             )}
 
-            {controlsTab === 'weapons' && (canTorpedo || canDepthCharges || canDeckGun) && (
-              <>
-                {canTorpedo && (
-                  <TorpedoCalculator
-                    ownHeading={vessel.unit.heading}
-                    orderedCourse={vessel.unit.orderedCourse}
-                    forward={{
-                      ready: vessel.unit.torpedoForward ?? 0,
-                      awaitingReload: Boolean(vessel.unit.torpedoForwardAwaitingReload),
-                      reloadTurnsRemaining: vessel.unit.torpedoForwardReloadTurnsRemaining ?? 0,
-                    }}
-                    aft={{
-                      ready: vessel.unit.torpedoAft ?? 0,
-                      awaitingReload: Boolean(vessel.unit.torpedoAftAwaitingReload),
-                      reloadTurnsRemaining: vessel.unit.torpedoAftReloadTurnsRemaining ?? 0,
-                    }}
-                    pending={vessel.unit.orders.fireTorpedo}
-                    arcBlock={vessel.unit.torpedoArcBlock}
-                    running={vessel.ownTorpedoes}
-                    disabled={!vessel.canSubmitOrders}
-                    reloadBusy={weaponReloadBusy}
-                    onSubmit={(fireTorpedo) => void submit({ fireTorpedo })}
-                    onClear={() => void submit({ fireTorpedo: null })}
-                    onReload={(room) => void reloadTorpedoRoom(room)}
-                  />
-                )}
-                {canDeckGun && (
-                  <DeckGunControls
-                    ownHeading={vessel.unit.heading}
-                    vesselType={vessel.unit.type}
-                    hullClass={vessel.unit.class}
-                    keelDepthM={vessel.unit.position.depth}
-                    deckGunLoad={vessel.unit.deckGunLoad ?? 0}
-                    awaitingReload={Boolean(vessel.unit.deckGunAwaitingReload)}
-                    reloadTurnsRemaining={vessel.unit.deckGunReloadTurnsRemaining ?? 0}
-                    pending={vessel.unit.orders.fireDeckGun}
-                    fireBlock={vessel.unit.deckGunFireBlock}
-                    disabled={!vessel.canSubmitOrders}
-                    reloadBusy={weaponReloadBusy}
-                    onSubmit={(fireDeckGun) => void submit({ fireDeckGun })}
-                    onClear={() => void submit({ fireDeckGun: null })}
-                    onReload={() => void reloadDeckGun()}
-                  />
-                )}
-                {canDepthCharges && (
-                  <DepthChargeControls
-                    depthChargeLoad={vessel.unit.depthChargeLoad ?? 0}
-                    awaitingReload={Boolean(vessel.unit.depthChargeAwaitingReload)}
-                    reloadTurnsRemaining={vessel.unit.depthChargeReloadTurnsRemaining ?? 0}
-                    pending={vessel.unit.orders.dropDepthCharges}
-                    tracks={vessel.ownDepthCharges}
-                    disabled={!vessel.canSubmitOrders}
-                    reloadBusy={weaponReloadBusy}
-                    onSubmit={(dropDepthCharges) => void submit({ dropDepthCharges })}
-                    onClear={() => void submit({ dropDepthCharges: null })}
-                    onReload={() => void reloadDepthCharges()}
-                  />
-                )}
-              </>
+            {controlsTab === 'torpedoes' && canTorpedo && (
+              <TorpedoCalculator
+                ownHeading={vessel.unit.heading}
+                orderedCourse={vessel.unit.orderedCourse}
+                forward={{
+                  ready: vessel.unit.torpedoForward ?? 0,
+                  awaitingReload: Boolean(vessel.unit.torpedoForwardAwaitingReload),
+                  reloadTurnsRemaining: vessel.unit.torpedoForwardReloadTurnsRemaining ?? 0,
+                }}
+                aft={{
+                  ready: vessel.unit.torpedoAft ?? 0,
+                  awaitingReload: Boolean(vessel.unit.torpedoAftAwaitingReload),
+                  reloadTurnsRemaining: vessel.unit.torpedoAftReloadTurnsRemaining ?? 0,
+                }}
+                pending={vessel.unit.orders.fireTorpedo}
+                arcBlock={vessel.unit.torpedoArcBlock}
+                running={vessel.ownTorpedoes}
+                disabled={!vessel.canSubmitOrders}
+                reloadBusy={weaponReloadBusy}
+                onSubmit={(fireTorpedo) => void submit({ fireTorpedo })}
+                onClear={() => void submit({ fireTorpedo: null })}
+                onReload={(room) => void reloadTorpedoRoom(room)}
+              />
+            )}
+
+            {controlsTab === 'guns' && canDeckGun && (
+              <DeckGunControls
+                ownHeading={vessel.unit.heading}
+                vesselType={vessel.unit.type}
+                hullClass={vessel.unit.class}
+                keelDepthM={vessel.unit.position.depth}
+                deckGunLoad={vessel.unit.deckGunLoad ?? 0}
+                awaitingReload={Boolean(vessel.unit.deckGunAwaitingReload)}
+                reloadTurnsRemaining={vessel.unit.deckGunReloadTurnsRemaining ?? 0}
+                pending={vessel.unit.orders.fireDeckGun}
+                fireBlock={vessel.unit.deckGunFireBlock}
+                disabled={!vessel.canSubmitOrders}
+                reloadBusy={weaponReloadBusy}
+                onSubmit={(fireDeckGun) => void submit({ fireDeckGun })}
+                onClear={() => void submit({ fireDeckGun: null })}
+                onReload={() => void reloadDeckGun()}
+              />
+            )}
+
+            {controlsTab === 'depth_charges' && canDepthCharges && (
+              <DepthChargeControls
+                depthChargeLoad={vessel.unit.depthChargeLoad ?? 0}
+                awaitingReload={Boolean(vessel.unit.depthChargeAwaitingReload)}
+                reloadTurnsRemaining={vessel.unit.depthChargeReloadTurnsRemaining ?? 0}
+                pending={vessel.unit.orders.dropDepthCharges}
+                tracks={vessel.ownDepthCharges}
+                disabled={!vessel.canSubmitOrders}
+                reloadBusy={weaponReloadBusy}
+                onSubmit={(dropDepthCharges) => void submit({ dropDepthCharges })}
+                onClear={() => void submit({ dropDepthCharges: null })}
+                onReload={() => void reloadDepthCharges()}
+              />
             )}
 
             {controlsTab === 'damage' && (
@@ -1581,32 +1565,10 @@ export function StationPage() {
                           <td className="readout">{syncedDamage.subsystems.activeSonar}</td>
                         </tr>
                       )}
-                      {vessel.unit.type === 'Aircraft' && (
-                        <tr>
-                          <th>Flight level</th>
-                          <td className="readout">{vessel.unit.flightLevel ?? 'medium'}</td>
-                        </tr>
-                      )}
                       {vessel.unit.type === 'Submarine' && (
                         <tr>
                           <th>Depth</th>
                           <td className="readout">{formatCoarseDepthMeters(vessel.unit.position.depth)}</td>
-                        </tr>
-                      )}
-                      {(canTorpedo || canDepthCharges || canDeckGun) && (
-                        <tr>
-                          <th>Ordnance</th>
-                          <td className="readout">
-                            {[
-                              canTorpedo
-                                ? `TORP F${vessel.unit.torpedoForward ?? 0}/A${vessel.unit.torpedoAft ?? 0}`
-                                : null,
-                              canDeckGun ? `GUN ${vessel.unit.deckGunLoad ?? 0}` : null,
-                              canDepthCharges ? `DC ${vessel.unit.depthChargeLoad ?? 0}` : null,
-                            ]
-                              .filter(Boolean)
-                              .join(' · ')}
-                          </td>
                         </tr>
                       )}
                       <tr>

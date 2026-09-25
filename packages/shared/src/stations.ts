@@ -7,7 +7,8 @@ export const STATION_ID_SENSORS = 'sensors' as const;
 
 /**
  * v1 player vessels expose exactly two screens:
- * - Controls — helm / EOT / orders (+ quiet ambient BT bed; sub hull creaks when submerged)
+ * - Controls — helm / EOT / dive (sub) / per-weapon CRT tabs / Damage
+ *   (+ quiet ambient BT bed; sub hull creaks when submerged)
  * - Sensors — all sensor instruments
  */
 export function defaultTwoScreenStations(
@@ -73,4 +74,52 @@ export function isTwoScreenStationLayout(stations: StationDef[] | undefined): bo
   if (!stations || stations.length === 0) return false;
   const ids = new Set(stations.map((s) => s.id));
   return ids.has(STATION_ID_CONTROLS) || ids.has(STATION_ID_SENSORS);
+}
+
+/**
+ * Instrument tabs inside the Controls CRT (not separate station join URLs).
+ * Weapon systems are first-class tabs — there is no generic “Weapons” panel.
+ */
+export type ControlsInstrumentTab =
+  | 'helm'
+  | 'eot'
+  | 'dive'
+  | 'torpedoes'
+  | 'guns'
+  | 'depth_charges'
+  | 'damage';
+
+export type ControlsInstrumentTabDef = {
+  id: ControlsInstrumentTab;
+  label: string;
+};
+
+/**
+ * Ordered Controls CRT tabs for a hull class (museum demo: DD + fleet sub).
+ * Mirrors Sensors’ per-instrument tabs (Radar / Sonar / …).
+ */
+export function controlsInstrumentTabsForHull(
+  hullClassOrType: HullClass | string | undefined,
+): ControlsInstrumentTabDef[] {
+  const { class: hullClass } = resolveVesselIdentity({
+    type: hullClassOrType,
+    class: isHullClass(hullClassOrType) ? hullClassOrType : undefined,
+  });
+
+  const tabs: ControlsInstrumentTabDef[] = [
+    { id: 'helm', label: 'Helm' },
+    { id: 'eot', label: 'Engine orders' },
+  ];
+
+  if (hullClass === 'Fleet Submarine') {
+    tabs.push({ id: 'dive', label: 'Dive Plane' });
+    tabs.push({ id: 'torpedoes', label: 'Torpedoes' });
+    tabs.push({ id: 'guns', label: 'Guns' });
+  } else if (hullClass === 'Destroyer') {
+    tabs.push({ id: 'guns', label: 'Guns' });
+    tabs.push({ id: 'depth_charges', label: 'Depth charges' });
+  }
+
+  tabs.push({ id: 'damage', label: 'Damage' });
+  return tabs;
 }
