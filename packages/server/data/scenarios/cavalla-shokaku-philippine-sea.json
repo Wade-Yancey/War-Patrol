@@ -1,0 +1,187 @@
+{
+  "schemaVersion": 1,
+  "id": "cavalla-shokaku-philippine-sea",
+  "name": "Cavalla × Shōkaku — Philippine Sea",
+  "description": "Museum recreation of Cavalla's 19 Jun 1944 approach on Shōkaku (Battle of the Philippine Sea). NPC Shōkaku SE-bound (~135°) recovering aircraft at 18 kn; playable Kagerō escort Urakaze languidly to starboard; playable Gato-class USS Cavalla at periscope depth ~0.75 nm off the carrier's starboard for a historical-style approach/shot. Clock starts 11:00. Passwords: umpire / red (Urakaze) / blue (Cavalla); tokens urakaze-demo / cavalla-demo. Source: combinedfleet.com/shoksink.htm.",
+  "mode": "pvp",
+  "operatingArea": {
+    "minLat": 34.32,
+    "maxLat": 34.48,
+    "minLon": -120.12,
+    "maxLon": -119.88
+  },
+  "umpirePassword": "umpire",
+  "defaultTurnSeconds": 180,
+  "turnLengthSeconds": 180,
+  "startGameTimeSeconds": 39600,
+  "units": [
+    {
+      "id": "cv-shokaku",
+      "name": "Shōkaku",
+      "side": "red",
+      "faction": "Red",
+      "classId": "shokaku-class",
+      "type": "Ship",
+      "class": "Aircraft Carrier",
+      "position": {
+        "lat": 34.4,
+        "lon": -120.0,
+        "depth": 0
+      },
+      "heading": 135,
+      "speed": 18,
+      "eot": "ahead_standard",
+      "health": 100,
+      "maxSpeed": 34,
+      "lengthM": 258,
+      "beamM": 26,
+      "radarSignature": "large",
+      "sensors": [
+        {
+          "kind": "radar",
+          "maxRangeNm": 25
+        }
+      ],
+      "stations": [
+        {
+          "id": "controls",
+          "name": "Controls",
+          "capabilities": [
+            "helm",
+            "engineering",
+            "plot"
+          ]
+        },
+        {
+          "id": "sensors",
+          "name": "Sensors",
+          "capabilities": [
+            "radar"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dd-urakaze",
+      "name": "Urakaze",
+      "side": "red",
+      "faction": "Red",
+      "classId": "kagero-class",
+      "type": "Ship",
+      "class": "Destroyer",
+      "position": {
+        "lat": 34.39588,
+        "lon": -120.005,
+        "depth": 0
+      },
+      "heading": 135,
+      "speed": 14,
+      "eot": "ahead_standard",
+      "accessToken": "urakaze-demo",
+      "password": "red",
+      "health": 100,
+      "maxSpeed": 35,
+      "lengthM": 119,
+      "beamM": 11,
+      "radarSignature": "medium",
+      "activeSonarEnabled": false,
+      "depthChargeLoad": 16,
+      "sensors": [
+        {
+          "kind": "radar",
+          "maxRangeNm": 25
+        },
+        {
+          "kind": "active_sonar",
+          "maxRangeNm": 8
+        },
+        {
+          "kind": "lookout",
+          "maxRangeNm": 6
+        }
+      ],
+      "stations": [
+        {
+          "id": "controls",
+          "name": "Controls",
+          "capabilities": [
+            "helm",
+            "engineering",
+            "plot",
+            "weapons"
+          ]
+        },
+        {
+          "id": "sensors",
+          "name": "Sensors",
+          "capabilities": [
+            "radar",
+            "active_sonar",
+            "lookout"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ss-cavalla",
+      "name": "USS Cavalla",
+      "side": "blue",
+      "faction": "Blue",
+      "classId": "gato-class",
+      "type": "Submarine",
+      "class": "Fleet Submarine",
+      "position": {
+        "lat": 34.39116,
+        "lon": -120.01071,
+        "depth": 18
+      },
+      "orderedDepth": 18,
+      "heading": 45,
+      "speed": 5,
+      "eot": "ahead_2",
+      "accessToken": "cavalla-demo",
+      "password": "blue",
+      "health": 100,
+      "maxSpeed": 21,
+      "lengthM": 95,
+      "beamM": 8.3,
+      "radarSignature": "small",
+      "sensors": [
+        {
+          "kind": "radar",
+          "maxRangeNm": 25
+        },
+        {
+          "kind": "hydrophone",
+          "maxRangeNm": 30
+        },
+        {
+          "kind": "lookout",
+          "maxRangeNm": 6
+        }
+      ],
+      "stations": [
+        {
+          "id": "controls",
+          "name": "Controls",
+          "capabilities": [
+            "helm",
+            "engineering",
+            "plot",
+            "weapons",
+            "torpedo"
+          ]
+        },
+        {
+          "id": "sensors",
+          "name": "Sensors",
+          "capabilities": [
+            "radar",
+            "hydrophone",
+            "lookout"
+          ]
+        }
+      ]
+    }
+  ]
+}
