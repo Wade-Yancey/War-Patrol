@@ -16,6 +16,7 @@ import {
   normalizeHeading,
   torpedoHitControlsGain,
   type DepthChargeDropOrder,
+  type DeckGunFireOrder,
   type EotSetting,
   type TorpedoFireOrder,
   type VesselView,
@@ -35,6 +36,7 @@ import { RadarScope } from '../components/RadarScope';
 import { ActiveSonarScope } from '../components/ActiveSonarScope';
 import { TorpedoCalculator } from '../components/TorpedoCalculator';
 import { DepthChargeControls } from '../components/DepthChargeControls';
+import { DeckGunControls } from '../components/DeckGunControls';
 import { DamageReportPanel } from '../components/DamageReportPanel';
 import { useAudioSyncedDamageReport } from '../hooks/useAudioSyncedDamageReport';
 import { resolveSunkCause, SunkModal } from '../components/SunkModal';
@@ -55,6 +57,11 @@ import {
   playTorpedoHitSample,
   torpedoHitBatchWhenSecById,
 } from '../audio/torpedoHit';
+import {
+  DECK_GUN_FIRE_CONTROLS_PEAK_GAIN,
+  loadDeckGunFireBuffer,
+  playDeckGunFireSample,
+} from '../audio/deckGunFire';
 import {
   SUBMARINE_CREAK_AMBIENT_DURATION_SEC,
   SUBMARINE_CREAK_AMBIENT_GAIN,
@@ -149,6 +156,11 @@ export function StationPage() {
   const canTorpedo =
     canWeapons && (vessel?.unit.type === 'Submarine' || caps.has('torpedo'));
   const canDepthCharges = canWeapons && vessel?.unit.class === 'Destroyer';
+  const canDeckGun =
+    canWeapons &&
+    (vessel?.unit.class === 'Destroyer' ||
+      vessel?.unit.class === 'Fleet Submarine' ||
+      vessel?.unit.type === 'Submarine');
   /** Surface ships use lookout (always available); subs use depth-gated periscope. */
   const opticsVariant: 'periscope' | 'lookout' =
     vessel?.unit.type === 'Submarine' ? 'periscope' : 'lookout';
@@ -180,7 +192,12 @@ export function StationPage() {
     Array<{
       id: string;
       rangeNm: number;
-      kind: 'depth_charge' | 'torpedo_hit' | 'aircraft_bomb';
+      kind:
+        | 'depth_charge'
+        | 'torpedo_hit'
+        | 'aircraft_bomb'
+        | 'deck_gun_fire'
+        | 'deck_gun_hit';
       audioDelaySec?: number;
     }>
   >([]);
@@ -191,6 +208,7 @@ export function StationPage() {
     ctx: AudioContext | null;
     buffer: AudioBuffer | null;
     torpedoHitBuffer: AudioBuffer | null;
+    deckGunFireBuffer: AudioBuffer | null;
     creakBuffer: AudioBuffer | null;
     ambientBuffer: AudioBuffer | null;
     ambientSource: AudioBufferSourceNode | null;
@@ -199,6 +217,7 @@ export function StationPage() {
     ctx: null,
     buffer: null,
     torpedoHitBuffer: null,
+    deckGunFireBuffer: null,
     creakBuffer: null,
     ambientBuffer: null,
     ambientSource: null,
@@ -213,6 +232,7 @@ export function StationPage() {
       bridgeAudioRef.current.ctx = new Ctx();
       bridgeAudioRef.current.buffer = null;
       bridgeAudioRef.current.torpedoHitBuffer = null;
+      bridgeAudioRef.current.deckGunFireBuffer = null;
       bridgeAudioRef.current.creakBuffer = null;
       bridgeAudioRef.current.ambientBuffer = null;
     }
@@ -257,9 +277,12 @@ export function StationPage() {
     if (ctx.state !== 'running') return;
 
     const isExplosionCue = (kind: string) =>
-      kind === 'torpedo_hit' || kind === 'aircraft_bomb';
-    const needsDc = pending.some((e) => !isExplosionCue(e.kind));
+      kind === 'torpedo_hit' ||
+      kind === 'aircraft_bomb' ||
+      kind === 'deck_gun_hit';
+    const needsDc = pending.some((e) => e.kind === 'depth_charge');
     const needsHit = pending.some((e) => isExplosionCue(e.kind));
+    const needsGunFire = pending.some((e) => e.kind === 'deck_gun_fire');
     // Load samples independently — a DC fetch failure must not block torpedo hits
     // (and vice versa). Same unlock/queue pattern as the nearby-DC bridge fix.
     if (needsDc && !bridgeAudioRef.current.buffer) {
@@ -276,6 +299,13 @@ export function StationPage() {
         /* keep pending hits; unlock may retry */
       }
     }
+    if (needsGunFire && !bridgeAudioRef.current.deckGunFireBuffer) {
+      try {
+        bridgeAudioRef.current.deckGunFireBuffer = await loadDeckGunFireBuffer(ctx);
+      } catch {
+        /* keep pending gun fire; unlock may retry */
+      }
+    }
     // Prefetch creak with DC so each staggered blast can schedule a stress burst.
     if (needsDc && onSubCreakBridge) {
       await ensureCreakBuffer(ctx);
@@ -283,18 +313,24 @@ export function StationPage() {
 
     const dcBuffer = bridgeAudioRef.current.buffer;
     const hitBuffer = bridgeAudioRef.current.torpedoHitBuffer;
+    const gunFireBuffer = bridgeAudioRef.current.deckGunFireBuffer;
     const creakBuffer = bridgeAudioRef.current.creakBuffer;
     const still: Array<{
       id: string;
       rangeNm: number;
-      kind: 'depth_charge' | 'torpedo_hit' | 'aircraft_bomb';
+      kind:
+        | 'depth_charge'
+        | 'torpedo_hit'
+        | 'aircraft_bomb'
+        | 'deck_gun_fire'
+        | 'deck_gun_hit';
       audioDelaySec?: number;
     }> = [];
 
     // Multi-charge patterns arrive as one hear-batch after resolve — stagger
     // one distant-explosion one-shot per charge across ~1.5 minutes (not stacked).
     const dcBatch = pending
-      .filter((e) => !isExplosionCue(e.kind) && !playedBridgeBlastRef.current.has(e.id))
+      .filter((e) => e.kind === 'depth_charge' && !playedBridgeBlastRef.current.has(e.id))
       .slice()
       .sort((a, b) => a.id.localeCompare(b.id));
     const dcWhenById = depthChargeBatchWhenSecById(dcBatch);
@@ -309,7 +345,19 @@ export function StationPage() {
     for (const e of pending) {
       if (playedBridgeBlastRef.current.has(e.id)) continue;
       try {
-        if (isExplosionCue(e.kind)) {
+        if (e.kind === 'deck_gun_fire') {
+          if (!gunFireBuffer) {
+            still.push(e);
+            continue;
+          }
+          playDeckGunFireSample(
+            ctx,
+            gunFireBuffer,
+            ctx.destination,
+            DECK_GUN_FIRE_CONTROLS_PEAK_GAIN,
+            { whenSec: 0 },
+          );
+        } else if (isExplosionCue(e.kind)) {
           if (!hitBuffer) {
             still.push(e);
             continue;
@@ -319,7 +367,7 @@ export function StationPage() {
             TORPEDO_HIT_CONTROLS_PEAK_GAIN *
             Math.max(0.35, torpedoHitControlsGain(e.rangeNm));
           // Torpedo: compressed turn delay + same-moment multi-hit stagger.
-          // Aircraft bomb: compressed delay only (usually one cue).
+          // Aircraft bomb / deck-gun hit: compressed (or short fixed) delay only.
           const whenSec =
             e.kind === 'torpedo_hit'
               ? (hitWhenById.get(e.id) ?? Math.max(0, e.audioDelaySec ?? 0))
@@ -671,6 +719,7 @@ export function StationPage() {
       depth?: number;
       fireTorpedo?: TorpedoFireOrder | null;
       dropDepthCharges?: DepthChargeDropOrder | null;
+      fireDeckGun?: DeckGunFireOrder | null;
     },
   ) => {
     if (!token) return;
@@ -729,6 +778,19 @@ export function StationPage() {
       await api.startDepthChargeReload(gameId, token);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Depth-charge reload failed');
+    } finally {
+      setWeaponReloadBusy(false);
+    }
+  };
+
+  const reloadDeckGun = async () => {
+    if (!token) return;
+    setActionError(null);
+    setWeaponReloadBusy(true);
+    try {
+      await api.startDeckGunReload(gameId, token);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Deck-gun reload failed');
     } finally {
       setWeaponReloadBusy(false);
     }
@@ -1284,7 +1346,7 @@ export function StationPage() {
                   Dive Plane
                 </button>
               )}
-              {(canTorpedo || canDepthCharges) && (
+              {(canTorpedo || canDepthCharges || canDeckGun) && (
                 <button
                   type="button"
                   role="tab"
@@ -1364,7 +1426,7 @@ export function StationPage() {
               </section>
             )}
 
-            {controlsTab === 'weapons' && (canTorpedo || canDepthCharges) && (
+            {controlsTab === 'weapons' && (canTorpedo || canDepthCharges || canDeckGun) && (
               <>
                 {canTorpedo && (
                   <TorpedoCalculator
@@ -1388,6 +1450,24 @@ export function StationPage() {
                     onSubmit={(fireTorpedo) => void submit({ fireTorpedo })}
                     onClear={() => void submit({ fireTorpedo: null })}
                     onReload={(room) => void reloadTorpedoRoom(room)}
+                  />
+                )}
+                {canDeckGun && (
+                  <DeckGunControls
+                    ownHeading={vessel.unit.heading}
+                    vesselType={vessel.unit.type}
+                    hullClass={vessel.unit.class}
+                    keelDepthM={vessel.unit.position.depth}
+                    deckGunLoad={vessel.unit.deckGunLoad ?? 0}
+                    awaitingReload={Boolean(vessel.unit.deckGunAwaitingReload)}
+                    reloadTurnsRemaining={vessel.unit.deckGunReloadTurnsRemaining ?? 0}
+                    pending={vessel.unit.orders.fireDeckGun}
+                    fireBlock={vessel.unit.deckGunFireBlock}
+                    disabled={!vessel.canSubmitOrders}
+                    reloadBusy={weaponReloadBusy}
+                    onSubmit={(fireDeckGun) => void submit({ fireDeckGun })}
+                    onClear={() => void submit({ fireDeckGun: null })}
+                    onReload={() => void reloadDeckGun()}
                   />
                 )}
                 {canDepthCharges && (
@@ -1513,15 +1593,19 @@ export function StationPage() {
                           <td className="readout">{formatCoarseDepthMeters(vessel.unit.position.depth)}</td>
                         </tr>
                       )}
-                      {(canTorpedo || canDepthCharges) && (
+                      {(canTorpedo || canDepthCharges || canDeckGun) && (
                         <tr>
                           <th>Ordnance</th>
                           <td className="readout">
-                            {canTorpedo
-                              ? `TORP F${vessel.unit.torpedoForward ?? 0}/A${vessel.unit.torpedoAft ?? 0}`
-                              : ''}
-                            {canTorpedo && canDepthCharges ? ' · ' : ''}
-                            {canDepthCharges ? `DC ${vessel.unit.depthChargeLoad ?? 0}` : ''}
+                            {[
+                              canTorpedo
+                                ? `TORP F${vessel.unit.torpedoForward ?? 0}/A${vessel.unit.torpedoAft ?? 0}`
+                                : null,
+                              canDeckGun ? `GUN ${vessel.unit.deckGunLoad ?? 0}` : null,
+                              canDepthCharges ? `DC ${vessel.unit.depthChargeLoad ?? 0}` : null,
+                            ]
+                              .filter(Boolean)
+                              .join(' · ')}
                           </td>
                         </tr>
                       )}

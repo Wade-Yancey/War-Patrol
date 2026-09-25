@@ -360,6 +360,12 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         pattern: 'single' | 'pair' | 'pattern_3' | 'pattern_5';
         depthSettingM: number;
       } | null;
+      fireDeckGun?: {
+        aimHeading: number;
+        estimatedCourse: number;
+        estimatedSpeedKn: number;
+        estimatedRangeNm: number;
+      } | null;
     };
   }>('/api/games/:gameId/orders', async (request, reply) => {
     try {
@@ -595,6 +601,34 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           depthChargeLoad: unit?.depthChargeLoad ?? 0,
           depthChargeAwaitingReload: Boolean(unit?.depthChargeAwaitingReload),
           depthChargeReloadTurnsRemaining: unit?.depthChargeReloadTurnsRemaining ?? 0,
+        };
+      } catch (err) {
+        const e = httpError(err);
+        return reply.code(e.statusCode).send({ error: e.message });
+      }
+    },
+  );
+
+  app.post<{ Params: { gameId: string } }>(
+    '/api/games/:gameId/deck-gun-reload',
+    async (request, reply) => {
+      try {
+        const session = requireSession(request, request.params.gameId);
+        if (session.role !== 'vessel' || !session.unitId || !session.stationId) {
+          return reply.code(403).send({ error: 'Vessel station session required' });
+        }
+        const save = runtime.startDeckGunReload(
+          session.gameId,
+          session.unitId,
+          session.stationId,
+        );
+        const unit = save.units.find((u) => u.id === session.unitId);
+        return {
+          ok: true,
+          stateVersion: save.stateVersion,
+          deckGunLoad: unit?.deckGunLoad ?? 0,
+          deckGunAwaitingReload: Boolean(unit?.deckGunAwaitingReload),
+          deckGunReloadTurnsRemaining: unit?.deckGunReloadTurnsRemaining ?? 0,
         };
       } catch (err) {
         const e = httpError(err);
@@ -908,6 +942,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           torpedoAft: unit?.torpedoAft ?? 0,
           depthChargeLoad: unit?.depthChargeLoad ?? 0,
           bombLoad: unit?.bombLoad ?? 0,
+          deckGunLoad: unit?.deckGunLoad ?? 0,
         };
       } catch (err) {
         const e = httpError(err);

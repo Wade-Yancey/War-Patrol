@@ -108,6 +108,12 @@ export const api = {
         pattern: 'single' | 'pair' | 'pattern_3' | 'pattern_5';
         depthSettingM: number;
       } | null;
+      fireDeckGun?: {
+        aimHeading: number;
+        estimatedCourse: number;
+        estimatedSpeedKn: number;
+        estimatedRangeNm: number;
+      } | null;
     },
   ) =>
     request<{ ok: boolean; stateVersion: number }>(`/api/games/${gameId}/orders`, {
@@ -202,6 +208,12 @@ export const api = {
         body: '{}',
       },
     ),
+  startDeckGunReload: (gameId: string, token: string) =>
+    request<{ ok: boolean; stateVersion: number }>(`/api/games/${gameId}/deck-gun-reload`, {
+      method: 'POST',
+      token,
+      body: '{}',
+    }),
   rearmUnit: (gameId: string, token: string, unitId: string) =>
     request<{
       ok: boolean;
@@ -211,6 +223,7 @@ export const api = {
       torpedoAft: number;
       depthChargeLoad: number;
       bombLoad?: number;
+      deckGunLoad: number;
     }>(`/api/games/${gameId}/units/${unitId}/rearm`, {
       method: 'POST',
       token,

@@ -30,6 +30,8 @@ import { buildTorpedoWakeCues } from './wakeCues.js';
  *   distance to the hit point ({@link TORPEDO_HIT_CONTROLS_REF_NM}).
  * - Aircraft bombs: target always hears; nearby hulls within DC audible
  *   range also hear (aircraft firer is NPC with no Controls station).
+ * - Deck-gun fire: firer hears the cannon muzzle report.
+ * - Deck-gun hit: firer and target hear the explosion (after a short delay).
  */
 export function buildBridgeDetonations(
   unit: UnitState,
@@ -42,7 +44,7 @@ export function buildBridgeDetonations(
     if (d.turnNumber < oldestTurn) continue;
     const { bearing, rangeNm } = bearingRangeNm(unit.position, d.position);
 
-    if (d.kind === 'torpedo_hit') {
+    if (d.kind === 'torpedo_hit' || d.kind === 'deck_gun_hit') {
       const involved =
         unit.id === d.firerUnitId || (d.targetUnitId != null && unit.id === d.targetUnitId);
       if (!involved) continue;
@@ -50,7 +52,7 @@ export function buildBridgeDetonations(
         id: d.id,
         bearing: Math.round(bearing * 10) / 10,
         rangeNm: Math.round(rangeNm * 100) / 100,
-        kind: 'torpedo_hit',
+        kind: d.kind,
         ...(d.audioDelaySec != null && d.audioDelaySec > 0
           ? { audioDelaySec: d.audioDelaySec }
           : {}),
@@ -69,6 +71,17 @@ export function buildBridgeDetonations(
         ...(d.audioDelaySec != null && d.audioDelaySec > 0
           ? { audioDelaySec: d.audioDelaySec }
           : {}),
+      });
+      continue;
+    }
+
+    if (d.kind === 'deck_gun_fire') {
+      if (unit.id !== d.firerUnitId) continue;
+      bridge.push({
+        id: d.id,
+        bearing: Math.round(bearing * 10) / 10,
+        rangeNm: Math.round(rangeNm * 100) / 100,
+        kind: 'deck_gun_fire',
       });
       continue;
     }
@@ -231,6 +244,10 @@ export function buildVesselView(
       depthChargeLoad: unit.depthChargeLoad ?? 0,
       depthChargeAwaitingReload: Boolean(unit.depthChargeAwaitingReload),
       depthChargeReloadTurnsRemaining: unit.depthChargeReloadTurnsRemaining ?? 0,
+      deckGunLoad: unit.deckGunLoad ?? 0,
+      deckGunAwaitingReload: Boolean(unit.deckGunAwaitingReload),
+      deckGunReloadTurnsRemaining: unit.deckGunReloadTurnsRemaining ?? 0,
+      ...(unit.deckGunFireBlock ? { deckGunFireBlock: unit.deckGunFireBlock } : {}),
       ...(unit.gopherTask ? { gopherTask: unit.gopherTask } : {}),
     },
     stationId,

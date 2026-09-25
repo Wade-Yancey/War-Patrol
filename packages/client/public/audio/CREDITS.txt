@@ -40,3 +40,11 @@ Original: https://freesound.org/people/Ubehag/sounds/232021/
 Local copy: submarine-creaking.wav
 Notes: Submarine Controls only — occasional hull-pressure creaks while submerged
 (depth > radar surface band); more frequent with depth; also on nearby DC hits.
+
+Source: Large Cannon Fire by raphavpires (Freesound #867030)
+License: as provided for War Patrol (user sample)
+Original: https://freesound.org/people/raphavpires/sounds/867030/
+Local copy: deck-gun-fire.wav
+Original filename: 867030__raphavpires__large-cannon-fire.wav
+Notes: Controls bridge — destroyer + fleet-sub deck-gun muzzle report (firer).
+Hit splash reuses explosion.wav (same as torpedo hit) after a short delay.

@@ -27,6 +27,12 @@ function kindLabel(kind: CombatLogEntry['kind']): string {
       return 'AIR HIT';
     case 'aircraft_attack_miss':
       return 'AIR MISS';
+    case 'deck_gun_fire':
+      return 'GUN FIRE';
+    case 'deck_gun_hit':
+      return 'GUN HIT';
+    case 'deck_gun_miss':
+      return 'GUN MISS';
     case 'unit_sunk':
       return 'SUNK';
     case 'hull_implosion':

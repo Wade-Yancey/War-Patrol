@@ -52,6 +52,7 @@ import {
   type WeaponDetonationEvent,
 } from '@war-patrol/shared';
 import { resolveAircraftAttacksForTurn } from './aircraftCombat.js';
+import { resolveDeckGunsForTurn } from './deckGunCombat.js';
 
 const DETONATION_RETENTION_TURNS = 2;
 /** Cap umpire combat log length (oldest dropped). */
@@ -275,6 +276,21 @@ export function resolveWeaponsForTurn(
     }
     return next;
   });
+
+  // --- Deck gun (surface fire; own module to isolate from aircraft sibling) ---
+  const deckGunDetonations: WeaponDetonationEvent[] = [];
+  {
+    const guns = resolveDeckGunsForTurn({
+      units,
+      turnNumber,
+      turnLengthSeconds,
+      gameTimeSeconds,
+      startPositions,
+    });
+    units = guns.units;
+    combatLogEntries.push(...guns.combatLogEntries);
+    deckGunDetonations.push(...guns.detonations);
+  }
 
   // --- Aircraft attack runs (CPA along this turn's path; no persistent tracks) ---
   const aircraftDetonations: WeaponDetonationEvent[] = [];
@@ -569,6 +585,7 @@ export function resolveWeaponsForTurn(
     ...priorDetonations.filter((d) => d.turnNumber >= turnNumber - DETONATION_RETENTION_TURNS),
     ...aircraftDetonations,
     ...newDetonations,
+    ...deckGunDetonations,
   ];
 
   return {

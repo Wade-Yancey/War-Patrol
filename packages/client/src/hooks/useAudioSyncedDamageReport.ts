@@ -122,9 +122,7 @@ export function useAudioSyncedDamageReport(
       return changed ? next : prev;
     });
 
-    const dcBatch = events.filter(
-      (e) => e.kind !== 'torpedo_hit' && e.kind !== 'aircraft_bomb',
-    );
+    const dcBatch = events.filter((e) => e.kind === 'depth_charge');
     const dcWhenById = depthChargeBatchWhenSecById(dcBatch);
     const hitBatch = events.filter((e) => e.kind === 'torpedo_hit');
     const hitWhenById = torpedoHitBatchWhenSecById(hitBatch);
@@ -133,8 +131,10 @@ export function useAudioSyncedDamageReport(
       let whenSec = 0;
       if (e.kind === 'torpedo_hit') {
         whenSec = hitWhenById.get(e.id) ?? Math.max(0, e.audioDelaySec ?? 0);
-      } else if (e.kind === 'aircraft_bomb') {
+      } else if (e.kind === 'aircraft_bomb' || e.kind === 'deck_gun_hit') {
         whenSec = Math.max(0, e.audioDelaySec ?? 0);
+      } else if (e.kind === 'deck_gun_fire') {
+        whenSec = 0;
       } else {
         whenSec = dcWhenById.get(e.id) ?? 0;
       }
