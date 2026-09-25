@@ -5591,18 +5591,22 @@ async function main() {
     );
 
     // Surface Gato for a playable deck-gun shot vs eastbound Porter.
+    // Unit PATCH ignores eot — set speed via PATCH, then stop bells via orders
+    // so kinematics do not walk either hull off the entered solution.
     await api(
       'PATCH',
       `/api/games/${gunId}/units/ss-212`,
-      { position: { depth: 0 }, orderedDepth: 0, speed: 0, eot: 'stop' },
+      { position: { depth: 0 }, orderedDepth: 0, speed: 0 },
       gunUTok,
     );
     await api(
       'PATCH',
       `/api/games/${gunId}/units/dd-101`,
-      { speed: 0, eot: 'stop' },
+      { speed: 0 },
       gunUTok,
     );
+    await api('POST', `/api/games/${gunId}/orders`, { eot: 'stop' }, gunSubTok);
+    await api('POST', `/api/games/${gunId}/orders`, { eot: 'stop' }, gunDdTok);
 
     const gunView = await api('GET', `/api/games/${gunId}/view`, undefined, gunUTok);
     const gunUnits = (gunView.json.view as {
@@ -5621,6 +5625,7 @@ async function main() {
       'POST',
       `/api/games/${gunId}/orders`,
       {
+        eot: 'stop',
         fireDeckGun: {
           aimHeading: los.bearing,
           estimatedCourse: porter.heading,
