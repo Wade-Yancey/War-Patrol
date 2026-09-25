@@ -3,9 +3,10 @@ export const TORPEDO_HIT_SAMPLE_URL = '/audio/explosion.wav';
 
 /**
  * Peak gain on Controls at zero range (before distance attenuation).
- * Modest bump vs the prior 0.72 so scored hits read clearly without clipping.
+ * Dialed back from 0.82 — the blast was dominating the bridge mix; still a
+ * clear, audible hit cue, just no longer overpowering.
  */
-export const TORPEDO_HIT_CONTROLS_PEAK_GAIN = 0.82;
+export const TORPEDO_HIT_CONTROLS_PEAK_GAIN = 0.55;
 
 export async function loadTorpedoHitBuffer(ctx: AudioContext): Promise<AudioBuffer> {
   const res = await fetch(TORPEDO_HIT_SAMPLE_URL);
