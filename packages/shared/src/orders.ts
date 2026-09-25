@@ -55,7 +55,8 @@ function formatDepthChargeOrderSummary(
 function formatAircraftAttackOrderSummary(
   attack: NonNullable<UnitOrders['aircraftAttack']>,
 ): string {
-  const mode = attack.mode === 'bombing_run' ? 'BOMB' : 'INT';
+  const mode =
+    attack.mode === 'bombing_run' ? 'BOMB' : attack.mode === 'strafe' ? 'STR' : 'INT';
   return `AIR ${mode} → ${attack.targetUnitId}`;
 }
 

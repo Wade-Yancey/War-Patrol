@@ -226,13 +226,27 @@ export interface DepthChargeDropOrder {
   depthSettingM: number;
 }
 
-/** Umpire-ordered aircraft attack run (intercept strafe or bombing). */
-export type AircraftAttackMode = 'intercept' | 'bombing_run';
+/** Umpire-ordered aircraft attack run (intercept / gun strafe / bombing). */
+export type AircraftAttackMode = 'intercept' | 'strafe' | 'bombing_run';
 
 export interface AircraftAttackOrder {
   mode: AircraftAttackMode;
   /** Target hull id (ship / submarine — never another aircraft). */
   targetUnitId: string;
+}
+
+/**
+ * Standing NPC aircraft loiter — auto-orbits each resolve without umpire helm.
+ * Cleared only by umpire cancel (survives turn order wipe).
+ */
+export interface AircraftLoiterState {
+  /** Geographic orbit center (updated when tracking a parent hull). */
+  centerLat: number;
+  centerLon: number;
+  /** Orbit radius meters. */
+  radiusM: number;
+  /** Optional parent hull to orbit (e.g. carrier CAP over Shōkaku). */
+  centerUnitId?: string;
 }
 
 export interface UnitOrders {
@@ -362,18 +376,21 @@ export interface GopherTask {
 /** Recent weapon blast (audio + umpire truth). Cleared after a few turns. */
 export interface WeaponDetonationEvent {
   id: string;
-  kind: 'depth_charge' | 'torpedo_hit';
+  kind: 'depth_charge' | 'torpedo_hit' | 'aircraft_bomb';
   position: LatLonDepth;
   turnNumber: number;
   firerUnitId: string;
-  /** Hit target for torpedo_hit — firer and target both get Controls audio cues. */
+  /**
+   * Hit / aim target for torpedo_hit / aircraft_bomb — involved hulls get
+   * Controls audio cues (aircraft firer is NPC and has no station).
+   */
   targetUnitId?: string;
   /**
    * Wall-clock seconds after the client receives this cue before bridge SFX
    * (and the matching Damage-tab reveal) should play. Torpedo hits: compressed
    * presentation delay from intercept fraction within the turn (capped — see
    * `TORPEDO_HIT_AUDIO_MAX_DELAY_SEC`). Depth charges omit this and use the
-   * client stagger schedule instead.
+   * client stagger schedule instead. Aircraft bombs use CPA fraction (same cap).
    */
   audioDelaySec?: number;
 }
@@ -528,6 +545,17 @@ export interface UnitState {
   /** Resolved turns left on an in-progress DC rack reload. */
   depthChargeReloadTurnsRemaining: number;
   /**
+   * Ready bombs remaining (aircraft). Museum stub capacity 1; consumed on a
+   * bombing-run resolve. Intercept / strafe use guns and do not consume.
+   * 0 for non-aircraft. Umpire rearm restores a full load.
+   */
+  bombLoad: number;
+  /**
+   * Standing NPC aircraft loiter orbit. Absent when not loitering.
+   * Persists across turns (not an orders field — survives resolve wipe).
+   */
+  aircraftLoiter?: AircraftLoiterState;
+  /**
    * Own-ship FoW contact designation book (Contact N).
    * Keys are target unit ids — umpire/GT only; never copied onto vessel views.
    * Vessel clients see only {@link RadarContact.labelN} / {@link PeriscopeContact.labelN}.
@@ -635,6 +663,8 @@ export interface ScenarioUnitSeed {
   torpedoAft?: number;
   /** Optional ready depth-charge count (destroyers). */
   depthChargeLoad?: number;
+  /** Optional ready bomb count (aircraft; default 1). */
+  bombLoad?: number;
   /**
    * Optional convoy / formation membership id. Units sharing an id move
    * under umpire group helm/EOT until individually detached.
@@ -1040,10 +1070,10 @@ export interface VesselView {
     id: string;
     bearing: number;
     rangeNm: number;
-    kind: 'depth_charge' | 'torpedo_hit';
+    kind: 'depth_charge' | 'torpedo_hit' | 'aircraft_bomb';
     /**
      * Seconds after the cue is heard before the one-shot (and Damage-tab line)
-     * should play. Torpedo hits: compressed run-arrival delay (≤
+     * should play. Torpedo hits / aircraft bombs: compressed arrival delay (≤
      * `TORPEDO_HIT_AUDIO_MAX_DELAY_SEC`). Omitted for DC (client stagger).
      */
     audioDelaySec?: number;

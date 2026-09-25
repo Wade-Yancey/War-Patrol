@@ -7,12 +7,10 @@ import {
   WEAPON_SUBSTEPS,
   advanceDepthCharge,
   advanceTorpedo,
-  aircraftAttackClosestApproach,
   applyHealthDamageResult,
   healthDamageApplied,
   canDropDepthCharges,
   canFireTorpedoFromRoom,
-  canOrderAircraftAttack,
   clampDepthChargeSetting,
   clampTorpedoSpreadCount,
   clampTorpedoSpreadDeg,
@@ -20,22 +18,18 @@ import {
   createDepthChargeTracks,
   createTorpedoTrack,
   depthChargePatternCount,
-  formatAircraftAttackModeLabel,
   formatCasualtySummary,
   formatTorpedoMissLogSummary,
   horizontalMissMeters,
-  isAircraftAttackTarget,
   isDepthChargeTarget,
   isTorpedoTarget,
   lerpLatLonDepth,
   makeDetonationEvent,
   torpedoHitAudioDelaySec,
-  normalizeAircraftAttackMode,
   normalizeDepthChargePattern,
   normalizeHeading,
   normalizeTorpedoRoomId,
   recordTorpedoClosestApproach,
-  resolveAircraftAttackEffect,
   resolveDepthChargeEffect,
   resolveTorpedoHit,
   segmentClosestPoint,
@@ -57,6 +51,7 @@ import {
   type UnitState,
   type WeaponDetonationEvent,
 } from '@war-patrol/shared';
+import { resolveAircraftAttacksForTurn } from './aircraftCombat.js';
 
 const DETONATION_RETENTION_TURNS = 2;
 /** Cap umpire combat log length (oldest dropped). */
@@ -282,143 +277,18 @@ export function resolveWeaponsForTurn(
   });
 
   // --- Aircraft attack runs (CPA along this turn's path; no persistent tracks) ---
+  const aircraftDetonations: WeaponDetonationEvent[] = [];
   {
-    const pendingAttacks: Array<{
-      attackerId: string;
-      mode: 'intercept' | 'bombing_run';
-      targetUnitId: string;
-    }> = [];
-    for (const unit of units) {
-      const attack = unit.orders.aircraftAttack;
-      if (!attack || !canOrderAircraftAttack(unit)) continue;
-      pendingAttacks.push({
-        attackerId: unit.id,
-        mode: normalizeAircraftAttackMode(attack.mode),
-        targetUnitId: String(attack.targetUnitId ?? '').trim(),
-      });
-    }
-
-    if (pendingAttacks.length) {
-      const unitMap = new Map(units.map((u) => [u.id, u]));
-      for (const pending of pendingAttacks) {
-        const attacker = unitMap.get(pending.attackerId);
-        if (!attacker) continue;
-        const target = unitMap.get(pending.targetUnitId);
-        const modeLabel = formatAircraftAttackModeLabel(pending.mode);
-        combatLogEntries.push(
-          logLine({
-            kind: 'aircraft_attack',
-            turnNumber,
-            gameTimeSeconds,
-            actor: attacker,
-            target: target && isAircraftAttackTarget(target) ? target : undefined,
-            summary: `${attacker.name} ${modeLabel} vs ${
-              (target?.name ?? pending.targetUnitId) || 'unknown'
-            }`,
-          }),
-        );
-
-        // Clear attack order whether or not the target is valid.
-        const clearedAttacker = {
-          ...attacker,
-          orders: (() => {
-            const { aircraftAttack: _a, ...rest } = attacker.orders;
-            return rest;
-          })(),
-        };
-        units = units.map((u) => (u.id === attacker.id ? clearedAttacker : u));
-        unitMap.set(attacker.id, clearedAttacker);
-
-        if (!target || !isAircraftAttackTarget(target)) {
-          combatLogEntries.push(
-            logLine({
-              kind: 'aircraft_attack_miss',
-              turnNumber,
-              gameTimeSeconds,
-              actor: clearedAttacker,
-              summary: `${attacker.name} ${modeLabel} aborted — no valid target`,
-            }),
-          );
-          continue;
-        }
-
-        const acStart = startPositions?.get(attacker.id) ?? attacker.position;
-        const acEnd = attacker.position;
-        const tgtStart = startPositions?.get(target.id) ?? target.position;
-        const tgtEnd = target.position;
-        const approach = aircraftAttackClosestApproach({
-          aircraftStart: acStart,
-          aircraftEnd: acEnd,
-          targetStart: tgtStart,
-          targetEnd: tgtEnd,
-        });
-        const effect = resolveAircraftAttackEffect({
-          mode: pending.mode,
-          missDistanceM: approach.missM,
-          targetDepthM: approach.targetPoint.depth,
-          targetType: target.type,
-          seed: `${attacker.id}|${target.id}|${pending.mode}|${turnNumber}`,
-        });
-
-        if (effect.outcome === 'hit' && effect.damage > 0) {
-          const { unit: damaged, effects } = applyHealthDamageResult(target, effect.damage);
-          const applied = healthDamageApplied(target, damaged);
-          units = units.map((u) => (u.id === target.id ? damaged : u));
-          unitMap.set(target.id, damaged);
-          if (applied > 0) {
-            combatLogEntries.push(
-              logLine({
-                kind: 'aircraft_attack_damage',
-                turnNumber,
-                gameTimeSeconds,
-                actor: clearedAttacker,
-                target: damaged,
-                damage: applied,
-                summary: `${attacker.name} ${modeLabel} HIT ${target.name} −${applied} HP (CPA ${approach.missM.toFixed(0)} m)`,
-              }),
-            );
-            combatLogEntries.push(
-              ...logCasualtyEffects(damaged, effects, {
-                turnNumber,
-                gameTimeSeconds,
-                actor: clearedAttacker,
-              }),
-            );
-            if (damaged.condition === 'sunk') {
-              combatLogEntries.push(
-                logLine({
-                  kind: 'unit_sunk',
-                  turnNumber,
-                  gameTimeSeconds,
-                  target: damaged,
-                  actor: clearedAttacker,
-                  summary: `${damaged.name} SUNK / destroyed`,
-                }),
-              );
-            }
-          }
-        } else {
-          const reason =
-            effect.outcome === 'ineffective'
-              ? pending.mode === 'intercept'
-                ? 'target too deep for guns'
-                : 'target too deep for bombs'
-              : effect.outcome === 'far_miss'
-                ? 'out of reach this turn'
-                : 'near miss';
-          combatLogEntries.push(
-            logLine({
-              kind: 'aircraft_attack_miss',
-              turnNumber,
-              gameTimeSeconds,
-              actor: clearedAttacker,
-              target,
-              summary: `${attacker.name} ${modeLabel} vs ${target.name} — ${reason} (CPA ${approach.missM.toFixed(0)} m)`,
-            }),
-          );
-        }
-      }
-    }
+    const air = resolveAircraftAttacksForTurn({
+      units,
+      turnNumber,
+      turnLengthSeconds,
+      gameTimeSeconds,
+      startPositions,
+    });
+    units = air.units;
+    combatLogEntries.push(...air.combatLogEntries);
+    aircraftDetonations.push(...air.detonations);
   }
 
   // Historical fish (hit / expired / duded) stay on the umpire GT map forever.
@@ -697,6 +567,7 @@ export function resolveWeaponsForTurn(
 
   const recentDetonations = [
     ...priorDetonations.filter((d) => d.turnNumber >= turnNumber - DETONATION_RETENTION_TURNS),
+    ...aircraftDetonations,
     ...newDetonations,
   ];
 

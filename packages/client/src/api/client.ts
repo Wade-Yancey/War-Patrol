@@ -133,7 +133,8 @@ export const api = {
   /**
    * Umpire: individual helm/EOT (any hull). Optional breakFormation / rejoinFormation
    * for convoy members — does not use the Navigation heading fiat path.
-   * Optional aircraftAttack queues intercept / bombing run for NPC aircraft.
+   * Optional aircraftAttack queues intercept / strafe / bombing for NPC aircraft.
+   * Optional aircraftLoiter sets/clears a standing orbit.
    */
   umpireUnitOrders: (
     gameId: string,
@@ -144,7 +145,11 @@ export const api = {
       eot?: EotSetting;
       breakFormation?: boolean;
       rejoinFormation?: boolean;
-      aircraftAttack?: { mode: 'intercept' | 'bombing_run'; targetUnitId: string } | null;
+      aircraftAttack?: {
+        mode: 'intercept' | 'strafe' | 'bombing_run';
+        targetUnitId: string;
+      } | null;
+      aircraftLoiter?: { centerUnitId?: string | null } | null;
     },
   ) =>
     request<{
@@ -154,6 +159,8 @@ export const api = {
       orderedCourse?: number;
       formationId?: string;
       formationDetached?: boolean;
+      aircraftLoiter?: unknown;
+      bombLoad?: number;
     }>(`/api/games/${gameId}/units/${encodeURIComponent(unitId)}/orders`, {
       method: 'POST',
       token,
@@ -203,6 +210,7 @@ export const api = {
       torpedoForward: number;
       torpedoAft: number;
       depthChargeLoad: number;
+      bombLoad?: number;
     }>(`/api/games/${gameId}/units/${unitId}/rearm`, {
       method: 'POST',
       token,

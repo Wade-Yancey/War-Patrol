@@ -53,10 +53,17 @@ import {
   scenarioFormationSeeds,
   followsFormation,
   bearingRangeNm,
+  buildAircraftLoiterState,
+  aircraftLoiterEot,
+  clampAircraftLoiterRadiusM,
+  AIRCRAFT_LOITER_DEFAULT_RADIUS_M,
   canOrderAircraftAttack,
+  hasBombLoad,
   isAircraftAttackTarget,
   normalizeAircraftAttackMode,
+  resolveBombMagazineState,
   type AircraftAttackOrder,
+  type AircraftLoiterState,
   type CombatLogEntry,
   type EotSetting,
   type GameSave,
@@ -190,6 +197,10 @@ function unitFromScenario(seed: Scenario['units'][number]): UnitState {
       ...identity,
       depthChargeLoad: seed.depthChargeLoad,
     }),
+    ...resolveBombMagazineState({
+      ...identity,
+      bombLoad: seed.bombLoad,
+    }),
     ...(seed.formationId?.trim()
       ? {
           formationId: seed.formationId.trim(),
@@ -281,7 +292,7 @@ function normalizeUnit(unit: UnitState): UnitState {
       }) * propulsionSpeedFactor(subsystems.propulsion);
     speed = clampSpeedToMax(speed, ceiling);
   }
-  return {
+  const next: UnitState = {
     ...unit,
     side: sideFromFaction(faction),
     faction,
@@ -326,6 +337,7 @@ function normalizeUnit(unit: UnitState): UnitState {
         : 0,
     ...resolveTorpedoMagazineState(unit),
     ...resolveDepthChargeMagazineState(unit),
+    ...resolveBombMagazineState(unit),
     ...(contactBook ? { contactBook } : {}),
     ...(unit.formationId?.trim()
       ? {
@@ -333,6 +345,25 @@ function normalizeUnit(unit: UnitState): UnitState {
           ...(unit.formationDetached ? { formationDetached: true as const } : {}),
         }
       : {}),
+  };
+  if (identity.type === 'Aircraft' && unit.aircraftLoiter) {
+    next.aircraftLoiter = sanitizeAircraftLoiter(unit.aircraftLoiter);
+  } else {
+    delete next.aircraftLoiter;
+  }
+  return next;
+}
+
+function sanitizeAircraftLoiter(raw: AircraftLoiterState): AircraftLoiterState {
+  const centerLat = Number(raw.centerLat);
+  const centerLon = Number(raw.centerLon);
+  return {
+    centerLat: Number.isFinite(centerLat) ? centerLat : 0,
+    centerLon: Number.isFinite(centerLon) ? centerLon : 0,
+    radiusM: clampAircraftLoiterRadiusM(
+      typeof raw.radiusM === 'number' ? raw.radiusM : AIRCRAFT_LOITER_DEFAULT_RADIUS_M,
+    ),
+    ...(raw.centerUnitId?.trim() ? { centerUnitId: raw.centerUnitId.trim() } : {}),
   };
 }
 
@@ -811,8 +842,9 @@ export class GameRuntime {
    * Umpire individual helm/EOT for any hull (player or NPC).
    * Optional breakFormation detaches a convoy member so later group applies skip it;
    * rejoinFormation clears the flag and optionally resyncs to standing group orders.
-   * Optional aircraftAttack queues an intercept / bombing run (aircraft only) and,
+   * Optional aircraftAttack queues an intercept / strafe / bombing run (aircraft only) and,
    * unless course/eot are also provided, steers toward the target at full band.
+   * Optional aircraftLoiter sets/clears a standing orbit (persists across turns).
    */
   submitUmpireUnitOrders(
     gameId: string,
@@ -823,16 +855,18 @@ export class GameRuntime {
       breakFormation?: boolean;
       rejoinFormation?: boolean;
       aircraftAttack?: AircraftAttackOrder | null;
+      aircraftLoiter?: { centerUnitId?: string | null } | null;
     },
   ): GameSave {
     if (
       patch.course === undefined &&
       patch.eot === undefined &&
       patch.aircraftAttack === undefined &&
+      patch.aircraftLoiter === undefined &&
       !patch.breakFormation &&
       !patch.rejoinFormation
     ) {
-      throw Object.assign(new Error('course, eot, aircraftAttack, and/or formation flag required'), {
+      throw Object.assign(new Error('course, eot, aircraftAttack, aircraftLoiter, and/or formation flag required'), {
         statusCode: 400,
       });
     }
@@ -869,6 +903,45 @@ export class GameRuntime {
       let course = patch.course;
       let eot = patch.eot;
 
+      if (patch.aircraftLoiter !== undefined) {
+        if (unit.type !== 'Aircraft' || unit.condition === 'sunk') {
+          throw Object.assign(new Error('Only afloat aircraft can loiter'), { statusCode: 400 });
+        }
+        if (patch.aircraftLoiter === null) {
+          delete unit.aircraftLoiter;
+        } else {
+          const parentId =
+            patch.aircraftLoiter.centerUnitId === null
+              ? undefined
+              : patch.aircraftLoiter.centerUnitId?.trim() || undefined;
+          let center = {
+            lat: unit.position.lat,
+            lon: unit.position.lon,
+            depth: 0,
+          };
+          if (parentId) {
+            const parent = save.units.find((u) => u.id === parentId);
+            if (!parent || parent.condition === 'sunk' || parent.type === 'Aircraft') {
+              throw Object.assign(new Error('Invalid loiter center unit'), { statusCode: 400 });
+            }
+            center = {
+              lat: parent.position.lat,
+              lon: parent.position.lon,
+              depth: 0,
+            };
+          }
+          unit.aircraftLoiter = buildAircraftLoiterState({
+            aircraft: unit,
+            center,
+            centerUnitId: parentId,
+          });
+          // Default loiter band unless this request also overrides EOT.
+          if (eot === undefined) {
+            eot = aircraftLoiterEot();
+          }
+        }
+      }
+
       if (patch.aircraftAttack !== undefined) {
         if (patch.aircraftAttack === null) {
           unit.orders = mergeOrders(unit.orders, { aircraftAttack: null }, 'umpire');
@@ -889,6 +962,11 @@ export class GameRuntime {
             throw Object.assign(new Error('Invalid aircraft attack target'), { statusCode: 400 });
           }
           const mode = normalizeAircraftAttackMode(patch.aircraftAttack.mode);
+          if (mode === 'bombing_run' && !hasBombLoad(unit)) {
+            throw Object.assign(new Error('No bombs remaining — umpire rearm required'), {
+              statusCode: 400,
+            });
+          }
           // Default attack profile: steer toward target at full band unless overridden.
           if (course === undefined) {
             course = bearingRangeNm(unit.position, target.position).bearing;

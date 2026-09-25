@@ -93,16 +93,17 @@ export function buildHydrophoneContacts(own: UnitState, save: GameSave): Hydroph
     }
   }
 
-  // Recent depth-charge detonations (acoustic events — not continuous emitters).
+  // Recent depth-charge / aircraft-bomb detonations (acoustic events — not continuous
+  // emitters). Aircraft themselves stay hydrophone-blind; bomb blasts in the water are not.
   // Range from *this* listening hull to the blast — never filtered by who dropped.
   const dcMax = Math.min(maxRangeNm, DEPTH_CHARGE_HYDROPHONE_RANGE_NM);
   for (const det of save.recentDetonations ?? []) {
-    if (det.kind !== 'depth_charge') continue;
+    if (det.kind !== 'depth_charge' && det.kind !== 'aircraft_bomb') continue;
     if (det.turnNumber < save.turn.number - 1) continue;
     const { bearing, rangeNm } = bearingRangeNm(own.position, det.position);
     if (rangeNm > dcMax || rangeNm <= 0) continue;
     contacts.push({
-      id: `h-dc-${det.id}`,
+      id: det.kind === 'aircraft_bomb' ? `h-abomb-${det.id}` : `h-dc-${det.id}`,
       bearing: Math.round(bearing * 10) / 10,
       rangeNm: Math.round(rangeNm * 100) / 100,
       kind: 'depth_charge',

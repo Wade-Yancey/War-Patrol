@@ -94,6 +94,8 @@ export function UmpirePage() {
   const [breakFormationOnApply, setBreakFormationOnApply] = useState(true);
   /** Aircraft attack-run target (Unit edit). */
   const [attackTargetId, setAttackTargetId] = useState('');
+  /** Optional parent hull for aircraft loiter orbit. */
+  const [loiterParentId, setLoiterParentId] = useState('');
   const [rollbackTarget, setRollbackTarget] = useState<number | null>(null);
   /** null = LIVE GT; number = read-only AAR review of that resolved turn. */
   const [reviewTurn, setReviewTurn] = useState<number | null>(null);
@@ -207,6 +209,14 @@ export function UmpirePage() {
         : attackTargetOptions[0]?.id ?? '',
     );
   }, [selectedUnit?.id, selectedUnit?.type, selectedUnit?.orders?.aircraftAttack?.targetUnitId, attackTargetOptions]);
+
+  useEffect(() => {
+    if (!selectedUnit || selectedUnit.type !== 'Aircraft') {
+      setLoiterParentId('');
+      return;
+    }
+    setLoiterParentId(selectedUnit.aircraftLoiter?.centerUnitId ?? '');
+  }, [selectedUnit?.id, selectedUnit?.type, selectedUnit?.aircraftLoiter?.centerUnitId]);
 
   const selectedFormation = useMemo(() => {
     const id = selectedUnit?.formationId;
@@ -1346,8 +1356,12 @@ export function UmpirePage() {
                           <h3>Attack run</h3>
                           <p className="muted" style={{ margin: '0 0 0.5rem', fontSize: '0.75rem' }}>
                             Queues course toward the target at full band. Resolves on the next turn
-                            advance (CPA hit / near-miss / far miss). Fighters favor intercept;
-                            bombers favor bombing run — both available.
+                            advance (CPA hit / near-miss / far miss). Bombing consumes the single
+                            bomb; intercept / strafe use guns. Fighters favor intercept; bombers
+                            favor bombing — all three modes available.
+                          </p>
+                          <p className="mono muted" style={{ margin: '0 0 0.5rem', fontSize: '0.8rem' }}>
+                            Bombs: {selectedUnit.bombLoad ?? 0}
                           </p>
                           <label className="unit-edit-select">
                             Target
@@ -1386,7 +1400,12 @@ export function UmpirePage() {
                                   key={mode}
                                   className="primary"
                                   type="button"
-                                  disabled={busy || !isOpen || !attackTargetId}
+                                  disabled={
+                                    busy ||
+                                    !isOpen ||
+                                    !attackTargetId ||
+                                    (mode === 'bombing_run' && (selectedUnit.bombLoad ?? 0) < 1)
+                                  }
                                   onClick={() =>
                                     void run(
                                       () =>
@@ -1400,7 +1419,11 @@ export function UmpirePage() {
                                     )
                                   }
                                 >
-                                  {mode === 'bombing_run' ? 'Bombing run' : 'Intercept'}
+                                  {mode === 'bombing_run'
+                                    ? 'Bombing run'
+                                    : mode === 'strafe'
+                                      ? 'Strafe'
+                                      : 'Intercept'}
                                 </button>
                               ),
                             )}
@@ -1419,6 +1442,93 @@ export function UmpirePage() {
                                 }
                               >
                                 Clear attack
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {selectedUnit.type === 'Aircraft' && (
+                        <div className="unit-edit-group">
+                          <h3>Loiter</h3>
+                          <p className="muted" style={{ margin: '0 0 0.5rem', fontSize: '0.75rem' }}>
+                            Standing orbit — auto-steers each resolve at loiter band. Optional
+                            parent ship (e.g. Shōkaku) keeps the circle centered on that hull.
+                            Attack runs override heading for one turn; loiter resumes after.
+                          </p>
+                          {selectedUnit.aircraftLoiter ? (
+                            <p className="readout" style={{ margin: '0 0 0.5rem', fontSize: '0.8rem' }}>
+                              Orbiting
+                              {selectedUnit.aircraftLoiter.centerUnitId
+                                ? ` ${
+                                    umpire?.units.find(
+                                      (u) => u.id === selectedUnit.aircraftLoiter?.centerUnitId,
+                                    )?.name ?? selectedUnit.aircraftLoiter.centerUnitId
+                                  }`
+                                : ' current station'}{' '}
+                              · r≈{(selectedUnit.aircraftLoiter.radiusM / 1852).toFixed(1)} nm
+                            </p>
+                          ) : (
+                            <p className="muted" style={{ margin: '0 0 0.5rem', fontSize: '0.75rem' }}>
+                              No loiter order.
+                            </p>
+                          )}
+                          <label className="unit-edit-select">
+                            Orbit parent (optional)
+                            <select
+                              value={loiterParentId}
+                              onChange={(e) => setLoiterParentId(e.target.value)}
+                              disabled={busy || !isOpen}
+                            >
+                              <option value="">Here (current position)</option>
+                              {(umpire?.units ?? [])
+                                .filter(
+                                  (u) =>
+                                    u.id !== selectedUnit.id &&
+                                    u.type !== 'Aircraft' &&
+                                    u.condition !== 'sunk',
+                                )
+                                .map((u) => (
+                                  <option key={u.id} value={u.id}>
+                                    {u.name} ({u.class})
+                                  </option>
+                                ))}
+                            </select>
+                          </label>
+                          <div className="control-actions">
+                            <button
+                              className="primary"
+                              type="button"
+                              disabled={busy || !isOpen}
+                              onClick={() =>
+                                void run(
+                                  () =>
+                                    api.umpireUnitOrders(gameId, token, selectedUnit.id, {
+                                      aircraftLoiter: loiterParentId
+                                        ? { centerUnitId: loiterParentId }
+                                        : {},
+                                    }),
+                                  'Loiter ordered',
+                                )
+                              }
+                            >
+                              {selectedUnit.aircraftLoiter ? 'Update loiter' : 'Start loiter'}
+                            </button>
+                            {selectedUnit.aircraftLoiter && (
+                              <button
+                                type="button"
+                                disabled={busy || !isOpen}
+                                onClick={() =>
+                                  void run(
+                                    () =>
+                                      api.umpireUnitOrders(gameId, token, selectedUnit.id, {
+                                        aircraftLoiter: null,
+                                      }),
+                                    'Loiter cleared',
+                                  )
+                                }
+                              >
+                                Cancel loiter
                               </button>
                             )}
                           </div>
@@ -1641,7 +1751,8 @@ export function UmpirePage() {
 
                       {(selectedUnit.class === 'Fleet Submarine' ||
                         selectedUnit.class === 'Destroyer' ||
-                        selectedUnit.type === 'Submarine') && (
+                        selectedUnit.type === 'Submarine' ||
+                        selectedUnit.type === 'Aircraft') && (
                         <div className="unit-edit-group">
                           <h3>Ordnance rearm</h3>
                           <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
@@ -1649,9 +1760,11 @@ export function UmpirePage() {
                           </p>
                           <p className="mono muted" style={{ margin: 0, fontSize: '0.8rem' }}>
                             Now:{' '}
-                            {selectedUnit.class === 'Destroyer'
-                              ? `DC ${selectedUnit.depthChargeLoad ?? 0}`
-                              : `FWD ${selectedUnit.torpedoForward ?? 0} · AFT ${selectedUnit.torpedoAft ?? 0}`}
+                            {selectedUnit.type === 'Aircraft'
+                              ? `BOMB ${selectedUnit.bombLoad ?? 0}`
+                              : selectedUnit.class === 'Destroyer'
+                                ? `DC ${selectedUnit.depthChargeLoad ?? 0}`
+                                : `FWD ${selectedUnit.torpedoForward ?? 0} · AFT ${selectedUnit.torpedoAft ?? 0}`}
                           </p>
                           <div className="control-actions">
                             <button

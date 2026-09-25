@@ -414,6 +414,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       breakFormation?: boolean;
       rejoinFormation?: boolean;
       aircraftAttack?: { mode?: string; targetUnitId?: string } | null;
+      aircraftLoiter?: { centerUnitId?: string | null } | null;
     };
   }>('/api/games/:gameId/units/:unitId/orders', async (request, reply) => {
     try {
@@ -425,8 +426,27 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           ? null
           : attackRaw && typeof attackRaw === 'object'
             ? {
-                mode: attackRaw.mode === 'bombing_run' ? ('bombing_run' as const) : ('intercept' as const),
+                mode:
+                  attackRaw.mode === 'bombing_run'
+                    ? ('bombing_run' as const)
+                    : attackRaw.mode === 'strafe'
+                      ? ('strafe' as const)
+                      : ('intercept' as const),
                 targetUnitId: String(attackRaw.targetUnitId ?? ''),
+              }
+            : undefined;
+      const loiterRaw = body.aircraftLoiter;
+      const aircraftLoiter =
+        loiterRaw === null
+          ? null
+          : loiterRaw && typeof loiterRaw === 'object'
+            ? {
+                centerUnitId:
+                  loiterRaw.centerUnitId === null
+                    ? null
+                    : loiterRaw.centerUnitId != null
+                      ? String(loiterRaw.centerUnitId)
+                      : undefined,
               }
             : undefined;
       const save = runtime.submitUmpireUnitOrders(request.params.gameId, request.params.unitId, {
@@ -435,6 +455,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         breakFormation: Boolean(body.breakFormation),
         rejoinFormation: Boolean(body.rejoinFormation),
         ...(aircraftAttack !== undefined ? { aircraftAttack } : {}),
+        ...(aircraftLoiter !== undefined ? { aircraftLoiter } : {}),
       });
       const unit = save.units.find((u) => u.id === request.params.unitId);
       return {
@@ -444,6 +465,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         orderedCourse: unit?.orderedCourse,
         formationId: unit?.formationId,
         formationDetached: Boolean(unit?.formationDetached),
+        aircraftLoiter: unit?.aircraftLoiter ?? null,
+        bombLoad: unit?.bombLoad ?? 0,
       };
     } catch (err) {
       const e = httpError(err);
@@ -884,6 +907,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           torpedoForward: unit?.torpedoForward ?? 0,
           torpedoAft: unit?.torpedoAft ?? 0,
           depthChargeLoad: unit?.depthChargeLoad ?? 0,
+          bombLoad: unit?.bombLoad ?? 0,
         };
       } catch (err) {
         const e = httpError(err);
