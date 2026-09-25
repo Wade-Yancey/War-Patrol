@@ -50,6 +50,7 @@ import {
   periscopeSilhouetteUrl,
   periscopeSilhouetteFlipX,
   silhouetteUrlForClass,
+  isV1PlayerHullClass,
   snapWallDuration,
   stepDepthTowardOrdered,
   submarineDepthRisk,
@@ -429,6 +430,16 @@ async function main() {
   check('cruiser turnRate not small-ship band', cruiserTurnRate < 12);
   check('battleship turnRate not small-ship band', battleshipTurnRate < 12);
   check('carrier turnRate not small-ship band', carrierTurnRate < 12);
+  check('carrier turnRate capital-ship band (4°/min)', carrierTurnRate === 4);
+  check(
+    'carrier turnRate matches Essex/Shōkaku library default',
+    resolveTurnRate({ class: 'Aircraft Carrier' }) === 4 &&
+      resolveTurnRate({ class: 'Aircraft Carrier', turnRate: 4 }) === 4,
+  );
+  check(
+    'Aircraft Carrier is not a v1 player hull (NPC only)',
+    !isV1PlayerHullClass('Aircraft Carrier'),
+  );
   check(
     'sub turnRate between destroyer and capital ships',
     subTurnRate < destroyerTurnRate && subTurnRate > cruiserTurnRate,
@@ -763,10 +774,15 @@ async function main() {
     silhouetteUrlForClass('Oiler') === '/silhouettes/oiler.png',
   );
   check(
+    'carrier silhouette asset path',
+    silhouetteUrlForClass('Aircraft Carrier') === '/silhouettes/carrier.png',
+  );
+  check(
     'periscope silhouette class map + destroyer fallback',
     periscopeSilhouetteUrl('Fleet Submarine') === '/silhouettes/submarine.png' &&
       periscopeSilhouetteUrl('Destroyer') === '/silhouettes/destroyer.png' &&
       periscopeSilhouetteUrl('Oiler') === '/silhouettes/oiler.png' &&
+      periscopeSilhouetteUrl('Aircraft Carrier') === '/silhouettes/carrier.png' &&
       periscopeSilhouetteUrl(undefined) === '/silhouettes/destroyer.png' &&
       periscopeSilhouetteUrl('Merchant') === '/silhouettes/destroyer.png',
   );
@@ -842,6 +858,7 @@ async function main() {
     assertSilhouettePng('destroyer.png', 1000);
     assertSilhouettePng('submarine.png', 1000);
     assertSilhouettePng('oiler.png', 1000);
+    assertSilhouettePng('carrier.png', 1000);
   }
   check(
     'controls has no periscope picture',
@@ -2321,6 +2338,26 @@ async function main() {
         (e) => e.class === 'Oiler' && e.lengthM === 169 && e.beamM === 23,
       ),
     );
+    check(
+      'recognition manual has Shōkaku 258×26',
+      RECOGNITION_MANUAL_ENTRIES.some(
+        (e) =>
+          e.class === 'Aircraft Carrier' &&
+          e.lengthM === 258 &&
+          e.beamM === 26 &&
+          e.name.includes('Shōkaku'),
+      ),
+    );
+    check(
+      'recognition manual keeps Essex 266×28',
+      RECOGNITION_MANUAL_ENTRIES.some(
+        (e) =>
+          e.class === 'Aircraft Carrier' &&
+          e.lengthM === 266 &&
+          e.beamM === 28 &&
+          e.name.includes('Essex'),
+      ),
+    );
     const fan = torpedoSpreadHeadings(0, 3, 2).map((h) => Math.round(h));
     check('spread 3×2° headings', fan[0] === 358 && fan[1] === 0 && fan[2] === 2);
 
@@ -2735,9 +2772,153 @@ async function main() {
       scArr.some((s) => s.id === 'cimarron-convoy-torpedo-test'),
     );
     check(
+      'shokaku-carrier-lookout-test scenario listed',
+      scArr.some((s) => s.id === 'shokaku-carrier-lookout-test'),
+    );
+    check(
       'deep-dc-test scenario listed',
       scArr.some((s) => s.id === 'deep-dc-test'),
     );
+
+    {
+      const lib = await api('GET', '/api/library');
+      check('library list ok', lib.status === 200);
+      const libRaw = lib.json as unknown;
+      const libArr = Array.isArray(libRaw)
+        ? (libRaw as Array<{
+            id: string;
+            class?: string;
+            maxSpeed?: number;
+            lengthM?: number;
+            beamM?: number;
+            turnRate?: number;
+            defaultFaction?: string;
+          }>)
+        : [];
+      const shokaku = libArr.find((c) => c.id === 'shokaku-class');
+      check('library has shokaku-class', Boolean(shokaku), `count=${libArr.length}`);
+      check(
+        'shokaku-class is Aircraft Carrier NPC hull',
+        Boolean(
+          shokaku &&
+            shokaku.class === 'Aircraft Carrier' &&
+            shokaku.maxSpeed === 34 &&
+            shokaku.lengthM === 258 &&
+            shokaku.beamM === 26 &&
+            shokaku.turnRate === 4 &&
+            shokaku.defaultFaction === 'Red',
+        ),
+      );
+    }
+
+    {
+      const cvGame = await api('POST', '/api/games', {
+        scenarioId: 'shokaku-carrier-lookout-test',
+        name: 'Verify Shōkaku Carrier',
+      });
+      check('shokaku carrier scenario create', cvGame.status === 200);
+      const cvId = String(cvGame.json.gameId);
+      const cvUmp = await api('POST', `/api/games/${cvId}/auth/umpire`, {
+        password: 'umpire',
+      });
+      const cvUTok = String(cvUmp.json.token);
+      const cvView = await api('GET', `/api/games/${cvId}/view`, undefined, cvUTok);
+      const cvUmpireView = cvView.json.view as {
+        units?: Array<{
+          id: string;
+          class?: string;
+          classId?: string;
+          faction?: string;
+          lengthM?: number;
+          beamM?: number;
+          maxSpeed?: number;
+          turnRate?: number;
+          radarSignature?: string;
+          accessToken?: string;
+        }>;
+        vesselLinks?: Array<{
+          unitId: string;
+          playerVessel?: boolean;
+          stations?: unknown[];
+          accessToken?: string;
+        }>;
+      };
+      const cvUnits = cvUmpireView.units ?? [];
+      const carrier = cvUnits.find((u) => u.id === 'cv-shokaku');
+      check('shokaku unit present', Boolean(carrier));
+      check(
+        'shokaku seeded 258×26 / 34 kn / large / turnRate 4',
+        carrier?.class === 'Aircraft Carrier' &&
+          carrier.classId === 'shokaku-class' &&
+          carrier.faction === 'Red' &&
+          carrier.lengthM === 258 &&
+          carrier.beamM === 26 &&
+          carrier.maxSpeed === 34 &&
+          carrier.turnRate === 4 &&
+          carrier.radarSignature === 'large',
+      );
+      check(
+        'shokaku has no vessel accessToken (NPC)',
+        !carrier?.accessToken,
+      );
+      {
+        const cvSave = runtime.requireGame(cvId);
+        const cvUnit = cvSave.units.find((u) => u.id === 'cv-shokaku')!;
+        check(
+          'shokaku not a v1 player unit',
+          !isV1PlayerHullClass(cvUnit.class) && cvUnit.class === 'Aircraft Carrier',
+        );
+        check(
+          'shokaku turnRate capital carrier (not destroyer)',
+          cvUnit.turnRate === 4 && cvUnit.turnRate < defaultTurnRateForClass('Destroyer'),
+        );
+      }
+      const links = cvUmpireView.vesselLinks ?? [];
+      const cvLink = links.find((l) => l.unitId === 'cv-shokaku');
+      const gatoLink = links.find((l) => l.unitId === 'ss-212');
+      check(
+        'shokaku vessel link is non-player (no station joins)',
+        cvLink?.playerVessel === false &&
+          Array.isArray(cvLink.stations) &&
+          cvLink.stations.length === 0,
+      );
+      check(
+        'gato remains playable in shokaku scenario',
+        gatoLink?.playerVessel === true &&
+          Array.isArray(gatoLink.stations) &&
+          (gatoLink.stations as unknown[]).length === 2,
+      );
+
+      // Raise mast so periscope paints the carrier silhouette class.
+      await api(
+        'PATCH',
+        `/api/games/${cvId}/units/ss-212`,
+        { position: { lat: 34.37504, lon: -120.0, depth: 18 } },
+        cvUTok,
+      );
+      const gatoAuth = await api('POST', `/api/games/${cvId}/auth/vessel`, {
+        accessToken: 'gato-demo',
+        password: 'red',
+        stationId: 'sensors',
+      });
+      check('shokaku scenario gato sensors auth', gatoAuth.status === 200);
+      const gatoTok = String(gatoAuth.json.token);
+      const raiseCvPeri = await api(
+        'POST',
+        `/api/games/${cvId}/periscope`,
+        { raised: true },
+        gatoTok,
+      );
+      check('shokaku scenario raise periscope', raiseCvPeri.status === 200);
+      const periView = await api('GET', `/api/games/${cvId}/view`, undefined, gatoTok);
+      const periContacts = (periView.json.view as { periscopeContacts?: Array<Json> })
+        .periscopeContacts;
+      check(
+        'shokaku peri paints carrier silhouette class',
+        Array.isArray(periContacts) &&
+          periContacts.some((c) => c.silhouetteClass === 'Aircraft Carrier'),
+      );
+    }
 
     {
       const convoyGame = await api('POST', '/api/games', {

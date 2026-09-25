@@ -6,6 +6,7 @@ import {
   type PeriscopeContact,
 } from '@war-patrol/shared';
 /** Vite-bundled PNGs (alpha) — guaranteed in the client graph (not fragile public-path strings). */
+import carrierSilhouettePng from '../assets/silhouettes/carrier.png';
 import destroyerSilhouettePng from '../assets/silhouettes/destroyer.png';
 import oilerSilhouettePng from '../assets/silhouettes/oiler.png';
 import submarineSilhouettePng from '../assets/silhouettes/submarine.png';
@@ -36,6 +37,7 @@ const SILHOUETTE_SIZE: Record<string, { width: number; height: number }> = {
   Destroyer: { width: 349, height: 79 },
   'Fleet Submarine': { width: 350, height: 55 },
   Oiler: { width: 510, height: 98 },
+  'Aircraft Carrier': { width: 720, height: 87 },
 };
 
 /**
@@ -48,6 +50,8 @@ function silhouetteSrcForClass(hullClass: HullClass | string | undefined): strin
       return submarineSilhouettePng;
     case 'Oiler':
       return oilerSilhouettePng;
+    case 'Aircraft Carrier':
+      return carrierSilhouettePng;
     case 'Destroyer':
     default:
       return destroyerSilhouettePng;
@@ -57,6 +61,7 @@ function silhouetteSrcForClass(hullClass: HullClass | string | undefined): strin
 function silhouetteAlt(hullClass: HullClass | string | undefined): string {
   if (hullClass === 'Fleet Submarine') return 'Submarine silhouette';
   if (hullClass === 'Oiler') return 'Oiler silhouette';
+  if (hullClass === 'Aircraft Carrier') return 'Aircraft carrier silhouette';
   return 'Destroyer silhouette';
 }
 

@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "id": "shokaku-carrier-lookout-test",
+  "name": "Shōkaku carrier lookout / torpedo test",
+  "description": "NPC IJN fleet carrier drill: Gato at periscope depth south of an eastbound Shōkaku-class aircraft carrier (~1.5 nm, near-beam aspect). Carrier is umpire-controlled NPC only (no station join / password). Recognition plate OA 258 m / beam 26 m; carrier silhouette. Passwords: umpire / red (Gato token gato-demo).",
+  "mode": "pvp",
+  "operatingArea": {
+    "minLat": 34.32,
+    "maxLat": 34.48,
+    "minLon": -120.12,
+    "maxLon": -119.88
+  },
+  "umpirePassword": "umpire",
+  "defaultTurnSeconds": 180,
+  "turnLengthSeconds": 180,
+  "startGameTimeSeconds": 28800,
+  "units": [
+    {
+      "id": "cv-shokaku",
+      "name": "Shōkaku",
+      "side": "red",
+      "faction": "Red",
+      "classId": "shokaku-class",
+      "type": "Ship",
+      "class": "Aircraft Carrier",
+      "position": {
+        "lat": 34.4,
+        "lon": -120.0,
+        "depth": 0
+      },
+      "heading": 90,
+      "speed": 18,
+      "eot": "ahead_standard",
+      "health": 100,
+      "maxSpeed": 34,
+      "lengthM": 258,
+      "beamM": 26,
+      "radarSignature": "large",
+      "sensors": [
+        {
+          "kind": "radar",
+          "maxRangeNm": 25
+        }
+      ],
+      "stations": [
+        {
+          "id": "controls",
+          "name": "Controls",
+          "capabilities": [
+            "helm",
+            "engineering",
+            "plot"
+          ]
+        },
+        {
+          "id": "sensors",
+          "name": "Sensors",
+          "capabilities": [
+            "radar"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ss-212",
+      "name": "USS Gato",
+      "side": "red",
+      "faction": "Red",
+      "classId": "gato-class",
+      "type": "Submarine",
+      "class": "Fleet Submarine",
+      "position": {
+        "lat": 34.37504,
+        "lon": -120.0,
+        "depth": 20
+      },
+      "orderedDepth": 18,
+      "heading": 0,
+      "speed": 5,
+      "eot": "ahead_2",
+      "accessToken": "gato-demo",
+      "password": "red",
+      "health": 100,
+      "maxSpeed": 21,
+      "lengthM": 95,
+      "beamM": 8.3,
+      "radarSignature": "small",
+      "sensors": [
+        {
+          "kind": "radar",
+          "maxRangeNm": 25
+        },
+        {
+          "kind": "hydrophone",
+          "maxRangeNm": 30
+        },
+        {
+          "kind": "lookout",
+          "maxRangeNm": 6
+        }
+      ],
+      "stations": [
+        {
+          "id": "controls",
+          "name": "Controls",
+          "capabilities": [
+            "helm",
+            "engineering",
+            "plot",
+            "weapons",
+            "torpedo"
+          ]
+        },
+        {
+          "id": "sensors",
+          "name": "Sensors",
+          "capabilities": [
+            "radar",
+            "hydrophone",
+            "lookout"
+          ]
+        }
+      ]
+    }
+  ]
+}
