@@ -1263,6 +1263,7 @@ export class GameRuntime {
         UnitState,
         | 'health'
         | 'heading'
+        | 'orderedCourse'
         | 'speed'
         | 'name'
         | 'password'
@@ -1282,7 +1283,33 @@ export class GameRuntime {
       if (idx < 0) throw Object.assign(new Error('Unit not found'), { statusCode: 404 });
       const unit = save.units[idx]!;
       if (patch.health !== undefined) unit.health = patch.health;
-      if (patch.heading !== undefined) unit.heading = patch.heading;
+      // Course / heading ownership:
+      // - orderedCourse = standing helm set-point (gradual turn on resolve; no bow snap).
+      // - heading = GT fiat teleport of the bow; also retargets orderedCourse so the
+      //   hull does not steer back toward a stale course on the next resolve.
+      // Either path clears pending orders.course so a prior station helm order cannot
+      // overwrite the umpire set-point when the turn resolves.
+      const clearPendingCourse = () => {
+        if (unit.orders?.course !== undefined) {
+          const next = { ...unit.orders };
+          delete next.course;
+          unit.orders = next;
+        }
+      };
+      if (patch.orderedCourse !== undefined) {
+        unit.orderedCourse = normalizeHeading(patch.orderedCourse);
+        clearPendingCourse();
+      }
+      if (patch.heading !== undefined) {
+        const hdg = normalizeHeading(patch.heading);
+        unit.heading = hdg;
+        // Fiat heading also owns the standing course (unless orderedCourse was set
+        // explicitly in the same patch — that value wins as the turn order).
+        if (patch.orderedCourse === undefined) {
+          unit.orderedCourse = hdg;
+        }
+        clearPendingCourse();
+      }
       if (patch.speed !== undefined) unit.speed = patch.speed;
       if (patch.name !== undefined) unit.name = patch.name;
       if (patch.password !== undefined) unit.password = patch.password || undefined;
