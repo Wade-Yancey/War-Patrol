@@ -2804,6 +2804,10 @@ async function main() {
       scArr.some((s) => s.id === 'kagero-destroyer-lookout-test'),
     );
     check(
+      'cavalla-shokaku-philippine-sea scenario listed',
+      scArr.some((s) => s.id === 'cavalla-shokaku-philippine-sea'),
+    );
+    check(
       'deep-dc-test scenario listed',
       scArr.some((s) => s.id === 'deep-dc-test'),
     );
@@ -3074,6 +3078,167 @@ async function main() {
         'kagero peri paints destroyer class + kagero plate',
         Array.isArray(kgPeriContacts) &&
           kgPeriContacts.some(
+            (c) => c.silhouetteClass === 'Destroyer' && c.silhouettePlate === 'kagero',
+          ),
+      );
+    }
+
+    {
+      const psGame = await api('POST', '/api/games', {
+        scenarioId: 'cavalla-shokaku-philippine-sea',
+        name: 'Verify Cavalla × Shōkaku',
+      });
+      check('cavalla-shokaku scenario create', psGame.status === 200);
+      const psId = String(psGame.json.gameId);
+      const psUmp = await api('POST', `/api/games/${psId}/auth/umpire`, {
+        password: 'umpire',
+      });
+      const psUTok = String(psUmp.json.token);
+      const psView = await api('GET', `/api/games/${psId}/view`, undefined, psUTok);
+      const psUmpireView = psView.json.view as {
+        units?: Array<{
+          id: string;
+          name?: string;
+          class?: string;
+          classId?: string;
+          faction?: string;
+          heading?: number;
+          speed?: number;
+          lengthM?: number;
+          beamM?: number;
+          maxSpeed?: number;
+          turnRate?: number;
+          radarSignature?: string;
+          accessToken?: string;
+          position?: { lat: number; lon: number; depth: number };
+        }>;
+        vesselLinks?: Array<{
+          unitId: string;
+          playerVessel?: boolean;
+          stations?: unknown[];
+          accessToken?: string;
+        }>;
+        turn?: { gameTimeSeconds?: number };
+      };
+      check(
+        'cavalla-shokaku clock starts ~11:00',
+        psUmpireView.turn?.gameTimeSeconds === 39600,
+      );
+      const psUnits = psUmpireView.units ?? [];
+      const cv = psUnits.find((u) => u.id === 'cv-shokaku');
+      const dd = psUnits.find((u) => u.id === 'dd-urakaze');
+      const ss = psUnits.find((u) => u.id === 'ss-cavalla');
+      check('philippine-sea shokaku present', Boolean(cv));
+      check('philippine-sea urakaze present', Boolean(dd));
+      check('philippine-sea cavalla present', Boolean(ss));
+      check(
+        'philippine-sea shokaku NPC SE-bound seed',
+        cv?.class === 'Aircraft Carrier' &&
+          cv.classId === 'shokaku-class' &&
+          cv.faction === 'Red' &&
+          cv.heading === 135 &&
+          cv.speed === 18 &&
+          cv.lengthM === 258 &&
+          cv.beamM === 26 &&
+          cv.maxSpeed === 34 &&
+          !cv.accessToken,
+      );
+      check(
+        'philippine-sea urakaze playable Kagerō seed',
+        dd?.class === 'Destroyer' &&
+          dd.classId === 'kagero-class' &&
+          dd.faction === 'Red' &&
+          dd.name === 'Urakaze' &&
+          dd.heading === 135 &&
+          dd.lengthM === 119 &&
+          dd.beamM === 11 &&
+          dd.maxSpeed === 35 &&
+          Boolean(dd.accessToken),
+      );
+      check(
+        'philippine-sea cavalla playable Gato at PD',
+        ss?.class === 'Fleet Submarine' &&
+          ss.classId === 'gato-class' &&
+          ss.faction === 'Blue' &&
+          ss.name === 'USS Cavalla' &&
+          ss.heading === 45 &&
+          ss.position?.depth === 18 &&
+          Boolean(ss.accessToken),
+      );
+      {
+        const psSave = runtime.requireGame(psId);
+        const cvUnit = psSave.units.find((u) => u.id === 'cv-shokaku')!;
+        const ddUnit = psSave.units.find((u) => u.id === 'dd-urakaze')!;
+        const ssUnit = psSave.units.find((u) => u.id === 'ss-cavalla')!;
+        check(
+          'philippine-sea shokaku not player hull',
+          !isV1PlayerHullClass(cvUnit.class) && !isV1PlayerUnit(cvUnit),
+        );
+        check(
+          'philippine-sea urakaze is player Destroyer',
+          isV1PlayerHullClass(ddUnit.class) &&
+            isV1PlayerUnit(ddUnit) &&
+            ddUnit.class === 'Destroyer',
+        );
+        check(
+          'philippine-sea cavalla is player Fleet Submarine',
+          isV1PlayerHullClass(ssUnit.class) &&
+            isV1PlayerUnit(ssUnit) &&
+            ssUnit.class === 'Fleet Submarine',
+        );
+      }
+      const psLinks = psUmpireView.vesselLinks ?? [];
+      const cvLink = psLinks.find((l) => l.unitId === 'cv-shokaku');
+      const ddLink = psLinks.find((l) => l.unitId === 'dd-urakaze');
+      const ssLink = psLinks.find((l) => l.unitId === 'ss-cavalla');
+      check(
+        'philippine-sea shokaku link non-player',
+        cvLink?.playerVessel === false &&
+          Array.isArray(cvLink.stations) &&
+          cvLink.stations.length === 0,
+      );
+      check(
+        'philippine-sea urakaze link playable',
+        ddLink?.playerVessel === true &&
+          Array.isArray(ddLink.stations) &&
+          (ddLink.stations as unknown[]).length === 2,
+      );
+      check(
+        'philippine-sea cavalla link playable',
+        ssLink?.playerVessel === true &&
+          Array.isArray(ssLink.stations) &&
+          (ssLink.stations as unknown[]).length === 2,
+      );
+
+      const ddAuth = await api('POST', `/api/games/${psId}/auth/vessel`, {
+        accessToken: 'urakaze-demo',
+        password: 'red',
+        stationId: 'controls',
+      });
+      check('philippine-sea urakaze controls auth', ddAuth.status === 200);
+
+      const ssAuth = await api('POST', `/api/games/${psId}/auth/vessel`, {
+        accessToken: 'cavalla-demo',
+        password: 'blue',
+        stationId: 'sensors',
+      });
+      check('philippine-sea cavalla sensors auth', ssAuth.status === 200);
+      const ssTok = String(ssAuth.json.token);
+      const raisePsPeri = await api(
+        'POST',
+        `/api/games/${psId}/periscope`,
+        { raised: true },
+        ssTok,
+      );
+      check('philippine-sea raise cavalla periscope', raisePsPeri.status === 200);
+      const periView = await api('GET', `/api/games/${psId}/view`, undefined, ssTok);
+      const periContacts = (periView.json.view as { periscopeContacts?: Array<Json> })
+        .periscopeContacts;
+      check(
+        'philippine-sea peri sees carrier + kagero escort',
+        Array.isArray(periContacts) &&
+          periContacts.some((c) => c.silhouetteClass === 'Aircraft Carrier') &&
+          periContacts.some(
             (c) => c.silhouetteClass === 'Destroyer' && c.silhouettePlate === 'kagero',
           ),
       );
