@@ -5270,6 +5270,126 @@ async function main() {
 
     await api('DELETE', `/api/saves/${dcId}`);
 
+    // Umpire optional AAR turn notes (persisted on history snapshots).
+    {
+      const noteGame = await api('POST', '/api/games', {
+        scenarioId: 'destroyer-sub-demo',
+        name: 'Verify AAR Turn Notes',
+      });
+      check('turn-note game create', noteGame.status === 200);
+      const noteId = String(noteGame.json.gameId);
+      const noteAuth = await api('POST', `/api/games/${noteId}/auth/umpire`, {
+        password: 'umpire',
+      });
+      check('turn-note umpire auth', noteAuth.status === 200);
+      const noteTok = String(noteAuth.json.token);
+
+      const beforeResolve = await api('POST', `/api/games/${noteId}/turn-notes`, {
+        turnNumber: 1,
+        note: 'too early',
+      }, noteTok);
+      check(
+        'turn-note rejects unresolved turn',
+        beforeResolve.status === 404,
+        `status=${beforeResolve.status}`,
+      );
+
+      await api('POST', `/api/games/${noteId}/turn/lock`, {}, noteTok);
+      await api('POST', `/api/games/${noteId}/turn/resolve`, {}, noteTok);
+
+      const badBody = await api('POST', `/api/games/${noteId}/turn-notes`, {}, noteTok);
+      check('turn-note requires turnNumber', badBody.status === 400);
+
+      const setNote = await api(
+        'POST',
+        `/api/games/${noteId}/turn-notes`,
+        { turnNumber: 1, note: '  DD swept north; sub likely deep  ' },
+        noteTok,
+      );
+      check(
+        'turn-note set ok',
+        setNote.status === 200 &&
+          setNote.json.ok === true &&
+          setNote.json.umpireNote === 'DD swept north; sub likely deep',
+        `body=${JSON.stringify(setNote.json)}`,
+      );
+
+      const vesselAuth = await api('POST', `/api/games/${noteId}/auth/vessel`, {
+        accessToken: 'porter-demo',
+        password: 'blue',
+        stationId: 'controls',
+      });
+      const vesselTok = String(vesselAuth.json.token);
+      const vesselDenied = await api(
+        'POST',
+        `/api/games/${noteId}/turn-notes`,
+        { turnNumber: 1, note: 'crew should not write this' },
+        vesselTok,
+      );
+      check('turn-note rejects vessel token', vesselDenied.status === 403 || vesselDenied.status === 401);
+
+      const viewWithNote = await api('GET', `/api/games/${noteId}/view`, undefined, noteTok);
+      const noteSnaps =
+        (
+          viewWithNote.json.view as {
+            historySnapshots?: Array<{ turnNumber: number; umpireNote?: string }>;
+          }
+        ).historySnapshots ?? [];
+      const snap1 = noteSnaps.find((h) => h.turnNumber === 1);
+      check(
+        'umpireNote surfaces on historySnapshots',
+        snap1?.umpireNote === 'DD swept north; sub likely deep',
+        `snap=${JSON.stringify(snap1)}`,
+      );
+
+      // Persist + reload (setTurnNote disk-writes; no separate Save required).
+      await api('POST', `/api/saves/${noteId}/load`);
+      const noteAuth2 = await api('POST', `/api/games/${noteId}/auth/umpire`, {
+        password: 'umpire',
+      });
+      const noteTok2 = String(noteAuth2.json.token);
+      const reloaded = await api('GET', `/api/games/${noteId}/view`, undefined, noteTok2);
+      const reloadedSnap = (
+        (
+          reloaded.json.view as {
+            historySnapshots?: Array<{ turnNumber: number; umpireNote?: string }>;
+          }
+        ).historySnapshots ?? []
+      ).find((h) => h.turnNumber === 1);
+      check(
+        'umpireNote survives disk reload without separate Save',
+        reloadedSnap?.umpireNote === 'DD swept north; sub likely deep',
+        `snap=${JSON.stringify(reloadedSnap)}`,
+      );
+
+      const cleared = await api(
+        'POST',
+        `/api/games/${noteId}/turn-notes`,
+        { turnNumber: 1, note: '   ' },
+        noteTok2,
+      );
+      check(
+        'empty turn-note clears field',
+        cleared.status === 200 && cleared.json.umpireNote === '',
+        `body=${JSON.stringify(cleared.json)}`,
+      );
+      const afterClear = await api('GET', `/api/games/${noteId}/view`, undefined, noteTok2);
+      const clearedSnap = (
+        (
+          afterClear.json.view as {
+            historySnapshots?: Array<{ turnNumber: number; umpireNote?: string }>;
+          }
+        ).historySnapshots ?? []
+      ).find((h) => h.turnNumber === 1);
+      check(
+        'cleared umpireNote omitted from snapshot',
+        clearedSnap != null && clearedSnap.umpireNote === undefined,
+        `snap=${JSON.stringify(clearedSnap)}`,
+      );
+
+      await api('DELETE', `/api/saves/${noteId}`);
+    }
+
     // Dedicated DC reload-completion / rearm game (keeps audio game's detonations intact).
     {
       const reloadGame = await api('POST', '/api/games', {

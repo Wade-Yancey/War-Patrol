@@ -86,6 +86,14 @@ function AarTurnScrubberInner({
             ZULU {clock}
           </span>
         )}
+        {reviewing && activeSnap?.umpireNote && (
+          <span
+            className="aar-mode-pill aar-mode-pill--note"
+            title={activeSnap.umpireNote}
+          >
+            NOTE
+          </span>
+        )}
       </div>
 
       <div className="aar-scrubber-controls">
