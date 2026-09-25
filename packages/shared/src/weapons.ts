@@ -1,5 +1,5 @@
 /**
- * Torpedo + depth-charge + aircraft-attack combat model (v1).
+ * Torpedo + depth-charge + deck-gun + aircraft-attack combat model (v1).
  *
  * Torpedo hits are geometry-first: closest approach within a hull-breadth
  * gate using real length/beam, then scaled by how accurately the operator
@@ -7,6 +7,9 @@
  * adds a small warhead dud chance — not the old 5–50% “did you hit” RNG table.
  * Fire headings come from the player's entered TDC solution (aim + course /
  * speed / range intercept) — never auto-filled from sim truth.
+ * Deck guns mirror that calculator language for surface engagement (DD +
+ * fleet sub when surfaced): same-turn shell impact from the entered solution,
+ * surface targets only, finite magazines per hull class.
  * Aircraft attacks are umpire-ordered intercept / strafe / bombing runs that resolve
  * on turn advance from CPA geometry (depth-charge-like bands).
  * See docs/simulation-physics.md in the project store.
@@ -20,6 +23,7 @@ import {
   bearingRangeNm,
   clamp,
   eastNorthMeters,
+  lerpLatLonDepth,
   moveAlongHeading,
   normalizeHeading,
 } from './geo.js';
@@ -28,6 +32,8 @@ import { PERISCOPE_DEPTH_M } from './periscope.js';
 import type {
   AircraftAttackMode,
   CombatLogEntry,
+  DeckGunFireBlock,
+  DeckGunFireOrder,
   DepthChargePattern,
   DepthChargeTrack,
   HullClass,
@@ -354,6 +360,47 @@ export const DEPTH_CHARGE_PATTERN_OFFSETS: Record<
 
 /** Min firer move (nm) before drops space along the track vs heading fan. */
 export const DEPTH_CHARGE_TRACK_SPREAD_MIN_NM = 0.04;
+
+// --- Deck gun (destroyer 5"/38–ish + fleet-sub 4"/50–ish surface fire) ---
+
+/**
+ * Shell speed for intercept lead (kn). Far faster than hulls / fish so time of
+ * flight is short vs a 3-min turn — lead still matters at longer ranges.
+ */
+export const DECK_GUN_SHELL_SPEED_KN = 800;
+
+/**
+ * Practical max surface engagement range (nm). Fletcher 5"/38 can go farther;
+ * museum stub keeps shots inside a playable plot band.
+ */
+export const DECK_GUN_MAX_RANGE_NM = 8;
+
+/** Fletcher / Kagerō ready magazine (finite; depletes one shell per fire). */
+export const DESTROYER_DECK_GUN_LOAD = 40;
+
+/** Gato / fleet-sub ready magazine (smaller than DD). */
+export const FLEET_SUB_DECK_GUN_LOAD = 20;
+
+/**
+ * Resolved turns after Reload before the deck gun can fire again.
+ * Faster than tube/rack reload ({@link TORPEDO_RELOAD_TURNS}) — gun crew pace.
+ */
+export const DECK_GUN_RELOAD_TURNS = 2;
+
+/**
+ * Horizontal miss pad (m) added to projected half-breadth for a geometric hit.
+ * Slightly more forgiving than torpedo pad — gun splash / spotting feel.
+ */
+export const DECK_GUN_HIT_GATE_PAD_M = 12;
+
+/** Upper clamp on deck-gun hit gate (m) — same wide ceiling as torpedo. */
+export const DECK_GUN_HIT_GATE_MAX_M = 90;
+
+/** Base HP applied on a successful deck-gun hit (museum-scale; below torpedo). */
+export const DECK_GUN_HIT_DAMAGE = 14;
+
+/** Umpire / crew near-miss band for shell CPA (m). */
+export const DECK_GUN_NEAR_MISS_M = 80;
 
 /**
  * Along-track release fractions in [0, 1] from move start→end for a pattern.
@@ -721,6 +768,13 @@ export function defaultTorpedoRooms(
 
 export function defaultDepthChargeLoad(unit: Pick<UnitState, 'class' | 'type'>): number {
   if (unit.class === 'Destroyer') return DESTROYER_DEPTH_CHARGE_LOAD;
+  return 0;
+}
+
+/** Full deck-gun magazine for DD / fleet sub (0 for other hulls). */
+export function defaultDeckGunLoad(unit: Pick<UnitState, 'class' | 'type'>): number {
+  if (unit.class === 'Destroyer') return DESTROYER_DECK_GUN_LOAD;
+  if (isFleetSubTorpedoHull(unit)) return FLEET_SUB_DECK_GUN_LOAD;
   return 0;
 }
 
@@ -1130,20 +1184,157 @@ export function rearmDepthChargeRack(unit: UnitState): UnitState {
   };
 }
 
+export function isDeckGunHull(unit: Pick<UnitState, 'class' | 'type'>): boolean {
+  return unit.class === 'Destroyer' || isFleetSubTorpedoHull(unit);
+}
+
+/**
+ * Fleet-sub deck gun requires the boat surfaced / awash
+ * (keel depth ≤ {@link RADAR_SURFACE_DEPTH_M}). Destroyers always qualify.
+ */
+export function canDeckGunFireFromDepth(
+  unit: Pick<UnitState, 'type' | 'class' | 'position'>,
+): boolean {
+  if (!isDeckGunHull(unit)) return false;
+  if (unit.type !== 'Submarine') return true;
+  return unit.position.depth <= RADAR_SURFACE_DEPTH_M;
+}
+
+export function resolveDeckGunMagazineState(
+  unit: Pick<UnitState, 'class' | 'type'> &
+    Partial<
+      Pick<
+        UnitState,
+        | 'deckGunLoad'
+        | 'deckGunAwaitingReload'
+        | 'deckGunReloadTurnsRemaining'
+      >
+    >,
+): Pick<
+  UnitState,
+  'deckGunLoad' | 'deckGunAwaitingReload' | 'deckGunReloadTurnsRemaining'
+> {
+  if (!isDeckGunHull(unit)) {
+    return {
+      deckGunLoad: 0,
+      deckGunAwaitingReload: false,
+      deckGunReloadTurnsRemaining: 0,
+    };
+  }
+  const capacity = defaultDeckGunLoad(unit);
+  const load =
+    typeof unit.deckGunLoad === 'number'
+      ? Math.min(capacity, Math.max(0, Math.floor(unit.deckGunLoad)))
+      : capacity;
+  return {
+    deckGunLoad: load,
+    deckGunAwaitingReload: Boolean(unit.deckGunAwaitingReload),
+    deckGunReloadTurnsRemaining: Math.max(
+      0,
+      Math.floor(Number(unit.deckGunReloadTurnsRemaining) || 0),
+    ),
+  };
+}
+
+export function canFireDeckGun(
+  unit: Pick<
+    UnitState,
+    | 'class'
+    | 'type'
+    | 'condition'
+    | 'position'
+    | 'deckGunLoad'
+    | 'deckGunAwaitingReload'
+    | 'deckGunReloadTurnsRemaining'
+  >,
+): boolean {
+  if (!isDeckGunHull(unit)) return false;
+  if (unit.condition === 'sunk') return false;
+  if (!canDeckGunFireFromDepth(unit)) return false;
+  if (unit.deckGunAwaitingReload) return false;
+  if ((unit.deckGunReloadTurnsRemaining ?? 0) > 0) return false;
+  return (unit.deckGunLoad ?? 0) > 0;
+}
+
+export function consumeDeckGunShell(unit: UnitState): UnitState {
+  if (!isDeckGunHull(unit)) return unit;
+  const next = Math.max(0, (unit.deckGunLoad ?? 0) - 1);
+  return {
+    ...unit,
+    deckGunLoad: next,
+    deckGunAwaitingReload: true,
+  };
+}
+
+export function startDeckGunReload(
+  unit: UnitState,
+): { ok: true; unit: UnitState } | { ok: false; error: string } {
+  if (!isDeckGunHull(unit)) {
+    return { ok: false, error: 'Only destroyers and fleet subs have a deck gun' };
+  }
+  if (unit.condition === 'sunk') {
+    return { ok: false, error: 'Unit sunk — deck gun offline' };
+  }
+  if (!unit.deckGunAwaitingReload) {
+    return { ok: false, error: 'Deck gun is not awaiting reload' };
+  }
+  if ((unit.deckGunReloadTurnsRemaining ?? 0) > 0) {
+    return { ok: false, error: 'Reload already in progress' };
+  }
+  return {
+    ok: true,
+    unit: {
+      ...unit,
+      deckGunReloadTurnsRemaining: DECK_GUN_RELOAD_TURNS,
+    },
+  };
+}
+
+export function advanceDeckGunReloads(unit: UnitState): UnitState {
+  if (!isDeckGunHull(unit)) return unit;
+  const turns = Math.max(0, Math.floor(Number(unit.deckGunReloadTurnsRemaining) || 0));
+  if (turns <= 0) return unit;
+  const remaining = turns - 1;
+  return {
+    ...unit,
+    deckGunReloadTurnsRemaining: remaining,
+    ...(remaining === 0 ? { deckGunAwaitingReload: false } : {}),
+  };
+}
+
+/** Umpire fiat: full deck-gun magazine; clear reload state. */
+export function rearmDeckGun(unit: UnitState): UnitState {
+  if (!isDeckGunHull(unit)) {
+    return {
+      ...unit,
+      deckGunLoad: 0,
+      deckGunAwaitingReload: false,
+      deckGunReloadTurnsRemaining: 0,
+    };
+  }
+  return {
+    ...unit,
+    deckGunLoad: defaultDeckGunLoad(unit),
+    deckGunAwaitingReload: false,
+    deckGunReloadTurnsRemaining: 0,
+  };
+}
+
 /**
  * Umpire one-click rearm: restores class-appropriate magazines
- * (torpedo rooms and/or DC rack) and clears reload timers.
+ * (torpedo rooms and/or DC rack and/or deck gun) and clears reload timers.
  */
 export function rearmUnitWeapons(unit: UnitState): UnitState {
   let next = rearmTorpedoRooms(unit);
   next = rearmDepthChargeRack(next);
   next = rearmBombLoad(next);
+  next = rearmDeckGun(next);
   return next;
 }
 
 /** Tick all weapon reload countdowns once per resolve. */
 export function advanceWeaponReloads(unit: UnitState): UnitState {
-  return advanceDepthChargeReloads(advanceTorpedoRoomReloads(unit));
+  return advanceDeckGunReloads(advanceDepthChargeReloads(advanceTorpedoRoomReloads(unit)));
 }
 
 /** Deterministic 0–1 from string seed. */
@@ -1855,7 +2046,203 @@ export function isDepthChargeTarget(unit: UnitState): boolean {
   return unit.position.depth > RADAR_SURFACE_DEPTH_M;
 }
 
+/** Surface ships + surfaced/awash subs — deck gun cannot usefully engage submerged boats. */
+export function isDeckGunTarget(unit: UnitState): boolean {
+  return isTorpedoTarget(unit);
+}
+
+export function clampDeckGunRangeNm(rangeNm: number): number {
+  return clamp(Number(rangeNm) || 0, 0, DECK_GUN_MAX_RANGE_NM);
+}
+
+export function normalizeDeckGunFireOrder(raw: DeckGunFireOrder): DeckGunFireOrder {
+  return {
+    aimHeading: normalizeHeading(raw.aimHeading),
+    estimatedCourse: normalizeHeading(raw.estimatedCourse),
+    estimatedSpeedKn: Math.max(0, Number(raw.estimatedSpeedKn) || 0),
+    estimatedRangeNm: Math.max(0, Number(raw.estimatedRangeNm) || 0),
+  };
+}
+
+export function buildDeckGunFireBlock(
+  turnNumber: number,
+  depthM: number,
+): DeckGunFireBlock {
+  return {
+    turnNumber,
+    reason: 'submerged',
+    depthM: Math.max(0, Number(depthM) || 0),
+  };
+}
+
+export function formatDeckGunFireBlockNotice(block: DeckGunFireBlock): string {
+  const depth = Math.round(block.depthM);
+  return (
+    `Turn ${block.turnNumber}: Deck gun did not fire — boat at ${depth} m ` +
+    `(must be surfaced / awash ≤ ${RADAR_SURFACE_DEPTH_M} m). No shell expended.`
+  );
+}
+
+export function deckGunMissBand(missM: number): 'near' | 'far' {
+  return Math.max(0, missM) <= DECK_GUN_NEAR_MISS_M ? 'near' : 'far';
+}
+
+/**
+ * Hit gate from true hull breadth × aspect (no length-ID scale — gun fire
+ * does not use recognition-manual length the way torpedoes do).
+ */
+export function deckGunHitGateM(lengthM: number, beamM: number, aspectDeg: number): number {
+  const half = torpedoHullHalfBreadthM(lengthM, beamM, aspectDeg);
+  return Math.min(DECK_GUN_HIT_GATE_MAX_M, half + DECK_GUN_HIT_GATE_PAD_M);
+}
+
+/**
+ * Compute fire heading + impact point from the player's entered solution.
+ * Impact lies along the fire heading at the clamped estimated range (nm).
+ * Shell TOF uses {@link DECK_GUN_SHELL_SPEED_KN} for intercept lead only.
+ */
+export function deckGunImpactFromSolution(opts: {
+  firerPosition: LatLonDepth;
+  aimHeading: number;
+  estimatedCourse: number;
+  estimatedSpeedKn: number;
+  estimatedRangeNm: number;
+}): {
+  fireHeading: number;
+  impact: LatLonDepth;
+  rangeNm: number;
+  interceptSec: number;
+  solvable: boolean;
+} {
+  const rangeNm = clampDeckGunRangeNm(opts.estimatedRangeNm);
+  const solution = torpedoFireHeadingFromSolution({
+    aimHeading: opts.aimHeading,
+    estimatedCourse: opts.estimatedCourse,
+    estimatedSpeedKn: opts.estimatedSpeedKn,
+    estimatedRangeNm: rangeNm,
+    torpedoSpeedKn: DECK_GUN_SHELL_SPEED_KN,
+  });
+  const fireHeading = solution.fireHeading;
+  const impact = moveAlongHeading(
+    { ...opts.firerPosition, depth: 0 },
+    fireHeading,
+    rangeNm * METERS_PER_NM,
+  );
+  return {
+    fireHeading,
+    impact: { ...impact, depth: 0 },
+    rangeNm,
+    interceptSec: solution.interceptSec,
+    solvable: solution.solvable,
+  };
+}
+
+export type DeckGunResolveInput = {
+  firer: UnitState;
+  fire: DeckGunFireOrder;
+  contacts: UnitState[];
+  /** Pre-kinematics positions for contact interpolation (optional). */
+  startPositions?: ReadonlyMap<string, LatLonDepth>;
+  turnLengthSeconds: number;
+  seed: string;
+};
+
+export type DeckGunResolveResult = {
+  outcome: 'hit' | 'miss' | 'out_of_range';
+  fireHeading: number;
+  impact: LatLonDepth;
+  rangeNm: number;
+  damage: number;
+  missDistanceM: number;
+  hitUnitId?: string;
+  closestApproachUnitId?: string;
+  closestApproachUnitName?: string;
+};
+
+/**
+ * Same-turn deck-gun resolution: impact from solution vs surface contacts.
+ * Nearest eligible contact within its aspect gate scores a hit; otherwise miss
+ * with CPA to the nearest surface hull (AAR / combat log).
+ */
+export function resolveDeckGunShot(input: DeckGunResolveInput): DeckGunResolveResult {
+  const fire = normalizeDeckGunFireOrder(input.fire);
+  const ballistics = deckGunImpactFromSolution({
+    firerPosition: input.firer.position,
+    aimHeading: fire.aimHeading,
+    estimatedCourse: fire.estimatedCourse,
+    estimatedSpeedKn: fire.estimatedSpeedKn,
+    estimatedRangeNm: fire.estimatedRangeNm,
+  });
+
+  if (!(fire.estimatedRangeNm > 0)) {
+    return {
+      outcome: 'out_of_range',
+      fireHeading: ballistics.fireHeading,
+      impact: ballistics.impact,
+      rangeNm: ballistics.rangeNm,
+      damage: 0,
+      missDistanceM: Number.POSITIVE_INFINITY,
+    };
+  }
+
+  const turnSec = Math.max(1, Number(input.turnLengthSeconds) || 180);
+  const flightT = clamp(ballistics.interceptSec / turnSec, 0, 1);
+
+  let bestMiss = Number.POSITIVE_INFINITY;
+  let bestId: string | undefined;
+  let bestName: string | undefined;
+  let hitId: string | undefined;
+  let hitMiss = Number.POSITIVE_INFINITY;
+
+  for (const contact of input.contacts) {
+    if (contact.id === input.firer.id) continue;
+    if (!isDeckGunTarget(contact)) continue;
+    const start = input.startPositions?.get(contact.id) ?? contact.position;
+    const end = contact.position;
+    const atFlight = lerpLatLonDepth(start, end, flightT);
+    const miss = horizontalMissMeters(ballistics.impact, atFlight);
+    if (miss < bestMiss) {
+      bestMiss = miss;
+      bestId = contact.id;
+      bestName = contact.name;
+    }
+    const { lengthM, beamM } = unitLengthBeam(contact);
+    const aspect = torpedoAspectAngleDeg(ballistics.fireHeading, contact.heading);
+    const gate = deckGunHitGateM(lengthM, beamM, aspect);
+    if (miss <= gate && miss < hitMiss) {
+      hitMiss = miss;
+      hitId = contact.id;
+    }
+  }
+
+  if (hitId) {
+    return {
+      outcome: 'hit',
+      fireHeading: ballistics.fireHeading,
+      impact: ballistics.impact,
+      rangeNm: ballistics.rangeNm,
+      damage: DECK_GUN_HIT_DAMAGE,
+      missDistanceM: hitMiss,
+      hitUnitId: hitId,
+      closestApproachUnitId: bestId,
+      closestApproachUnitName: bestName,
+    };
+  }
+
+  return {
+    outcome: bestId ? 'miss' : 'miss',
+    fireHeading: ballistics.fireHeading,
+    impact: ballistics.impact,
+    rangeNm: ballistics.rangeNm,
+    damage: 0,
+    missDistanceM: Number.isFinite(bestMiss) ? bestMiss : Number.POSITIVE_INFINITY,
+    closestApproachUnitId: bestId,
+    closestApproachUnitName: bestName,
+  };
+}
+
 // --- Aircraft attack runs (umpire intercept / strafe / bombing) ---
+
 
 /** Horizontal CPA (m) for a solid gun/bomb effect. */
 export const AIRCRAFT_ATTACK_HIT_M = 280;
@@ -2083,7 +2470,8 @@ export function presentationHealthFromUnrevealedDamage(
     if (
       (e.kind === 'depth_charge_damage' ||
         e.kind === 'torpedo_hit' ||
-        e.kind === 'aircraft_attack_damage') &&
+        e.kind === 'aircraft_attack_damage' ||
+        e.kind === 'deck_gun_hit') &&
       e.damage != null &&
       e.damage > 0
     ) {
@@ -2108,6 +2496,7 @@ export function buildOwnDamageLog(
       e.kind !== 'torpedo_hit' &&
       e.kind !== 'depth_charge_damage' &&
       e.kind !== 'aircraft_attack_damage' &&
+      e.kind !== 'deck_gun_hit' &&
       e.kind !== 'unit_sunk' &&
       e.kind !== 'hull_implosion' &&
       e.kind !== 'subsystem_casualty'
@@ -2131,6 +2520,10 @@ export function buildOwnDamageLog(
           e.damage != null
             ? `Air attack — −${e.damage} HP`
             : 'Air attack';
+        break;
+      case 'deck_gun_hit':
+        summary =
+          e.damage != null ? `Deck-gun hit — −${e.damage} HP` : 'Deck-gun hit';
         break;
       case 'unit_sunk':
         summary = 'Hull lost — sunk / destroyed';

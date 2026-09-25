@@ -9,6 +9,8 @@ import {
   advanceTorpedo,
   applyHealthDamageResult,
   healthDamageApplied,
+  buildDeckGunFireBlock,
+  canDeckGunFireFromDepth,
   canDropDepthCharges,
   canFireTorpedoFromRoom,
   clampDepthChargeSetting,
@@ -17,19 +19,25 @@ import {
   TORPEDO_DEFAULT_DEPTH_M,
   createDepthChargeTracks,
   createTorpedoTrack,
+  deckGunMissBand,
   depthChargePatternCount,
   formatCasualtySummary,
+  formatDeckGunFireBlockNotice,
+  formatTorpedoMissDistance,
   formatTorpedoMissLogSummary,
   horizontalMissMeters,
+  isDeckGunHull,
   isDepthChargeTarget,
   isTorpedoTarget,
   lerpLatLonDepth,
   makeDetonationEvent,
   torpedoHitAudioDelaySec,
   normalizeDepthChargePattern,
+  normalizeDeckGunFireOrder,
   normalizeHeading,
   normalizeTorpedoRoomId,
   recordTorpedoClosestApproach,
+  resolveDeckGunShot,
   resolveDepthChargeEffect,
   resolveTorpedoHit,
   segmentClosestPoint,
@@ -41,10 +49,12 @@ import {
   advanceWeaponReloads,
   consumeTorpedoRoom,
   consumeDepthChargeRack,
+  consumeDeckGunShell,
   torpedoRoomReady,
   type CasualtyEffect,
   type CombatLogEntry,
   type CombatLogKind,
+  type DeckGunFireOrder,
   type DepthChargeTrack,
   type LatLonDepth,
   type TorpedoTrack,
@@ -144,6 +154,7 @@ export function resolveWeaponsForTurn(
   // --- Launch from orders (consume load; clear weapon order fields after) ---
   const launchedFish: TorpedoTrack[] = [];
   const launchedCharges: DepthChargeTrack[] = [];
+  const pendingDeckGuns: Array<{ firerId: string; fire: DeckGunFireOrder }> = [];
 
   units = units.map((unit) => {
     let next = advanceWeaponReloads(unit);
@@ -269,12 +280,139 @@ export function resolveWeaponsForTurn(
       }
     }
 
-    if (next.orders.fireTorpedo || next.orders.dropDepthCharges) {
-      const { fireTorpedo: _f, dropDepthCharges: _d, ...rest } = next.orders;
+    if (
+      orders.fireDeckGun &&
+      isDeckGunHull(next) &&
+      (next.deckGunLoad ?? 0) > 0 &&
+      !next.deckGunAwaitingReload &&
+      (next.deckGunReloadTurnsRemaining ?? 0) <= 0
+    ) {
+      if (!canDeckGunFireFromDepth(next)) {
+        next = {
+          ...next,
+          deckGunFireBlock: buildDeckGunFireBlock(turnNumber, next.position.depth),
+        };
+        combatLogEntries.push(
+          logLine({
+            kind: 'deck_gun_fire',
+            turnNumber,
+            gameTimeSeconds,
+            actor: unit,
+            summary: `${unit.name} deck-gun order blocked — ${formatDeckGunFireBlockNotice({
+              turnNumber,
+              reason: 'submerged',
+              depthM: next.position.depth,
+            })}`,
+          }),
+        );
+      } else {
+        const fire = normalizeDeckGunFireOrder(orders.fireDeckGun);
+        next = consumeDeckGunShell(next);
+        if (next.deckGunFireBlock) {
+          const { deckGunFireBlock: _cleared, ...rest } = next;
+          next = rest as UnitState;
+        }
+        pendingDeckGuns.push({ firerId: unit.id, fire });
+        const aimLabel = String(Math.round(normalizeHeading(fire.aimHeading))).padStart(3, '0');
+        combatLogEntries.push(
+          logLine({
+            kind: 'deck_gun_fire',
+            turnNumber,
+            gameTimeSeconds,
+            actor: unit,
+            summary: `${unit.name} fired deck gun · aim ${aimLabel}° · est ${fire.estimatedRangeNm.toFixed(2)} nm · CRS ${String(Math.round(normalizeHeading(fire.estimatedCourse))).padStart(3, '0')}° · ${fire.estimatedSpeedKn.toFixed(1)} kn`,
+          }),
+        );
+      }
+    }
+
+    if (next.orders.fireTorpedo || next.orders.dropDepthCharges || next.orders.fireDeckGun) {
+      const {
+        fireTorpedo: _f,
+        dropDepthCharges: _d,
+        fireDeckGun: _g,
+        ...rest
+      } = next.orders;
       next = { ...next, orders: rest };
     }
     return next;
   });
+
+  // --- Deck gun impacts (same-turn; no persistent shell tracks) ---
+  if (pendingDeckGuns.length) {
+    for (const pending of pendingDeckGuns) {
+      const firer = units.find((u) => u.id === pending.firerId);
+      if (!firer) continue;
+      const result = resolveDeckGunShot({
+        firer,
+        fire: pending.fire,
+        contacts: units,
+        startPositions,
+        turnLengthSeconds,
+        seed: `${firer.id}|deckgun|${turnNumber}`,
+      });
+      const fireLabel = String(Math.round(normalizeHeading(result.fireHeading))).padStart(3, '0');
+      if (result.outcome === 'hit' && result.hitUnitId && result.damage > 0) {
+        const target = units.find((u) => u.id === result.hitUnitId);
+        if (target) {
+          const { unit: damaged, effects } = applyHealthDamageResult(target, result.damage);
+          const applied = healthDamageApplied(target, damaged);
+          units = units.map((u) => (u.id === damaged.id ? damaged : u));
+          if (applied > 0) {
+            combatLogEntries.push(
+              logLine({
+                kind: 'deck_gun_hit',
+                turnNumber,
+                gameTimeSeconds,
+                actor: firer,
+                target: damaged,
+                damage: applied,
+                summary: `${firer.name} deck gun HIT ${target.name} −${applied} HP (FIRE ${fireLabel}° · miss ${result.missDistanceM.toFixed(0)} m)`,
+              }),
+            );
+            combatLogEntries.push(
+              ...logCasualtyEffects(damaged, effects, {
+                turnNumber,
+                gameTimeSeconds,
+                actor: firer,
+              }),
+            );
+            if (damaged.condition === 'sunk') {
+              combatLogEntries.push(
+                logLine({
+                  kind: 'unit_sunk',
+                  turnNumber,
+                  gameTimeSeconds,
+                  target: damaged,
+                  actor: firer,
+                  summary: `${damaged.name} SUNK / destroyed`,
+                }),
+              );
+            }
+          }
+        }
+      } else {
+        const cpaLabel =
+          result.closestApproachUnitName && Number.isFinite(result.missDistanceM)
+            ? ` — CPA ${result.closestApproachUnitName} ${formatTorpedoMissDistance(result.missDistanceM)} (${deckGunMissBand(result.missDistanceM)} miss)`
+            : result.outcome === 'out_of_range'
+              ? ' — no range solution'
+              : ' — no surface target in gate';
+        combatLogEntries.push(
+          logLine({
+            kind: 'deck_gun_miss',
+            turnNumber,
+            gameTimeSeconds,
+            actor: firer,
+            target: result.closestApproachUnitId
+              ? units.find((u) => u.id === result.closestApproachUnitId)
+              : undefined,
+            summary: `${firer.name} deck gun MISS (FIRE ${fireLabel}°)${cpaLabel}`,
+          }),
+        );
+      }
+    }
+  }
 
   // --- Aircraft attack runs (CPA along this turn's path; no persistent tracks) ---
   const aircraftDetonations: WeaponDetonationEvent[] = [];

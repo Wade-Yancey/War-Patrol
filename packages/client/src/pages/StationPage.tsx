@@ -16,6 +16,7 @@ import {
   normalizeHeading,
   torpedoHitControlsGain,
   type DepthChargeDropOrder,
+  type DeckGunFireOrder,
   type EotSetting,
   type TorpedoFireOrder,
   type VesselView,
@@ -35,6 +36,7 @@ import { RadarScope } from '../components/RadarScope';
 import { ActiveSonarScope } from '../components/ActiveSonarScope';
 import { TorpedoCalculator } from '../components/TorpedoCalculator';
 import { DepthChargeControls } from '../components/DepthChargeControls';
+import { DeckGunControls } from '../components/DeckGunControls';
 import { DamageReportPanel } from '../components/DamageReportPanel';
 import { useAudioSyncedDamageReport } from '../hooks/useAudioSyncedDamageReport';
 import { resolveSunkCause, SunkModal } from '../components/SunkModal';
@@ -149,6 +151,11 @@ export function StationPage() {
   const canTorpedo =
     canWeapons && (vessel?.unit.type === 'Submarine' || caps.has('torpedo'));
   const canDepthCharges = canWeapons && vessel?.unit.class === 'Destroyer';
+  const canDeckGun =
+    canWeapons &&
+    (vessel?.unit.class === 'Destroyer' ||
+      vessel?.unit.class === 'Fleet Submarine' ||
+      vessel?.unit.type === 'Submarine');
   /** Surface ships use lookout (always available); subs use depth-gated periscope. */
   const opticsVariant: 'periscope' | 'lookout' =
     vessel?.unit.type === 'Submarine' ? 'periscope' : 'lookout';
@@ -671,6 +678,7 @@ export function StationPage() {
       depth?: number;
       fireTorpedo?: TorpedoFireOrder | null;
       dropDepthCharges?: DepthChargeDropOrder | null;
+      fireDeckGun?: DeckGunFireOrder | null;
     },
   ) => {
     if (!token) return;
@@ -729,6 +737,19 @@ export function StationPage() {
       await api.startDepthChargeReload(gameId, token);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Depth-charge reload failed');
+    } finally {
+      setWeaponReloadBusy(false);
+    }
+  };
+
+  const reloadDeckGun = async () => {
+    if (!token) return;
+    setActionError(null);
+    setWeaponReloadBusy(true);
+    try {
+      await api.startDeckGunReload(gameId, token);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Deck-gun reload failed');
     } finally {
       setWeaponReloadBusy(false);
     }
@@ -1284,7 +1305,7 @@ export function StationPage() {
                   Dive Plane
                 </button>
               )}
-              {(canTorpedo || canDepthCharges) && (
+              {(canTorpedo || canDepthCharges || canDeckGun) && (
                 <button
                   type="button"
                   role="tab"
@@ -1364,7 +1385,7 @@ export function StationPage() {
               </section>
             )}
 
-            {controlsTab === 'weapons' && (canTorpedo || canDepthCharges) && (
+            {controlsTab === 'weapons' && (canTorpedo || canDepthCharges || canDeckGun) && (
               <>
                 {canTorpedo && (
                   <TorpedoCalculator
@@ -1388,6 +1409,24 @@ export function StationPage() {
                     onSubmit={(fireTorpedo) => void submit({ fireTorpedo })}
                     onClear={() => void submit({ fireTorpedo: null })}
                     onReload={(room) => void reloadTorpedoRoom(room)}
+                  />
+                )}
+                {canDeckGun && (
+                  <DeckGunControls
+                    ownHeading={vessel.unit.heading}
+                    vesselType={vessel.unit.type}
+                    hullClass={vessel.unit.class}
+                    keelDepthM={vessel.unit.position.depth}
+                    deckGunLoad={vessel.unit.deckGunLoad ?? 0}
+                    awaitingReload={Boolean(vessel.unit.deckGunAwaitingReload)}
+                    reloadTurnsRemaining={vessel.unit.deckGunReloadTurnsRemaining ?? 0}
+                    pending={vessel.unit.orders.fireDeckGun}
+                    fireBlock={vessel.unit.deckGunFireBlock}
+                    disabled={!vessel.canSubmitOrders}
+                    reloadBusy={weaponReloadBusy}
+                    onSubmit={(fireDeckGun) => void submit({ fireDeckGun })}
+                    onClear={() => void submit({ fireDeckGun: null })}
+                    onReload={() => void reloadDeckGun()}
                   />
                 )}
                 {canDepthCharges && (
@@ -1513,15 +1552,19 @@ export function StationPage() {
                           <td className="readout">{formatCoarseDepthMeters(vessel.unit.position.depth)}</td>
                         </tr>
                       )}
-                      {(canTorpedo || canDepthCharges) && (
+                      {(canTorpedo || canDepthCharges || canDeckGun) && (
                         <tr>
                           <th>Ordnance</th>
                           <td className="readout">
-                            {canTorpedo
-                              ? `TORP F${vessel.unit.torpedoForward ?? 0}/A${vessel.unit.torpedoAft ?? 0}`
-                              : ''}
-                            {canTorpedo && canDepthCharges ? ' · ' : ''}
-                            {canDepthCharges ? `DC ${vessel.unit.depthChargeLoad ?? 0}` : ''}
+                            {[
+                              canTorpedo
+                                ? `TORP F${vessel.unit.torpedoForward ?? 0}/A${vessel.unit.torpedoAft ?? 0}`
+                                : null,
+                              canDeckGun ? `GUN ${vessel.unit.deckGunLoad ?? 0}` : null,
+                              canDepthCharges ? `DC ${vessel.unit.depthChargeLoad ?? 0}` : null,
+                            ]
+                              .filter(Boolean)
+                              .join(' · ')}
                           </td>
                         </tr>
                       )}

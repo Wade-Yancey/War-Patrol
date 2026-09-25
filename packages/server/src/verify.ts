@@ -2221,6 +2221,19 @@ async function main() {
       resolveSubsystems,
       PROPULSION_DAMAGED_SPEED_FACTOR,
       DEPTH_CHARGE_DAMAGE_AMOUNT,
+      DESTROYER_DECK_GUN_LOAD,
+      FLEET_SUB_DECK_GUN_LOAD,
+      DECK_GUN_HIT_DAMAGE,
+      DECK_GUN_MAX_RANGE_NM,
+      DECK_GUN_RELOAD_TURNS,
+      defaultDeckGunLoad,
+      canDeckGunFireFromDepth,
+      canFireDeckGun,
+      resolveDeckGunShot,
+      deckGunImpactFromSolution,
+      deckGunHitGateM,
+      deckGunMissBand,
+      RADAR_SURFACE_DEPTH_M,
     } = await import('@war-patrol/shared');
     check('beam aspect dud ~2%', Math.abs(torpedoDudPctFromAspect(90) - 2) < 0.01);
     check('end-on dud ~10%', Math.abs(torpedoDudPctFromAspect(0) - 10) < 0.01);
@@ -2245,6 +2258,133 @@ async function main() {
       'torpedo audio delay preserves short turns',
       Math.abs(torpedoHitAudioDelaySec(5, 0, 60) - 30) < 0.01,
     );
+
+    // --- Deck gun magazines + geometry + surface gate ---
+    check('DD deck gun load 40', defaultDeckGunLoad({ class: 'Destroyer', type: 'Ship' }) === DESTROYER_DECK_GUN_LOAD);
+    check(
+      'fleet sub deck gun load 20',
+      defaultDeckGunLoad({ class: 'Fleet Submarine', type: 'Submarine' }) === FLEET_SUB_DECK_GUN_LOAD,
+    );
+    check('deck gun max range 8 nm', DECK_GUN_MAX_RANGE_NM === 8);
+    check('deck gun reload 2 turns', DECK_GUN_RELOAD_TURNS === 2);
+    check('deck gun hit damage 14', DECK_GUN_HIT_DAMAGE === 14);
+    check(
+      'sub deck gun ok at surface',
+      canDeckGunFireFromDepth({
+        type: 'Submarine',
+        class: 'Fleet Submarine',
+        position: { lat: 0, lon: 0, depth: 0 },
+      }),
+    );
+    check(
+      'sub deck gun blocked when submerged',
+      !canDeckGunFireFromDepth({
+        type: 'Submarine',
+        class: 'Fleet Submarine',
+        position: { lat: 0, lon: 0, depth: RADAR_SURFACE_DEPTH_M + 1 },
+      }),
+    );
+    check(
+      'DD deck gun always depth-ok',
+      canDeckGunFireFromDepth({
+        type: 'Ship',
+        class: 'Destroyer',
+        position: { lat: 0, lon: 0, depth: 0 },
+      }),
+    );
+    {
+      const beamGate = deckGunHitGateM(115, 12, 90);
+      check('deck gun Fletcher beam gate > 50 m', beamGate > 50);
+      const stationary = deckGunImpactFromSolution({
+        firerPosition: { lat: 34.4, lon: -120.0, depth: 0 },
+        aimHeading: 0,
+        estimatedCourse: 90,
+        estimatedSpeedKn: 0,
+        estimatedRangeNm: 1.5,
+      });
+      check(
+        'deck gun stationary fire = aim',
+        Math.abs(stationary.fireHeading - 0) < 0.01,
+      );
+      const firer = {
+        id: 'gunner',
+        name: 'Gunner',
+        type: 'Ship' as const,
+        class: 'Destroyer' as const,
+        position: { lat: 34.4, lon: -120.0, depth: 0 },
+        heading: 90,
+        speed: 0,
+        condition: 'afloat' as const,
+        health: 100,
+      };
+      const target = {
+        id: 'tgt',
+        name: 'Target',
+        type: 'Ship' as const,
+        class: 'Destroyer' as const,
+        position: { lat: 34.4 + 1.5 / 60, lon: -120.0, depth: 0 },
+        heading: 90,
+        speed: 0,
+        condition: 'afloat' as const,
+        health: 100,
+        lengthM: 115,
+        beamM: 12,
+      };
+      const hit = resolveDeckGunShot({
+        firer: firer as never,
+        fire: {
+          aimHeading: 0,
+          estimatedCourse: 90,
+          estimatedSpeedKn: 0,
+          estimatedRangeNm: 1.5,
+        },
+        contacts: [firer as never, target as never],
+        turnLengthSeconds: 180,
+        seed: 'deckgun-hit',
+      });
+      check('deck gun perfect stationary solution hits', hit.outcome === 'hit', `got ${hit.outcome} miss=${hit.missDistanceM}`);
+      check('deck gun hit damage applied amount', hit.damage === DECK_GUN_HIT_DAMAGE);
+      const submerged = {
+        ...target,
+        id: 'sub',
+        name: 'Sub',
+        type: 'Submarine' as const,
+        class: 'Fleet Submarine' as const,
+        position: { ...target.position, depth: 40 },
+      };
+      const missSub = resolveDeckGunShot({
+        firer: firer as never,
+        fire: {
+          aimHeading: 0,
+          estimatedCourse: 90,
+          estimatedSpeedKn: 0,
+          estimatedRangeNm: 1.5,
+        },
+        contacts: [firer as never, submerged as never],
+        turnLengthSeconds: 180,
+        seed: 'deckgun-sub',
+      });
+      check(
+        'deck gun cannot hit submerged sub',
+        missSub.outcome === 'miss' && missSub.damage === 0,
+        `got ${missSub.outcome}`,
+      );
+      check('near miss band at 80 m', deckGunMissBand(80) === 'near');
+      check('far miss band above 80 m', deckGunMissBand(81) === 'far');
+      check(
+        'canFireDeckGun requires ammo',
+        !canFireDeckGun({
+          class: 'Destroyer',
+          type: 'Ship',
+          condition: 'afloat',
+          position: { lat: 0, lon: 0, depth: 0 },
+          deckGunLoad: 0,
+          deckGunAwaitingReload: false,
+          deckGunReloadTurnsRemaining: 0,
+        } as never),
+      );
+    }
+
     // Applied HP (not rolled effect) must drive combat-log damage + Damage-tab staging.
     // Five × 22 rolls on a fresh hull only remove 100 HP; last blow is a 12-point finish.
     {
@@ -5387,6 +5527,237 @@ async function main() {
     );
 
     await api('DELETE', `/api/saves/${airId}`);
+  }
+
+  // --- Deck gun: destroyer + fleet-sub fire + resolve ---
+  {
+    const gunGame = await api('POST', '/api/games', {
+      scenarioId: 'torpedo-fire-test',
+      name: 'Verify Deck Gun',
+    });
+    check('deck-gun scenario create', gunGame.status === 200);
+    const gunId = String(gunGame.json.gameId);
+    const gunUmp = await api('POST', `/api/games/${gunId}/auth/umpire`, { password: 'umpire' });
+    const gunUTok = String(gunUmp.json.token);
+    const gunDd = await api('POST', `/api/games/${gunId}/auth/vessel`, {
+      accessToken: 'porter-demo',
+      password: 'blue',
+      stationId: 'controls',
+    });
+    check('deck-gun porter controls', gunDd.status === 200);
+    const gunDdTok = String(gunDd.json.token);
+    const gunSub = await api('POST', `/api/games/${gunId}/auth/vessel`, {
+      accessToken: 'gato-demo',
+      password: 'red',
+      stationId: 'controls',
+    });
+    check('deck-gun gato controls', gunSub.status === 200);
+    const gunSubTok = String(gunSub.json.token);
+
+    const ddMag = await api('GET', `/api/games/${gunId}/view`, undefined, gunDdTok);
+    const ddUnit = (ddMag.json.view as { unit?: { deckGunLoad?: number } }).unit;
+    check(
+      'destroyer starts with 40 deck-gun shells',
+      ddUnit?.deckGunLoad === 40,
+      `load=${ddUnit?.deckGunLoad}`,
+    );
+    const subMag = await api('GET', `/api/games/${gunId}/view`, undefined, gunSubTok);
+    const subUnit0 = (subMag.json.view as {
+      unit?: { deckGunLoad?: number; position?: { depth?: number } };
+    }).unit;
+    check(
+      'fleet sub starts with 20 deck-gun shells',
+      subUnit0?.deckGunLoad === 20,
+      `load=${subUnit0?.deckGunLoad}`,
+    );
+
+    const blockedSub = await api(
+      'POST',
+      `/api/games/${gunId}/orders`,
+      {
+        fireDeckGun: {
+          aimHeading: 0,
+          estimatedCourse: 90,
+          estimatedSpeedKn: 14,
+          estimatedRangeNm: 1.5,
+        },
+      },
+      gunSubTok,
+    );
+    check(
+      'submerged sub cannot queue deck gun',
+      blockedSub.status === 400,
+      `status=${blockedSub.status}`,
+    );
+
+    // Surface Gato for a playable deck-gun shot vs eastbound Porter.
+    await api(
+      'PATCH',
+      `/api/games/${gunId}/units/ss-212`,
+      { position: { depth: 0 }, orderedDepth: 0, speed: 0, eot: 'stop' },
+      gunUTok,
+    );
+    await api(
+      'PATCH',
+      `/api/games/${gunId}/units/dd-101`,
+      { speed: 0, eot: 'stop' },
+      gunUTok,
+    );
+
+    const gunView = await api('GET', `/api/games/${gunId}/view`, undefined, gunUTok);
+    const gunUnits = (gunView.json.view as {
+      units: Array<{
+        id: string;
+        position: { lat: number; lon: number; depth: number };
+        heading: number;
+        speed: number;
+      }>;
+    }).units;
+    const porter = gunUnits.find((u) => u.id === 'dd-101')!;
+    const gato = gunUnits.find((u) => u.id === 'ss-212')!;
+    const { bearingRangeNm } = await import('@war-patrol/shared');
+    const los = bearingRangeNm(gato.position, porter.position);
+    const subFire = await api(
+      'POST',
+      `/api/games/${gunId}/orders`,
+      {
+        fireDeckGun: {
+          aimHeading: los.bearing,
+          estimatedCourse: porter.heading,
+          estimatedSpeedKn: porter.speed,
+          estimatedRangeNm: Math.round(los.rangeNm * 100) / 100,
+        },
+      },
+      gunSubTok,
+    );
+    check('surfaced sub queues deck-gun fire', subFire.status === 200, `status=${subFire.status}`);
+
+    await api('POST', `/api/games/${gunId}/turn/lock`, {}, gunUTok);
+    const gunRes = await api('POST', `/api/games/${gunId}/turn/resolve`, {}, gunUTok);
+    check('resolve deck-gun turn', gunRes.status === 200);
+
+    const afterGun = await api('GET', `/api/games/${gunId}/view`, undefined, gunUTok);
+    const afterView = afterGun.json.view as {
+      combatLog?: Array<{ kind: string; summary: string; damage?: number }>;
+      units: Array<{ id: string; health: number; deckGunLoad?: number; deckGunAwaitingReload?: boolean }>;
+    };
+    const gunLog = afterView.combatLog ?? [];
+    check(
+      'combat log has deck_gun_fire',
+      gunLog.some((e) => e.kind === 'deck_gun_fire' && (e.summary ?? '').includes('deck gun')),
+    );
+    check(
+      'surfaced sub deck gun hits Porter',
+      gunLog.some((e) => e.kind === 'deck_gun_hit' && (e.summary ?? '').includes('Porter')),
+      `log=${JSON.stringify(gunLog.filter((e) => e.kind.startsWith('deck_gun')))}`,
+    );
+    const gatoAfter = afterView.units.find((u) => u.id === 'ss-212');
+    check(
+      'sub deck-gun ammo consumed',
+      gatoAfter?.deckGunLoad === 19 && gatoAfter?.deckGunAwaitingReload === true,
+      `load=${gatoAfter?.deckGunLoad} awaiting=${gatoAfter?.deckGunAwaitingReload}`,
+    );
+    const porterAfter = afterView.units.find((u) => u.id === 'dd-101');
+    check(
+      'Porter took deck-gun damage',
+      (porterAfter?.health ?? 100) < 100,
+      `health=${porterAfter?.health}`,
+    );
+
+    const gunReload = await api('POST', `/api/games/${gunId}/deck-gun-reload`, {}, gunSubTok);
+    check('start deck-gun reload', gunReload.status === 200);
+    check(
+      'deck-gun reload countdown 2',
+      (gunReload.json as { deckGunReloadTurnsRemaining?: number }).deckGunReloadTurnsRemaining === 2,
+    );
+
+    // Destroyer fire vs submerged contact → miss (no useful surface engagement).
+    await api(
+      'PATCH',
+      `/api/games/${gunId}/units/ss-212`,
+      { position: { depth: 40 }, orderedDepth: 40 },
+      gunUTok,
+    );
+    // Clear awaiting so DD can fire (rearm umpire).
+    await api('POST', `/api/games/${gunId}/units/dd-101/rearm`, {}, gunUTok);
+    const ddView2 = await api('GET', `/api/games/${gunId}/view`, undefined, gunUTok);
+    const units2 = (ddView2.json.view as {
+      units: Array<{
+        id: string;
+        position: { lat: number; lon: number; depth: number };
+        heading: number;
+        speed: number;
+      }>;
+    }).units;
+    const porter2 = units2.find((u) => u.id === 'dd-101')!;
+    const gato2 = units2.find((u) => u.id === 'ss-212')!;
+    const los2 = bearingRangeNm(porter2.position, gato2.position);
+    const ddFire = await api(
+      'POST',
+      `/api/games/${gunId}/orders`,
+      {
+        fireDeckGun: {
+          aimHeading: los2.bearing,
+          estimatedCourse: gato2.heading,
+          estimatedSpeedKn: gato2.speed,
+          estimatedRangeNm: Math.round(los2.rangeNm * 100) / 100,
+        },
+      },
+      gunDdTok,
+    );
+    check('destroyer queues deck-gun fire', ddFire.status === 200);
+    await api('POST', `/api/games/${gunId}/turn/lock`, {}, gunUTok);
+    await api('POST', `/api/games/${gunId}/turn/resolve`, {}, gunUTok);
+    const missView = await api('GET', `/api/games/${gunId}/view`, undefined, gunUTok);
+    const missLog = (missView.json.view as { combatLog?: Array<{ kind: string; summary: string }> })
+      .combatLog ?? [];
+    check(
+      'DD deck gun misses submerged sub',
+      missLog.some(
+        (e) =>
+          e.kind === 'deck_gun_miss' &&
+          (e.summary ?? '').includes('Porter') &&
+          ((e.summary ?? '').includes('MISS') || (e.summary ?? '').includes('no surface')),
+      ),
+      `log=${JSON.stringify(missLog.filter((e) => e.kind.startsWith('deck_gun')).slice(-3))}`,
+    );
+
+    // Kagerō also gets the destroyer magazine.
+    const kagGame = await api('POST', '/api/games', {
+      scenarioId: 'kagero-destroyer-lookout-test',
+      name: 'Verify Kagero Deck Gun',
+    });
+    check('kagero deck-gun scenario create', kagGame.status === 200);
+    const kagId = String(kagGame.json.gameId);
+    const kagAuth = await api('POST', `/api/games/${kagId}/auth/vessel`, {
+      accessToken: 'kagero-demo',
+      password: 'red',
+      stationId: 'controls',
+    });
+    if (kagAuth.status !== 200) {
+      // Token may differ — try umpire view instead.
+      const kagUmp = await api('POST', `/api/games/${kagId}/auth/umpire`, { password: 'umpire' });
+      const kagUTok = String(kagUmp.json.token);
+      const kagView = await api('GET', `/api/games/${kagId}/view`, undefined, kagUTok);
+      const kagDd = (
+        (kagView.json.view as { units: Array<{ class?: string; deckGunLoad?: number }> }).units ?? []
+      ).find((u) => u.class === 'Destroyer');
+      check(
+        'Kagerō destroyer has deck-gun magazine',
+        kagDd?.deckGunLoad === 40,
+        `load=${kagDd?.deckGunLoad}`,
+      );
+    } else {
+      const kagView = await api('GET', `/api/games/${kagId}/view`, undefined, String(kagAuth.json.token));
+      const kagUnit = (kagView.json.view as { unit?: { deckGunLoad?: number } }).unit;
+      check(
+        'Kagerō destroyer has deck-gun magazine',
+        kagUnit?.deckGunLoad === 40,
+        `load=${kagUnit?.deckGunLoad}`,
+      );
+    }
+    await api('DELETE', `/api/saves/${kagId}`);
+    await api('DELETE', `/api/saves/${gunId}`);
   }
 
   // Ground-truth multi-turn stability (separate game; cleans up its save)

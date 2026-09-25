@@ -226,6 +226,38 @@ export interface DepthChargeDropOrder {
   depthSettingM: number;
 }
 
+/**
+ * Pending deck-gun shot for the current turn (destroyer + fleet-sub Controls).
+ * Mirror of the torpedo calculator language: aim LOS + estimated course/speed/range
+ * drive a same-turn fire solution — never auto-filled from sim truth.
+ */
+export interface DeckGunFireOrder {
+  /**
+   * Player LOS / aim bearing to the estimated present target (**true** °).
+   * Client UI enters optics-style **relative** bearing and converts via own heading.
+   */
+  aimHeading: number;
+  /** Player-entered estimated target **true course** (degrees). */
+  estimatedCourse: number;
+  /** Player-entered target speed estimate (knots). */
+  estimatedSpeedKn: number;
+  /** Player-entered estimated range to target (nautical miles). */
+  estimatedRangeNm: number;
+}
+
+/**
+ * Crew-facing notice when a queued deck-gun order did not fire at resolve
+ * (e.g. fleet sub dove before the shot). Cleared on a successful fire or a
+ * fresh queue. No ammo expended when blocked.
+ */
+export interface DeckGunFireBlock {
+  turnNumber: number;
+  /** Why the shot was dropped. */
+  reason: 'submerged';
+  /** Keel depth at resolve (m). */
+  depthM: number;
+}
+
 /** Umpire-ordered aircraft attack run (intercept / gun strafe / bombing). */
 export type AircraftAttackMode = 'intercept' | 'strafe' | 'bombing_run';
 
@@ -263,6 +295,8 @@ export interface UnitOrders {
   fireTorpedo?: TorpedoFireOrder;
   /** Drop a depth-charge pattern this resolve (consumes rack load). */
   dropDepthCharges?: DepthChargeDropOrder;
+  /** Fire the deck gun this resolve (consumes one shell on launch). */
+  fireDeckGun?: DeckGunFireOrder;
   /**
    * Umpire aircraft attack run — resolves after kinematics this turn
    * (course toward target + full band usually set with the order).
@@ -556,6 +590,20 @@ export interface UnitState {
    */
   aircraftLoiter?: AircraftLoiterState;
   /**
+   * Ready deck-gun shells remaining (destroyers + fleet subs).
+   * 0 for hulls without a deck gun. Consumed one per fire order on resolve.
+   */
+  deckGunLoad: number;
+  /** True after a deck-gun shot until a reload cycle completes. */
+  deckGunAwaitingReload: boolean;
+  /** Resolved turns left on an in-progress deck-gun reload. */
+  deckGunReloadTurnsRemaining: number;
+  /**
+   * Last deck-gun order dropped at resolve (e.g. sub submerged).
+   * Player-facing on Controls; absent when the last order fired normally.
+   */
+  deckGunFireBlock?: DeckGunFireBlock;
+  /**
    * Own-ship FoW contact designation book (Contact N).
    * Keys are target unit ids — umpire/GT only; never copied onto vessel views.
    * Vessel clients see only {@link RadarContact.labelN} / {@link PeriscopeContact.labelN}.
@@ -665,6 +713,8 @@ export interface ScenarioUnitSeed {
   depthChargeLoad?: number;
   /** Optional ready bomb count (aircraft; default 1). */
   bombLoad?: number;
+  /** Optional ready deck-gun shell count (destroyers + fleet subs). */
+  deckGunLoad?: number;
   /**
    * Optional convoy / formation membership id. Units sharing an id move
    * under umpire group helm/EOT until individually detached.
@@ -807,6 +857,9 @@ export type CombatLogKind =
   | 'aircraft_attack'
   | 'aircraft_attack_damage'
   | 'aircraft_attack_miss'
+  | 'deck_gun_fire'
+  | 'deck_gun_hit'
+  | 'deck_gun_miss'
   | 'unit_sunk'
   | 'hull_implosion'
   | 'subsystem_casualty'
@@ -853,6 +906,7 @@ export interface OwnDamageEvent {
     | 'torpedo_hit'
     | 'depth_charge_damage'
     | 'aircraft_attack_damage'
+    | 'deck_gun_hit'
     | 'unit_sunk'
     | 'hull_implosion'
     | 'subsystem_casualty'
@@ -1042,6 +1096,10 @@ export interface VesselView {
     | 'depthChargeLoad'
     | 'depthChargeAwaitingReload'
     | 'depthChargeReloadTurnsRemaining'
+    | 'deckGunLoad'
+    | 'deckGunAwaitingReload'
+    | 'deckGunReloadTurnsRemaining'
+    | 'deckGunFireBlock'
     | 'gopherTask'
   >;
   stationId: string;

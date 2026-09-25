@@ -12,12 +12,18 @@ import {
   defaultTwoScreenStations,
   resolveTorpedoMagazineState,
   resolveDepthChargeMagazineState,
+  resolveDeckGunMagazineState,
   rearmUnitWeapons,
   startTorpedoRoomReload,
   startDepthChargeReload as beginDepthChargeRackReload,
+  startDeckGunReload as beginDeckGunReload,
   normalizeTorpedoRoomId,
   canFireTorpedoFromRoom,
   canDropDepthCharges,
+  canFireDeckGun,
+  canDeckGunFireFromDepth,
+  isDeckGunHull,
+  DECK_GUN_MAX_RANGE_NM,
   torpedoRoomReady,
   checkTorpedoOrderArc,
   formatTorpedoArcRejectMessage,
@@ -201,6 +207,10 @@ function unitFromScenario(seed: Scenario['units'][number]): UnitState {
       ...identity,
       bombLoad: seed.bombLoad,
     }),
+    ...resolveDeckGunMagazineState({
+      ...identity,
+      deckGunLoad: seed.deckGunLoad,
+    }),
     ...(seed.formationId?.trim()
       ? {
           formationId: seed.formationId.trim(),
@@ -338,6 +348,7 @@ function normalizeUnit(unit: UnitState): UnitState {
     ...resolveTorpedoMagazineState(unit),
     ...resolveDepthChargeMagazineState(unit),
     ...resolveBombMagazineState(unit),
+    ...resolveDeckGunMagazineState(unit),
     ...(contactBook ? { contactBook } : {}),
     ...(unit.formationId?.trim()
       ? {
@@ -670,6 +681,7 @@ export class GameRuntime {
       depth?: number;
       fireTorpedo?: import('@war-patrol/shared').TorpedoFireOrder | null;
       dropDepthCharges?: import('@war-patrol/shared').DepthChargeDropOrder | null;
+      fireDeckGun?: import('@war-patrol/shared').DeckGunFireOrder | null;
     },
   ): GameSave {
     return this.touch(gameId, (save) => {
@@ -767,6 +779,42 @@ export class GameRuntime {
             { statusCode: 400 },
           );
         }
+      }
+      if (patch.fireDeckGun !== undefined && patch.fireDeckGun !== null) {
+        if (!station.capabilities.includes('weapons')) {
+          throw Object.assign(new Error('Station cannot fire the deck gun'), { statusCode: 403 });
+        }
+        if (!isDeckGunHull(unit)) {
+          throw Object.assign(new Error('Only destroyers and fleet subs have a deck gun'), {
+            statusCode: 400,
+          });
+        }
+        if (!canDeckGunFireFromDepth(unit)) {
+          throw Object.assign(
+            new Error('Deck gun requires surfaced / awash (depth ≤ 5 m)'),
+            { statusCode: 400 },
+          );
+        }
+        if (!canFireDeckGun(unit)) {
+          if ((unit.deckGunLoad ?? 0) <= 0) {
+            throw Object.assign(new Error('No deck-gun shells remaining'), { statusCode: 400 });
+          }
+          throw Object.assign(
+            new Error('Deck gun awaiting reload — press Reload and wait'),
+            { statusCode: 400 },
+          );
+        }
+        if (!(Number(patch.fireDeckGun.estimatedRangeNm) > 0)) {
+          throw Object.assign(new Error('Target range estimate required'), { statusCode: 400 });
+        }
+        if (Number(patch.fireDeckGun.estimatedRangeNm) > DECK_GUN_MAX_RANGE_NM) {
+          throw Object.assign(
+            new Error(`Deck-gun range max ${DECK_GUN_MAX_RANGE_NM} nm`),
+            { statusCode: 400 },
+          );
+        }
+        // Fresh order supersedes any earlier blocked-shot notice.
+        delete unit.deckGunFireBlock;
       }
 
       const normalizedPatch = {
@@ -1142,8 +1190,34 @@ export class GameRuntime {
   }
 
   /**
-   * Umpire one-click rearm: full torpedo rooms and/or DC rack for the hull class.
-   * Immediate — for live events after physical tube / rack loading.
+   * Immediate Controls action: start a deck-gun reload countdown after a shot.
+   */
+  startDeckGunReload(
+    gameId: string,
+    unitId: string,
+    stationId: string,
+  ): GameSave {
+    return this.touch(gameId, (save) => {
+      const idx = save.units.findIndex((u) => u.id === unitId);
+      if (idx < 0) throw Object.assign(new Error('Unit not found'), { statusCode: 404 });
+      const unit = save.units[idx]!;
+      const station = unit.stations.find((s) => s.id === stationId);
+      if (!station) throw Object.assign(new Error('Station not found'), { statusCode: 404 });
+      if (!station.capabilities.includes('weapons')) {
+        throw Object.assign(new Error('Station cannot reload the deck gun'), { statusCode: 403 });
+      }
+      const result = beginDeckGunReload(unit);
+      if (!result.ok) {
+        throw Object.assign(new Error(result.error), { statusCode: 400 });
+      }
+      save.units[idx] = result.unit;
+      return save;
+    });
+  }
+
+  /**
+   * Umpire one-click rearm: full torpedo rooms and/or DC rack and/or deck gun for the hull class.
+   * Immediate — for live events after physical tube / rack / magazine loading.
    */
   rearmUnit(gameId: string, unitId: string): GameSave {
     return this.touch(gameId, (save) => {

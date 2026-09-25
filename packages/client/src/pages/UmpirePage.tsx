@@ -1763,8 +1763,8 @@ export function UmpirePage() {
                             {selectedUnit.type === 'Aircraft'
                               ? `BOMB ${selectedUnit.bombLoad ?? 0}`
                               : selectedUnit.class === 'Destroyer'
-                                ? `DC ${selectedUnit.depthChargeLoad ?? 0}`
-                                : `FWD ${selectedUnit.torpedoForward ?? 0} · AFT ${selectedUnit.torpedoAft ?? 0}`}
+                                ? `DC ${selectedUnit.depthChargeLoad ?? 0} · GUN ${selectedUnit.deckGunLoad ?? 0}`
+                                : `FWD ${selectedUnit.torpedoForward ?? 0} · AFT ${selectedUnit.torpedoAft ?? 0} · GUN ${selectedUnit.deckGunLoad ?? 0}`}
                           </p>
                           <div className="control-actions">
                             <button

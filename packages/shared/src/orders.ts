@@ -11,6 +11,7 @@ export function hasPendingOrders(orders: UnitOrders | undefined | null): boolean
     orders.depth !== undefined ||
     orders.fireTorpedo !== undefined ||
     orders.dropDepthCharges !== undefined ||
+    orders.fireDeckGun !== undefined ||
     orders.aircraftAttack !== undefined
   );
 }
@@ -52,6 +53,12 @@ function formatDepthChargeOrderSummary(
   return `DC ${pat} · SET ${formatDepthMeters(drop.depthSettingM)}`;
 }
 
+function formatDeckGunOrderSummary(
+  fire: NonNullable<UnitOrders['fireDeckGun']>,
+): string {
+  return `GUN aim ${formatCourseDegrees(fire.aimHeading)} · CRS ${formatCourseDegrees(fire.estimatedCourse)} · ${fire.estimatedSpeedKn.toFixed(1)}kn · ${fire.estimatedRangeNm.toFixed(2)}nm`;
+}
+
 function formatAircraftAttackOrderSummary(
   attack: NonNullable<UnitOrders['aircraftAttack']>,
 ): string {
@@ -77,6 +84,9 @@ export function formatPendingOrdersSummary(orders: UnitOrders | undefined | null
   }
   if (orders!.dropDepthCharges) {
     parts.push(formatDepthChargeOrderSummary(orders!.dropDepthCharges));
+  }
+  if (orders!.fireDeckGun) {
+    parts.push(formatDeckGunOrderSummary(orders!.fireDeckGun));
   }
   if (orders!.aircraftAttack) {
     parts.push(formatAircraftAttackOrderSummary(orders!.aircraftAttack));
