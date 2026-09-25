@@ -12,6 +12,7 @@ import {
   bearingRangeNm,
   buildOwnDamageLog,
   isV1PlayerUnit,
+  reconcileFormations,
 } from '@war-patrol/shared';
 import type { SseHub } from './sse.js';
 import { buildActiveSonarContacts } from './activeSonar.js';
@@ -149,6 +150,7 @@ export function buildUmpireView(save: GameSave, sse: SseHub): UmpireView {
     })),
     vesselLinks: save.units.map((u) => vesselLinkForUnit(save, u)),
     connections: sse.connectionSummary(save.id),
+    formations: reconcileFormations(save.formations, save.units),
   };
 }
 

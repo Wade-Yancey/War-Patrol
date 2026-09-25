@@ -381,6 +381,65 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post<{
+    Params: { gameId: string; formationId: string };
+    Body: { course?: number; eot?: EotSetting };
+  }>('/api/games/:gameId/formations/:formationId/orders', async (request, reply) => {
+    try {
+      requireUmpire(request, request.params.gameId);
+      const save = runtime.submitFormationOrders(
+        request.params.gameId,
+        request.params.formationId,
+        {
+          course: request.body?.course,
+          eot: request.body?.eot,
+        },
+      );
+      const formation = save.formations?.find((f) => f.id === request.params.formationId);
+      return {
+        ok: true,
+        stateVersion: save.stateVersion,
+        formation,
+      };
+    } catch (err) {
+      const e = httpError(err);
+      return reply.code(e.statusCode).send({ error: e.message });
+    }
+  });
+
+  app.post<{
+    Params: { gameId: string; unitId: string };
+    Body: {
+      course?: number;
+      eot?: EotSetting;
+      breakFormation?: boolean;
+      rejoinFormation?: boolean;
+    };
+  }>('/api/games/:gameId/units/:unitId/orders', async (request, reply) => {
+    try {
+      requireUmpire(request, request.params.gameId);
+      const body = request.body ?? {};
+      const save = runtime.submitUmpireUnitOrders(request.params.gameId, request.params.unitId, {
+        course: body.course,
+        eot: body.eot,
+        breakFormation: Boolean(body.breakFormation),
+        rejoinFormation: Boolean(body.rejoinFormation),
+      });
+      const unit = save.units.find((u) => u.id === request.params.unitId);
+      return {
+        ok: true,
+        stateVersion: save.stateVersion,
+        orders: unit?.orders,
+        orderedCourse: unit?.orderedCourse,
+        formationId: unit?.formationId,
+        formationDetached: Boolean(unit?.formationDetached),
+      };
+    } catch (err) {
+      const e = httpError(err);
+      return reply.code(e.statusCode).send({ error: e.message });
+    }
+  });
+
+  app.post<{
     Params: { gameId: string };
     Body: { enabled: boolean };
   }>('/api/games/:gameId/active-sonar', async (request, reply) => {

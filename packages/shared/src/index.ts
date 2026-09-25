@@ -3,6 +3,7 @@ export * from './types.js';
 export * from './geo.js';
 export * from './eot.js';
 export * from './orders.js';
+export * from './formation.js';
 export * from './dive.js';
 export * from './radar.js';
 export * from './hydrophone.js';

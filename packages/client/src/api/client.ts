@@ -115,6 +115,48 @@ export const api = {
       token,
       body: JSON.stringify(body),
     }),
+  /** Umpire: apply course/EOT to all non-detached convoy members. */
+  formationOrders: (
+    gameId: string,
+    token: string,
+    formationId: string,
+    body: { course?: number; eot?: EotSetting },
+  ) =>
+    request<{ ok: boolean; stateVersion: number }>(
+      `/api/games/${gameId}/formations/${encodeURIComponent(formationId)}/orders`,
+      {
+        method: 'POST',
+        token,
+        body: JSON.stringify(body),
+      },
+    ),
+  /**
+   * Umpire: individual helm/EOT (any hull). Optional breakFormation / rejoinFormation
+   * for convoy members — does not use the Navigation heading fiat path.
+   */
+  umpireUnitOrders: (
+    gameId: string,
+    token: string,
+    unitId: string,
+    body: {
+      course?: number;
+      eot?: EotSetting;
+      breakFormation?: boolean;
+      rejoinFormation?: boolean;
+    },
+  ) =>
+    request<{
+      ok: boolean;
+      stateVersion: number;
+      orders?: unknown;
+      orderedCourse?: number;
+      formationId?: string;
+      formationDetached?: boolean;
+    }>(`/api/games/${gameId}/units/${encodeURIComponent(unitId)}/orders`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(body),
+    }),
   setActiveSonar: (gameId: string, token: string, enabled: boolean) =>
     request<{ ok: boolean; stateVersion: number; activeSonarEnabled: boolean }>(
       `/api/games/${gameId}/active-sonar`,
