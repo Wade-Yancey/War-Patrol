@@ -38,12 +38,14 @@ import {
   ensureContactLabel,
   formatWallDuration,
   isPastCrushDepth,
+  defaultTurnRateForClass,
   normalizeContactBook,
   parseWallDuration,
   quantizeSubmarineDepth,
   resolveBeamM,
   resolveLengthM,
   resolveMaxSpeed,
+  resolveTurnRate,
   rollSubmarineImplosion,
   periscopeSilhouetteUrl,
   periscopeSilhouetteFlipX,
@@ -407,8 +409,33 @@ async function main() {
   );
   check('gato faction Red', gato.faction === 'Red');
   check('gato afloat', gato.condition === 'afloat');
-  check('destroyer turnRate medium size', porter.turnRate === 7);
-  check('sub turnRate small size', gato.turnRate === 12);
+  check('destroyer turnRate (Fletcher, snappy)', porter.turnRate === 7);
+  check('sub turnRate (Gato, between DD and capital ships)', gato.turnRate === 6);
+  // Size-appropriate turning: large auxiliaries/capital ships must be strictly
+  // slower to turn than a destroyer, and never as agile as the small-ship band
+  // (Fighter/Bomber/legacy small, 12°/min). Fleet submarine sits in between.
+  const oilerTurnRate = defaultTurnRateForClass('Oiler');
+  const merchantTurnRate = defaultTurnRateForClass('Merchant');
+  const destroyerTurnRate = defaultTurnRateForClass('Destroyer');
+  const subTurnRate = defaultTurnRateForClass('Fleet Submarine');
+  const cruiserTurnRate = defaultTurnRateForClass('Cruiser');
+  const battleshipTurnRate = defaultTurnRateForClass('Battleship');
+  const carrierTurnRate = defaultTurnRateForClass('Aircraft Carrier');
+  check('oiler turnRate < destroyer turnRate', oilerTurnRate < destroyerTurnRate);
+  check('merchant turnRate < destroyer turnRate', merchantTurnRate < destroyerTurnRate);
+  check('oiler turnRate not small-ship band', oilerTurnRate < 12);
+  check('merchant turnRate not small-ship band', merchantTurnRate < 12);
+  check('cruiser turnRate not small-ship band', cruiserTurnRate < 12);
+  check('battleship turnRate not small-ship band', battleshipTurnRate < 12);
+  check('carrier turnRate not small-ship band', carrierTurnRate < 12);
+  check(
+    'sub turnRate between destroyer and capital ships',
+    subTurnRate < destroyerTurnRate && subTurnRate > cruiserTurnRate,
+  );
+  check(
+    'oiler turnRate matches library/class default (Cimarron)',
+    resolveTurnRate({ class: 'Oiler' }) === oilerTurnRate,
+  );
   check('orderedCourse seeded to heading (porter)', porter.orderedCourse === porter.heading);
   check(
     'orderedDepth seeded to position (gato)',
@@ -2650,6 +2677,20 @@ async function main() {
         'cimarron oilers 169×23',
         oilers.every((u) => u.lengthM === 169 && u.beamM === 23),
       );
+      {
+        const convoySave = runtime.requireGame(convoyId);
+        const gatoUnit = convoySave.units.find((u) => u.id === 'ss-212')!;
+        const oilerUnits = convoySave.units.filter((u) => u.class === 'Oiler');
+        check('cimarron oilers seeded without turnRate override', oilerUnits.length === 4);
+        check(
+          'cimarron oilers turn like a large auxiliary, not a destroyer',
+          oilerUnits.every((u) => u.turnRate === 4),
+        );
+        check(
+          'cimarron oiler turnRate < Gato sub turnRate',
+          oilerUnits.every((u) => u.turnRate < gatoUnit.turnRate),
+        );
+      }
       const convoySub = await api('POST', `/api/games/${convoyId}/auth/vessel`, {
         accessToken: 'gato-demo',
         password: 'red',
