@@ -53,6 +53,7 @@ import {
   TORPEDO_HIT_CONTROLS_PEAK_GAIN,
   loadTorpedoHitBuffer,
   playTorpedoHitSample,
+  torpedoHitBatchWhenSecById,
 } from '../audio/torpedoHit';
 import {
   SUBMARINE_CREAK_AMBIENT_DURATION_SEC,
@@ -298,6 +299,13 @@ export function StationPage() {
       .sort((a, b) => a.id.localeCompare(b.id));
     const dcWhenById = depthChargeBatchWhenSecById(dcBatch);
 
+    // Same-moment multi-fish hits share audioDelaySec — add a short onset stagger
+    // so Controls can count bangs (physics / resolve unchanged).
+    const hitBatch = pending.filter(
+      (e) => e.kind === 'torpedo_hit' && !playedBridgeBlastRef.current.has(e.id),
+    );
+    const hitWhenById = torpedoHitBatchWhenSecById(hitBatch);
+
     for (const e of pending) {
       if (playedBridgeBlastRef.current.has(e.id)) continue;
       try {
@@ -310,8 +318,12 @@ export function StationPage() {
           const gain =
             TORPEDO_HIT_CONTROLS_PEAK_GAIN *
             Math.max(0.35, torpedoHitControlsGain(e.rangeNm));
-          // Compressed presentation delay (≤ TORPEDO_HIT_AUDIO_MAX_DELAY_SEC).
-          const whenSec = Math.max(0, e.audioDelaySec ?? 0);
+          // Torpedo: compressed turn delay + same-moment multi-hit stagger.
+          // Aircraft bomb: compressed delay only (usually one cue).
+          const whenSec =
+            e.kind === 'torpedo_hit'
+              ? (hitWhenById.get(e.id) ?? Math.max(0, e.audioDelaySec ?? 0))
+              : Math.max(0, e.audioDelaySec ?? 0);
           playTorpedoHitSample(ctx, hitBuffer, ctx.destination, gain, { whenSec });
           scheduleDamageRevealRef.current(e.id, whenSec);
         } else {
