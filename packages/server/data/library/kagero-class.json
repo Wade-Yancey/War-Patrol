@@ -1,0 +1,21 @@
+{
+  "id": "kagero-class",
+  "name": "Kagerō-class Destroyer",
+  "type": "Ship",
+  "class": "Destroyer",
+  "defaultFaction": "Red",
+  "maxSpeed": 35,
+  "lengthM": 119,
+  "beamM": 11,
+  "turnRate": 7,
+  "radarSignature": "medium",
+  "sensors": [
+    { "kind": "radar", "maxRangeNm": 25 },
+    { "kind": "active_sonar", "maxRangeNm": 8 },
+    { "kind": "lookout", "maxRangeNm": 6 }
+  ],
+  "defaultStations": [
+    { "id": "controls", "name": "Controls", "capabilities": ["helm", "engineering", "plot", "weapons"] },
+    { "id": "sensors", "name": "Sensors", "capabilities": ["radar", "active_sonar", "lookout"] }
+  ]
+}

@@ -8,6 +8,7 @@ import {
 /** Vite-bundled PNGs (alpha) — guaranteed in the client graph (not fragile public-path strings). */
 import carrierSilhouettePng from '../assets/silhouettes/carrier.png';
 import destroyerSilhouettePng from '../assets/silhouettes/destroyer.png';
+import kageroSilhouettePng from '../assets/silhouettes/kagero.png';
 import oilerSilhouettePng from '../assets/silhouettes/oiler.png';
 import submarineSilhouettePng from '../assets/silhouettes/submarine.png';
 import {
@@ -35,16 +36,21 @@ interface Props {
 /** Intrinsic pixel size for the plate `<img>` (matches source PNG). */
 const SILHOUETTE_SIZE: Record<string, { width: number; height: number }> = {
   Destroyer: { width: 349, height: 79 },
+  kagero: { width: 353, height: 79 },
   'Fleet Submarine': { width: 350, height: 55 },
   Oiler: { width: 510, height: 98 },
   'Aircraft Carrier': { width: 720, height: 87 },
 };
 
 /**
- * Class → Vite-bundled plate. Mirrors `silhouetteUrlForClass` in shared
+ * Class / plate → Vite-bundled asset. Mirrors `silhouetteUrlForOptics` in shared
  * (public `/silhouettes/*.png` for verify; bundled import for the CRT).
  */
-function silhouetteSrcForClass(hullClass: HullClass | string | undefined): string {
+function silhouetteSrcForContact(
+  hullClass: HullClass | string | undefined,
+  plate: string | undefined,
+): string {
+  if (plate === 'kagero') return kageroSilhouettePng;
   switch (hullClass) {
     case 'Fleet Submarine':
       return submarineSilhouettePng;
@@ -58,7 +64,11 @@ function silhouetteSrcForClass(hullClass: HullClass | string | undefined): strin
   }
 }
 
-function silhouetteAlt(hullClass: HullClass | string | undefined): string {
+function silhouetteAlt(
+  hullClass: HullClass | string | undefined,
+  plate: string | undefined,
+): string {
+  if (plate === 'kagero') return 'Kagerō destroyer silhouette';
   if (hullClass === 'Fleet Submarine') return 'Submarine silhouette';
   if (hullClass === 'Oiler') return 'Oiler silhouette';
   if (hullClass === 'Aircraft Carrier') return 'Aircraft carrier silhouette';
@@ -121,8 +131,12 @@ function PeriscopeScopeInner({
   const isFeather = selected?.kind === 'periscope';
 
   const plateClass = selected?.silhouetteClass;
-  const plateSrc = silhouetteSrcForClass(plateClass);
-  const plateSize = SILHOUETTE_SIZE[plateClass ?? ''] ?? SILHOUETTE_SIZE.Destroyer;
+  const plateKey = selected?.silhouettePlate;
+  const plateSrc = silhouetteSrcForContact(plateClass, plateKey);
+  const plateSize =
+    (plateKey ? SILHOUETTE_SIZE[plateKey] : undefined) ??
+    SILHOUETTE_SIZE[plateClass ?? ''] ??
+    SILHOUETTE_SIZE.Destroyer;
   // Bow-right plates: flip for port AOB so the bow faces the observed aspect.
   const flipPlate =
     !isFeather &&
@@ -169,7 +183,7 @@ function PeriscopeScopeInner({
                 key={plateSrc}
                 className={`periscope-silhouette${flipPlate ? ' periscope-silhouette--flip' : ''}`}
                 src={plateSrc}
-                alt={silhouetteAlt(plateClass)}
+                alt={silhouetteAlt(plateClass, plateKey)}
                 width={plateSize.width}
                 height={plateSize.height}
                 decoding="sync"
