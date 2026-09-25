@@ -646,6 +646,67 @@ export function UmpirePage() {
                   )}
                 </section>
 
+                {rollbackTarget !== null && token && (
+                  <ConfirmAction
+                    title={
+                      rollbackTarget === 1
+                        ? 'Rollback to start of turn 1'
+                        : `Rollback to end of turn ${rollbackTarget}`
+                    }
+                    warning={
+                      rollbackTarget === 1 ? (
+                        <>
+                          <p>
+                            <strong>Destructive.</strong> Restores units, weapons, and the in-game
+                            clock to the scenario start (before turn 1 resolved), clears in-progress
+                            orders, and discards every resolved turn.
+                          </p>
+                          <p>
+                            Current turn {umpire.turn.number} and in-game clock{' '}
+                            <span className="mono">
+                              {formatGameClock(umpire.turn.gameTimeSeconds)}
+                            </span>{' '}
+                            will be replaced by the start-of-scenario clock. Movement and history are
+                            gone.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p>
+                            <strong>Destructive.</strong> Restores units to the snapshot after turn{' '}
+                            {rollbackTarget} resolved, clears in-progress orders, and discards every
+                            later turn.
+                          </p>
+                          <p>
+                            Current turn {umpire.turn.number} and in-game clock{' '}
+                            <span className="mono">
+                              {formatGameClock(umpire.turn.gameTimeSeconds)}
+                            </span>{' '}
+                            will be replaced by the restored clock. Later movement and history are
+                            gone.
+                          </p>
+                        </>
+                      )
+                    }
+                    confirmTokens={['ROLLBACK', String(rollbackTarget)]}
+                    confirmHint={`Type ROLLBACK or ${rollbackTarget} to confirm`}
+                    placeholder="ROLLBACK"
+                    confirmLabel={
+                      rollbackTarget === 1
+                        ? 'Execute rollback to start of T1'
+                        : `Execute rollback to T${rollbackTarget}`
+                    }
+                    busy={busy}
+                    onCancel={() => setRollbackTarget(null)}
+                    onConfirm={(matched) =>
+                      void run(async () => {
+                        await api.rollback(gameId, token, rollbackTarget, matched);
+                        setRollbackTarget(null);
+                      })
+                    }
+                  />
+                )}
+
                 <section className="panel stack umpire-gopher-panel">
                   <div className="umpire-gopher-head">
                     <h2>Gopher task</h2>
@@ -760,64 +821,6 @@ export function UmpirePage() {
                 </section>
               </div>
             </div>
-
-            {rollbackTarget !== null && token && (
-              <div style={{ marginTop: '1rem' }}>
-                <ConfirmAction
-                  title={
-                    rollbackTarget === 1
-                      ? 'Rollback to start of turn 1'
-                      : `Rollback to end of turn ${rollbackTarget}`
-                  }
-                  warning={
-                    rollbackTarget === 1 ? (
-                      <>
-                        <p>
-                          <strong>Destructive.</strong> Restores units, weapons, and the in-game clock
-                          to the scenario start (before turn 1 resolved), clears in-progress orders,
-                          and discards every resolved turn.
-                        </p>
-                        <p>
-                          Current turn {umpire.turn.number} and in-game clock{' '}
-                          <span className="mono">{formatGameClock(umpire.turn.gameTimeSeconds)}</span>{' '}
-                          will be replaced by the start-of-scenario clock. Movement and history are
-                          gone.
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <p>
-                          <strong>Destructive.</strong> Restores units to the snapshot after turn{' '}
-                          {rollbackTarget} resolved, clears in-progress orders, and discards every later
-                          turn.
-                        </p>
-                        <p>
-                          Current turn {umpire.turn.number} and in-game clock{' '}
-                          <span className="mono">{formatGameClock(umpire.turn.gameTimeSeconds)}</span>{' '}
-                          will be replaced by the restored clock. Later movement and history are gone.
-                        </p>
-                      </>
-                    )
-                  }
-                  confirmTokens={['ROLLBACK', String(rollbackTarget)]}
-                  confirmHint={`Type ROLLBACK or ${rollbackTarget} to confirm`}
-                  placeholder="ROLLBACK"
-                  confirmLabel={
-                    rollbackTarget === 1
-                      ? 'Execute rollback to start of T1'
-                      : `Execute rollback to T${rollbackTarget}`
-                  }
-                  busy={busy}
-                  onCancel={() => setRollbackTarget(null)}
-                  onConfirm={(matched) =>
-                    void run(async () => {
-                      await api.rollback(gameId, token, rollbackTarget, matched);
-                      setRollbackTarget(null);
-                    })
-                  }
-                />
-              </div>
-            )}
 
             <div className="grid-2 umpire-modules" style={{ marginTop: '1rem' }}>
               <VesselJoinLinks
