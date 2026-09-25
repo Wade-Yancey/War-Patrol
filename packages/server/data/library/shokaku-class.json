@@ -1,0 +1,17 @@
+{
+  "id": "shokaku-class",
+  "name": "Shōkaku-class Aircraft Carrier",
+  "type": "Ship",
+  "class": "Aircraft Carrier",
+  "defaultFaction": "Red",
+  "maxSpeed": 34,
+  "lengthM": 258,
+  "beamM": 26,
+  "turnRate": 4,
+  "radarSignature": "large",
+  "sensors": [{ "kind": "radar", "maxRangeNm": 25 }],
+  "defaultStations": [
+    { "id": "controls", "name": "Controls", "capabilities": ["helm", "engineering", "plot"] },
+    { "id": "sensors", "name": "Sensors", "capabilities": ["radar"] }
+  ]
+}

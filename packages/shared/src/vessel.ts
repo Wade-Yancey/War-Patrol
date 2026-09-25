@@ -148,6 +148,14 @@ export function resolveVesselIdentity(input: {
   if (classId.includes('fletcher') || classId.includes('destroy')) {
     return { type: 'Ship', class: 'Destroyer' };
   }
+  if (
+    classId.includes('shokaku') ||
+    classId.includes('shōkaku') ||
+    classId.includes('essex') ||
+    classId.includes('carrier')
+  ) {
+    return { type: 'Ship', class: 'Aircraft Carrier' };
+  }
 
   return { type: 'Ship', class: 'Destroyer' };
 }
