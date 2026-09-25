@@ -1,5 +1,5 @@
 /**
- * Torpedo + depth-charge combat model (v1).
+ * Torpedo + depth-charge + aircraft-attack combat model (v1).
  *
  * Torpedo hits are geometry-first: closest approach within a hull-breadth
  * gate using real length/beam, then scaled by how accurately the operator
@@ -7,6 +7,8 @@
  * adds a small warhead dud chance — not the old 5–50% “did you hit” RNG table.
  * Fire headings come from the player's entered TDC solution (aim + course /
  * speed / range intercept) — never auto-filled from sim truth.
+ * Aircraft attacks are umpire-ordered intercept / bombing runs that resolve
+ * on turn advance from CPA geometry (depth-charge-like bands).
  * See docs/simulation-physics.md in the project store.
  */
 import {
@@ -22,16 +24,20 @@ import {
   normalizeHeading,
 } from './geo.js';
 import { shortestBearingDelta } from './hydrophone.js';
+import { PERISCOPE_DEPTH_M } from './periscope.js';
 import type {
+  AircraftAttackMode,
   CombatLogEntry,
   DepthChargePattern,
   DepthChargeTrack,
+  HullClass,
   LatLonDepth,
   OwnDamageEvent,
   TorpedoArcBlock,
   TorpedoRoomId,
   TorpedoTrack,
   UnitState,
+  VesselType,
   WeaponDetonationEvent,
 } from './types.js';
 import { resolveBeamM, resolveLengthM } from './dimensions.js';
@@ -1847,6 +1853,192 @@ export function isDepthChargeTarget(unit: UnitState): boolean {
   return unit.position.depth > RADAR_SURFACE_DEPTH_M;
 }
 
+// --- Aircraft attack runs (umpire intercept / bombing) ---
+
+/** Horizontal CPA (m) for a solid gun/bomb effect. */
+export const AIRCRAFT_ATTACK_HIT_M = 280;
+/** Horizontal CPA (m) for near-miss / light bombing splash. */
+export const AIRCRAFT_ATTACK_NEAR_M = 900;
+/** Beyond this CPA the run is out of reach this turn (far miss). */
+export const AIRCRAFT_ATTACK_FAR_M = 2200;
+
+/** Strafe / intercept gun damage (museum-scale). */
+export const AIRCRAFT_INTERCEPT_DAMAGE = 14;
+/** Bombing-run solid hit damage. */
+export const AIRCRAFT_BOMBING_DAMAGE = 28;
+/** Bombing near-miss splash / concussion. */
+export const AIRCRAFT_BOMBING_NEAR_DAMAGE = 8;
+
+/**
+ * Guns / intercept: only effective vs surface ships and subs at / above PD
+ * ({@link PERISCOPE_DEPTH_M}). Deeper boats are underwater — ineffective.
+ */
+export const AIRCRAFT_INTERCEPT_MAX_TARGET_DEPTH_M = PERISCOPE_DEPTH_M;
+
+/**
+ * Bombs lose effect past this keel depth (museum stub — not full ASW bombs).
+ */
+export const AIRCRAFT_BOMBING_EFFECTIVE_DEPTH_M = 60;
+
+export function canOrderAircraftAttack(
+  unit: Pick<UnitState, 'type' | 'condition'>,
+): boolean {
+  return unit.type === 'Aircraft' && unit.condition !== 'sunk';
+}
+
+/**
+ * Class-appropriate attack buttons: fighters lead with intercept; bombers with
+ * bombing run. Both modes remain available for umpire flexibility.
+ */
+export function aircraftAttackModesForClass(hullClass: HullClass): AircraftAttackMode[] {
+  if (hullClass === 'Bomber') return ['bombing_run', 'intercept'];
+  return ['intercept', 'bombing_run'];
+}
+
+export function isAircraftAttackTarget(
+  unit: Pick<UnitState, 'type' | 'condition'>,
+): boolean {
+  if (unit.condition === 'sunk') return false;
+  if (unit.type === 'Aircraft') return false;
+  return true;
+}
+
+export function normalizeAircraftAttackMode(raw: unknown): AircraftAttackMode {
+  return raw === 'bombing_run' ? 'bombing_run' : 'intercept';
+}
+
+export type AircraftAttackEffectInput = {
+  mode: AircraftAttackMode;
+  missDistanceM: number;
+  targetDepthM: number;
+  targetType: VesselType;
+  seed: string;
+};
+
+export type AircraftAttackOutcome = 'hit' | 'near_miss' | 'far_miss' | 'ineffective';
+
+/**
+ * Aircraft attack effect from horizontal CPA + depth eligibility.
+ * Deterministic seed (same pattern as depth charges) for museum replay.
+ */
+export function resolveAircraftAttackEffect(input: AircraftAttackEffectInput): {
+  damage: number;
+  outcome: AircraftAttackOutcome;
+  effectPct: number;
+} {
+  const miss = Math.max(0, Number(input.missDistanceM) || 0);
+  const depth = Math.max(0, Number(input.targetDepthM) || 0);
+  const mode = normalizeAircraftAttackMode(input.mode);
+
+  if (mode === 'intercept' && input.targetType === 'Submarine' && depth > AIRCRAFT_INTERCEPT_MAX_TARGET_DEPTH_M) {
+    return { damage: 0, outcome: 'ineffective', effectPct: 0 };
+  }
+  if (
+    mode === 'bombing_run' &&
+    input.targetType === 'Submarine' &&
+    depth > AIRCRAFT_BOMBING_EFFECTIVE_DEPTH_M
+  ) {
+    return { damage: 0, outcome: 'ineffective', effectPct: 0 };
+  }
+
+  if (miss > AIRCRAFT_ATTACK_FAR_M) {
+    return { damage: 0, outcome: 'far_miss', effectPct: 0 };
+  }
+  if (miss > AIRCRAFT_ATTACK_NEAR_M) {
+    return { damage: 0, outcome: 'near_miss', effectPct: 8 };
+  }
+
+  const close = miss <= AIRCRAFT_ATTACK_HIT_M;
+  let effectPct =
+    mode === 'bombing_run'
+      ? close
+        ? 62
+        : 28
+      : close
+        ? 72
+        : 32;
+
+  // Deepish sub under bombs: softer hit chance.
+  if (
+    mode === 'bombing_run' &&
+    input.targetType === 'Submarine' &&
+    depth > RADAR_SURFACE_DEPTH_M
+  ) {
+    effectPct = Math.round(effectPct * 0.65);
+  }
+
+  const roll = weaponRng01(input.seed) * 100;
+  if (roll >= effectPct) {
+    return { damage: 0, outcome: 'near_miss', effectPct };
+  }
+
+  if (mode === 'bombing_run') {
+    const damage = close ? AIRCRAFT_BOMBING_DAMAGE : AIRCRAFT_BOMBING_NEAR_DAMAGE;
+    return { damage, outcome: 'hit', effectPct };
+  }
+  // Intercept: solid only on close pass; outer band is near-miss / tracers.
+  if (!close) {
+    return { damage: 0, outcome: 'near_miss', effectPct };
+  }
+  return { damage: AIRCRAFT_INTERCEPT_DAMAGE, outcome: 'hit', effectPct };
+}
+
+/**
+ * CPA of this turn's aircraft path vs the target's simultaneous interpolated track.
+ * `t` is the fraction along the aircraft segment where closest approach occurs.
+ */
+export function aircraftAttackClosestApproach(opts: {
+  aircraftStart: LatLonDepth;
+  aircraftEnd: LatLonDepth;
+  targetStart: LatLonDepth;
+  targetEnd: LatLonDepth;
+}): { missM: number; t: number; aircraftPoint: LatLonDepth; targetPoint: LatLonDepth } {
+  const { east: te0, north: tn0 } = eastNorthMeters(opts.aircraftStart, opts.targetStart);
+  const { east: te1, north: tn1 } = eastNorthMeters(opts.aircraftStart, opts.targetEnd);
+  const { east: se, north: sn } = eastNorthMeters(opts.aircraftStart, opts.aircraftEnd);
+  const segLen2 = se * se + sn * sn;
+  let bestT = 0;
+  let bestMiss = Number.POSITIVE_INFINITY;
+  // Coarse sample along the turn (aircraft + target both interpolate).
+  const samples = 12;
+  for (let i = 0; i <= samples; i++) {
+    const ft = i / samples;
+    const ax = se * ft;
+    const ay = sn * ft;
+    const tx = te0 + (te1 - te0) * ft;
+    const ty = tn0 + (tn1 - tn0) * ft;
+    const miss = Math.hypot(ax - tx, ay - ty);
+    if (miss < bestMiss) {
+      bestMiss = miss;
+      bestT = ft;
+    }
+  }
+  if (segLen2 < 1e-6 && !(bestMiss < Number.POSITIVE_INFINITY)) {
+    bestMiss = Math.hypot(te0, tn0);
+    bestT = 0;
+  }
+  const aircraftPoint = {
+    lat: opts.aircraftStart.lat + (opts.aircraftEnd.lat - opts.aircraftStart.lat) * bestT,
+    lon: opts.aircraftStart.lon + (opts.aircraftEnd.lon - opts.aircraftStart.lon) * bestT,
+    depth: 0,
+  };
+  const targetPoint = {
+    lat: opts.targetStart.lat + (opts.targetEnd.lat - opts.targetStart.lat) * bestT,
+    lon: opts.targetStart.lon + (opts.targetEnd.lon - opts.targetStart.lon) * bestT,
+    depth: opts.targetStart.depth + (opts.targetEnd.depth - opts.targetStart.depth) * bestT,
+  };
+  return {
+    missM: bestMiss,
+    t: bestT,
+    aircraftPoint,
+    targetPoint,
+  };
+}
+
+export function formatAircraftAttackModeLabel(mode: AircraftAttackMode): string {
+  return mode === 'bombing_run' ? 'bombing run' : 'intercept';
+}
+
 /**
  * HP actually removed by {@link applyHealthDamage} (0 when already sunk / no-op).
  * Combat-log `damage` and Controls staging must use this — not the rolled effect —
@@ -1870,7 +2062,9 @@ export function presentationHealthFromUnrevealedDamage(
   let addBack = 0;
   for (const e of unrevealed) {
     if (
-      (e.kind === 'depth_charge_damage' || e.kind === 'torpedo_hit') &&
+      (e.kind === 'depth_charge_damage' ||
+        e.kind === 'torpedo_hit' ||
+        e.kind === 'aircraft_attack_damage') &&
       e.damage != null &&
       e.damage > 0
     ) {
@@ -1894,6 +2088,7 @@ export function buildOwnDamageLog(
     if (
       e.kind !== 'torpedo_hit' &&
       e.kind !== 'depth_charge_damage' &&
+      e.kind !== 'aircraft_attack_damage' &&
       e.kind !== 'unit_sunk' &&
       e.kind !== 'hull_implosion' &&
       e.kind !== 'subsystem_casualty'
@@ -1911,6 +2106,12 @@ export function buildOwnDamageLog(
           e.damage != null
             ? `Depth-charge shock — −${e.damage} HP`
             : 'Depth-charge shock';
+        break;
+      case 'aircraft_attack_damage':
+        summary =
+          e.damage != null
+            ? `Air attack — −${e.damage} HP`
+            : 'Air attack';
         break;
       case 'unit_sunk':
         summary = 'Hull lost — sunk / destroyed';

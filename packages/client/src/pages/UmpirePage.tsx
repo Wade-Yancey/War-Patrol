@@ -13,16 +13,19 @@ import {
   TIMER_EXTEND_SECONDS,
   TIMER_STEP_SECONDS,
   VESSEL_TYPES,
+  aircraftAttackModesForClass,
   classesForType,
   clampSpeedToMax,
   coerceVesselIdentity,
   conditionLabel,
   editMaxSpeedForClass,
+  formatAircraftAttackModeLabel,
   formatCourseDegrees,
   formatGameClock,
   formatWallDuration,
   parseWallDuration,
   snapWallDuration,
+  type AircraftAttackMode,
   type DivePlanesState,
   type EotSetting,
   type Faction,
@@ -89,6 +92,8 @@ export function UmpirePage() {
   const [shipOrderCourse, setShipOrderCourse] = useState(90);
   const [shipOrderEot, setShipOrderEot] = useState<EotSetting>('ahead_standard');
   const [breakFormationOnApply, setBreakFormationOnApply] = useState(true);
+  /** Aircraft attack-run target (Unit edit). */
+  const [attackTargetId, setAttackTargetId] = useState('');
   const [rollbackTarget, setRollbackTarget] = useState<number | null>(null);
   /** null = LIVE GT; number = read-only AAR review of that resolved turn. */
   const [reviewTurn, setReviewTurn] = useState<number | null>(null);
@@ -175,6 +180,33 @@ export function UmpirePage() {
     () => umpire?.units.find((u) => u.id === editUnitId) ?? umpire?.units[0],
     [umpire, editUnitId],
   );
+
+  const attackTargetOptions = useMemo(() => {
+    if (!umpire || !selectedUnit) return [];
+    return umpire.units.filter(
+      (u) =>
+        u.id !== selectedUnit.id &&
+        u.type !== 'Aircraft' &&
+        u.condition !== 'sunk',
+    );
+  }, [umpire, selectedUnit]);
+
+  useEffect(() => {
+    if (!selectedUnit || selectedUnit.type !== 'Aircraft') {
+      setAttackTargetId('');
+      return;
+    }
+    const pending = selectedUnit.orders?.aircraftAttack?.targetUnitId;
+    if (pending && attackTargetOptions.some((u) => u.id === pending)) {
+      setAttackTargetId(pending);
+      return;
+    }
+    setAttackTargetId((prev) =>
+      prev && attackTargetOptions.some((u) => u.id === prev)
+        ? prev
+        : attackTargetOptions[0]?.id ?? '',
+    );
+  }, [selectedUnit?.id, selectedUnit?.type, selectedUnit?.orders?.aircraftAttack?.targetUnitId, attackTargetOptions]);
 
   const selectedFormation = useMemo(() => {
     const id = selectedUnit?.formationId;
@@ -1305,6 +1337,90 @@ export function UmpirePage() {
                             >
                               Apply flight level
                             </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {selectedUnit.type === 'Aircraft' && (
+                        <div className="unit-edit-group">
+                          <h3>Attack run</h3>
+                          <p className="muted" style={{ margin: '0 0 0.5rem', fontSize: '0.75rem' }}>
+                            Queues course toward the target at full band. Resolves on the next turn
+                            advance (CPA hit / near-miss / far miss). Fighters favor intercept;
+                            bombers favor bombing run — both available.
+                          </p>
+                          <label className="unit-edit-select">
+                            Target
+                            <select
+                              value={attackTargetId}
+                              onChange={(e) => setAttackTargetId(e.target.value)}
+                              disabled={busy || !isOpen || attackTargetOptions.length === 0}
+                            >
+                              {attackTargetOptions.length === 0 ? (
+                                <option value="">No valid targets</option>
+                              ) : (
+                                attackTargetOptions.map((u) => (
+                                  <option key={u.id} value={u.id}>
+                                    {u.name} ({u.class})
+                                  </option>
+                                ))
+                              )}
+                            </select>
+                          </label>
+                          {selectedUnit.orders?.aircraftAttack && (
+                            <p className="readout" style={{ margin: '0.35rem 0', fontSize: '0.8rem' }}>
+                              Pending{' '}
+                              {formatAircraftAttackModeLabel(
+                                selectedUnit.orders.aircraftAttack.mode,
+                              )}{' '}
+                              →{' '}
+                              {umpire?.units.find(
+                                (u) => u.id === selectedUnit.orders?.aircraftAttack?.targetUnitId,
+                              )?.name ?? selectedUnit.orders.aircraftAttack.targetUnitId}
+                            </p>
+                          )}
+                          <div className="control-actions">
+                            {aircraftAttackModesForClass(selectedUnit.class).map(
+                              (mode: AircraftAttackMode) => (
+                                <button
+                                  key={mode}
+                                  className="primary"
+                                  type="button"
+                                  disabled={busy || !isOpen || !attackTargetId}
+                                  onClick={() =>
+                                    void run(
+                                      () =>
+                                        api.umpireUnitOrders(gameId, token, selectedUnit.id, {
+                                          aircraftAttack: {
+                                            mode,
+                                            targetUnitId: attackTargetId,
+                                          },
+                                        }),
+                                      `${formatAircraftAttackModeLabel(mode)} ordered`,
+                                    )
+                                  }
+                                >
+                                  {mode === 'bombing_run' ? 'Bombing run' : 'Intercept'}
+                                </button>
+                              ),
+                            )}
+                            {selectedUnit.orders?.aircraftAttack && (
+                              <button
+                                type="button"
+                                disabled={busy || !isOpen}
+                                onClick={() =>
+                                  void run(
+                                    () =>
+                                      api.umpireUnitOrders(gameId, token, selectedUnit.id, {
+                                        aircraftAttack: null,
+                                      }),
+                                    'Attack run cleared',
+                                  )
+                                }
+                              >
+                                Clear attack
+                              </button>
+                            )}
                           </div>
                         </div>
                       )}

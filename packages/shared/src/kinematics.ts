@@ -34,6 +34,7 @@ function preserveWeaponOrders(orders: UnitOrders): UnitOrders {
   const next: UnitOrders = {};
   if (orders.fireTorpedo) next.fireTorpedo = { ...orders.fireTorpedo };
   if (orders.dropDepthCharges) next.dropDepthCharges = { ...orders.dropDepthCharges };
+  if (orders.aircraftAttack) next.aircraftAttack = { ...orders.aircraftAttack };
   return next;
 }
 

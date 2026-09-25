@@ -4,12 +4,14 @@ import {
   applyUnitKinematics,
   clampDepthChargeSetting,
   clampSubmarineDepth,
+  normalizeAircraftAttackMode,
   normalizeDepthChargePattern,
   normalizeHeading,
   clampTorpedoSpreadCount,
   clampTorpedoSpreadDeg,
   normalizeTorpedoRoomId,
   resolveTurnLengthSeconds,
+  type AircraftAttackOrder,
   type DepthChargeDropOrder,
   type EotSetting,
   type GameSave,
@@ -184,6 +186,7 @@ export type OrdersPatch = {
   depth?: number;
   fireTorpedo?: TorpedoFireOrder | null;
   dropDepthCharges?: DepthChargeDropOrder | null;
+  aircraftAttack?: AircraftAttackOrder | null;
 };
 
 export function mergeOrders(
@@ -219,6 +222,14 @@ export function mergeOrders(
     next.dropDepthCharges = {
       pattern: normalizeDepthChargePattern(patch.dropDepthCharges.pattern),
       depthSettingM: clampDepthChargeSetting(patch.dropDepthCharges.depthSettingM),
+    };
+  }
+  if (patch.aircraftAttack === null) {
+    delete next.aircraftAttack;
+  } else if (patch.aircraftAttack) {
+    next.aircraftAttack = {
+      mode: normalizeAircraftAttackMode(patch.aircraftAttack.mode),
+      targetUnitId: String(patch.aircraftAttack.targetUnitId ?? '').trim(),
     };
   }
   return next;

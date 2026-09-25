@@ -133,6 +133,7 @@ export const api = {
   /**
    * Umpire: individual helm/EOT (any hull). Optional breakFormation / rejoinFormation
    * for convoy members — does not use the Navigation heading fiat path.
+   * Optional aircraftAttack queues intercept / bombing run for NPC aircraft.
    */
   umpireUnitOrders: (
     gameId: string,
@@ -143,6 +144,7 @@ export const api = {
       eot?: EotSetting;
       breakFormation?: boolean;
       rejoinFormation?: boolean;
+      aircraftAttack?: { mode: 'intercept' | 'bombing_run'; targetUnitId: string } | null;
     },
   ) =>
     request<{

@@ -52,6 +52,11 @@ import {
   reconcileFormations,
   scenarioFormationSeeds,
   followsFormation,
+  bearingRangeNm,
+  canOrderAircraftAttack,
+  isAircraftAttackTarget,
+  normalizeAircraftAttackMode,
+  type AircraftAttackOrder,
   type CombatLogEntry,
   type EotSetting,
   type GameSave,
@@ -806,6 +811,8 @@ export class GameRuntime {
    * Umpire individual helm/EOT for any hull (player or NPC).
    * Optional breakFormation detaches a convoy member so later group applies skip it;
    * rejoinFormation clears the flag and optionally resyncs to standing group orders.
+   * Optional aircraftAttack queues an intercept / bombing run (aircraft only) and,
+   * unless course/eot are also provided, steers toward the target at full band.
    */
   submitUmpireUnitOrders(
     gameId: string,
@@ -815,15 +822,17 @@ export class GameRuntime {
       eot?: EotSetting;
       breakFormation?: boolean;
       rejoinFormation?: boolean;
+      aircraftAttack?: AircraftAttackOrder | null;
     },
   ): GameSave {
     if (
       patch.course === undefined &&
       patch.eot === undefined &&
+      patch.aircraftAttack === undefined &&
       !patch.breakFormation &&
       !patch.rejoinFormation
     ) {
-      throw Object.assign(new Error('course, eot, and/or formation flag required'), {
+      throw Object.assign(new Error('course, eot, aircraftAttack, and/or formation flag required'), {
         statusCode: 400,
       });
     }
@@ -857,10 +866,48 @@ export class GameRuntime {
         unit.formationDetached = true;
       }
 
-      if (patch.course !== undefined || patch.eot !== undefined) {
+      let course = patch.course;
+      let eot = patch.eot;
+
+      if (patch.aircraftAttack !== undefined) {
+        if (patch.aircraftAttack === null) {
+          unit.orders = mergeOrders(unit.orders, { aircraftAttack: null }, 'umpire');
+        } else {
+          if (!canOrderAircraftAttack(unit)) {
+            throw Object.assign(new Error('Only afloat aircraft can run intercept / bombing attacks'), {
+              statusCode: 400,
+            });
+          }
+          const targetId = String(patch.aircraftAttack.targetUnitId ?? '').trim();
+          if (!targetId) {
+            throw Object.assign(new Error('aircraftAttack.targetUnitId required'), {
+              statusCode: 400,
+            });
+          }
+          const target = save.units.find((u) => u.id === targetId);
+          if (!target || !isAircraftAttackTarget(target)) {
+            throw Object.assign(new Error('Invalid aircraft attack target'), { statusCode: 400 });
+          }
+          const mode = normalizeAircraftAttackMode(patch.aircraftAttack.mode);
+          // Default attack profile: steer toward target at full band unless overridden.
+          if (course === undefined) {
+            course = bearingRangeNm(unit.position, target.position).bearing;
+          }
+          if (eot === undefined) {
+            eot = 'ahead_flank';
+          }
+          unit.orders = mergeOrders(
+            unit.orders,
+            { aircraftAttack: { mode, targetUnitId: targetId } },
+            'umpire',
+          );
+        }
+      }
+
+      if (course !== undefined || eot !== undefined) {
         applyUmpireHelmPatch(
           unit,
-          { course: patch.course, eot: patch.eot },
+          { course, eot },
           'umpire',
         );
       }

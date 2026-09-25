@@ -413,16 +413,28 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       eot?: EotSetting;
       breakFormation?: boolean;
       rejoinFormation?: boolean;
+      aircraftAttack?: { mode?: string; targetUnitId?: string } | null;
     };
   }>('/api/games/:gameId/units/:unitId/orders', async (request, reply) => {
     try {
       requireUmpire(request, request.params.gameId);
       const body = request.body ?? {};
+      const attackRaw = body.aircraftAttack;
+      const aircraftAttack =
+        attackRaw === null
+          ? null
+          : attackRaw && typeof attackRaw === 'object'
+            ? {
+                mode: attackRaw.mode === 'bombing_run' ? ('bombing_run' as const) : ('intercept' as const),
+                targetUnitId: String(attackRaw.targetUnitId ?? ''),
+              }
+            : undefined;
       const save = runtime.submitUmpireUnitOrders(request.params.gameId, request.params.unitId, {
         course: body.course,
         eot: body.eot,
         breakFormation: Boolean(body.breakFormation),
         rejoinFormation: Boolean(body.rejoinFormation),
+        ...(aircraftAttack !== undefined ? { aircraftAttack } : {}),
       });
       const unit = save.units.find((u) => u.id === request.params.unitId);
       return {
