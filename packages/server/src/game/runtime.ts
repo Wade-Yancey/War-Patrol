@@ -49,6 +49,9 @@ import {
   sideFromFaction,
   isV1PlayerUnit,
   normalizeContactBook,
+  reconcileFormations,
+  scenarioFormationSeeds,
+  followsFormation,
   type CombatLogEntry,
   type EotSetting,
   type GameSave,
@@ -71,6 +74,27 @@ import {
 } from './turnEngine.js';
 import { appendCombatLog, logLine } from './weaponsResolve.js';
 import { buildViewForSession } from './views.js';
+
+/** Apply umpire helm course/EOT to one unit (same standing-course + pending-EOT model as stations). */
+function applyUmpireHelmPatch(
+  unit: UnitState,
+  patch: { course?: number; eot?: EotSetting },
+  writerId: string,
+): void {
+  const normalized: { course?: number; eot?: EotSetting } = {
+    ...(patch.course !== undefined ? { course: normalizeHeading(patch.course) } : {}),
+    ...(patch.eot !== undefined ? { eot: patch.eot } : {}),
+  };
+  if (normalized.course === undefined && normalized.eot === undefined) return;
+  unit.orders = mergeOrders(unit.orders, normalized, writerId);
+  if (
+    normalized.course !== undefined &&
+    unit.subsystems?.steering !== 'stuck' &&
+    unit.subsystems?.steering !== 'disabled'
+  ) {
+    unit.orderedCourse = normalized.course;
+  }
+}
 
 function unitFromScenario(seed: Scenario['units'][number]): UnitState {
   const identity = resolveVesselIdentity({
@@ -161,6 +185,12 @@ function unitFromScenario(seed: Scenario['units'][number]): UnitState {
       ...identity,
       depthChargeLoad: seed.depthChargeLoad,
     }),
+    ...(seed.formationId?.trim()
+      ? {
+          formationId: seed.formationId.trim(),
+          ...(seed.formationDetached ? { formationDetached: true } : {}),
+        }
+      : {}),
   });
 }
 
@@ -292,6 +322,12 @@ function normalizeUnit(unit: UnitState): UnitState {
     ...resolveTorpedoMagazineState(unit),
     ...resolveDepthChargeMagazineState(unit),
     ...(contactBook ? { contactBook } : {}),
+    ...(unit.formationId?.trim()
+      ? {
+          formationId: unit.formationId.trim(),
+          ...(unit.formationDetached ? { formationDetached: true as const } : {}),
+        }
+      : {}),
   };
 }
 
@@ -354,6 +390,7 @@ function normalizeSave(save: GameSave): GameSave {
     depthCharges,
     recentDetonations: save.recentDetonations ?? [],
     combatLog: save.combatLog ?? [],
+    formations: reconcileFormations(save.formations, units),
     openingSnapshot,
     history,
   };
@@ -448,6 +485,11 @@ export class GameRuntime {
         points: [{ lat: u.position.lat, lon: u.position.lon, turnNumber: 0 }],
       })),
       units,
+      formations: reconcileFormations(
+        undefined,
+        units,
+        scenarioFormationSeeds(scenario),
+      ),
       torpedoes: [],
       depthCharges: [],
       recentDetonations: [],
@@ -713,6 +755,114 @@ export class GameRuntime {
         unit.subsystems?.divePlanes !== 'disabled'
       ) {
         unit.orderedDepth = clampSubmarineDepth(normalizedPatch.depth);
+      }
+      return save;
+    });
+  }
+
+  /**
+   * Umpire convoy / formation group helm+EOT apply.
+   * Writes standing formation course/EOT, then mirrors the same order model onto
+   * every non-detached member (course → orderedCourse live; eot → pending orders).
+   * Detached hulls keep membership but are skipped until rejoined.
+   */
+  submitFormationOrders(
+    gameId: string,
+    formationId: string,
+    patch: { course?: number; eot?: EotSetting },
+  ): GameSave {
+    const id = formationId.trim();
+    if (!id) {
+      throw Object.assign(new Error('formationId required'), { statusCode: 400 });
+    }
+    if (patch.course === undefined && patch.eot === undefined) {
+      throw Object.assign(new Error('course and/or eot required'), { statusCode: 400 });
+    }
+    return this.touch(gameId, (save) => {
+      if (save.turn.phase !== 'open') {
+        throw Object.assign(new Error('Ordering is locked'), { statusCode: 409 });
+      }
+      save.formations = reconcileFormations(save.formations, save.units);
+      const formation = save.formations.find((f) => f.id === id);
+      if (!formation) {
+        throw Object.assign(new Error('Formation not found'), { statusCode: 404 });
+      }
+      if (patch.course !== undefined) {
+        formation.orderedCourse = normalizeHeading(patch.course);
+      }
+      if (patch.eot !== undefined) {
+        formation.eot = patch.eot;
+      }
+      const writer = 'umpire-formation';
+      for (const unit of save.units) {
+        if (!followsFormation(unit) || unit.formationId !== id) continue;
+        applyUmpireHelmPatch(unit, patch, writer);
+      }
+      return save;
+    });
+  }
+
+  /**
+   * Umpire individual helm/EOT for any hull (player or NPC).
+   * Optional breakFormation detaches a convoy member so later group applies skip it;
+   * rejoinFormation clears the flag and optionally resyncs to standing group orders.
+   */
+  submitUmpireUnitOrders(
+    gameId: string,
+    unitId: string,
+    patch: {
+      course?: number;
+      eot?: EotSetting;
+      breakFormation?: boolean;
+      rejoinFormation?: boolean;
+    },
+  ): GameSave {
+    if (
+      patch.course === undefined &&
+      patch.eot === undefined &&
+      !patch.breakFormation &&
+      !patch.rejoinFormation
+    ) {
+      throw Object.assign(new Error('course, eot, and/or formation flag required'), {
+        statusCode: 400,
+      });
+    }
+    return this.touch(gameId, (save) => {
+      if (save.turn.phase !== 'open') {
+        throw Object.assign(new Error('Ordering is locked'), { statusCode: 409 });
+      }
+      const unit = save.units.find((u) => u.id === unitId);
+      if (!unit) throw Object.assign(new Error('Unit not found'), { statusCode: 404 });
+
+      if (patch.rejoinFormation) {
+        if (!unit.formationId) {
+          throw Object.assign(new Error('Unit is not in a formation'), { statusCode: 400 });
+        }
+        delete unit.formationDetached;
+        // Resync to standing group helm unless the same request overrides course/eot.
+        save.formations = reconcileFormations(save.formations, save.units);
+        const formation = save.formations.find((f) => f.id === unit.formationId);
+        if (formation) {
+          const sync: { course?: number; eot?: EotSetting } = {};
+          if (patch.course === undefined) sync.course = formation.orderedCourse;
+          if (patch.eot === undefined) sync.eot = formation.eot;
+          if (sync.course !== undefined || sync.eot !== undefined) {
+            applyUmpireHelmPatch(unit, sync, 'umpire-rejoin');
+          }
+        }
+      } else if (patch.breakFormation) {
+        if (!unit.formationId) {
+          throw Object.assign(new Error('Unit is not in a formation'), { statusCode: 400 });
+        }
+        unit.formationDetached = true;
+      }
+
+      if (patch.course !== undefined || patch.eot !== undefined) {
+        applyUmpireHelmPatch(
+          unit,
+          { course: patch.course, eot: patch.eot },
+          'umpire',
+        );
       }
       return save;
     });

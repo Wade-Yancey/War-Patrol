@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import {
   DEFAULT_TURN_SECONDS,
   DIVE_PLANES_STATES,
+  EOT_LABELS,
   FACTIONS,
   FLIGHT_LEVELS,
   HULL_CLASSES,
@@ -17,11 +18,13 @@ import {
   coerceVesselIdentity,
   conditionLabel,
   editMaxSpeedForClass,
+  formatCourseDegrees,
   formatGameClock,
   formatWallDuration,
   parseWallDuration,
   snapWallDuration,
   type DivePlanesState,
+  type EotSetting,
   type Faction,
   type FlightLevel,
   type HullClass,
@@ -44,6 +47,7 @@ import { CrtShell } from '../components/CrtShell';
 import { TouchNumber } from '../components/TouchNumber';
 import { ConfirmAction } from '../components/ConfirmAction';
 import { VesselJoinLinks } from '../components/VesselJoinLinks';
+import { EotTelegraph } from '../components/EotTelegraph';
 
 function tokenKey(gameId: string) {
   return `wp-token:${gameId}:umpire`;
@@ -78,6 +82,13 @@ export function UmpirePage() {
   const [editPassword, setEditPassword] = useState('');
   const [dirty, setDirty] = useState(false);
   const [applyNote, setApplyNote] = useState<string | null>(null);
+  /** Convoy group helm draft (course/EOT order model — not Navigation heading fiat). */
+  const [formationCourse, setFormationCourse] = useState(90);
+  const [formationEot, setFormationEot] = useState<EotSetting>('ahead_standard');
+  /** Individual helm order draft for break-out / single-ship orders. */
+  const [shipOrderCourse, setShipOrderCourse] = useState(90);
+  const [shipOrderEot, setShipOrderEot] = useState<EotSetting>('ahead_standard');
+  const [breakFormationOnApply, setBreakFormationOnApply] = useState(true);
   const [rollbackTarget, setRollbackTarget] = useState<number | null>(null);
   /** null = LIVE GT; number = read-only AAR review of that resolved turn. */
   const [reviewTurn, setReviewTurn] = useState<number | null>(null);
@@ -165,6 +176,18 @@ export function UmpirePage() {
     [umpire, editUnitId],
   );
 
+  const selectedFormation = useMemo(() => {
+    const id = selectedUnit?.formationId;
+    if (!id || !umpire) return null;
+    return umpire.formations?.find((f) => f.id === id) ?? null;
+  }, [selectedUnit?.formationId, umpire]);
+
+  const formationRoster = useMemo(() => {
+    const id = selectedUnit?.formationId;
+    if (!id || !umpire) return [];
+    return umpire.units.filter((u) => u.formationId === id);
+  }, [selectedUnit?.formationId, umpire]);
+
   const classOptions = useMemo(() => classesForType(editType), [editType]);
 
   /** Speed slider cap: unit/class max, further capped when draft sub is submerged. */
@@ -220,6 +243,20 @@ export function UmpirePage() {
     // Intentional: sync on unit/version when not dirty
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedUnit?.id, stateVersion]);
+
+  // Sync convoy / ship helm drafts from live formation + unit (separate from Navigation fiat draft).
+  useEffect(() => {
+    if (!selectedUnit) return;
+    setShipOrderCourse(Math.round(selectedUnit.orderedCourse ?? selectedUnit.heading));
+    setShipOrderEot(selectedUnit.orders?.eot ?? selectedUnit.eot);
+    setBreakFormationOnApply(!selectedUnit.formationDetached);
+  }, [selectedUnit?.id, selectedUnit?.orderedCourse, selectedUnit?.eot, selectedUnit?.orders?.eot, selectedUnit?.formationDetached, stateVersion]);
+
+  useEffect(() => {
+    if (!selectedFormation) return;
+    setFormationCourse(Math.round(selectedFormation.orderedCourse));
+    setFormationEot(selectedFormation.eot);
+  }, [selectedFormation?.id, selectedFormation?.orderedCourse, selectedFormation?.eot, stateVersion]);
 
   const markDirty = () => {
     setDirty(true);
@@ -834,10 +871,152 @@ export function UmpirePage() {
                       {umpire.units.map((u) => (
                         <option key={u.id} value={u.id}>
                           {u.name} · {u.faction}
+                          {u.formationId ? ` · ${u.formationDetached ? 'DETACHED' : 'CONV'}` : ''}
                         </option>
                       ))}
                     </select>
                   </label>
+
+                  {selectedUnit && selectedFormation && (
+                    <div className="unit-edit-group">
+                      <div className="unit-edit-identity-head">
+                        <h3>Convoy</h3>
+                        <span className="mono muted" style={{ fontSize: '0.75rem' }}>
+                          {selectedFormation.name}
+                        </span>
+                      </div>
+                      <p className="muted" style={{ margin: 0, fontSize: '0.75rem' }}>
+                        Group helm uses standing course + EOT (same model as station orders). Bow
+                        turns at class rate on resolve — not the Navigation heading fiat.
+                      </p>
+                      <ul
+                        className="mono muted"
+                        style={{ margin: 0, paddingLeft: '1.1rem', fontSize: '0.75rem' }}
+                      >
+                        {formationRoster.map((m) => (
+                          <li key={m.id}>
+                            {m.name}
+                            {m.formationDetached ? ' · DETACHED' : ' · following'}
+                            {m.id === selectedUnit.id ? ' · selected' : ''}
+                          </li>
+                        ))}
+                      </ul>
+                      <TouchNumber
+                        label="Group course"
+                        value={formationCourse}
+                        onChange={setFormationCourse}
+                        min={0}
+                        max={359}
+                        step={1}
+                        wrap
+                        unit="°"
+                        format={(v) => formatCourseDegrees(v)}
+                      />
+                      <div>
+                        <p className="muted" style={{ margin: '0 0 0.35rem', fontSize: '0.75rem' }}>
+                          Group EOT · {EOT_LABELS[formationEot]}
+                        </p>
+                        <EotTelegraph value={formationEot} onChange={setFormationEot} disabled={busy} />
+                      </div>
+                      <div className="control-actions">
+                        <button
+                          className="primary"
+                          type="button"
+                          disabled={busy || !isOpen}
+                          title={!isOpen ? 'Reopen orders to apply' : undefined}
+                          onClick={() =>
+                            void run(
+                              () =>
+                                api.formationOrders(gameId, token, selectedFormation.id, {
+                                  course: formationCourse,
+                                  eot: formationEot,
+                                }),
+                              `Convoy orders · CRS ${formatCourseDegrees(formationCourse)} · ${EOT_LABELS[formationEot]}`,
+                            )
+                          }
+                        >
+                          Apply to convoy
+                        </button>
+                      </div>
+
+                      <h3 style={{ marginTop: '0.35rem' }}>Ship helm (break-out)</h3>
+                      {selectedUnit.formationDetached ? (
+                        <p className="mono muted" style={{ margin: 0, fontSize: '0.75rem' }}>
+                          DETACHED — group applies skip this hull
+                        </p>
+                      ) : (
+                        <label
+                          className="row"
+                          style={{ gap: '0.5rem', alignItems: 'center', fontSize: '0.85rem' }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={breakFormationOnApply}
+                            onChange={(e) => setBreakFormationOnApply(e.target.checked)}
+                          />
+                          Break formation with this order
+                        </label>
+                      )}
+                      <TouchNumber
+                        label="Ship course"
+                        value={shipOrderCourse}
+                        onChange={setShipOrderCourse}
+                        min={0}
+                        max={359}
+                        step={1}
+                        wrap
+                        unit="°"
+                        format={(v) => formatCourseDegrees(v)}
+                      />
+                      <div>
+                        <p className="muted" style={{ margin: '0 0 0.35rem', fontSize: '0.75rem' }}>
+                          Ship EOT · {EOT_LABELS[shipOrderEot]}
+                        </p>
+                        <EotTelegraph value={shipOrderEot} onChange={setShipOrderEot} disabled={busy} />
+                      </div>
+                      <div className="control-actions">
+                        <button
+                          className="primary"
+                          type="button"
+                          disabled={busy || !isOpen}
+                          onClick={() =>
+                            void run(
+                              () =>
+                                api.umpireUnitOrders(gameId, token, selectedUnit.id, {
+                                  course: shipOrderCourse,
+                                  eot: shipOrderEot,
+                                  ...(selectedUnit.formationDetached
+                                    ? {}
+                                    : { breakFormation: breakFormationOnApply }),
+                                }),
+                              selectedUnit.formationDetached || breakFormationOnApply
+                                ? `Ship orders (break) · CRS ${formatCourseDegrees(shipOrderCourse)}`
+                                : `Ship orders · CRS ${formatCourseDegrees(shipOrderCourse)}`,
+                            )
+                          }
+                        >
+                          Apply ship orders
+                        </button>
+                        {selectedUnit.formationDetached && (
+                          <button
+                            type="button"
+                            disabled={busy || !isOpen}
+                            onClick={() =>
+                              void run(
+                                () =>
+                                  api.umpireUnitOrders(gameId, token, selectedUnit.id, {
+                                    rejoinFormation: true,
+                                  }),
+                                'Rejoined convoy',
+                              )
+                            }
+                          >
+                            Rejoin convoy
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {selectedUnit && (
                     <>

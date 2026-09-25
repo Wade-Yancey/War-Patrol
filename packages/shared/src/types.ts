@@ -524,6 +524,40 @@ export interface UnitState {
    * next push replaces them — client cues only render while `active`.
    */
   gopherTask?: GopherTask;
+  /**
+   * Optional convoy / formation membership id (scenario-seeded or umpire).
+   * Units sharing the same id receive group helm/EOT applies together.
+   */
+  formationId?: string;
+  /**
+   * When true, this hull no longer follows group orders for its
+   * {@link formationId} (break-out). Membership id is kept for roster UX
+   * until the umpire rejoins it.
+   */
+  formationDetached?: boolean;
+}
+
+/**
+ * Scenario-level display name for a formation / convoy id.
+ * Membership itself is on {@link ScenarioUnitSeed.formationId}.
+ */
+export interface ScenarioFormationSeed {
+  id: string;
+  name: string;
+}
+
+/**
+ * Standing group helm/EOT for a convoy / formation (umpire-controlled).
+ * Applied to non-detached members via the same course/EOT order model
+ * used by individual vessels — not a separate kinematics path.
+ */
+export interface FormationState {
+  id: string;
+  name: string;
+  /** Standing group course degrees true. */
+  orderedCourse: number;
+  /** Standing group EOT (queued onto followers as pending `orders.eot`). */
+  eot: EotSetting;
 }
 
 export interface ScenarioUnitSeed {
@@ -579,6 +613,13 @@ export interface ScenarioUnitSeed {
   torpedoAft?: number;
   /** Optional ready depth-charge count (destroyers). */
   depthChargeLoad?: number;
+  /**
+   * Optional convoy / formation membership id. Units sharing an id move
+   * under umpire group helm/EOT until individually detached.
+   */
+  formationId?: string;
+  /** Optional seed: start detached from formation group orders. */
+  formationDetached?: boolean;
 }
 
 export interface Scenario {
@@ -598,6 +639,11 @@ export interface Scenario {
   turnLengthSeconds?: number;
   /** In-game clock at turn 1 (seconds since midnight; default 08:00). */
   startGameTimeSeconds?: number;
+  /**
+   * Optional convoy / formation display names keyed by id.
+   * Membership is on each unit's {@link ScenarioUnitSeed.formationId}.
+   */
+  formations?: ScenarioFormationSeed[];
   units: ScenarioUnitSeed[];
 }
 
@@ -690,6 +736,11 @@ export interface GameSave {
    * Appended on resolve; not included in vessel FoW views.
    */
   combatLog: CombatLogEntry[];
+  /**
+   * Standing convoy / formation group orders (umpire).
+   * Rebuilt from unit membership on load when absent; empty when no formations.
+   */
+  formations?: FormationState[];
 }
 
 /** Kinds of umpire combat / action log lines. */
@@ -850,6 +901,11 @@ export interface UmpireView {
     role: 'umpire' | 'vessel';
     count: number;
   }>;
+  /**
+   * Standing convoy / formation group orders (umpire GT only).
+   * Empty when the scenario has no formation membership.
+   */
+  formations: FormationState[];
 }
 
 /**

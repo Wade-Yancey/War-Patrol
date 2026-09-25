@@ -2691,6 +2691,111 @@ async function main() {
           oilerUnits.every((u) => u.turnRate < gatoUnit.turnRate),
         );
       }
+
+      // --- Convoy group orders + break-formation ---
+      {
+        const formView = convoyView.json.view as {
+          formations?: Array<{ id: string; name: string; orderedCourse: number; eot: string }>;
+          units?: Array<{
+            id: string;
+            formationId?: string;
+            formationDetached?: boolean;
+            orderedCourse: number;
+            orders?: { course?: number; eot?: string };
+          }>;
+        };
+        check(
+          'cimarron convoy formation listed',
+          Array.isArray(formView.formations) &&
+            formView.formations.some((f) => f.id === 'cimarron-column'),
+        );
+        const oilersInForm = (formView.units ?? []).filter(
+          (u) => u.formationId === 'cimarron-column',
+        );
+        check('cimarron oilers in formation', oilersInForm.length === 4);
+        check(
+          'cimarron oilers start following',
+          oilersInForm.every((u) => !u.formationDetached),
+        );
+
+        const groupApply = await api(
+          'POST',
+          `/api/games/${convoyId}/formations/cimarron-column/orders`,
+          { course: 270, eot: 'ahead_full' },
+          convoyUTok,
+        );
+        check('convoy group orders apply', groupApply.status === 200);
+        const afterGroup = runtime.requireGame(convoyId);
+        const followers = afterGroup.units.filter((u) => u.formationId === 'cimarron-column');
+        check(
+          'group apply sets orderedCourse on all followers',
+          followers.every((u) => Math.abs(u.orderedCourse - 270) < 0.01),
+        );
+        check(
+          'group apply queues EOT on all followers',
+          followers.every((u) => u.orders.eot === 'ahead_full'),
+        );
+        check(
+          'group apply does not snap bow heading',
+          followers.every((u) => Math.abs(u.heading - 90) < 0.01),
+        );
+        const formState = afterGroup.formations?.find((f) => f.id === 'cimarron-column');
+        check(
+          'formation standing course/EOT updated',
+          formState?.orderedCourse === 270 && formState?.eot === 'ahead_full',
+        );
+
+        const breakOut = await api(
+          'POST',
+          `/api/games/${convoyId}/units/ao-23/orders`,
+          { course: 0, eot: 'ahead_1', breakFormation: true },
+          convoyUTok,
+        );
+        check('break-formation ship orders', breakOut.status === 200);
+        const afterBreak = runtime.requireGame(convoyId);
+        const neosho = afterBreak.units.find((u) => u.id === 'ao-23')!;
+        check('neosho detached', Boolean(neosho.formationDetached));
+        check('neosho still has formationId', neosho.formationId === 'cimarron-column');
+        check('neosho orderedCourse independent', Math.abs(neosho.orderedCourse - 0) < 0.01);
+        check('neosho EOT independent', neosho.orders.eot === 'ahead_1');
+
+        const groupAgain = await api(
+          'POST',
+          `/api/games/${convoyId}/formations/cimarron-column/orders`,
+          { course: 180, eot: 'ahead_standard' },
+          convoyUTok,
+        );
+        check('group apply after break', groupAgain.status === 200);
+        const afterGroup2 = runtime.requireGame(convoyId);
+        const neosho2 = afterGroup2.units.find((u) => u.id === 'ao-23')!;
+        const cimarron2 = afterGroup2.units.find((u) => u.id === 'ao-22')!;
+        check(
+          'detached hull skips later group apply',
+          Math.abs(neosho2.orderedCourse - 0) < 0.01 && neosho2.orders.eot === 'ahead_1',
+        );
+        check(
+          'followers still take group apply',
+          Math.abs(cimarron2.orderedCourse - 180) < 0.01 &&
+            cimarron2.orders.eot === 'ahead_standard',
+        );
+
+        const rejoin = await api(
+          'POST',
+          `/api/games/${convoyId}/units/ao-23/orders`,
+          { rejoinFormation: true },
+          convoyUTok,
+        );
+        check('rejoin formation', rejoin.status === 200);
+        const afterRejoin = runtime.requireGame(convoyId);
+        const neosho3 = afterRejoin.units.find((u) => u.id === 'ao-23')!;
+        check('neosho no longer detached', !neosho3.formationDetached);
+        check(
+          'rejoin resyncs to standing group course',
+          Math.abs(neosho3.orderedCourse - 180) < 0.01,
+        );
+        check('rejoin resyncs pending group EOT', neosho3.orders.eot === 'ahead_standard');
+      }
+
       const convoySub = await api('POST', `/api/games/${convoyId}/auth/vessel`, {
         accessToken: 'gato-demo',
         password: 'red',
