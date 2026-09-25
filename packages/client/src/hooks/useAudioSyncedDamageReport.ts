@@ -9,6 +9,7 @@ import {
   type VesselView,
 } from '@war-patrol/shared';
 import { depthChargeBatchWhenSecById } from '../audio/depthCharge';
+import { torpedoHitBatchWhenSecById } from '../audio/torpedoHit';
 
 export type ScheduleDamageReveal = (detonationId: string, whenSec: number) => void;
 
@@ -32,8 +33,9 @@ export type SyncedDamagePresentation = {
  *
  * Sim / vessel health stay at resolve-time truth; only presentation is held.
  * Entries without a live `bridgeDetonations` cue (or no `sourceDetonationId`)
- * reveal immediately. DC cues use the stagger `whenSec`; torpedo-hit cues use
- * `audioDelaySec` (arrival inside the resolved turn). Umpire Action log is
+ * reveal immediately. DC cues use the pattern stagger `whenSec`; torpedo-hit
+ * cues use `audioDelaySec` (arrival inside the resolved turn) plus a short
+ * same-moment multi-hit stagger so bangs stay countable. Umpire Action log is
  * untouched.
  *
  * Reveals are scheduled from live `bridgeDetonations` (Sensors + Controls) and
@@ -124,12 +126,18 @@ export function useAudioSyncedDamageReport(
       (e) => e.kind !== 'torpedo_hit' && e.kind !== 'aircraft_bomb',
     );
     const dcWhenById = depthChargeBatchWhenSecById(dcBatch);
+    const hitBatch = events.filter((e) => e.kind === 'torpedo_hit');
+    const hitWhenById = torpedoHitBatchWhenSecById(hitBatch);
     for (const e of events) {
       if (scheduledDetonationIdsRef.current.has(e.id)) continue;
-      const whenSec =
-        e.kind === 'torpedo_hit' || e.kind === 'aircraft_bomb'
-          ? Math.max(0, e.audioDelaySec ?? 0)
-          : (dcWhenById.get(e.id) ?? 0);
+      let whenSec = 0;
+      if (e.kind === 'torpedo_hit') {
+        whenSec = hitWhenById.get(e.id) ?? Math.max(0, e.audioDelaySec ?? 0);
+      } else if (e.kind === 'aircraft_bomb') {
+        whenSec = Math.max(0, e.audioDelaySec ?? 0);
+      } else {
+        whenSec = dcWhenById.get(e.id) ?? 0;
+      }
       scheduleRevealForDetonation(e.id, whenSec);
     }
   }, [bridgeDetonations, scheduleRevealForDetonation]);
