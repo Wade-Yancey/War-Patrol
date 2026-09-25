@@ -2266,6 +2266,9 @@ async function main() {
       FLEET_SUB_DECK_GUN_MAX_SHOTS_PER_TURN,
       DECK_GUN_FIRE_STAGGER_SEC,
       DECK_GUN_HIT_DAMAGE,
+      DECK_GUN_HIT_CHANCE_CENTER,
+      DECK_GUN_HIT_CHANCE_EDGE,
+      DECK_GUN_BULLSEYE_MISS_M,
       DECK_GUN_MAX_RANGE_NM,
       DECK_GUN_RELOAD_TURNS,
       defaultDeckGunLoad,
@@ -2278,7 +2281,9 @@ async function main() {
       resolveDeckGunShot,
       deckGunImpactFromSolution,
       deckGunHitGateM,
+      deckGunHitChance,
       deckGunMissBand,
+      weaponRng01,
       RADAR_SURFACE_DEPTH_M,
     } = await import('@war-patrol/shared');
     check('beam aspect dud ~2%', Math.abs(torpedoDudPctFromAspect(90) - 2) < 0.01);
@@ -2311,24 +2316,24 @@ async function main() {
       'fleet sub deck gun load 20',
       defaultDeckGunLoad({ class: 'Fleet Submarine', type: 'Submarine' }) === FLEET_SUB_DECK_GUN_LOAD,
     );
-    check('DD deck gun max shots/turn 6', DESTROYER_DECK_GUN_MAX_SHOTS_PER_TURN === 6);
-    check('fleet sub deck gun max shots/turn 3', FLEET_SUB_DECK_GUN_MAX_SHOTS_PER_TURN === 3);
+    check('DD deck gun max shots/turn 3', DESTROYER_DECK_GUN_MAX_SHOTS_PER_TURN === 3);
+    check('fleet sub deck gun max shots/turn 2', FLEET_SUB_DECK_GUN_MAX_SHOTS_PER_TURN === 2);
     check(
       'maxDeckGunShotsPerTurn DD',
-      maxDeckGunShotsPerTurn({ class: 'Destroyer', type: 'Ship' }) === 6,
+      maxDeckGunShotsPerTurn({ class: 'Destroyer', type: 'Ship' }) === 3,
     );
     check(
       'maxDeckGunShotsPerTurn sub',
-      maxDeckGunShotsPerTurn({ class: 'Fleet Submarine', type: 'Submarine' }) === 3,
+      maxDeckGunShotsPerTurn({ class: 'Fleet Submarine', type: 'Submarine' }) === 2,
     );
-    check('deck gun fire stagger 250ms', DECK_GUN_FIRE_STAGGER_SEC === 0.25);
+    check('deck gun fire stagger 2s', DECK_GUN_FIRE_STAGGER_SEC === 2);
     check(
       'clamp deck gun shot count to ammo',
-      clampDeckGunShotCount(6, { class: 'Destroyer', type: 'Ship', deckGunLoad: 4 }) === 4,
+      clampDeckGunShotCount(6, { class: 'Destroyer', type: 'Ship', deckGunLoad: 2 }) === 2,
     );
     check(
       'clamp deck gun shot count to class max',
-      clampDeckGunShotCount(99, { class: 'Fleet Submarine', type: 'Submarine', deckGunLoad: 20 }) === 3,
+      clampDeckGunShotCount(99, { class: 'Fleet Submarine', type: 'Submarine', deckGunLoad: 20 }) === 2,
     );
     check(
       'clamp deck gun shot count default 1',
@@ -2339,8 +2344,8 @@ async function main() {
       JSON.stringify(deckGunSalvoFireFractions(1)) === JSON.stringify([0]),
     );
     check(
-      'deck gun salvo fractions triple',
-      JSON.stringify(deckGunSalvoFireFractions(3)) === JSON.stringify([0, 0.5, 1]),
+      'deck gun salvo fractions double',
+      JSON.stringify(deckGunSalvoFireFractions(2)) === JSON.stringify([0, 1]),
     );
     {
       const mag = {
@@ -2351,8 +2356,8 @@ async function main() {
         deckGunAwaitingReload: false,
         deckGunReloadTurnsRemaining: 0,
       };
-      const after = consumeDeckGunShells(mag as never, 6);
-      check('consumeDeckGunShells takes 6', after.deckGunLoad === 34);
+      const after = consumeDeckGunShells(mag as never, 3);
+      check('consumeDeckGunShells takes 3', after.deckGunLoad === 37);
       check('consumeDeckGunShells awaits reload', after.deckGunAwaitingReload === true);
     }
     check('deck gun max range 8 nm', DECK_GUN_MAX_RANGE_NM === 8);
@@ -2434,6 +2439,48 @@ async function main() {
       });
       check('deck gun perfect stationary solution hits', hit.outcome === 'hit', `got ${hit.outcome} miss=${hit.missDistanceM}`);
       check('deck gun hit damage applied amount', hit.damage === DECK_GUN_HIT_DAMAGE);
+      check('deck gun bullseye miss band 10 m', DECK_GUN_BULLSEYE_MISS_M === 10);
+      check('deck gun hit chance center 0.85', DECK_GUN_HIT_CHANCE_CENTER === 0.85);
+      check('deck gun hit chance edge 0.5', DECK_GUN_HIT_CHANCE_EDGE === 0.5);
+      check(
+        'deck gun bullseye hit chance is 1',
+        deckGunHitChance(0, 60) === 1 && deckGunHitChance(10, 60) === 1,
+      );
+      // 1° aim error ≈ 49 m miss at 1.5 nm — inside Fletcher gate but past bullseye.
+      const edgeHit = resolveDeckGunShot({
+        firer: firer as never,
+        fire: {
+          aimHeading: 1,
+          estimatedCourse: 90,
+          estimatedSpeedKn: 0,
+          estimatedRangeNm: 1.5,
+        },
+        contacts: [firer as never, target as never],
+        turnLengthSeconds: 180,
+        seed: 'deckgun-hit',
+      });
+      check(
+        'deck gun edge-of-gate can still hit (low roll)',
+        edgeHit.outcome === 'hit' && edgeHit.missDistanceM > DECK_GUN_BULLSEYE_MISS_M,
+        `got ${edgeHit.outcome} miss=${edgeHit.missDistanceM}`,
+      );
+      const edgeMiss = resolveDeckGunShot({
+        firer: firer as never,
+        fire: {
+          aimHeading: 1,
+          estimatedCourse: 90,
+          estimatedSpeedKn: 0,
+          estimatedRangeNm: 1.5,
+        },
+        contacts: [firer as never, target as never],
+        turnLengthSeconds: 180,
+        seed: 'deckgun-rng-miss-24',
+      });
+      check(
+        'deck gun RNG miss path (high roll at edge)',
+        edgeMiss.outcome === 'miss' && edgeMiss.damage === 0,
+        `got ${edgeMiss.outcome} roll=${weaponRng01('deckgun-rng-miss-24').toFixed(3)} miss=${edgeMiss.missDistanceM}`,
+      );
       const submerged = {
         ...target,
         id: 'sub',
@@ -5767,7 +5814,7 @@ async function main() {
       (gunReload.json as { deckGunReloadTurnsRemaining?: number }).deckGunReloadTurnsRemaining === 2,
     );
 
-    // Multi-shot salvo: 3 rounds from surfaced Gato — 1 shell each + staggered fire cues.
+    // Multi-shot salvo: 2 rounds from surfaced Gato — 1 shell each + staggered fire cues.
     await api('POST', `/api/games/${gunId}/units/ss-212/rearm`, {}, gunUTok);
     await api(
       'PATCH',
@@ -5806,17 +5853,23 @@ async function main() {
           estimatedCourse: porterSalvo.heading,
           estimatedSpeedKn: porterSalvo.speed,
           estimatedRangeNm: Math.round(losSalvo.rangeNm * 100) / 100,
-          shotCount: 3,
+          shotCount: 2,
         },
       },
       gunSubTok,
     );
-    check('surfaced sub queues 3-round salvo', subSalvo.status === 200, `status=${subSalvo.status}`);
+    check('surfaced sub queues 2-round salvo', subSalvo.status === 200, `status=${subSalvo.status}`);
     await api('POST', `/api/games/${gunId}/turn/lock`, {}, gunUTok);
     await api('POST', `/api/games/${gunId}/turn/resolve`, {}, gunUTok);
     const afterSalvoUmp = await api('GET', `/api/games/${gunId}/view`, undefined, gunUTok);
     const afterSalvoUmpView = afterSalvoUmp.json.view as {
       combatLog?: Array<{ kind: string; summary: string }>;
+      recentDetonations?: Array<{
+        kind: string;
+        firerUnitId?: string;
+        targetUnitId?: string;
+        aimHeading?: number;
+      }>;
       units: Array<{ id: string; deckGunLoad?: number; deckGunAwaitingReload?: boolean }>;
     };
     const afterSalvoSub = await api('GET', `/api/games/${gunId}/view`, undefined, gunSubTok);
@@ -5826,35 +5879,52 @@ async function main() {
     };
     const salvoLog = afterSalvoUmpView.combatLog ?? [];
     check(
-      'combat log notes ×3 salvo',
-      salvoLog.some((e) => e.kind === 'deck_gun_fire' && (e.summary ?? '').includes('×3')),
+      'combat log notes ×2 salvo',
+      salvoLog.some((e) => e.kind === 'deck_gun_fire' && (e.summary ?? '').includes('×2')),
       `log=${JSON.stringify(salvoLog.filter((e) => String(e.kind).startsWith('deck_gun')).slice(-8))}`,
     );
     const gatoSalvoAfter = afterSalvoUmpView.units.find((u) => u.id === 'ss-212');
     check(
-      '3-round salvo consumes 3 shells',
-      gatoSalvoAfter?.deckGunLoad === 17 && gatoSalvoAfter?.deckGunAwaitingReload === true,
+      '2-round salvo consumes 2 shells',
+      gatoSalvoAfter?.deckGunLoad === 18 && gatoSalvoAfter?.deckGunAwaitingReload === true,
       `load=${gatoSalvoAfter?.deckGunLoad} awaiting=${gatoSalvoAfter?.deckGunAwaitingReload}`,
     );
     check(
       'vessel view ammo matches salvo spend',
-      afterSalvoSubView.unit?.deckGunLoad === 17,
+      afterSalvoSubView.unit?.deckGunLoad === 18,
       `load=${afterSalvoSubView.unit?.deckGunLoad}`,
     );
     const fireCues = (afterSalvoSubView.bridgeDetonations ?? []).filter((d) => d.kind === 'deck_gun_fire');
     check(
-      '3 staggered deck-gun fire cues',
-      fireCues.length === 3,
+      '2 staggered deck-gun fire cues',
+      fireCues.length === 2,
       `cues=${JSON.stringify(fireCues)}`,
     );
     const fireDelays = fireCues.map((c) => c.audioDelaySec ?? 0).sort((a, b) => a - b);
     check(
-      'deck-gun fire stagger steps 250ms',
-      fireDelays.length === 3 &&
+      'deck-gun fire stagger steps 2s',
+      fireDelays.length === 2 &&
         Math.abs(fireDelays[0]!) < 0.001 &&
-        Math.abs(fireDelays[1]! - 0.25) < 0.001 &&
-        Math.abs(fireDelays[2]! - 0.5) < 0.001,
+        Math.abs(fireDelays[1]! - 2) < 0.001,
       `delays=${JSON.stringify(fireDelays)}`,
+    );
+    const gunDets = (afterSalvoUmpView.recentDetonations ?? []).filter((d) =>
+      String(d.kind).startsWith('deck_gun'),
+    );
+    check(
+      'umpire recentDetonations include deck-gun cues',
+      gunDets.length >= 2 && gunDets.some((d) => d.kind === 'deck_gun_fire'),
+      `dets=${JSON.stringify(gunDets.map((d) => ({ kind: d.kind, aim: d.aimHeading, firer: d.firerUnitId })))}`,
+    );
+    check(
+      'umpire deck-gun dets carry aim heading',
+      gunDets.every((d) => d.aimHeading != null && Number.isFinite(d.aimHeading)),
+      `dets=${JSON.stringify(gunDets.map((d) => d.aimHeading))}`,
+    );
+    check(
+      'umpire sees hit or miss splash for salvo',
+      gunDets.some((d) => d.kind === 'deck_gun_hit' || d.kind === 'deck_gun_miss'),
+      `dets=${JSON.stringify(gunDets.map((d) => d.kind))}`,
     );
 
     // Destroyer fire vs submerged contact → miss (no useful surface engagement).

@@ -421,23 +421,30 @@ export interface WeaponDetonationEvent {
     | 'torpedo_hit'
     | 'aircraft_bomb'
     | 'deck_gun_fire'
-    | 'deck_gun_hit';
+    | 'deck_gun_hit'
+    | 'deck_gun_miss';
   position: LatLonDepth;
   turnNumber: number;
   firerUnitId: string;
   /**
    * Hit / aim target for torpedo_hit / aircraft_bomb / deck_gun_hit —
    * involved hulls get Controls audio cues (aircraft firer is NPC and has no
-   * station). Deck-gun fire cues are firer-only.
+   * station). Deck-gun fire cues are firer-only. Deck-gun miss may name the
+   * nearest surface CPA for umpire GT map labels.
    */
   targetUnitId?: string;
+  /**
+   * Deck-gun true fire / aim heading (0–360) for umpire GT aim lines.
+   * Omitted for non-gun detonations.
+   */
+  aimHeading?: number;
   /**
    * Wall-clock seconds after the client receives this cue before bridge SFX
    * (and the matching Damage-tab reveal) should play. Torpedo hits: compressed
    * presentation delay from intercept fraction within the turn (capped — see
    * `TORPEDO_HIT_AUDIO_MAX_DELAY_SEC`). Depth charges omit this and use the
    * client stagger schedule instead. Aircraft bombs use CPA fraction (same cap).
-   * Deck-gun fire is immediate (0); deck-gun hit may use a short delay so the
+   * Deck-gun fire is staggered per round; deck-gun hit may use a short delay so the
    * cannon cue leads the explosion.
    */
   audioDelaySec?: number;
