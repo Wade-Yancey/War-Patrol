@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "cavalla-shokaku-philippine-sea",
   "name": "Cavalla × Shōkaku — Philippine Sea",
-  "description": "Museum recreation of Cavalla's 19 Jun 1944 approach on Shōkaku (Battle of the Philippine Sea). NPC Shōkaku SE-bound (~135°) recovering aircraft at 18 kn; playable Kagerō escort Urakaze languidly to starboard; playable Gato-class USS Cavalla at periscope depth ~0.75 nm off the carrier's starboard for a historical-style approach/shot. Clock starts 11:00. Passwords: umpire / red (Urakaze) / blue (Cavalla); tokens urakaze-demo / cavalla-demo. Source: combinedfleet.com/shoksink.htm.",
+  "description": "Museum recreation of Cavalla's 19 Jun 1944 approach on Shōkaku (Battle of the Philippine Sea). NPC Shōkaku SE-bound (~135°) recovering aircraft at 18 kn with one NPC Mitsubishi A6M Zeke on CAP (~1.5 nm to port, medium FL, cruise); playable Kagerō escort Urakaze languidly to starboard; playable Gato-class USS Cavalla at periscope depth ~0.75 nm off the carrier's starboard for a historical-style approach/shot. Clock starts 11:00. Passwords: umpire / red (Urakaze) / blue (Cavalla); tokens urakaze-demo / cavalla-demo. Source: combinedfleet.com/shoksink.htm.",
   "mode": "pvp",
   "operatingArea": {
     "minLat": 34.32,
@@ -60,6 +60,33 @@
           ]
         }
       ]
+    },
+    {
+      "id": "ac-zeke-cap",
+      "name": "Zeke CAP",
+      "side": "red",
+      "faction": "Red",
+      "classId": "zeke-fighter",
+      "type": "Aircraft",
+      "class": "Fighter",
+      "position": {
+        "lat": 34.41768,
+        "lon": -119.97858,
+        "depth": 0
+      },
+      "heading": 225,
+      "orderedCourse": 225,
+      "speed": 198,
+      "eot": "ahead_standard",
+      "flightLevel": "medium",
+      "health": 100,
+      "maxSpeed": 305,
+      "lengthM": 9,
+      "beamM": 12,
+      "turnRate": 12,
+      "radarSignature": "small",
+      "sensors": [],
+      "stations": []
     },
     {
       "id": "dd-urakaze",

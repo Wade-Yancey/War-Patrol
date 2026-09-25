@@ -65,6 +65,8 @@ export function buildHydrophoneContacts(own: UnitState, save: GameSave): Hydroph
 
   for (const other of save.units) {
     if (other.id === own.id) continue;
+    // Hydrophone is underwater listen — skip aircraft (fighters/bombers airborne).
+    if (other.type === 'Aircraft') continue;
 
     const { bearing, rangeNm } = bearingRangeNm(own.position, other.position);
     if (rangeNm > maxRangeNm || rangeNm <= 0) continue;
