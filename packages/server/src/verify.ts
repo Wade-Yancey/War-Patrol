@@ -41,9 +41,12 @@ import {
   editMaxSpeedForClass,
   effectiveMaxSpeed,
   ensureContactLabel,
+  formatContactDesignation,
+  formatPeriscopeDesignation,
   formatWallDuration,
   isPastCrushDepth,
   defaultTurnRateForClass,
+  layoutScopeContactLabels,
   normalizeContactBook,
   parseWallDuration,
   quantizeSubmarineDepth,
@@ -93,6 +96,75 @@ async function main() {
   check('formatWallDuration minutes-first', formatWallDuration(180) === '3m');
   check('formatWallDuration with seconds', formatWallDuration(210) === '3m 30s');
   check('parseWallDuration bare minutes', parseWallDuration('3') === 180);
+
+  // Visible designations are short Cn / Pn; numbering book stays Contact N.
+  check('formatContactDesignation C1', formatContactDesignation(1) === 'C1');
+  check('formatContactDesignation C12', formatContactDesignation(12) === 'C12');
+  check('formatPeriscopeDesignation P1', formatPeriscopeDesignation(1) === 'P1');
+
+  // PPI Contact-N label collision avoidance (radar / active sonar scopes).
+  {
+    const cx = 450;
+    const cy = 450;
+    const scopeR = 390;
+    const clustered = layoutScopeContactLabels(
+      [
+        { id: 'a', labelN: 1, x: cx + 80, y: cy - 40, blipR: 6, kind: 'live' },
+        { id: 'b', labelN: 2, x: cx + 88, y: cy - 36, blipR: 6, kind: 'live' },
+        { id: 'c', labelN: 3, x: cx + 84, y: cy - 32, blipR: 6, kind: 'live' },
+      ],
+      { cx, cy, scopeR },
+    );
+    check('scope labels place all live contacts', clustered.filter((p) => p.visible).length === 3);
+    check(
+      'scope labels use short Cn text',
+      clustered.every((p) => /^C\d+$/.test(p.text)),
+      clustered.map((p) => p.text).join(','),
+    );
+    const ys = clustered.map((p) => p.labelY);
+    const spread = Math.max(...ys) - Math.min(...ys);
+    check('scope labels stagger clustered live Y', spread >= 14, `spread=${spread}`);
+
+    const nearGhost = layoutScopeContactLabels(
+      [
+        { id: 'same', labelN: 4, x: cx + 100, y: cy, blipR: 7, kind: 'live' },
+        { id: 'same', labelN: 4, x: cx + 108, y: cy + 4, blipR: 5, kind: 'ghost' },
+      ],
+      { cx, cy, scopeR, ghostSuppressNearLivePx: 36 },
+    );
+    const ghostNear = nearGhost.find((p) => p.kind === 'ghost');
+    check(
+      'scope labels hide ghost text stacked on live same id',
+      ghostNear?.visible === false,
+      JSON.stringify(ghostNear),
+    );
+
+    const farGhost = layoutScopeContactLabels(
+      [
+        { id: 'same', labelN: 5, x: cx + 60, y: cy, blipR: 7, kind: 'live' },
+        { id: 'same', labelN: 5, x: cx - 120, y: cy + 80, blipR: 5, kind: 'ghost' },
+      ],
+      { cx, cy, scopeR },
+    );
+    const ghostFar = farGhost.find((p) => p.kind === 'ghost');
+    check(
+      'scope labels keep far ghost text as Cn',
+      ghostFar?.visible === true && ghostFar.text === 'C5',
+      JSON.stringify(ghostFar),
+    );
+
+    const liveOnly = layoutScopeContactLabels(
+      [{ id: 'rim', labelN: 1, x: cx, y: cy - scopeR + 8, blipR: 8, kind: 'live' }],
+      { cx, cy, scopeR },
+    )[0];
+    const rimDist = Math.hypot((liveOnly?.labelX ?? 0) - cx, (liveOnly?.labelY ?? 0) - cy);
+    check(
+      'scope labels keep rim contact text inside disk',
+      rimDist < scopeR - 10,
+      `dist=${rimDist}`,
+    );
+  }
+
   // Periscope / lookout optics readouts are instrument-precise (ground truth)
   // — only whole-degree display rounding, not FoW banding.
   check('periscope course precise 90 stays 90', coarsenPeriscopeCourseDeg(90) === 90);

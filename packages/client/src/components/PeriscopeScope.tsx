@@ -1,5 +1,7 @@
 import { memo, useMemo, useState } from 'react';
 import {
+  formatContactDesignation,
+  formatPeriscopeDesignation,
   periscopeSilhouetteFlipX,
   periscopeSilhouetteScale,
   type HullClass,
@@ -79,8 +81,10 @@ function silhouetteAlt(
   return 'Destroyer silhouette';
 }
 
-function contactKindLabel(c: PeriscopeContact): string {
-  return c.kind === 'periscope' ? 'PERISCOPE' : `Contact`;
+function contactDesignation(c: PeriscopeContact): string {
+  return c.kind === 'periscope'
+    ? formatPeriscopeDesignation(c.labelN)
+    : formatContactDesignation(c.labelN);
 }
 
 /** Precise true course readout — padded like own HDG readout. */
@@ -127,7 +131,6 @@ function PeriscopeScopeInner({
       : (sorted[0]?.id ?? null);
 
   const selected = effectiveId ? (sorted.find((c) => c.id === effectiveId) ?? null) : null;
-  const selectedLabelN = selected?.labelN ?? null;
 
   const scale = selected ? Math.max(periscopeSilhouetteScale(selected.rangeNm, maxRangeNm), 0.55) : 1;
   const viewportLabel =
@@ -200,8 +203,8 @@ function PeriscopeScopeInner({
             <div className="periscope-readouts mono">
               <span className="readout">
                 {isFeather
-                  ? `PERISCOPE ${selectedLabelN}`
-                  : `Contact ${selectedLabelN}`}
+                  ? formatPeriscopeDesignation(selected.labelN)
+                  : formatContactDesignation(selected.labelN)}
               </span>
               <span>{formatRelBearing(selected.relativeBearing)}</span>
               <span className="muted">{selected.rangeNm.toFixed(2)} nm</span>
@@ -251,11 +254,7 @@ function PeriscopeScopeInner({
                         setSelectedId(c.id);
                       }}
                     >
-                      <span className="readout">
-                        {c.kind === 'periscope'
-                          ? `PERISCOPE ${c.labelN}`
-                          : `${contactKindLabel(c)} ${c.labelN}`}
-                      </span>
+                      <span className="readout">{contactDesignation(c)}</span>
                       <span className="radar-contact-meta">
                         <span>{formatRelBearing(c.relativeBearing)}</span>
                         <span>{c.rangeNm.toFixed(2)} nm</span>

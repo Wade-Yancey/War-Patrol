@@ -3142,12 +3142,20 @@ label {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
+  align-items: baseline;
   gap: 0.35rem 0.75rem;
+  row-gap: 0.2rem;
   padding: 0.35rem 0.65rem;
   font-size: 0.82rem;
   color: var(--phosphor);
   background: color-mix(in srgb, var(--bg-crt) 82%, transparent);
   border: 1px solid color-mix(in srgb, var(--phosphor-dim) 40%, transparent);
+}
+
+.periscope-readouts > .readout {
+  flex: 1 0 100%;
+  text-align: center;
+  letter-spacing: 0.04em;
 }
 
 .periscope-side-panel {

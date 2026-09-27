@@ -1,5 +1,13 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import type { RadarContact, RadarGhostOwnShip } from '@war-patrol/shared';
+import {
+  formatContactDesignation,
+  layoutScopeContactLabels,
+  type RadarContact,
+  type RadarGhostOwnShip,
+  type ScopeLabelPlacement,
+  type ScopeLabelRequest,
+} from '@war-patrol/shared';
+import { ScopeContactLabelLayer } from './ScopeContactLabelLayer';
 
 interface Props {
   contacts: RadarContact[];
@@ -166,17 +174,14 @@ function RadarScopeInner({
       const labelN = contactIndexById.get(b.id) ?? b.labelN;
       const live = contactIndexById.has(b.id) && b.rangeNm <= scaleNm;
       const opacity = live ? Math.max(0.92, 0.85 + 0.15 * b.strength) : Math.max(0.25, fade * 0.55);
-      const labelOnLeft = x > CX + SCOPE_R * 0.35;
       return {
         ...b,
         x,
         y,
         opacity,
         r: blipR,
+        /** Only currently live in-scale contacts get Contact N (sweep fade is mark-only). */
         labelN: live ? labelN : undefined,
-        labelOpacity: live ? 1 : Math.max(0.35, fade * 0.7),
-        labelX: labelOnLeft ? x - blipR - 10 : x + blipR + 10,
-        labelAnchor: labelOnLeft ? ('end' as const) : ('start' as const),
       };
     });
 
@@ -192,18 +197,41 @@ function RadarScopeInner({
           const x = CX + Math.cos(rad) * r;
           const y = CY + Math.sin(rad) * r;
           const blipR = 3 + 3.5 * c.strength;
-          const labelOnLeft = x > CX + SCOPE_R * 0.35;
           return {
             ...c,
             x,
             y,
             r: blipR,
-            labelX: labelOnLeft ? x - blipR - 10 : x + blipR + 10,
-            labelAnchor: labelOnLeft ? ('end' as const) : ('start' as const),
           };
         }),
     [ghostContacts, scaleNm],
   );
+
+  const contactLabelPlacements: ScopeLabelPlacement[] = useMemo(() => {
+    const requests: ScopeLabelRequest[] = [];
+    for (const b of blips) {
+      if (b.labelN == null) continue;
+      requests.push({
+        id: b.id,
+        labelN: b.labelN,
+        x: b.x,
+        y: b.y,
+        blipR: b.r,
+        kind: 'live',
+      });
+    }
+    for (const b of ghostBlips) {
+      requests.push({
+        id: b.id,
+        labelN: b.labelN,
+        x: b.x,
+        y: b.y,
+        blipR: b.r,
+        kind: 'ghost',
+      });
+    }
+    return layoutScopeContactLabels(requests, { cx: CX, cy: CY, scopeR: SCOPE_R });
+  }, [blips, ghostBlips]);
 
   const ghostOwnMark = useMemo(() => {
     if (!ghostOwnShip || ghostOwnShip.rangeNm > scaleNm) return null;
@@ -335,21 +363,9 @@ function RadarScopeInner({
           <g key={b.id} opacity={0.28}>
             <circle cx={b.x} cy={b.y} r={b.r + 1} fill="none" stroke="#5a9a68" strokeWidth={1} />
             <circle cx={b.x} cy={b.y} r={b.r} fill="#3a7a4a" />
-            <text
-              x={b.labelX}
-              y={b.y + 4}
-              textAnchor={b.labelAnchor}
-              fill="#5a9a68"
-              stroke="#041208"
-              strokeWidth={2}
-              paintOrder="stroke"
-              fontSize={13}
-              fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
-            >
-              Contact {b.labelN}
-            </text>
           </g>
         ))}
+        <ScopeContactLabelLayer placements={contactLabelPlacements} layer="ghost" />
 
         {blips.map((b) => (
           <g key={b.id}>
@@ -358,24 +374,9 @@ function RadarScopeInner({
               <circle cx={b.x} cy={b.y} r={b.r} fill="#b8ffc8" />
               <circle cx={b.x} cy={b.y} r={Math.max(2, b.r * 0.45)} fill="#e8ffe8" />
             </g>
-            {b.labelN != null && (
-              <text
-                x={b.labelX}
-                y={b.y + 5}
-                textAnchor={b.labelAnchor}
-                fill="#c8ffd4"
-                stroke="#041208"
-                strokeWidth={3}
-                paintOrder="stroke"
-                opacity={b.labelOpacity}
-                fontSize={16}
-                fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
-              >
-                Contact {b.labelN}
-              </text>
-            )}
           </g>
         ))}
+        <ScopeContactLabelLayer placements={contactLabelPlacements} layer="live" />
         </svg>
       </div>
 
@@ -415,7 +416,7 @@ function RadarScopeInner({
             <ul className="sensor-contact-scroll">
               {visibleContacts.map((c) => (
                 <li key={c.id} className="mono">
-                  <span className="readout">Contact {c.labelN}</span>
+                  <span className="readout">{formatContactDesignation(c.labelN)}</span>
                   <div className="radar-contact-meta">
                     <span>{String(Math.round(c.bearing)).padStart(3, '0')}°</span>
                     <span>{c.rangeNm.toFixed(1)} nm</span>

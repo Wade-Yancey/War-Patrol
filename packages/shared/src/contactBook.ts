@@ -1,5 +1,5 @@
 /**
- * Stable FoW contact designations (Contact N).
+ * Stable FoW contact designations (Contact N / display Cn).
  *
  * Numbers are assigned on first detection of a target hull by any own-ship
  * sensor and never renumbered when display order changes (range/bearing sorts).
@@ -18,6 +18,23 @@ export type ContactBook = {
 export type ContactBookHost = {
   contactBook?: ContactBook;
 };
+
+/**
+ * Visible CRT / table designation for Contact N — short **Cn** (not "Contact N").
+ * Numbering is unchanged; this is display/copy only.
+ */
+export function formatContactDesignation(labelN: number): string {
+  const n = Math.max(1, Math.floor(Number(labelN) || 1));
+  return `C${n}`;
+}
+
+/**
+ * Visible designation for a periscope-feather contact (same book number, short **Pn**).
+ */
+export function formatPeriscopeDesignation(labelN: number): string {
+  const n = Math.max(1, Math.floor(Number(labelN) || 1));
+  return `P${n}`;
+}
 
 /**
  * Return the stable Contact N for `targetId`, assigning the next number on
