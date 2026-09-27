@@ -32,16 +32,15 @@ export interface LayoutScopeLabelsOptions {
   /** Soft keep-out boxes (e.g. sonar cone HDG tip). */
   obstacles?: ScopeLabelObstacle[];
   fontSizeLive?: number;
+  /** Kept for API compat; ghost text is never shown. */
   fontSizeGhost?: number;
-  /** Hide ghost Contact N when ghost blip is within this px of the live blip (same id). */
-  ghostSuppressNearLivePx?: number;
 }
 
 export interface ScopeLabelPlacement {
   id: string;
   kind: ScopeLabelKind;
   labelN: number;
-  /** Display string — short Cn for live and ghosts (ghosts differ by size/opacity). */
+  /** Display string — short Cn for live; ghosts stay invisible marks. */
   text: string;
   visible: boolean;
   labelX: number;
@@ -61,7 +60,6 @@ interface Box {
 
 const CHAR_W = 0.62;
 const LIVE_PAD = 10;
-const GHOST_PAD = 8;
 const STAGGER_STEP = 16;
 const MAX_STAGGER_STEPS = 8;
 const RIM_INSET = 28;
@@ -166,8 +164,8 @@ function placeOne(
   >,
   occupied: Box[],
 ): ScopeLabelPlacement {
-  const fontSize = req.kind === 'ghost' ? opts.fontSizeGhost : opts.fontSizeLive;
-  const pad = req.kind === 'ghost' ? GHOST_PAD : LIVE_PAD;
+  const fontSize = opts.fontSizeLive;
+  const pad = LIVE_PAD;
   const text = labelText(req.kind, req.labelN);
   const maxLabelR = opts.scopeR - RIM_INSET;
 
@@ -225,8 +223,8 @@ function placeOne(
       kind: req.kind,
       labelN: req.labelN,
       text,
-      // Live always shows something; ghosts drop when no free slot.
-      visible: req.kind === 'live',
+      // Live always shows something when placement fails; ghosts never reach placeOne.
+      visible: true,
       labelX: preferLeft(req.x, opts.cx, opts.scopeR)
         ? req.x - req.blipR - pad
         : req.x + req.blipR + pad,
@@ -239,7 +237,7 @@ function placeOne(
 
 /**
  * Layout Contact-N labels for polar CRT scopes.
- * Live labels win; ghost labels are compact and drop when they would stack on live.
+ * Live labels only — previous-turn ghost/shadow requests are accepted but never visible.
  */
 export function layoutScopeContactLabels(
   requests: ScopeLabelRequest[],
@@ -250,19 +248,15 @@ export function layoutScopeContactLabels(
   const scopeR = options.scopeR;
   const fontSizeLive = options.fontSizeLive ?? 16;
   const fontSizeGhost = options.fontSizeGhost ?? 12;
-  const ghostSuppressNearLivePx = options.ghostSuppressNearLivePx ?? 36;
 
   const liveReqs = requests.filter((r) => r.kind === 'live');
   const ghostReqs = requests.filter((r) => r.kind === 'ghost');
 
   // Stable visual order: closer to top of scope first so stagger fans downward.
   liveReqs.sort((a, b) => a.y - b.y || a.x - b.x || a.labelN - b.labelN);
-  ghostReqs.sort((a, b) => a.y - b.y || a.x - b.x || a.labelN - b.labelN);
 
   const occupied: Box[] = (options.obstacles ?? []).map(obstacleBox);
   const out: ScopeLabelPlacement[] = [];
-  const liveById = new Map<string, ScopeLabelRequest>();
-  for (const r of liveReqs) liveById.set(r.id, r);
 
   const opts = { cx, cy, scopeR, fontSizeLive, fontSizeGhost };
 
@@ -276,33 +270,19 @@ export function layoutScopeContactLabels(
     out.push(placed);
   }
 
+  // Shadows are marks only — never emit Cn text for ghosts.
   for (const req of ghostReqs) {
-    const live = liveById.get(req.id);
-    if (live) {
-      const dist = Math.hypot(req.x - live.x, req.y - live.y);
-      if (dist < ghostSuppressNearLivePx) {
-        out.push({
-          id: req.id,
-          kind: 'ghost',
-          labelN: req.labelN,
-          text: labelText('ghost', req.labelN),
-          visible: false,
-          labelX: req.x,
-          labelY: req.y,
-          textAnchor: 'start',
-          fontSize: fontSizeGhost,
-        });
-        continue;
-      }
-    }
-
-    const placed = placeOne(req, opts, occupied);
-    if (placed.visible) {
-      occupied.push(
-        boxFor(placed.labelX, placed.labelY, placed.textAnchor, placed.text, placed.fontSize),
-      );
-    }
-    out.push(placed);
+    out.push({
+      id: req.id,
+      kind: 'ghost',
+      labelN: req.labelN,
+      text: labelText('ghost', req.labelN),
+      visible: false,
+      labelX: req.x,
+      labelY: req.y,
+      textAnchor: 'start',
+      fontSize: fontSizeGhost,
+    });
   }
 
   return out;

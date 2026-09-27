@@ -207,6 +207,7 @@ function RadarScopeInner({
     [ghostContacts, scaleNm],
   );
 
+  /** Live contacts only — previous-turn ghosts are marks without Cn text. */
   const contactLabelPlacements: ScopeLabelPlacement[] = useMemo(() => {
     const requests: ScopeLabelRequest[] = [];
     for (const b of blips) {
@@ -220,18 +221,8 @@ function RadarScopeInner({
         kind: 'live',
       });
     }
-    for (const b of ghostBlips) {
-      requests.push({
-        id: b.id,
-        labelN: b.labelN,
-        x: b.x,
-        y: b.y,
-        blipR: b.r,
-        kind: 'ghost',
-      });
-    }
     return layoutScopeContactLabels(requests, { cx: CX, cy: CY, scopeR: SCOPE_R });
-  }, [blips, ghostBlips]);
+  }, [blips]);
 
   const ghostOwnMark = useMemo(() => {
     if (!ghostOwnShip || ghostOwnShip.rangeNm > scaleNm) return null;
@@ -365,7 +356,6 @@ function RadarScopeInner({
             <circle cx={b.x} cy={b.y} r={b.r} fill="#3a7a4a" />
           </g>
         ))}
-        <ScopeContactLabelLayer placements={contactLabelPlacements} layer="ghost" />
 
         {blips.map((b) => (
           <g key={b.id}>

@@ -130,11 +130,11 @@ async function main() {
         { id: 'same', labelN: 4, x: cx + 100, y: cy, blipR: 7, kind: 'live' },
         { id: 'same', labelN: 4, x: cx + 108, y: cy + 4, blipR: 5, kind: 'ghost' },
       ],
-      { cx, cy, scopeR, ghostSuppressNearLivePx: 36 },
+      { cx, cy, scopeR },
     );
     const ghostNear = nearGhost.find((p) => p.kind === 'ghost');
     check(
-      'scope labels hide ghost text stacked on live same id',
+      'scope labels hide near ghost text',
       ghostNear?.visible === false,
       JSON.stringify(ghostNear),
     );
@@ -148,8 +148,8 @@ async function main() {
     );
     const ghostFar = farGhost.find((p) => p.kind === 'ghost');
     check(
-      'scope labels keep far ghost text as Cn',
-      ghostFar?.visible === true && ghostFar.text === 'C5',
+      'scope labels never show ghost/shadow Cn text',
+      ghostFar?.visible === false,
       JSON.stringify(ghostFar),
     );
 
