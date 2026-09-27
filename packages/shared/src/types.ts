@@ -1179,7 +1179,8 @@ export interface VesselView {
    */
   radarContacts?: RadarContact[];
   /**
-   * Previous-turn radar ghosts (one turn deep): faint Contact-N echoes
+   * Previous-turn radar ghosts (one turn deep): faint unlabeled echoes
+   * (marks only — no Cn text) at last-turn world-true positions vs current own.
    * reprojected world-true vs **current** own. Never pasted last BRG/RNG
    * onto the current center. Cleared when no prior snapshot / contact not
    * painted last turn. Polar only — no absolute positions.
