@@ -1,8 +1,12 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import type { RadarContact } from '@war-patrol/shared';
+import type { RadarContact, RadarGhostOwnShip } from '@war-patrol/shared';
 
 interface Props {
   contacts: RadarContact[];
+  /** Previous-turn contact ghosts (world-true vs current own). */
+  ghostContacts?: RadarContact[];
+  /** Previous-turn own-ship mark (polar from current center). */
+  ghostOwnShip?: RadarGhostOwnShip;
   /** Server sensor max range (nm) — used to pick a sensible default scale. */
   maxRangeNm: number;
   /** Own-ship heading (degrees true) — drawn as a short lubber line. */
@@ -44,8 +48,15 @@ function defaultScaleNm(sensorMaxNm: number): RadarRangePresetNm {
 /**
  * Traditional round PPI radar scope — own ship center, true bearings on the rim.
  * Sweep + short blip persistence; kept to SVG/CSS for tablet snappiness (ARCH-DET spirit).
+ * Optional one-turn ghosts: faint previous-turn echoes + dim previous-own mark.
  */
-function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
+function RadarScopeInner({
+  contacts,
+  ghostContacts = [],
+  ghostOwnShip,
+  maxRangeNm,
+  ownHeading,
+}: Props) {
   const [now, setNow] = useState(() => Date.now());
   const [scaleNm, setScaleNm] = useState<RadarRangePresetNm>(() => defaultScaleNm(maxRangeNm));
   const persistRef = useRef<Map<string, PersistedBlip>>(new Map());
@@ -169,6 +180,41 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
       };
     });
 
+  /** Previous-turn ghosts — faint, no sweep persistence; world-true vs current own. */
+  const ghostBlips = useMemo(
+    () =>
+      ghostContacts
+        .filter((c) => c.rangeNm <= scaleNm)
+        .map((c) => {
+          const frac = Math.min(1, c.rangeNm / Math.max(scaleNm, 0.001));
+          const rad = ((c.bearing - 90) * Math.PI) / 180;
+          const r = frac * SCOPE_R;
+          const x = CX + Math.cos(rad) * r;
+          const y = CY + Math.sin(rad) * r;
+          const blipR = 3 + 3.5 * c.strength;
+          const labelOnLeft = x > CX + SCOPE_R * 0.35;
+          return {
+            ...c,
+            x,
+            y,
+            r: blipR,
+            labelX: labelOnLeft ? x - blipR - 10 : x + blipR + 10,
+            labelAnchor: labelOnLeft ? ('end' as const) : ('start' as const),
+          };
+        }),
+    [ghostContacts, scaleNm],
+  );
+
+  const ghostOwnMark = useMemo(() => {
+    if (!ghostOwnShip || ghostOwnShip.rangeNm > scaleNm) return null;
+    const frac = Math.min(1, ghostOwnShip.rangeNm / Math.max(scaleNm, 0.001));
+    const rad = ((ghostOwnShip.bearing - 90) * Math.PI) / 180;
+    const r = frac * SCOPE_R;
+    return {
+      x: CX + Math.cos(rad) * r,
+      y: CY + Math.sin(rad) * r,
+    };
+  }, [ghostOwnShip, scaleNm]);
   return (
     <div className="radar-scope radar-console">
       <div className="radar-scope-plot">
@@ -251,6 +297,21 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
         />
         <circle cx={CX} cy={CY} r={5} fill="#3dff6a" />
 
+        {ghostOwnMark && (
+          <g aria-label="Previous-turn own ship" opacity={0.35}>
+            <circle
+              cx={ghostOwnMark.x}
+              cy={ghostOwnMark.y}
+              r={7}
+              fill="none"
+              stroke="#5a9a68"
+              strokeWidth={1.5}
+              strokeDasharray="3 3"
+            />
+            <circle cx={ghostOwnMark.x} cy={ghostOwnMark.y} r={2.5} fill="#5a9a68" />
+          </g>
+        )}
+
         <g
           className="radar-sweep"
           style={{ transformOrigin: `${CX}px ${CY}px`, animationDuration: `${SWEEP_MS}ms` }}
@@ -269,6 +330,26 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
             opacity={0.85}
           />
         </g>
+
+        {ghostBlips.map((b) => (
+          <g key={b.id} opacity={0.28}>
+            <circle cx={b.x} cy={b.y} r={b.r + 1} fill="none" stroke="#5a9a68" strokeWidth={1} />
+            <circle cx={b.x} cy={b.y} r={b.r} fill="#3a7a4a" />
+            <text
+              x={b.labelX}
+              y={b.y + 4}
+              textAnchor={b.labelAnchor}
+              fill="#5a9a68"
+              stroke="#041208"
+              strokeWidth={2}
+              paintOrder="stroke"
+              fontSize={13}
+              fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
+            >
+              Contact {b.labelN}
+            </text>
+          </g>
+        ))}
 
         {blips.map((b) => (
           <g key={b.id}>
@@ -354,6 +435,9 @@ export const RadarScope = memo(RadarScopeInner, (prev, next) => {
   return (
     prev.maxRangeNm === next.maxRangeNm &&
     prev.ownHeading === next.ownHeading &&
-    contactsKey(prev.contacts) === contactsKey(next.contacts)
+    contactsKey(prev.contacts) === contactsKey(next.contacts) &&
+    contactsKey(prev.ghostContacts ?? []) === contactsKey(next.ghostContacts ?? []) &&
+    prev.ghostOwnShip?.bearing === next.ghostOwnShip?.bearing &&
+    prev.ghostOwnShip?.rangeNm === next.ghostOwnShip?.rangeNm
   );
 });

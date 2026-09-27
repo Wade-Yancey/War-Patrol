@@ -3,6 +3,7 @@ import {
   ACTIVE_SONAR_PING_INTERVAL_SEC,
   formatActiveSonarEstimatedDepth,
   type RadarContact,
+  type RadarGhostOwnShip,
 } from '@war-patrol/shared';
 import {
   loadSonarPingBuffer,
@@ -12,6 +13,8 @@ import {
 
 interface Props {
   contacts: RadarContact[];
+  ghostContacts?: RadarContact[];
+  ghostOwnShip?: RadarGhostOwnShip;
   maxRangeNm: number;
   halfAngleDeg: number;
   ownHeading: number;
@@ -59,6 +62,8 @@ function polar(deg: number, r: number): { x: number; y: number } {
  */
 function ActiveSonarScopeInner({
   contacts,
+  ghostContacts = [],
+  ghostOwnShip,
   maxRangeNm,
   halfAngleDeg,
   ownHeading,
@@ -216,6 +221,41 @@ function ActiveSonarScopeInner({
       };
     });
 
+  const ghostBlips = useMemo(
+    () =>
+      ghostContacts
+        .filter((c) => c.rangeNm <= scaleNm)
+        .map((c) => {
+          const frac = Math.min(1, c.rangeNm / Math.max(scaleNm, 0.001));
+          const rad = ((c.bearing - 90) * Math.PI) / 180;
+          const r = frac * SCOPE_R;
+          const x = CX + Math.cos(rad) * r;
+          const y = CY + Math.sin(rad) * r;
+          const blipR = 3 + 3.5 * c.strength;
+          const labelOnLeft = x > CX + SCOPE_R * 0.35;
+          return {
+            ...c,
+            x,
+            y,
+            r: blipR,
+            labelX: labelOnLeft ? x - blipR - 10 : x + blipR + 10,
+            labelAnchor: labelOnLeft ? ('end' as const) : ('start' as const),
+          };
+        }),
+    [ghostContacts, scaleNm],
+  );
+
+  const ghostOwnMark = useMemo(() => {
+    if (!ghostOwnShip || ghostOwnShip.rangeNm > scaleNm) return null;
+    const frac = Math.min(1, ghostOwnShip.rangeNm / Math.max(scaleNm, 0.001));
+    const rad = ((ghostOwnShip.bearing - 90) * Math.PI) / 180;
+    const r = frac * SCOPE_R;
+    return {
+      x: CX + Math.cos(rad) * r,
+      y: CY + Math.sin(rad) * r,
+    };
+  }, [ghostOwnShip, scaleNm]);
+
   return (
     <div className="radar-scope radar-console">
       <div className="radar-scope-plot">
@@ -303,6 +343,41 @@ function ActiveSonarScopeInner({
           </text>
 
           <circle cx={CX} cy={CY} r={5} fill="#3dff6a" />
+
+          {ghostOwnMark && (
+            <g aria-label="Previous-turn own ship" opacity={0.35}>
+              <circle
+                cx={ghostOwnMark.x}
+                cy={ghostOwnMark.y}
+                r={7}
+                fill="none"
+                stroke="#5a9a68"
+                strokeWidth={1.5}
+                strokeDasharray="3 3"
+              />
+              <circle cx={ghostOwnMark.x} cy={ghostOwnMark.y} r={2.5} fill="#5a9a68" />
+            </g>
+          )}
+
+          {ghostBlips.map((b) => (
+            <g key={b.id} opacity={0.28}>
+              <circle cx={b.x} cy={b.y} r={b.r + 1} fill="none" stroke="#5a9a68" strokeWidth={1} />
+              <circle cx={b.x} cy={b.y} r={b.r} fill="#3a7a4a" />
+              <text
+                x={b.labelX}
+                y={b.y + 4}
+                textAnchor={b.labelAnchor}
+                fill="#5a9a68"
+                stroke="#041208"
+                strokeWidth={2}
+                paintOrder="stroke"
+                fontSize={13}
+                fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
+              >
+                Contact {b.labelN}
+              </text>
+            </g>
+          ))}
 
           {blips.map((b) => (
             <g key={b.id}>
@@ -400,6 +475,9 @@ export const ActiveSonarScope = memo(ActiveSonarScopeInner, (prev, next) => {
     prev.halfAngleDeg === next.halfAngleDeg &&
     prev.ownHeading === next.ownHeading &&
     prev.pinging === next.pinging &&
-    contactsKey(prev.contacts) === contactsKey(next.contacts)
+    contactsKey(prev.contacts) === contactsKey(next.contacts) &&
+    contactsKey(prev.ghostContacts ?? []) === contactsKey(next.ghostContacts ?? []) &&
+    prev.ghostOwnShip?.bearing === next.ghostOwnShip?.bearing &&
+    prev.ghostOwnShip?.rangeNm === next.ghostOwnShip?.rangeNm
   );
 });

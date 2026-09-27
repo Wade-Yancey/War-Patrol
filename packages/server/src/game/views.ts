@@ -15,10 +15,10 @@ import {
   reconcileFormations,
 } from '@war-patrol/shared';
 import type { SseHub } from './sse.js';
-import { buildActiveSonarContacts } from './activeSonar.js';
+import { buildActiveSonarContacts, buildActiveSonarGhosts } from './activeSonar.js';
 import { buildHydrophoneContacts } from './hydrophone.js';
 import { buildPeriscopeContacts } from './periscope.js';
-import { buildRadarContacts } from './radar.js';
+import { buildRadarContacts, buildRadarGhosts } from './radar.js';
 import { buildTorpedoWakeCues } from './wakeCues.js';
 
 /**
@@ -295,6 +295,11 @@ export function buildVesselView(
     if (radar.unavailableReason) {
       view.radarUnavailableReason = radar.unavailableReason;
     }
+    if (radar.operational) {
+      const ghosts = buildRadarGhosts(unit, save);
+      if (ghosts.contacts.length) view.radarGhostContacts = ghosts.contacts;
+      if (ghosts.ownShip) view.radarGhostOwnShip = ghosts.ownShip;
+    }
   }
 
   if (station.capabilities.includes('hydrophone')) {
@@ -315,6 +320,11 @@ export function buildVesselView(
     view.sonarOperational = sonar.operational;
     if (sonar.unavailableReason) {
       view.sonarUnavailableReason = sonar.unavailableReason;
+    }
+    if (sonar.operational) {
+      const ghosts = buildActiveSonarGhosts(unit, save);
+      if (ghosts.contacts.length) view.sonarGhostContacts = ghosts.contacts;
+      if (ghosts.ownShip) view.sonarGhostOwnShip = ghosts.ownShip;
     }
   }
 
