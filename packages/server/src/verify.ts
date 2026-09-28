@@ -1722,6 +1722,144 @@ async function main() {
   check('rollback via turn number confirm', rolled2.status === 200);
   check('rollback to T2 opens turn 3', runtime.requireGame(gameId).turn.number === 3);
 
+  // Mid-turn rollback combat hygiene + resolve/touch mutex durability.
+  {
+    const hyGame = await api('POST', '/api/games', {
+      scenarioId: 'depth-charge-audio-test',
+      name: 'Verify Rollback Combat',
+    });
+    check('rollback-combat scenario create', hyGame.status === 200);
+    const hyId = String(hyGame.json.gameId);
+    const hyUmp = await api('POST', `/api/games/${hyId}/auth/umpire`, { password: 'umpire' });
+    const hyUTok = String(hyUmp.json.token);
+    const hyDd = await api('POST', `/api/games/${hyId}/auth/vessel`, {
+      accessToken: 'porter-demo',
+      password: 'blue',
+      stationId: 'controls',
+    });
+    const hyTok = String(hyDd.json.token);
+    const hySensors = await api('POST', `/api/games/${hyId}/auth/vessel`, {
+      accessToken: 'porter-demo',
+      password: 'blue',
+      stationId: 'sensors',
+    });
+    const hySenTok = String(hySensors.json.token);
+
+    const dropOnce = async () => {
+      await api('POST', `/api/games/${hyId}/units/dd-101/rearm`, {}, hyUTok);
+      const dropRes = await api(
+        'POST',
+        `/api/games/${hyId}/orders`,
+        { dropDepthCharges: { pattern: 'single', depthSettingM: 50 } },
+        hyTok,
+      );
+      check('rollback-combat queue DC', dropRes.status === 200);
+      await api('POST', `/api/games/${hyId}/turn/lock`, {}, hyUTok);
+      const res = await api('POST', `/api/games/${hyId}/turn/resolve`, {}, hyUTok);
+      check('rollback-combat resolve', res.status === 200);
+    };
+
+    await dropOnce(); // end T1
+    await dropOnce(); // end T2
+    const afterT2 = runtime.requireGame(hyId);
+    check(
+      'rollback-combat has T1+T2 log',
+      (afterT2.combatLog ?? []).some((e) => e.turnNumber === 1) &&
+        (afterT2.combatLog ?? []).some((e) => e.turnNumber === 2),
+    );
+    check(
+      'rollback-combat has detonations by T2',
+      (afterT2.recentDetonations ?? []).length > 0 &&
+        (afterT2.recentDetonations ?? []).every((d) => d.turnNumber <= 2),
+    );
+    const combatIdsAfterT2 = (afterT2.combatLog ?? []).map((e) => e.id).sort();
+    const detIdsAfterT2 = (afterT2.recentDetonations ?? []).map((d) => d.id).sort();
+
+    await dropOnce(); // end T3 — future combat relative to rollback target
+    const afterT3 = runtime.requireGame(hyId);
+    check(
+      'rollback-combat T3 adds future log',
+      (afterT3.combatLog ?? []).some((e) => e.turnNumber === 3),
+    );
+    const futureDetCount = (afterT3.recentDetonations ?? []).filter((d) => d.turnNumber > 2).length;
+
+    const hyRoll = await api(
+      'POST',
+      `/api/games/${hyId}/rollback`,
+      { turnNumber: 2, confirm: 'ROLLBACK' },
+      hyUTok,
+    );
+    check('rollback-combat mid-turn ok', hyRoll.status === 200);
+    const hyAfter = runtime.requireGame(hyId);
+    check('rollback-combat reopens turn 3', hyAfter.turn.number === 3 && hyAfter.turn.phase === 'open');
+    check(
+      'rollback-combat log turnNumber ≤ N',
+      (hyAfter.combatLog ?? []).every((e) => e.turnNumber <= 2),
+    );
+    check(
+      'rollback-combat detonations turnNumber ≤ N',
+      (hyAfter.recentDetonations ?? []).every((d) => d.turnNumber <= 2),
+    );
+    check(
+      'rollback-combat log matches pre-N',
+      (hyAfter.combatLog ?? []).map((e) => e.id).sort().join(',') === combatIdsAfterT2.join(','),
+    );
+    check(
+      'rollback-combat detonations match pre-N',
+      (hyAfter.recentDetonations ?? []).map((d) => d.id).sort().join(',') === detIdsAfterT2.join(','),
+      `futureDetBefore=${futureDetCount}`,
+    );
+
+    const hyRollT1 = await api(
+      'POST',
+      `/api/games/${hyId}/rollback`,
+      { turnNumber: 1, confirm: 'ROLLBACK' },
+      hyUTok,
+    );
+    check('rollback-combat T1 ok', hyRollT1.status === 200);
+    const hyT1 = runtime.requireGame(hyId);
+    check('rollback-combat T1 clears combatLog', (hyT1.combatLog ?? []).length === 0);
+    check('rollback-combat T1 clears detonations', (hyT1.recentDetonations ?? []).length === 0);
+
+    // Resolve mutex must cover touch(): sonar during await writeSave must not be wiped.
+    await api('POST', `/api/games/${hyId}/turn/lock`, {}, hyUTok);
+    let releasePersist!: () => void;
+    const persistHeld = new Promise<void>((r) => {
+      releasePersist = r;
+    });
+    let persistEntered = false;
+    runtime._testBeforePersist = async () => {
+      persistEntered = true;
+      await persistHeld;
+    };
+    try {
+      const resolveHeld = runtime.resolve(hyId);
+      for (let i = 0; i < 200 && !persistEntered; i += 1) {
+        await new Promise<void>((r) => setImmediate(r));
+      }
+      check('resolve reached pre-persist barrier', persistEntered);
+      const sonarDuring = runtime.setActiveSonar(hyId, 'dd-101', 'sensors', true);
+      releasePersist();
+      await resolveHeld;
+      await sonarDuring;
+      const afterRace = runtime.requireGame(hyId).units.find((u) => u.id === 'dd-101');
+      check(
+        'active sonar survives resolve writeSave race',
+        afterRace?.activeSonarEnabled === true,
+      );
+      // HTTP path should see the same durable toggle.
+      const sonarView = await api('GET', `/api/games/${hyId}/view`, undefined, hySenTok);
+      check(
+        'sensors view shows sonar after race',
+        Boolean((sonarView.json.view as { unit?: { activeSonarEnabled?: boolean } }).unit?.activeSonarEnabled),
+      );
+    } finally {
+      delete runtime._testBeforePersist;
+    }
+
+    await api('DELETE', `/api/saves/${hyId}`);
+  }
+
   // Patch identity + migrate-style coerce
   const idPatch = await api(
     'PATCH',

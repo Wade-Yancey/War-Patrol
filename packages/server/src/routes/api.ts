@@ -387,7 +387,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       if (session.role !== 'vessel' || !session.unitId || !session.stationId) {
         return reply.code(403).send({ error: 'Vessel station session required' });
       }
-      const save = runtime.submitOrders(
+      const save = await runtime.submitOrders(
         session.gameId,
         session.unitId,
         session.stationId,
@@ -406,7 +406,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   }>('/api/games/:gameId/formations/:formationId/orders', async (request, reply) => {
     try {
       requireUmpire(request, request.params.gameId);
-      const save = runtime.submitFormationOrders(
+      const save = await runtime.submitFormationOrders(
         request.params.gameId,
         request.params.formationId,
         {
@@ -469,7 +469,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
                       : undefined,
               }
             : undefined;
-      const save = runtime.submitUmpireUnitOrders(request.params.gameId, request.params.unitId, {
+      const save = await runtime.submitUmpireUnitOrders(request.params.gameId, request.params.unitId, {
         course: body.course,
         eot: body.eot,
         breakFormation: Boolean(body.breakFormation),
@@ -504,7 +504,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(403).send({ error: 'Vessel station session required' });
       }
       const enabled = Boolean(request.body?.enabled);
-      const save = runtime.setActiveSonar(
+      const save = await runtime.setActiveSonar(
         session.gameId,
         session.unitId,
         session.stationId,
@@ -540,7 +540,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       if (exposure !== undefined && !Number.isFinite(exposure)) {
         return reply.code(400).send({ error: 'exposure must be a number 0–1' });
       }
-      const save = runtime.setPeriscope(
+      const save = await runtime.setPeriscope(
         session.gameId,
         session.unitId,
         session.stationId,
@@ -571,7 +571,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(403).send({ error: 'Vessel station session required' });
       }
       const room = request.body?.room === 'aft' ? 'aft' : 'forward';
-      const save = runtime.startTorpedoReload(
+      const save = await runtime.startTorpedoReload(
         session.gameId,
         session.unitId,
         session.stationId,
@@ -603,7 +603,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         if (session.role !== 'vessel' || !session.unitId || !session.stationId) {
           return reply.code(403).send({ error: 'Vessel station session required' });
         }
-        const save = runtime.startDepthChargeReload(
+        const save = await runtime.startDepthChargeReload(
           session.gameId,
           session.unitId,
           session.stationId,
@@ -631,7 +631,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         if (session.role !== 'vessel' || !session.unitId || !session.stationId) {
           return reply.code(403).send({ error: 'Vessel station session required' });
         }
-        const save = runtime.startDeckGunReload(
+        const save = await runtime.startDeckGunReload(
           session.gameId,
           session.unitId,
           session.stationId,
@@ -672,7 +672,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       if (!unitIds.length) {
         return reply.code(400).send({ error: 'unitIds or allVessels required' });
       }
-      const updated = runtime.pushGopherTask(request.params.gameId, unitIds, text, body.label);
+      const updated = await runtime.pushGopherTask(request.params.gameId, unitIds, text, body.label);
       return { ok: true, stateVersion: updated.stateVersion };
     } catch (err) {
       const e = httpError(err);
@@ -690,7 +690,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       if (outcome !== 'completed' && outcome !== 'cleared' && outcome !== 'failed') {
         return reply.code(400).send({ error: 'outcome must be completed | cleared | failed' });
       }
-      const save = runtime.resolveGopherTask(request.params.gameId, request.params.unitId, outcome);
+      const save = await runtime.resolveGopherTask(request.params.gameId, request.params.unitId, outcome);
       const unit = save.units.find((u) => u.id === request.params.unitId);
       return { ok: true, stateVersion: save.stateVersion, gopherTask: unit?.gopherTask };
     } catch (err) {
@@ -709,7 +709,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         if (!Number.isFinite(seconds) || seconds < 0) {
           return reply.code(400).send({ error: 'seconds required' });
         }
-        const save = runtime.setTimer(request.params.gameId, seconds);
+        const save = await runtime.setTimer(request.params.gameId, seconds);
         return { turn: save.turn, stateVersion: save.stateVersion };
       } catch (err) {
         const e = httpError(err);
@@ -724,7 +724,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       try {
         requireUmpire(request, request.params.gameId);
         const seconds = Number(request.body?.seconds ?? 60);
-        const save = runtime.extendTimer(request.params.gameId, seconds);
+        const save = await runtime.extendTimer(request.params.gameId, seconds);
         return { turn: save.turn, stateVersion: save.stateVersion };
       } catch (err) {
         const e = httpError(err);
@@ -736,7 +736,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { gameId: string } }>('/api/games/:gameId/turn/reset-timer', async (request, reply) => {
     try {
       requireUmpire(request, request.params.gameId);
-      const save = runtime.resetTimer(request.params.gameId);
+      const save = await runtime.resetTimer(request.params.gameId);
       return { turn: save.turn, stateVersion: save.stateVersion };
     } catch (err) {
       const e = httpError(err);
@@ -747,7 +747,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { gameId: string } }>('/api/games/:gameId/turn/lock', async (request, reply) => {
     try {
       requireUmpire(request, request.params.gameId);
-      const save = runtime.lockTurn(request.params.gameId);
+      const save = await runtime.lockTurn(request.params.gameId);
       return { turn: save.turn, stateVersion: save.stateVersion };
     } catch (err) {
       const e = httpError(err);
@@ -758,7 +758,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { gameId: string } }>('/api/games/:gameId/turn/reopen', async (request, reply) => {
     try {
       requireUmpire(request, request.params.gameId);
-      const save = runtime.reopenTurn(request.params.gameId);
+      const save = await runtime.reopenTurn(request.params.gameId);
       return { turn: save.turn, stateVersion: save.stateVersion };
     } catch (err) {
       const e = httpError(err);
@@ -854,7 +854,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     try {
       requireUmpire(request, request.params.gameId);
       const body = request.body ?? {};
-      const save = runtime.updateUnit(request.params.gameId, request.params.unitId, {
+      const save = await runtime.updateUnit(request.params.gameId, request.params.unitId, {
         health: body.health,
         heading: body.heading,
         orderedCourse: body.orderedCourse,
@@ -894,7 +894,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     async (request, reply) => {
       try {
         requireUmpire(request, request.params.gameId);
-        const save = runtime.setUmpirePassword(
+        const save = await runtime.setUmpirePassword(
           request.params.gameId,
           request.body?.password ?? '',
         );
@@ -931,7 +931,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     async (request, reply) => {
       try {
         requireUmpire(request, request.params.gameId);
-        const save = runtime.rotateAccessToken(request.params.gameId, request.params.unitId);
+        const save = await runtime.rotateAccessToken(request.params.gameId, request.params.unitId);
         const unit = save.units.find((u) => u.id === request.params.unitId);
         return { accessToken: unit?.accessToken, stateVersion: save.stateVersion };
       } catch (err) {
@@ -946,7 +946,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     async (request, reply) => {
       try {
         requireUmpire(request, request.params.gameId);
-        const save = runtime.rearmUnit(request.params.gameId, request.params.unitId);
+        const save = await runtime.rearmUnit(request.params.gameId, request.params.unitId);
         const unit = save.units.find((u) => u.id === request.params.unitId);
         return {
           ok: true,

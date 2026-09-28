@@ -450,10 +450,16 @@ export class GameRuntime {
   private games = new Map<string, GameSave>();
   private timerHandles = new Map<string, NodeJS.Timeout>();
   /**
-   * Serialize resolve/rollback per game so overlapping umpire clicks (or double
-   * submits) cannot double-advance a turn while `writeSave` is still awaiting.
+   * Serialize all per-game mutations (resolve/rollback + touch paths) so sensor /
+   * umpire edits cannot run during `await writeSave` and then be wiped by replace.
    */
-  private turnMutationTail = new Map<string, Promise<unknown>>();
+  private gameMutationTail = new Map<string, Promise<unknown>>();
+
+  /**
+   * Test-only barrier: when set, resolve/rollback await this after computing the
+   * next save and before writeSave+replace — lets verify prove touch durability.
+   */
+  _testBeforePersist?: (gameId: string) => Promise<void>;
 
   constructor() {
     this.sse.setViewBuilder((client) => {
@@ -469,11 +475,11 @@ export class GameRuntime {
     };
   }
 
-  /** Run resolve/rollback exclusively per gameId (FIFO). */
-  private enqueueTurnMutation<T>(gameId: string, work: () => Promise<T>): Promise<T> {
-    const prev = this.turnMutationTail.get(gameId) ?? Promise.resolve();
+  /** Run game mutations exclusively per gameId (FIFO). */
+  private enqueueGameMutation<T>(gameId: string, work: () => Promise<T>): Promise<T> {
+    const prev = this.gameMutationTail.get(gameId) ?? Promise.resolve();
     const next = prev.catch(() => undefined).then(work);
-    this.turnMutationTail.set(
+    this.gameMutationTail.set(
       gameId,
       next.then(
         () => undefined,
@@ -562,10 +568,12 @@ export class GameRuntime {
   }
 
   async persist(gameId: string): Promise<GameSave> {
-    const save = this.requireGame(gameId);
-    save.updatedAt = new Date().toISOString();
-    await store.writeSave(save);
-    return save;
+    return this.enqueueGameMutation(gameId, async () => {
+      const save = this.requireGame(gameId);
+      save.updatedAt = new Date().toISOString();
+      await store.writeSave(save);
+      return save;
+    });
   }
 
   /** Unload an in-memory game: timers, sessions, SSE, map entry — no disk write. */
@@ -575,7 +583,7 @@ export class GameRuntime {
     this.sessions.clearGame(gameId);
     this.sse.dropGame(gameId);
     this.games.delete(gameId);
-    this.turnMutationTail.delete(gameId);
+    this.gameMutationTail.delete(gameId);
     return true;
   }
 
@@ -624,7 +632,8 @@ export class GameRuntime {
     this.sse.broadcast(gameId, save.stateVersion);
   }
 
-  private touch(gameId: string, mutator: (save: GameSave) => GameSave): GameSave {
+  /** Sync in-memory mutate+broadcast. Caller must already hold the game mutation lock. */
+  private applyTouch(gameId: string, mutator: (save: GameSave) => GameSave): GameSave {
     const current = this.requireGame(gameId);
     const next = mutator(structuredClone(current));
     next.stateVersion = current.stateVersion + 1;
@@ -632,6 +641,11 @@ export class GameRuntime {
     this.replace(gameId, next);
     this.sse.broadcast(gameId, next.stateVersion);
     return next;
+  }
+
+  /** Queue a touch so it cannot interleave with resolve/rollback writeSave. */
+  private mutate(gameId: string, mutator: (save: GameSave) => GameSave): Promise<GameSave> {
+    return this.enqueueGameMutation(gameId, async () => this.applyTouch(gameId, mutator));
   }
 
   authUmpire(gameId: string, password: string) {
@@ -671,7 +685,7 @@ export class GameRuntime {
     });
   }
 
-  submitOrders(
+  async submitOrders(
     gameId: string,
     unitId: string,
     stationId: string,
@@ -683,8 +697,8 @@ export class GameRuntime {
       dropDepthCharges?: import('@war-patrol/shared').DepthChargeDropOrder | null;
       fireDeckGun?: import('@war-patrol/shared').DeckGunFireOrder | null;
     },
-  ): GameSave {
-    return this.touch(gameId, (save) => {
+  ): Promise<GameSave> {
+    return this.mutate(gameId, (save) => {
       if (save.turn.phase !== 'open') {
         throw Object.assign(new Error('Ordering is locked'), { statusCode: 409 });
       }
@@ -856,11 +870,11 @@ export class GameRuntime {
    * every non-detached member (course → orderedCourse live; eot → pending orders).
    * Detached hulls keep membership but are skipped until rejoined.
    */
-  submitFormationOrders(
+  async submitFormationOrders(
     gameId: string,
     formationId: string,
     patch: { course?: number; eot?: EotSetting },
-  ): GameSave {
+  ): Promise<GameSave> {
     const id = formationId.trim();
     if (!id) {
       throw Object.assign(new Error('formationId required'), { statusCode: 400 });
@@ -868,7 +882,7 @@ export class GameRuntime {
     if (patch.course === undefined && patch.eot === undefined) {
       throw Object.assign(new Error('course and/or eot required'), { statusCode: 400 });
     }
-    return this.touch(gameId, (save) => {
+    return this.mutate(gameId, (save) => {
       if (save.turn.phase !== 'open') {
         throw Object.assign(new Error('Ordering is locked'), { statusCode: 409 });
       }
@@ -900,7 +914,7 @@ export class GameRuntime {
    * unless course/eot are also provided, steers toward the target at full band.
    * Optional aircraftLoiter sets/clears a standing orbit (persists across turns).
    */
-  submitUmpireUnitOrders(
+  async submitUmpireUnitOrders(
     gameId: string,
     unitId: string,
     patch: {
@@ -911,7 +925,7 @@ export class GameRuntime {
       aircraftAttack?: AircraftAttackOrder | null;
       aircraftLoiter?: { centerUnitId?: string | null } | null;
     },
-  ): GameSave {
+  ): Promise<GameSave> {
     if (
       patch.course === undefined &&
       patch.eot === undefined &&
@@ -924,7 +938,7 @@ export class GameRuntime {
         statusCode: 400,
       });
     }
-    return this.touch(gameId, (save) => {
+    return this.mutate(gameId, (save) => {
       if (save.turn.phase !== 'open') {
         throw Object.assign(new Error('Ordering is locked'), { statusCode: 409 });
       }
@@ -1051,13 +1065,13 @@ export class GameRuntime {
    * Immediate operator toggle for destroyer active search sonar (Sensors station).
    * Not a turn order — applies now and persists until toggled off.
    */
-  setActiveSonar(
+  async setActiveSonar(
     gameId: string,
     unitId: string,
     stationId: string,
     enabled: boolean,
-  ): GameSave {
-    return this.touch(gameId, (save) => {
+  ): Promise<GameSave> {
+    return this.mutate(gameId, (save) => {
       const unit = save.units.find((u) => u.id === unitId);
       if (!unit) throw Object.assign(new Error('Unit not found'), { statusCode: 404 });
       const station = unit.stations.find((s) => s.id === stationId);
@@ -1081,14 +1095,14 @@ export class GameRuntime {
    * when raising without an explicit value. Any exposure &gt; 0 makes the feather
    * visible to DD lookout in range (deterministic — no spot roll).
    */
-  setPeriscope(
+  async setPeriscope(
     gameId: string,
     unitId: string,
     stationId: string,
     raised: boolean,
     exposure?: number,
-  ): GameSave {
-    return this.touch(gameId, (save) => {
+  ): Promise<GameSave> {
+    return this.mutate(gameId, (save) => {
       const unit = save.units.find((u) => u.id === unitId);
       if (!unit) throw Object.assign(new Error('Unit not found'), { statusCode: 404 });
       const station = unit.stations.find((s) => s.id === stationId);
@@ -1142,13 +1156,13 @@ export class GameRuntime {
    * Immediate Controls action: start a torpedo-room reload countdown after a salvo.
    * Completes over {@link TORPEDO_RELOAD_TURNS} resolves — not an instant rearm.
    */
-  startTorpedoReload(
+  async startTorpedoReload(
     gameId: string,
     unitId: string,
     stationId: string,
     room: TorpedoRoomId,
-  ): GameSave {
-    return this.touch(gameId, (save) => {
+  ): Promise<GameSave> {
+    return this.mutate(gameId, (save) => {
       const idx = save.units.findIndex((u) => u.id === unitId);
       if (idx < 0) throw Object.assign(new Error('Unit not found'), { statusCode: 404 });
       const unit = save.units[idx]!;
@@ -1172,12 +1186,12 @@ export class GameRuntime {
   /**
    * Immediate Controls action: start a depth-charge rack reload countdown after a drop.
    */
-  startDepthChargeReload(
+  async startDepthChargeReload(
     gameId: string,
     unitId: string,
     stationId: string,
-  ): GameSave {
-    return this.touch(gameId, (save) => {
+  ): Promise<GameSave> {
+    return this.mutate(gameId, (save) => {
       const idx = save.units.findIndex((u) => u.id === unitId);
       if (idx < 0) throw Object.assign(new Error('Unit not found'), { statusCode: 404 });
       const unit = save.units[idx]!;
@@ -1198,12 +1212,12 @@ export class GameRuntime {
   /**
    * Immediate Controls action: start a deck-gun reload countdown after a shot.
    */
-  startDeckGunReload(
+  async startDeckGunReload(
     gameId: string,
     unitId: string,
     stationId: string,
-  ): GameSave {
-    return this.touch(gameId, (save) => {
+  ): Promise<GameSave> {
+    return this.mutate(gameId, (save) => {
       const idx = save.units.findIndex((u) => u.id === unitId);
       if (idx < 0) throw Object.assign(new Error('Unit not found'), { statusCode: 404 });
       const unit = save.units[idx]!;
@@ -1225,8 +1239,8 @@ export class GameRuntime {
    * Umpire one-click rearm: full torpedo rooms and/or DC rack and/or deck gun for the hull class.
    * Immediate — for live events after physical tube / rack / magazine loading.
    */
-  rearmUnit(gameId: string, unitId: string): GameSave {
-    return this.touch(gameId, (save) => {
+  async rearmUnit(gameId: string, unitId: string): Promise<GameSave> {
+    return this.mutate(gameId, (save) => {
       const idx = save.units.findIndex((u) => u.id === unitId);
       if (idx < 0) throw Object.assign(new Error('Unit not found'), { statusCode: 404 });
       save.units[idx] = rearmUnitWeapons(save.units[idx]!);
@@ -1242,17 +1256,17 @@ export class GameRuntime {
    * complete. Logs an umpire combat-log line so it shows in the Action log /
    * AAR turn scrubber immediately.
    */
-  pushGopherTask(
+  async pushGopherTask(
     gameId: string,
     unitIds: string[],
     text: string,
     label?: string,
-  ): GameSave {
+  ): Promise<GameSave> {
     const trimmed = text.trim();
     if (!trimmed) {
       throw Object.assign(new Error('Task text required'), { statusCode: 400 });
     }
-    return this.touch(gameId, (save) => {
+    return this.mutate(gameId, (save) => {
       if (!unitIds.length) {
         throw Object.assign(new Error('No target vessel(s)'), { statusCode: 400 });
       }
@@ -1302,12 +1316,12 @@ export class GameRuntime {
    * stored status always collapses to the two terminal states in
    * {@link GopherTaskStatus} so player UI logic stays simple.
    */
-  resolveGopherTask(
+  async resolveGopherTask(
     gameId: string,
     unitId: string,
     outcome: 'completed' | 'cleared' | 'failed',
-  ): GameSave {
-    return this.touch(gameId, (save) => {
+  ): Promise<GameSave> {
+    return this.mutate(gameId, (save) => {
       const unit = save.units.find((u) => u.id === unitId);
       if (!unit) throw Object.assign(new Error('Unit not found'), { statusCode: 404 });
       const task = unit.gopherTask;
@@ -1335,74 +1349,83 @@ export class GameRuntime {
     });
   }
 
-  setTimer(gameId: string, seconds: number): GameSave {
-    this.clearTimer(gameId);
-    const save = this.touch(gameId, (s) => {
-      s.turn.timerSeconds = seconds;
-      if (s.turn.phase === 'open') {
-        s.turn.timerDeadline = setTimerDeadline(seconds);
-      }
-      return s;
+  async setTimer(gameId: string, seconds: number): Promise<GameSave> {
+    return this.enqueueGameMutation(gameId, async () => {
+      this.clearTimer(gameId);
+      const save = this.applyTouch(gameId, (s) => {
+        s.turn.timerSeconds = seconds;
+        if (s.turn.phase === 'open') {
+          s.turn.timerDeadline = setTimerDeadline(seconds);
+        }
+        return s;
+      });
+      this.armTimer(gameId);
+      return save;
     });
-    this.armTimer(gameId);
-    return save;
   }
 
-  extendTimer(gameId: string, extraSeconds: number): GameSave {
-    this.clearTimer(gameId);
-    const save = this.touch(gameId, (s) => {
-      const base = s.turn.timerDeadline
-        ? Math.max(Date.now(), Date.parse(s.turn.timerDeadline))
-        : Date.now();
-      s.turn.timerDeadline = setTimerDeadline(extraSeconds, base);
-      s.turn.timerSeconds = s.turn.timerSeconds + extraSeconds;
-      return s;
+  async extendTimer(gameId: string, extraSeconds: number): Promise<GameSave> {
+    return this.enqueueGameMutation(gameId, async () => {
+      this.clearTimer(gameId);
+      const save = this.applyTouch(gameId, (s) => {
+        const base = s.turn.timerDeadline
+          ? Math.max(Date.now(), Date.parse(s.turn.timerDeadline))
+          : Date.now();
+        s.turn.timerDeadline = setTimerDeadline(extraSeconds, base);
+        s.turn.timerSeconds = s.turn.timerSeconds + extraSeconds;
+        return s;
+      });
+      this.armTimer(gameId);
+      return save;
     });
-    this.armTimer(gameId);
-    return save;
   }
 
-  resetTimer(gameId: string): GameSave {
-    this.clearTimer(gameId);
-    const save = this.touch(gameId, (s) => {
-      if (s.turn.phase === 'open') {
-        s.turn.timerDeadline = setTimerDeadline(s.turn.timerSeconds);
-      } else {
+  async resetTimer(gameId: string): Promise<GameSave> {
+    return this.enqueueGameMutation(gameId, async () => {
+      this.clearTimer(gameId);
+      const save = this.applyTouch(gameId, (s) => {
+        if (s.turn.phase === 'open') {
+          s.turn.timerDeadline = setTimerDeadline(s.turn.timerSeconds);
+        } else {
+          s.turn.timerDeadline = null;
+        }
+        return s;
+      });
+      this.armTimer(gameId);
+      return save;
+    });
+  }
+
+  async lockTurn(gameId: string): Promise<GameSave> {
+    return this.enqueueGameMutation(gameId, async () => {
+      this.clearTimer(gameId);
+      return this.applyTouch(gameId, (s) => {
+        if (s.turn.phase !== 'open') {
+          throw Object.assign(new Error('Turn is not open'), { statusCode: 409 });
+        }
+        s.turn.phase = 'locked';
         s.turn.timerDeadline = null;
-      }
-      return s;
-    });
-    this.armTimer(gameId);
-    return save;
-  }
-
-  lockTurn(gameId: string): GameSave {
-    this.clearTimer(gameId);
-    return this.touch(gameId, (s) => {
-      if (s.turn.phase !== 'open') {
-        throw Object.assign(new Error('Turn is not open'), { statusCode: 409 });
-      }
-      s.turn.phase = 'locked';
-      s.turn.timerDeadline = null;
-      return s;
+        return s;
+      });
     });
   }
 
-  reopenTurn(gameId: string): GameSave {
-    this.clearTimer(gameId);
-    const save = this.touch(gameId, (s) => {
-      if (s.turn.phase !== 'locked' && s.turn.phase !== 'awaiting_resolution') {
-        throw Object.assign(new Error('Turn cannot be reopened'), { statusCode: 409 });
-      }
-      s.turn.phase = 'open';
-      s.turn.timerDeadline = null;
-      return s;
+  async reopenTurn(gameId: string): Promise<GameSave> {
+    return this.enqueueGameMutation(gameId, async () => {
+      this.clearTimer(gameId);
+      return this.applyTouch(gameId, (s) => {
+        if (s.turn.phase !== 'locked' && s.turn.phase !== 'awaiting_resolution') {
+          throw Object.assign(new Error('Turn cannot be reopened'), { statusCode: 409 });
+        }
+        s.turn.phase = 'open';
+        s.turn.timerDeadline = null;
+        return s;
+      });
     });
-    return save;
   }
 
   async resolve(gameId: string): Promise<GameSave> {
-    return this.enqueueTurnMutation(gameId, async () => {
+    return this.enqueueGameMutation(gameId, async () => {
       this.clearTimer(gameId);
       const current = this.requireGame(gameId);
       if (
@@ -1412,10 +1435,11 @@ export class GameRuntime {
       ) {
         throw Object.assign(new Error('Cannot resolve turn'), { statusCode: 409 });
       }
-      // Allow resolve from open (umpire force) or locked
+      // Allow resolve from open (umpire force) or locked.
+      // Use applyTouch (not mutate) — we already hold the per-game lock.
       const prepared =
         current.turn.phase === 'open'
-          ? this.touch(gameId, (s) => {
+          ? this.applyTouch(gameId, (s) => {
               s.turn.phase = 'locked';
               s.turn.timerDeadline = null;
               return s;
@@ -1428,6 +1452,7 @@ export class GameRuntime {
       // disk (previously replace+broadcast happened before the awaited
       // write, so a write failure left memory and disk out of sync and a
       // server restart would silently lose the resolved turn).
+      if (this._testBeforePersist) await this._testBeforePersist(gameId);
       await store.writeSave(resolved);
       this.replace(gameId, resolved);
       this.sse.broadcast(gameId, resolved.stateVersion);
@@ -1448,11 +1473,12 @@ export class GameRuntime {
         { statusCode: 400 },
       );
     }
-    return this.enqueueTurnMutation(gameId, async () => {
+    return this.enqueueGameMutation(gameId, async () => {
       this.clearTimer(gameId);
       const next = rollbackToTurn(this.requireGame(gameId), turnNumber);
       // Persist before swapping in-memory state (see resolve() above) so a
       // failed write cannot leave memory ahead of the last durable save.
+      if (this._testBeforePersist) await this._testBeforePersist(gameId);
       await store.writeSave(next);
       this.replace(gameId, next);
       this.sse.broadcast(gameId, next.stateVersion);
@@ -1460,7 +1486,7 @@ export class GameRuntime {
     });
   }
 
-  updateUnit(
+  async updateUnit(
     gameId: string,
     unitId: string,
     patch: Partial<
@@ -1482,8 +1508,8 @@ export class GameRuntime {
       position?: Partial<UnitState['position']>;
       subsystems?: Partial<UnitState['subsystems']> & { sensors?: SubsystemState };
     },
-  ): GameSave {
-    return this.touch(gameId, (save) => {
+  ): Promise<GameSave> {
+    return this.mutate(gameId, (save) => {
       const idx = save.units.findIndex((u) => u.id === unitId);
       if (idx < 0) throw Object.assign(new Error('Unit not found'), { statusCode: 404 });
       const unit = save.units[idx]!;
@@ -1590,33 +1616,35 @@ export class GameRuntime {
    * Disk-persists immediately so notes survive restart without a separate Save.
    */
   async setTurnNote(gameId: string, turnNumber: number, note: string): Promise<GameSave> {
-    const save = this.touch(gameId, (s) => {
-      const idx = s.history.findIndex((h) => h.turnNumber === turnNumber);
-      if (idx < 0) {
-        throw Object.assign(new Error(`No history snapshot for turn ${turnNumber}`), {
-          statusCode: 404,
-        });
-      }
-      const trimmed = note.trim();
-      const snap = { ...s.history[idx]! };
-      if (trimmed) snap.umpireNote = trimmed;
-      else delete snap.umpireNote;
-      s.history = [...s.history.slice(0, idx), snap, ...s.history.slice(idx + 1)];
-      return s;
+    return this.enqueueGameMutation(gameId, async () => {
+      const save = this.applyTouch(gameId, (s) => {
+        const idx = s.history.findIndex((h) => h.turnNumber === turnNumber);
+        if (idx < 0) {
+          throw Object.assign(new Error(`No history snapshot for turn ${turnNumber}`), {
+            statusCode: 404,
+          });
+        }
+        const trimmed = note.trim();
+        const snap = { ...s.history[idx]! };
+        if (trimmed) snap.umpireNote = trimmed;
+        else delete snap.umpireNote;
+        s.history = [...s.history.slice(0, idx), snap, ...s.history.slice(idx + 1)];
+        return s;
+      });
+      await store.writeSave(save);
+      return save;
     });
-    await store.writeSave(save);
-    return save;
   }
 
-  setUmpirePassword(gameId: string, password: string): GameSave {
-    return this.touch(gameId, (s) => {
+  async setUmpirePassword(gameId: string, password: string): Promise<GameSave> {
+    return this.mutate(gameId, (s) => {
       s.umpirePassword = password || undefined;
       return s;
     });
   }
 
-  rotateAccessToken(gameId: string, unitId: string): GameSave {
-    return this.touch(gameId, (s) => {
+  async rotateAccessToken(gameId: string, unitId: string): Promise<GameSave> {
+    return this.mutate(gameId, (s) => {
       const unit = s.units.find((u) => u.id === unitId);
       if (!unit) throw Object.assign(new Error('Unit not found'), { statusCode: 404 });
       unit.accessToken = nanoid(10);
@@ -1636,16 +1664,11 @@ export class GameRuntime {
     if (!save?.turn.timerDeadline || save.turn.phase !== 'open') return;
     const ms = Date.parse(save.turn.timerDeadline) - Date.now();
     if (ms <= 0) {
-      void this.lockTurn(gameId);
+      void this.lockTurn(gameId).catch(() => undefined);
       return;
     }
     const handle = setTimeout(() => {
-      try {
-        const g = this.games.get(gameId);
-        if (g && g.turn.phase === 'open') this.lockTurn(gameId);
-      } catch {
-        /* ignore */
-      }
+      void this.lockTurn(gameId).catch(() => undefined);
     }, ms);
     this.timerHandles.set(gameId, handle);
   }
