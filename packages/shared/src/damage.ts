@@ -182,13 +182,6 @@ export function canUseSensorStation(
   return { ok: true };
 }
 
-/** @deprecated Prefer {@link canUseSensorStation} with an explicit kind. */
-export function canUseSensors(
-  unit: Pick<UnitState, 'condition' | 'subsystems' | 'type'>,
-): SensorUseResult {
-  return canUseSensorStation(unit, 'radar');
-}
-
 export function propulsionSpeedFactor(propulsion: PropulsionState | undefined): number {
   if (propulsion === 'disabled') return 0;
   if (propulsion === 'damaged') return PROPULSION_DAMAGED_SPEED_FACTOR;

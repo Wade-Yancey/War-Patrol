@@ -5,6 +5,7 @@ import type {
   EotSetting,
   Faction,
   FlightLevel,
+  GameSave,
   HullClass,
   PropulsionState,
   SteeringState,
@@ -28,6 +29,18 @@ function httpError(err: unknown): { statusCode: number; message: string } {
     };
   }
   return { statusCode: 500, message: err instanceof Error ? err.message : 'Internal error' };
+}
+
+/** Strip passwords / join tokens from umpire export (LAN demo still trusts umpire auth). */
+function redactSaveSecrets(save: GameSave): GameSave {
+  return {
+    ...save,
+    umpirePassword: undefined,
+    units: save.units.map((u) => {
+      const { password: _password, accessToken: _accessToken, ...rest } = u;
+      return rest;
+    }),
+  };
 }
 
 function sessionFromToken(token: string | undefined, gameId?: string): AuthSession {
@@ -225,7 +238,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     try {
       requireUmpire(request, request.params.gameId);
       const save = runtime.requireGame(request.params.gameId);
-      return save;
+      return redactSaveSecrets(save);
     } catch (err) {
       const e = httpError(err);
       return reply.code(e.statusCode).send({ error: e.message });

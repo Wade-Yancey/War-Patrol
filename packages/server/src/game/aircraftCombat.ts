@@ -3,14 +3,12 @@
  * Kept separate from torpedo/DC substeps so destroyer deck-gun work can land
  * beside weaponsResolve without merge thrash on this path.
  */
-import { nanoid } from 'nanoid';
 import {
   aircraftAttackClosestApproach,
   applyHealthDamageResult,
   canOrderAircraftAttack,
   consumeBombLoad,
   formatAircraftAttackModeLabel,
-  formatCasualtySummary,
   hasBombLoad,
   healthDamageApplied,
   isAircraftAttackTarget,
@@ -20,71 +18,18 @@ import {
   resolveAircraftAttackEffect,
   torpedoHitAudioDelaySec,
   WEAPON_SUBSTEPS,
-  type CasualtyEffect,
   type CombatLogEntry,
-  type CombatLogKind,
   type LatLonDepth,
   type UnitState,
   type WeaponDetonationEvent,
 } from '@war-patrol/shared';
+import { logCasualtyEffects, logLine } from './combatLog.js';
 
 export type AircraftCombatResolveResult = {
   units: UnitState[];
   combatLogEntries: CombatLogEntry[];
   detonations: WeaponDetonationEvent[];
 };
-
-function airLogLine(opts: {
-  kind: CombatLogKind;
-  turnNumber: number;
-  gameTimeSeconds: number;
-  summary: string;
-  actor?: UnitState;
-  target?: UnitState;
-  damage?: number;
-  sourceDetonationId?: string;
-  casualtyEffect?: CasualtyEffect;
-}): CombatLogEntry {
-  return {
-    id: `cl-${nanoid(8)}`,
-    kind: opts.kind,
-    turnNumber: opts.turnNumber,
-    gameTimeSeconds: opts.gameTimeSeconds,
-    at: new Date().toISOString(),
-    summary: opts.summary,
-    actorUnitId: opts.actor?.id,
-    actorName: opts.actor?.name,
-    targetUnitId: opts.target?.id,
-    targetName: opts.target?.name,
-    damage: opts.damage,
-    ...(opts.sourceDetonationId ? { sourceDetonationId: opts.sourceDetonationId } : {}),
-    ...(opts.casualtyEffect ? { casualtyEffect: opts.casualtyEffect } : {}),
-  };
-}
-
-function logCasualtyEffects(
-  target: UnitState,
-  effects: CasualtyEffect[],
-  opts: {
-    turnNumber: number;
-    gameTimeSeconds: number;
-    actor?: UnitState;
-    sourceDetonationId?: string;
-  },
-): CombatLogEntry[] {
-  return effects.map((effect) =>
-    airLogLine({
-      kind: 'subsystem_casualty',
-      turnNumber: opts.turnNumber,
-      gameTimeSeconds: opts.gameTimeSeconds,
-      actor: opts.actor,
-      target,
-      summary: formatCasualtySummary(target.name, effect),
-      sourceDetonationId: opts.sourceDetonationId,
-      casualtyEffect: effect,
-    }),
-  );
-}
 
 /**
  * Resolve pending `orders.aircraftAttack` after kinematics.
@@ -129,7 +74,7 @@ export function resolveAircraftAttacksForTurn(opts: {
     const target = unitMap.get(pending.targetUnitId);
     const modeLabel = formatAircraftAttackModeLabel(pending.mode);
     combatLogEntries.push(
-      airLogLine({
+      logLine({
         kind: 'aircraft_attack',
         turnNumber,
         gameTimeSeconds,
@@ -154,7 +99,7 @@ export function resolveAircraftAttacksForTurn(opts: {
 
     if (!target || !isAircraftAttackTarget(target)) {
       combatLogEntries.push(
-        airLogLine({
+        logLine({
           kind: 'aircraft_attack_miss',
           turnNumber,
           gameTimeSeconds,
@@ -168,7 +113,7 @@ export function resolveAircraftAttacksForTurn(opts: {
     // Bombing requires a ready bomb; guns (intercept / strafe) never consume.
     if (pending.mode === 'bombing_run' && !hasBombLoad(clearedAttacker)) {
       combatLogEntries.push(
-        airLogLine({
+        logLine({
           kind: 'aircraft_attack_miss',
           turnNumber,
           gameTimeSeconds,
@@ -236,7 +181,7 @@ export function resolveAircraftAttacksForTurn(opts: {
       unitMap.set(target.id, damaged);
       if (applied > 0) {
         combatLogEntries.push(
-          airLogLine({
+          logLine({
             kind: 'aircraft_attack_damage',
             turnNumber,
             gameTimeSeconds,
@@ -257,7 +202,7 @@ export function resolveAircraftAttacksForTurn(opts: {
         );
         if (damaged.condition === 'sunk') {
           combatLogEntries.push(
-            airLogLine({
+            logLine({
               kind: 'unit_sunk',
               turnNumber,
               gameTimeSeconds,
@@ -279,7 +224,7 @@ export function resolveAircraftAttacksForTurn(opts: {
             ? 'out of reach this turn'
             : 'near miss';
       combatLogEntries.push(
-        airLogLine({
+        logLine({
           kind: 'aircraft_attack_miss',
           turnNumber,
           gameTimeSeconds,

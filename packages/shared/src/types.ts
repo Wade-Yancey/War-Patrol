@@ -1,4 +1,5 @@
 import { SCHEMA_VERSION } from './constants.js';
+import type { ContactBook } from './contactBook.js';
 
 export type SideId = string;
 
@@ -104,9 +105,7 @@ export type StationCapability =
   | 'radar'
   | 'active_sonar'
   | 'weapons'
-  | 'torpedo'
-  | 'comms'
-  | 'plot';
+  | 'torpedo';
 
 /** Engine Order Telegraph settings (ARCH-EOT minimal). */
 export type EotSetting =
@@ -629,10 +628,7 @@ export interface UnitState {
    * Keys are target unit ids — umpire/GT only; never copied onto vessel views.
    * Vessel clients see only {@link RadarContact.labelN} / {@link PeriscopeContact.labelN}.
    */
-  contactBook?: {
-    nextLabel: number;
-    byTargetId: Record<string, number>;
-  };
+  contactBook?: ContactBook;
   /**
    * Live-museum gopher task (umpire fiat errand). Absent when none ever
    * pushed. Terminal statuses (`completed`/`cleared`) are kept until the

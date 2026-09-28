@@ -22,7 +22,7 @@ export function defaultTwoScreenStations(
   const controls: StationDef = {
     id: STATION_ID_CONTROLS,
     name: 'Controls',
-    capabilities: ['helm', 'engineering', 'plot', 'weapons'],
+    capabilities: ['helm', 'engineering', 'weapons'],
   };
 
   switch (hullClass) {
@@ -41,7 +41,7 @@ export function defaultTwoScreenStations(
         {
           id: STATION_ID_CONTROLS,
           name: 'Controls',
-          capabilities: ['helm', 'engineering', 'plot', 'weapons', 'torpedo'],
+          capabilities: ['helm', 'engineering', 'weapons', 'torpedo'],
         },
         {
           id: STATION_ID_SENSORS,
@@ -69,11 +69,11 @@ export function defaultTwoScreenStations(
   }
 }
 
-/** True when the station list is already the two-screen Controls + Sensors model. */
+/** True when the station list is the two-screen Controls + Sensors model. */
 export function isTwoScreenStationLayout(stations: StationDef[] | undefined): boolean {
   if (!stations || stations.length === 0) return false;
   const ids = new Set(stations.map((s) => s.id));
-  return ids.has(STATION_ID_CONTROLS) || ids.has(STATION_ID_SENSORS);
+  return ids.has(STATION_ID_CONTROLS) && ids.has(STATION_ID_SENSORS);
 }
 
 /**

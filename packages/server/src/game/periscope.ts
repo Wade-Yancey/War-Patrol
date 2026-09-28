@@ -20,6 +20,7 @@ import {
   type PeriscopeContact,
   type UnitState,
 } from '@war-patrol/shared';
+import { opaqueTrackId } from './opaqueTrackId.js';
 
 export type PeriscopePicture = {
   contacts: PeriscopeContact[];
@@ -34,7 +35,7 @@ export type PeriscopePicture = {
 };
 
 /**
- * Server-authoritative periscope / lookout picture (visual stub).
+ * Server-authoritative periscope / lookout picture.
  *
  * Subs: mast must be raised AND keel ≤ periscope depth; sensors casualty still knocks
  * out the periscope. Scope down → optically blind (no contacts / stale data).
@@ -43,10 +44,11 @@ export type PeriscopePicture = {
  * periscope feathers (exposure &gt; 0) in visual range — deterministic FoW,
  * no spot roll.
  *
- * Bearing / range / course / speed readouts are instrument-precise (ground
- * truth, only display-rounded) — optics FoW is limited to *detection*
- * (raised-mast feathers, depth/exposure gating) and Contact-N anonymity, not
- * to smearing the numbers once a contact is visible.
+ * Bearing / range / course / speed are coarsened for optics FoW
+ * ({@link coarsenPeriscopeRangeNm}, {@link coarsenPeriscopeSpeedKn},
+ * {@link coarsenPeriscopeCourseDeg}, {@link coarsenRelativeBearingDeg}) —
+ * detection is also gated by raised-mast feathers, depth/exposure, and
+ * Contact-N anonymity.
  */
 export function buildPeriscopeContacts(own: UnitState, save: GameSave): PeriscopePicture {
   const sensor = findLookoutSensor(own);
@@ -108,7 +110,7 @@ export function buildPeriscopeContacts(own: UnitState, save: GameSave): Periscop
       const silhouettePlate = silhouettePlateForClassId(other.classId);
 
       contacts.push({
-        id: `p-${hashTrackId(own.id, other.id)}`,
+        id: `p-${opaqueTrackId([own.id, other.id, 'peri'])}`,
         labelN: ensureContactLabel(own, other.id),
         kind: 'hull',
         relativeBearing: coarsenRelativeBearingDeg(relativeBearingDeg(own.heading, bearing)),
@@ -128,7 +130,7 @@ export function buildPeriscopeContacts(own: UnitState, save: GameSave): Periscop
       if (rangeNm > maxRangeNm || rangeNm <= 0) continue;
 
       contacts.push({
-        id: `pf-${hashTrackId(own.id, other.id)}`,
+        id: `pf-${opaqueTrackId([own.id, other.id, 'peri'])}`,
         labelN: ensureContactLabel(own, other.id),
         kind: 'periscope',
         relativeBearing: coarsenRelativeBearingDeg(
@@ -148,14 +150,4 @@ export function buildPeriscopeContacts(own: UnitState, save: GameSave): Periscop
       Math.abs(a.relativeBearing) - Math.abs(b.relativeBearing) || a.rangeNm - b.rangeNm,
   );
   return { contacts, maxRangeNm, operational: true };
-}
-
-function hashTrackId(ownId: string, otherId: string): string {
-  let h = 2166136261;
-  const s = `${ownId}|${otherId}|peri`;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return (h >>> 0).toString(36).padStart(7, '0').slice(0, 7);
 }

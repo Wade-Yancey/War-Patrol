@@ -15,7 +15,6 @@ import {
   consumeDeckGunShells,
   deckGunMissBand,
   deckGunSalvoFireFractions,
-  formatCasualtySummary,
   formatDeckGunFireBlockNotice,
   formatTorpedoMissDistance,
   healthDamageApplied,
@@ -24,70 +23,19 @@ import {
   normalizeDeckGunFireOrder,
   normalizeHeading,
   resolveDeckGunShot,
-  type CasualtyEffect,
-  type CombatLogEntry,
-  type CombatLogKind,
   type DeckGunFireOrder,
   type LatLonDepth,
   type UnitState,
   type WeaponDetonationEvent,
+  type CombatLogEntry,
 } from '@war-patrol/shared';
+import { logCasualtyEffects, logLine } from './combatLog.js';
 
 export type DeckGunCombatResolveResult = {
   units: UnitState[];
   combatLogEntries: CombatLogEntry[];
   detonations: WeaponDetonationEvent[];
 };
-
-function gunLogLine(opts: {
-  kind: CombatLogKind;
-  turnNumber: number;
-  gameTimeSeconds: number;
-  summary: string;
-  actor?: UnitState;
-  target?: UnitState;
-  damage?: number;
-  sourceDetonationId?: string;
-  casualtyEffect?: CasualtyEffect;
-}): CombatLogEntry {
-  return {
-    id: `cl-${nanoid(8)}`,
-    kind: opts.kind,
-    turnNumber: opts.turnNumber,
-    gameTimeSeconds: opts.gameTimeSeconds,
-    at: new Date().toISOString(),
-    summary: opts.summary,
-    actorUnitId: opts.actor?.id,
-    actorName: opts.actor?.name,
-    targetUnitId: opts.target?.id,
-    targetName: opts.target?.name,
-    damage: opts.damage,
-    ...(opts.sourceDetonationId ? { sourceDetonationId: opts.sourceDetonationId } : {}),
-    ...(opts.casualtyEffect ? { casualtyEffect: opts.casualtyEffect } : {}),
-  };
-}
-
-function logCasualtyEffects(
-  target: UnitState,
-  effects: CasualtyEffect[],
-  opts: {
-    turnNumber: number;
-    gameTimeSeconds: number;
-    actor?: UnitState;
-  },
-): CombatLogEntry[] {
-  return effects.map((effect) =>
-    gunLogLine({
-      kind: 'subsystem_casualty',
-      turnNumber: opts.turnNumber,
-      gameTimeSeconds: opts.gameTimeSeconds,
-      actor: opts.actor,
-      target,
-      summary: formatCasualtySummary(target.name, effect),
-      casualtyEffect: effect,
-    }),
-  );
-}
 
 type PendingSalvo = {
   firerId: string;
@@ -132,7 +80,7 @@ export function resolveDeckGunsForTurn(opts: {
           deckGunFireBlock: buildDeckGunFireBlock(turnNumber, next.position.depth),
         };
         combatLogEntries.push(
-          gunLogLine({
+          logLine({
             kind: 'deck_gun_fire',
             turnNumber,
             gameTimeSeconds,
@@ -157,7 +105,7 @@ export function resolveDeckGunsForTurn(opts: {
           const aimLabel = String(Math.round(normalizeHeading(fire.aimHeading))).padStart(3, '0');
           const salvoLabel = shotCount > 1 ? ` ×${shotCount}` : '';
           combatLogEntries.push(
-            gunLogLine({
+            logLine({
               kind: 'deck_gun_fire',
               turnNumber,
               gameTimeSeconds,
@@ -230,7 +178,7 @@ export function resolveDeckGunsForTurn(opts: {
               }),
             );
             combatLogEntries.push(
-              gunLogLine({
+              logLine({
                 kind: 'deck_gun_hit',
                 turnNumber,
                 gameTimeSeconds,
@@ -250,7 +198,7 @@ export function resolveDeckGunsForTurn(opts: {
             );
             if (damaged.condition === 'sunk') {
               combatLogEntries.push(
-                gunLogLine({
+                logLine({
                   kind: 'unit_sunk',
                   turnNumber,
                   gameTimeSeconds,
@@ -284,7 +232,7 @@ export function resolveDeckGunsForTurn(opts: {
           }),
         );
         combatLogEntries.push(
-          gunLogLine({
+          logLine({
             kind: 'deck_gun_miss',
             turnNumber,
             gameTimeSeconds,

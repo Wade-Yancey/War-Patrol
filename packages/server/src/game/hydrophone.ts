@@ -11,6 +11,7 @@ import {
   type HydrophoneContact,
   type UnitState,
 } from '@war-patrol/shared';
+import { opaqueTrackId } from './opaqueTrackId.js';
 
 export type HydrophonePicture = {
   contacts: HydrophoneContact[];
@@ -76,7 +77,7 @@ export function buildHydrophoneContacts(own: UnitState, save: GameSave): Hydroph
 
     if (isHydrophoneEmitter(other)) {
       contacts.push({
-        id: `h-${hashTrackId(own.id, other.id, 'prop')}`,
+        id: `h-${opaqueTrackId([own.id, other.id, 'hydro', 'prop'])}`,
         bearing: roundedBearing,
         rangeNm: roundedRange,
         kind: 'propeller',
@@ -85,7 +86,7 @@ export function buildHydrophoneContacts(own: UnitState, save: GameSave): Hydroph
 
     if (isActiveSonarPinging(other)) {
       contacts.push({
-        id: `h-${hashTrackId(own.id, other.id, 'ping')}`,
+        id: `h-${opaqueTrackId([own.id, other.id, 'hydro', 'ping'])}`,
         bearing: roundedBearing,
         rangeNm: roundedRange,
         kind: 'active_sonar_ping',
@@ -112,14 +113,4 @@ export function buildHydrophoneContacts(own: UnitState, save: GameSave): Hydroph
 
   contacts.sort((a, b) => a.bearing - b.bearing || a.rangeNm - b.rangeNm);
   return { contacts, maxRangeNm, operational: true };
-}
-
-function hashTrackId(ownId: string, otherId: string, salt: string): string {
-  let h = 2166136261;
-  const s = `${ownId}|${otherId}|hydro|${salt}`;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return (h >>> 0).toString(36).padStart(7, '0').slice(0, 7);
 }

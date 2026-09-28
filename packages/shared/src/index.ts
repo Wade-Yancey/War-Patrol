@@ -19,5 +19,6 @@ export * from './vessel.js';
 export * from './damage.js';
 export * from './performance.js';
 export * from './dimensions.js';
+export * from './magazine.js';
 export * from './weapons.js';
 export * from './aircraft.js';
