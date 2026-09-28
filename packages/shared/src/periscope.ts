@@ -135,11 +135,6 @@ export function isRaisedPeriscopeSpottable(
   return true;
 }
 
-/** Reset plot stamp (call whenever the scope is lowered). */
-export function resetPlotStamp<T extends { plotStampTurns?: number }>(unit: T): T {
-  return { ...unit, plotStampTurns: 0 };
-}
-
 /** Relative bearing deg (−180, 180] from own heading to true contact bearing. */
 export function relativeBearingDeg(ownHeadingDeg: number, trueBearingDeg: number): number {
   return shortestBearingDelta(ownHeadingDeg, trueBearingDeg);

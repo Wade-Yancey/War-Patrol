@@ -17,6 +17,7 @@ import {
   type RadarSignature,
   type UnitState,
 } from '@war-patrol/shared';
+import { opaqueTrackId } from './opaqueTrackId.js';
 import { ghostOwnShipMark, previousTurnUnitStates } from './radar.js';
 
 export type ActiveSonarPicture = {
@@ -99,7 +100,7 @@ export function buildActiveSonarContacts(own: UnitState, save: GameSave): Active
     );
 
     contacts.push({
-      id: `s-${hashTrackId(own.id, other.id)}`,
+      id: `s-${opaqueTrackId([own.id, other.id, 'sonar'])}`,
       labelN: ensureContactLabel(own, other.id),
       bearing: Math.round(bearing * 10) / 10,
       rangeNm: Math.round(rangeNm * 100) / 100,
@@ -160,7 +161,7 @@ export function buildActiveSonarGhosts(own: UnitState, save: GameSave): ActiveSo
     );
 
     contacts.push({
-      id: `sg-${hashTrackId(own.id, other.id)}`,
+      id: `sg-${opaqueTrackId([own.id, other.id, 'sonar'])}`,
       labelN: ensureContactLabel(own, other.id),
       bearing: Math.round(bearing * 10) / 10,
       rangeNm: Math.round(rangeNm * 100) / 100,
@@ -176,14 +177,4 @@ export function buildActiveSonarGhosts(own: UnitState, save: GameSave): ActiveSo
 
 function resolveSignature(unit: UnitState): RadarSignature {
   return unit.radarSignature ?? defaultRadarSignature(unit.class ?? unit.type);
-}
-
-function hashTrackId(ownId: string, otherId: string): string {
-  let h = 2166136261;
-  const s = `${ownId}|${otherId}|sonar`;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return (h >>> 0).toString(36).padStart(7, '0').slice(0, 7);
 }

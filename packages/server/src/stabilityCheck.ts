@@ -47,7 +47,7 @@ type ExpectedUnit = {
   maxSpeed: number;
 };
 
-/** Independent mirror of turnEngine.applyUnitOrders using shared helpers. */
+/** Independent mirror of turnEngine kinematics using shared helpers. */
 function expectApply(
   unit: ExpectedUnit,
   orders: { course?: number; eot?: EotSetting },

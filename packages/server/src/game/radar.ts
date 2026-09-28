@@ -15,6 +15,7 @@ import {
   type RadarSignature,
   type UnitState,
 } from '@war-patrol/shared';
+import { opaqueTrackId } from './opaqueTrackId.js';
 
 export type RadarPicture = {
   contacts: RadarContact[];
@@ -104,7 +105,7 @@ export function buildRadarContacts(own: UnitState, save: GameSave): RadarPicture
     );
 
     contacts.push({
-      id: `r-${hashTrackId(own.id, other.id)}`,
+      id: `r-${opaqueTrackId([own.id, other.id])}`,
       labelN: ensureContactLabel(own, other.id),
       bearing: Math.round(bearing * 10) / 10,
       rangeNm: Math.round(rangeNm * 100) / 100,
@@ -168,7 +169,7 @@ export function buildRadarGhosts(own: UnitState, save: GameSave): RadarGhostPict
     );
 
     contacts.push({
-      id: `rg-${hashTrackId(own.id, other.id)}`,
+      id: `rg-${opaqueTrackId([own.id, other.id])}`,
       labelN: ensureContactLabel(own, other.id),
       bearing: Math.round(bearing * 10) / 10,
       rangeNm: Math.round(rangeNm * 100) / 100,
@@ -198,13 +199,3 @@ function resolveSignature(unit: UnitState): RadarSignature {
   return unit.radarSignature ?? defaultRadarSignature(unit.class ?? unit.type);
 }
 
-/** Stable opaque track id — not reversible to unit id without the own-ship salt. */
-function hashTrackId(ownId: string, otherId: string): string {
-  let h = 2166136261;
-  const s = `${ownId}|${otherId}`;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return (h >>> 0).toString(36).padStart(7, '0').slice(0, 7);
-}

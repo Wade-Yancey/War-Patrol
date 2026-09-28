@@ -18,7 +18,6 @@ import {
   createDepthChargeTracks,
   createTorpedoTrack,
   depthChargePatternCount,
-  formatCasualtySummary,
   formatTorpedoMissLogSummary,
   horizontalMissMeters,
   isDepthChargeTarget,
@@ -42,9 +41,7 @@ import {
   consumeTorpedoRoom,
   consumeDepthChargeRack,
   torpedoRoomReady,
-  type CasualtyEffect,
   type CombatLogEntry,
-  type CombatLogKind,
   type DepthChargeTrack,
   type LatLonDepth,
   type TorpedoTrack,
@@ -52,7 +49,10 @@ import {
   type WeaponDetonationEvent,
 } from '@war-patrol/shared';
 import { resolveAircraftAttacksForTurn } from './aircraftCombat.js';
+import { logCasualtyEffects, logLine } from './combatLog.js';
 import { resolveDeckGunsForTurn } from './deckGunCombat.js';
+
+export { logLine } from './combatLog.js';
 
 const DETONATION_RETENTION_TURNS = 2;
 /** Cap umpire combat log length (oldest dropped). */
@@ -65,60 +65,6 @@ export type WeaponsResolveResult = {
   recentDetonations: WeaponDetonationEvent[];
   combatLogEntries: CombatLogEntry[];
 };
-
-/** Exported for immediate (non-turn-resolve) combat log lines, e.g. gopher tasks. */
-export function logLine(opts: {
-  kind: CombatLogKind;
-  turnNumber: number;
-  gameTimeSeconds: number;
-  summary: string;
-  actor?: UnitState;
-  target?: UnitState;
-  damage?: number;
-  /** Bridge / audio detonation id this combat effect came from. */
-  sourceDetonationId?: string;
-  casualtyEffect?: CasualtyEffect;
-}): CombatLogEntry {
-  return {
-    id: `cl-${nanoid(8)}`,
-    kind: opts.kind,
-    turnNumber: opts.turnNumber,
-    gameTimeSeconds: opts.gameTimeSeconds,
-    at: new Date().toISOString(),
-    summary: opts.summary,
-    actorUnitId: opts.actor?.id,
-    actorName: opts.actor?.name,
-    targetUnitId: opts.target?.id,
-    targetName: opts.target?.name,
-    damage: opts.damage,
-    ...(opts.sourceDetonationId ? { sourceDetonationId: opts.sourceDetonationId } : {}),
-    ...(opts.casualtyEffect ? { casualtyEffect: opts.casualtyEffect } : {}),
-  };
-}
-
-function logCasualtyEffects(
-  target: UnitState,
-  effects: CasualtyEffect[],
-  opts: {
-    turnNumber: number;
-    gameTimeSeconds: number;
-    actor?: UnitState;
-    sourceDetonationId?: string;
-  },
-): CombatLogEntry[] {
-  return effects.map((effect) =>
-    logLine({
-      kind: 'subsystem_casualty',
-      turnNumber: opts.turnNumber,
-      gameTimeSeconds: opts.gameTimeSeconds,
-      actor: opts.actor,
-      target,
-      summary: formatCasualtySummary(target.name, effect),
-      sourceDetonationId: opts.sourceDetonationId,
-      casualtyEffect: effect,
-    }),
-  );
-}
 
 /**
  * Launch pending weapon orders, then substep-advance tracks and resolve hits.

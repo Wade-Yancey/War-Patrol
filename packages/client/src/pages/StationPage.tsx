@@ -488,6 +488,7 @@ export function StationPage() {
       bridgeAudioRef.current.ctx = null;
       bridgeAudioRef.current.buffer = null;
       bridgeAudioRef.current.torpedoHitBuffer = null;
+      bridgeAudioRef.current.deckGunFireBuffer = null;
       bridgeAudioRef.current.creakBuffer = null;
       bridgeAudioRef.current.ambientBuffer = null;
       // Closed ctx → allow replay after remount (React Strict Mode / leave+rejoin).

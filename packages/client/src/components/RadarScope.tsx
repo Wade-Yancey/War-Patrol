@@ -366,7 +366,7 @@ function RadarScopeInner({
             </g>
           </g>
         ))}
-        <ScopeContactLabelLayer placements={contactLabelPlacements} layer="live" />
+        <ScopeContactLabelLayer placements={contactLabelPlacements} />
         </svg>
       </div>
 

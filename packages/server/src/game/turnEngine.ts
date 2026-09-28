@@ -73,7 +73,10 @@ export function resolveTurn(save: GameSave): GameSave {
   const loiterReady = applyAircraftLoiterStandingOrders(save.units);
 
   // Kinematics first (orders still present for weapon launch snapshot).
-  const movedUnits = loiterReady.map((unit) => applyUnitOrders(unit, turnLength, false));
+  // clearOrders=false preserves weapon order fields for launch this resolve.
+  const movedUnits = loiterReady.map((unit) =>
+    applyUnitKinematics(unit, turnLength, false),
+  );
 
   // Periscope auto-lower when too deep; plot stamp accrue/reset (no frozen bonus).
   const stampedUnits = applyPeriscopePlotStamps(movedUnits, save);
@@ -167,19 +170,6 @@ function applyPeriscopePlotStamps(units: UnitState[], save: GameSave): UnitState
     }
     return unit;
   });
-}
-
-/**
- * Apply helm/EOT/depth kinematics.
- * When `clearOrders` is false, weapon order fields are preserved for launch this resolve.
- * Shared with umpire GT move prediction ({@link applyUnitKinematics}).
- */
-function applyUnitOrders(
-  unit: UnitState,
-  turnLengthSeconds: number,
-  clearOrders = true,
-): UnitState {
-  return applyUnitKinematics(unit, turnLengthSeconds, clearOrders);
 }
 
 export function clearInProgressOrders(units: UnitState[]): UnitState[] {

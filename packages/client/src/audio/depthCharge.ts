@@ -91,15 +91,11 @@ export function depthChargeBatchWhenSecById(
  *
  * - Silent at / beyond {@link DEPTH_CHARGE_CONTROLS_AUDIBLE_NM} (server also
  *   filters bridge cues past this radius).
- * - `t = 1 - range / rMax`, factor = `t⁹` inside the sim damage/stun bands
- *   (range ≤ {@link DEPTH_CHARGE_RANGE_FAR_M}) — unchanged from the prior
- *   pass so close-range and damage-band peaks never move here.
- * - Past the far damage band, an extra `(t / tFar)⁵` taper is layered on top
- *   (continuous at the band edge — no jump), for an effective `t¹⁴` falloff.
- *   The damage bands are a small fraction of the audible radius, so most of
- *   the range beyond them was still reading unnecessarily audible; the extra
- *   taper pushes that non-damaging long-range tail down toward silence much
- *   faster without touching the near/damage-band shape or peak.
+ * - Inside the sim damage/stun bands (range ≤ {@link DEPTH_CHARGE_RANGE_FAR_M}):
+ *   `t = 1 - range / rMax`, factor = `t⁹`.
+ * - Past the far damage band, an extra `(t / tFar)⁵` taper is layered on
+ *   (continuous at the band edge), for an effective `t¹⁴` falloff on the
+ *   non-damaging long-range tail.
  * Applied **per charge** (each pattern member uses its own `rangeNm`).
  *
  * Playback peak also multiplies {@link depthChargeDamageBandMultiplier} and is
@@ -111,18 +107,12 @@ export function depthChargeControlsGain(rangeNm: number): number {
   const rMax = DEPTH_CHARGE_CONTROLS_AUDIBLE_NM;
   if (!(rMax > 0) || r >= rMax) return 0;
   const t = 1 - r / rMax;
-  // t⁹ — steeper than the prior quintic so quiets are much quieter while
-  // near-point-blank stays at/near peak. Left as-is through the far damage
-  // band so close/damage-band peaks are unaffected by the extra taper below.
+  // t⁹ inside the damage bands; near-point-blank stays at/near peak.
   const t3 = t * t * t;
   const nonuple = t3 * t3 * t3;
   if (r <= DEPTH_CHARGE_RANGE_FAR_NM) return nonuple;
 
-  // Beyond the far damage/stun band: layer on a further taper so the
-  // acoustically-audible-but-harmless long-range tail drops toward silence
-  // much faster, widening the overall dynamic range. `tFar` is `t` evaluated
-  // at the band edge, so `extra` is exactly 1 there (continuous — no jump in
-  // the middle of the curve) and shrinks toward 0 as range approaches rMax.
+  // Beyond the far damage/stun band: further taper (continuous at the edge).
   const tFar = 1 - DEPTH_CHARGE_RANGE_FAR_NM / rMax;
   const extra = t / tFar;
   const extra2 = extra * extra;

@@ -2,11 +2,11 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { getAuthToken, setAuthToken } from '../api/authStorage';
+import { CrtShell } from '../components/CrtShell';
+import { ConfirmAction } from '../components/ConfirmAction';
 
 /** Only sent to the server when `WAR_PATROL_ADMIN_TOKEN` is configured there; a no-op on LAN setups. */
 const ADMIN_TOKEN_KEY = 'wp-admin-token';
-import { CrtShell } from '../components/CrtShell';
-import { ConfirmAction } from '../components/ConfirmAction';
 
 type ScenarioRow = {
   id: string;

@@ -28,6 +28,15 @@ import {
   normalizeHeading,
 } from './geo.js';
 import { shortestBearingDelta } from './hydrophone.js';
+import {
+  advanceMagazineReload,
+  consumeMagazineLoad,
+  magazineReadyToFire,
+  rearmMagazine,
+  resolveMagazineSlice,
+  startMagazineReload,
+  type MagazineSlice,
+} from './magazine.js';
 import { PERISCOPE_DEPTH_M } from './periscope.js';
 import type {
   AircraftAttackMode,
@@ -304,26 +313,13 @@ export const DEPTH_CHARGE_DAMAGE_AMOUNT = 22;
 export const DEPTH_CHARGE_STUN_DAMAGE = 8;
 
 /**
- * Pattern → thrower lateral offsets (m, + = starboard of track heading).
- * Along-track spacing uses {@link depthChargeReleaseFractions} on the firer's
- * start→end move — charges trail along the path, not a single midpoint pile.
+ * Legacy ahead/lateral offsets — used when the firer barely moved
+ * (stationary / creep) so a pattern still fans out along heading.
+ * Along-track laterals ({@link DEPTH_CHARGE_PATTERN_LATERAL_M}) are derived
+ * from this table so the two encodings cannot drift.
  *
  * Counts (ids kept for save/API compatibility):
  * single 1 · pair 4 · pattern_3 → 6 · pattern_5 → 10
- */
-export const DEPTH_CHARGE_PATTERN_LATERAL_M: Record<
-  DepthChargePattern,
-  ReadonlyArray<number>
-> = {
-  single: [0],
-  pair: [-42, -14, 14, 42],
-  pattern_3: [-50, -25, 0, 25, 50, 12],
-  pattern_5: [-55, -33, -11, 11, 33, 55, -22, 22, -44, 0],
-};
-
-/**
- * Legacy ahead/lateral offsets — used only when the firer barely moved
- * (stationary / creep) so a pattern still fans out along heading.
  */
 export const DEPTH_CHARGE_PATTERN_OFFSETS: Record<
   DepthChargePattern,
@@ -356,6 +352,21 @@ export const DEPTH_CHARGE_PATTERN_OFFSETS: Record<
     { aheadM: -120, lateralM: -44 },
     { aheadM: -134, lateralM: 0 },
   ],
+};
+
+/**
+ * Pattern → thrower lateral offsets (m, + = starboard of track heading).
+ * Along-track spacing uses {@link depthChargeReleaseFractions} on the firer's
+ * start→end move — charges trail along the path, not a single midpoint pile.
+ */
+export const DEPTH_CHARGE_PATTERN_LATERAL_M: Record<
+  DepthChargePattern,
+  ReadonlyArray<number>
+> = {
+  single: DEPTH_CHARGE_PATTERN_OFFSETS.single.map((o) => o.lateralM),
+  pair: DEPTH_CHARGE_PATTERN_OFFSETS.pair.map((o) => o.lateralM),
+  pattern_3: DEPTH_CHARGE_PATTERN_OFFSETS.pattern_3.map((o) => o.lateralM),
+  pattern_5: DEPTH_CHARGE_PATTERN_OFFSETS.pattern_5.map((o) => o.lateralM),
 };
 
 /** Min firer move (nm) before drops space along the track vs heading fan. */
@@ -477,18 +488,18 @@ export function depthChargeReleaseFractions(pattern: DepthChargePattern): number
   return Array.from({ length: n }, (_, i) => first + ((last - first) * i) / (n - 1));
 }
 
-/** Linear interpolate lat/lon (surface) between two points. */
+/** Linear interpolate lat/lon (surface keel) between two points. */
 export function lerpLatLon(
   a: Pick<LatLonDepth, 'lat' | 'lon'>,
   b: Pick<LatLonDepth, 'lat' | 'lon'>,
   t: number,
 ): LatLonDepth {
-  const u = clamp(t, 0, 1);
-  return {
-    lat: a.lat + (b.lat - a.lat) * u,
-    lon: a.lon + (b.lon - a.lon) * u,
-    depth: 0,
-  };
+  const along = lerpLatLonDepth(
+    { lat: a.lat, lon: a.lon, depth: 0 },
+    { lat: b.lat, lon: b.lon, depth: 0 },
+    t,
+  );
+  return { ...along, depth: 0 };
 }
 
 // --- Lookout wake FoW ---
@@ -930,11 +941,13 @@ export function canFireTorpedoFromRoom(
   >,
   room: TorpedoRoomId = 'forward',
 ): boolean {
-  if (unit.condition === 'sunk') return false;
-  if (!isFleetSubTorpedoHull(unit)) return false;
-  if (torpedoRoomAwaitingReload(unit, room)) return false;
-  if (torpedoRoomReloadTurnsRemaining(unit, room) > 0) return false;
-  return torpedoRoomReady(unit, room) > 0;
+  return magazineReadyToFire({
+    eligible: isFleetSubTorpedoHull(unit),
+    sunk: unit.condition === 'sunk',
+    load: torpedoRoomReady(unit, room),
+    awaitingReload: torpedoRoomAwaitingReload(unit, room),
+    reloadTurnsRemaining: torpedoRoomReloadTurnsRemaining(unit, room),
+  });
 }
 
 export function canFireTorpedo(
@@ -1069,24 +1082,26 @@ export function startTorpedoRoomReload(
   unit: UnitState,
   room: TorpedoRoomId,
 ): { ok: true; unit: UnitState } | { ok: false; error: string } {
-  if (!isFleetSubTorpedoHull(unit)) {
-    return { ok: false, error: 'Only submarines have torpedo rooms' };
-  }
-  if (unit.condition === 'sunk') {
-    return { ok: false, error: 'Unit sunk — torpedo rooms offline' };
-  }
-  if (!torpedoRoomAwaitingReload(unit, room)) {
-    return { ok: false, error: 'Room is not awaiting reload' };
-  }
-  if (torpedoRoomReloadTurnsRemaining(unit, room) > 0) {
-    return { ok: false, error: 'Reload already in progress' };
-  }
+  const result = startMagazineReload({
+    eligible: isFleetSubTorpedoHull(unit),
+    sunk: unit.condition === 'sunk',
+    awaitingReload: torpedoRoomAwaitingReload(unit, room),
+    reloadTurnsRemaining: torpedoRoomReloadTurnsRemaining(unit, room),
+    reloadTurns: TORPEDO_RELOAD_TURNS,
+    messages: {
+      ineligible: 'Only submarines have torpedo rooms',
+      sunk: 'Unit sunk — torpedo rooms offline',
+      notAwaiting: 'Room is not awaiting reload',
+      alreadyReloading: 'Reload already in progress',
+    },
+  });
+  if (!result.ok) return result;
   if (room === 'forward') {
     return {
       ok: true,
       unit: {
         ...unit,
-        torpedoForwardReloadTurnsRemaining: TORPEDO_RELOAD_TURNS,
+        torpedoForwardReloadTurnsRemaining: result.reloadTurnsRemaining,
       },
     };
   }
@@ -1094,7 +1109,7 @@ export function startTorpedoRoomReload(
     ok: true,
     unit: {
       ...unit,
-      torpedoAftReloadTurnsRemaining: TORPEDO_RELOAD_TURNS,
+      torpedoAftReloadTurnsRemaining: result.reloadTurnsRemaining,
     },
   };
 }
@@ -1104,23 +1119,29 @@ export function advanceTorpedoRoomReloads(unit: UnitState): UnitState {
   if (!isFleetSubTorpedoHull(unit)) return unit;
   let next = unit;
 
-  const fwdTurns = torpedoRoomReloadTurnsRemaining(unit, 'forward');
-  if (fwdTurns > 0) {
-    const remaining = fwdTurns - 1;
+  const fwd = advanceMagazineReload({
+    load: unit.torpedoForward ?? 0,
+    awaitingReload: Boolean(unit.torpedoForwardAwaitingReload),
+    reloadTurnsRemaining: torpedoRoomReloadTurnsRemaining(unit, 'forward'),
+  });
+  if (fwd.reloadTurnsRemaining !== torpedoRoomReloadTurnsRemaining(unit, 'forward')) {
     next = {
       ...next,
-      torpedoForwardReloadTurnsRemaining: remaining,
-      ...(remaining === 0 ? { torpedoForwardAwaitingReload: false } : {}),
+      torpedoForwardReloadTurnsRemaining: fwd.reloadTurnsRemaining,
+      torpedoForwardAwaitingReload: fwd.awaitingReload,
     };
   }
 
-  const aftTurns = torpedoRoomReloadTurnsRemaining(next, 'aft');
-  if (aftTurns > 0) {
-    const remaining = aftTurns - 1;
+  const aft = advanceMagazineReload({
+    load: next.torpedoAft ?? 0,
+    awaitingReload: Boolean(next.torpedoAftAwaitingReload),
+    reloadTurnsRemaining: torpedoRoomReloadTurnsRemaining(next, 'aft'),
+  });
+  if (aft.reloadTurnsRemaining !== torpedoRoomReloadTurnsRemaining(next, 'aft')) {
     next = {
       ...next,
-      torpedoAftReloadTurnsRemaining: remaining,
-      ...(remaining === 0 ? { torpedoAftAwaitingReload: false } : {}),
+      torpedoAftReloadTurnsRemaining: aft.reloadTurnsRemaining,
+      torpedoAftAwaitingReload: aft.awaitingReload,
     };
   }
 
@@ -1173,27 +1194,17 @@ export function resolveDepthChargeMagazineState(
   UnitState,
   'depthChargeLoad' | 'depthChargeAwaitingReload' | 'depthChargeReloadTurnsRemaining'
 > {
-  if (!isDestroyerDcHull(unit)) {
-    return {
-      depthChargeLoad: 0,
-      depthChargeAwaitingReload: false,
-      depthChargeReloadTurnsRemaining: 0,
-    };
-  }
-  const load =
-    typeof unit.depthChargeLoad === 'number'
-      ? Math.min(
-          DESTROYER_DEPTH_CHARGE_LOAD,
-          Math.max(0, Math.floor(unit.depthChargeLoad)),
-        )
-      : DESTROYER_DEPTH_CHARGE_LOAD;
+  const slice = resolveMagazineSlice({
+    eligible: isDestroyerDcHull(unit),
+    capacity: DESTROYER_DEPTH_CHARGE_LOAD,
+    load: unit.depthChargeLoad,
+    awaitingReload: unit.depthChargeAwaitingReload,
+    reloadTurnsRemaining: unit.depthChargeReloadTurnsRemaining,
+  });
   return {
-    depthChargeLoad: load,
-    depthChargeAwaitingReload: Boolean(unit.depthChargeAwaitingReload),
-    depthChargeReloadTurnsRemaining: Math.max(
-      0,
-      Math.floor(Number(unit.depthChargeReloadTurnsRemaining) || 0),
-    ),
+    depthChargeLoad: slice.load,
+    depthChargeAwaitingReload: slice.awaitingReload,
+    depthChargeReloadTurnsRemaining: slice.reloadTurnsRemaining,
   };
 }
 
@@ -1208,76 +1219,86 @@ export function canDropDepthCharges(
     | 'depthChargeReloadTurnsRemaining'
   >,
 ): boolean {
-  if (unit.condition === 'sunk') return false;
-  if (!isDestroyerDcHull(unit)) return false;
-  if (unit.depthChargeAwaitingReload) return false;
-  if ((unit.depthChargeReloadTurnsRemaining ?? 0) > 0) return false;
-  return (unit.depthChargeLoad ?? 0) > 0;
+  return magazineReadyToFire({
+    eligible: isDestroyerDcHull(unit),
+    sunk: unit.condition === 'sunk',
+    load: unit.depthChargeLoad ?? 0,
+    awaitingReload: Boolean(unit.depthChargeAwaitingReload),
+    reloadTurnsRemaining: unit.depthChargeReloadTurnsRemaining ?? 0,
+  });
 }
 
 /** Consume rack charges and mark awaiting player reload. */
 export function consumeDepthChargeRack(unit: UnitState, count: number): UnitState {
-  const n = Math.max(0, Math.floor(count));
-  if (n <= 0) return unit;
-  const next = Math.max(0, (unit.depthChargeLoad ?? 0) - n);
+  const current: MagazineSlice = {
+    load: unit.depthChargeLoad ?? 0,
+    awaitingReload: Boolean(unit.depthChargeAwaitingReload),
+    reloadTurnsRemaining: unit.depthChargeReloadTurnsRemaining ?? 0,
+  };
+  const next = consumeMagazineLoad(current, count);
+  if (next === current) return unit;
   return {
     ...unit,
-    depthChargeLoad: next,
-    depthChargeAwaitingReload: true,
+    depthChargeLoad: next.load,
+    depthChargeAwaitingReload: next.awaitingReload,
+    depthChargeReloadTurnsRemaining: next.reloadTurnsRemaining,
   };
 }
 
 export function startDepthChargeReload(
   unit: UnitState,
 ): { ok: true; unit: UnitState } | { ok: false; error: string } {
-  if (!isDestroyerDcHull(unit)) {
-    return { ok: false, error: 'Only destroyers have depth-charge racks' };
-  }
-  if (unit.condition === 'sunk') {
-    return { ok: false, error: 'Unit sunk — depth-charge rack offline' };
-  }
-  if (!unit.depthChargeAwaitingReload) {
-    return { ok: false, error: 'Rack is not awaiting reload' };
-  }
-  if ((unit.depthChargeReloadTurnsRemaining ?? 0) > 0) {
-    return { ok: false, error: 'Reload already in progress' };
-  }
+  const result = startMagazineReload({
+    eligible: isDestroyerDcHull(unit),
+    sunk: unit.condition === 'sunk',
+    awaitingReload: Boolean(unit.depthChargeAwaitingReload),
+    reloadTurnsRemaining: unit.depthChargeReloadTurnsRemaining ?? 0,
+    reloadTurns: DEPTH_CHARGE_RELOAD_TURNS,
+    messages: {
+      ineligible: 'Only destroyers have depth-charge racks',
+      sunk: 'Unit sunk — depth-charge rack offline',
+      notAwaiting: 'Rack is not awaiting reload',
+      alreadyReloading: 'Reload already in progress',
+    },
+  });
+  if (!result.ok) return result;
   return {
     ok: true,
     unit: {
       ...unit,
-      depthChargeReloadTurnsRemaining: DEPTH_CHARGE_RELOAD_TURNS,
+      depthChargeReloadTurnsRemaining: result.reloadTurnsRemaining,
     },
   };
 }
 
 export function advanceDepthChargeReloads(unit: UnitState): UnitState {
   if (!isDestroyerDcHull(unit)) return unit;
-  const turns = Math.max(0, Math.floor(Number(unit.depthChargeReloadTurnsRemaining) || 0));
-  if (turns <= 0) return unit;
-  const remaining = turns - 1;
+  const next = advanceMagazineReload({
+    load: unit.depthChargeLoad ?? 0,
+    awaitingReload: Boolean(unit.depthChargeAwaitingReload),
+    reloadTurnsRemaining: unit.depthChargeReloadTurnsRemaining ?? 0,
+  });
+  if (next.reloadTurnsRemaining === (unit.depthChargeReloadTurnsRemaining ?? 0)) {
+    return unit;
+  }
   return {
     ...unit,
-    depthChargeReloadTurnsRemaining: remaining,
-    ...(remaining === 0 ? { depthChargeAwaitingReload: false } : {}),
+    depthChargeReloadTurnsRemaining: next.reloadTurnsRemaining,
+    depthChargeAwaitingReload: next.awaitingReload,
   };
 }
 
 /** Umpire fiat: full DC rack; clear reload state. */
 export function rearmDepthChargeRack(unit: UnitState): UnitState {
-  if (!isDestroyerDcHull(unit)) {
-    return {
-      ...unit,
-      depthChargeLoad: 0,
-      depthChargeAwaitingReload: false,
-      depthChargeReloadTurnsRemaining: 0,
-    };
-  }
+  const slice = rearmMagazine({
+    eligible: isDestroyerDcHull(unit),
+    capacity: DESTROYER_DEPTH_CHARGE_LOAD,
+  });
   return {
     ...unit,
-    depthChargeLoad: DESTROYER_DEPTH_CHARGE_LOAD,
-    depthChargeAwaitingReload: false,
-    depthChargeReloadTurnsRemaining: 0,
+    depthChargeLoad: slice.load,
+    depthChargeAwaitingReload: slice.awaitingReload,
+    depthChargeReloadTurnsRemaining: slice.reloadTurnsRemaining,
   };
 }
 
@@ -1311,25 +1332,17 @@ export function resolveDeckGunMagazineState(
   UnitState,
   'deckGunLoad' | 'deckGunAwaitingReload' | 'deckGunReloadTurnsRemaining'
 > {
-  if (!isDeckGunHull(unit)) {
-    return {
-      deckGunLoad: 0,
-      deckGunAwaitingReload: false,
-      deckGunReloadTurnsRemaining: 0,
-    };
-  }
-  const capacity = defaultDeckGunLoad(unit);
-  const load =
-    typeof unit.deckGunLoad === 'number'
-      ? Math.min(capacity, Math.max(0, Math.floor(unit.deckGunLoad)))
-      : capacity;
+  const slice = resolveMagazineSlice({
+    eligible: isDeckGunHull(unit),
+    capacity: defaultDeckGunLoad(unit),
+    load: unit.deckGunLoad,
+    awaitingReload: unit.deckGunAwaitingReload,
+    reloadTurnsRemaining: unit.deckGunReloadTurnsRemaining,
+  });
   return {
-    deckGunLoad: load,
-    deckGunAwaitingReload: Boolean(unit.deckGunAwaitingReload),
-    deckGunReloadTurnsRemaining: Math.max(
-      0,
-      Math.floor(Number(unit.deckGunReloadTurnsRemaining) || 0),
-    ),
+    deckGunLoad: slice.load,
+    deckGunAwaitingReload: slice.awaitingReload,
+    deckGunReloadTurnsRemaining: slice.reloadTurnsRemaining,
   };
 }
 
@@ -1345,82 +1358,88 @@ export function canFireDeckGun(
     | 'deckGunReloadTurnsRemaining'
   >,
 ): boolean {
-  if (!isDeckGunHull(unit)) return false;
-  if (unit.condition === 'sunk') return false;
-  if (!canDeckGunFireFromDepth(unit)) return false;
-  if (unit.deckGunAwaitingReload) return false;
-  if ((unit.deckGunReloadTurnsRemaining ?? 0) > 0) return false;
-  return (unit.deckGunLoad ?? 0) > 0;
-}
-
-export function consumeDeckGunShell(unit: UnitState): UnitState {
-  return consumeDeckGunShells(unit, 1);
+  return magazineReadyToFire({
+    eligible: isDeckGunHull(unit),
+    sunk: unit.condition === 'sunk',
+    load: unit.deckGunLoad ?? 0,
+    awaitingReload: Boolean(unit.deckGunAwaitingReload),
+    reloadTurnsRemaining: unit.deckGunReloadTurnsRemaining ?? 0,
+    extraOk: canDeckGunFireFromDepth(unit),
+  });
 }
 
 /** Consume `count` shells (1 each) and mark the gun awaiting reload after the salvo. */
 export function consumeDeckGunShells(unit: UnitState, count: number): UnitState {
   if (!isDeckGunHull(unit)) return unit;
-  const n = Math.max(0, Math.floor(Number(count) || 0));
-  if (n <= 0) return unit;
-  const next = Math.max(0, (unit.deckGunLoad ?? 0) - n);
+  const current: MagazineSlice = {
+    load: unit.deckGunLoad ?? 0,
+    awaitingReload: Boolean(unit.deckGunAwaitingReload),
+    reloadTurnsRemaining: unit.deckGunReloadTurnsRemaining ?? 0,
+  };
+  const next = consumeMagazineLoad(current, count);
+  if (next === current) return unit;
   return {
     ...unit,
-    deckGunLoad: next,
-    deckGunAwaitingReload: true,
+    deckGunLoad: next.load,
+    deckGunAwaitingReload: next.awaitingReload,
+    deckGunReloadTurnsRemaining: next.reloadTurnsRemaining,
   };
 }
 
 export function startDeckGunReload(
   unit: UnitState,
 ): { ok: true; unit: UnitState } | { ok: false; error: string } {
-  if (!isDeckGunHull(unit)) {
-    return { ok: false, error: 'Only destroyers and fleet subs have a deck gun' };
-  }
-  if (unit.condition === 'sunk') {
-    return { ok: false, error: 'Unit sunk — deck gun offline' };
-  }
-  if (!unit.deckGunAwaitingReload) {
-    return { ok: false, error: 'Deck gun is not awaiting reload' };
-  }
-  if ((unit.deckGunReloadTurnsRemaining ?? 0) > 0) {
-    return { ok: false, error: 'Reload already in progress' };
-  }
+  const result = startMagazineReload({
+    eligible: isDeckGunHull(unit),
+    sunk: unit.condition === 'sunk',
+    awaitingReload: Boolean(unit.deckGunAwaitingReload),
+    reloadTurnsRemaining: unit.deckGunReloadTurnsRemaining ?? 0,
+    reloadTurns: DECK_GUN_RELOAD_TURNS,
+    messages: {
+      ineligible: 'Only destroyers and fleet subs have a deck gun',
+      sunk: 'Unit sunk — deck gun offline',
+      notAwaiting: 'Deck gun is not awaiting reload',
+      alreadyReloading: 'Reload already in progress',
+    },
+  });
+  if (!result.ok) return result;
   return {
     ok: true,
     unit: {
       ...unit,
-      deckGunReloadTurnsRemaining: DECK_GUN_RELOAD_TURNS,
+      deckGunReloadTurnsRemaining: result.reloadTurnsRemaining,
     },
   };
 }
 
 export function advanceDeckGunReloads(unit: UnitState): UnitState {
   if (!isDeckGunHull(unit)) return unit;
-  const turns = Math.max(0, Math.floor(Number(unit.deckGunReloadTurnsRemaining) || 0));
-  if (turns <= 0) return unit;
-  const remaining = turns - 1;
+  const next = advanceMagazineReload({
+    load: unit.deckGunLoad ?? 0,
+    awaitingReload: Boolean(unit.deckGunAwaitingReload),
+    reloadTurnsRemaining: unit.deckGunReloadTurnsRemaining ?? 0,
+  });
+  if (next.reloadTurnsRemaining === (unit.deckGunReloadTurnsRemaining ?? 0)) {
+    return unit;
+  }
   return {
     ...unit,
-    deckGunReloadTurnsRemaining: remaining,
-    ...(remaining === 0 ? { deckGunAwaitingReload: false } : {}),
+    deckGunReloadTurnsRemaining: next.reloadTurnsRemaining,
+    deckGunAwaitingReload: next.awaitingReload,
   };
 }
 
 /** Umpire fiat: full deck-gun magazine; clear reload state. */
 export function rearmDeckGun(unit: UnitState): UnitState {
-  if (!isDeckGunHull(unit)) {
-    return {
-      ...unit,
-      deckGunLoad: 0,
-      deckGunAwaitingReload: false,
-      deckGunReloadTurnsRemaining: 0,
-    };
-  }
+  const slice = rearmMagazine({
+    eligible: isDeckGunHull(unit),
+    capacity: defaultDeckGunLoad(unit),
+  });
   return {
     ...unit,
-    deckGunLoad: defaultDeckGunLoad(unit),
-    deckGunAwaitingReload: false,
-    deckGunReloadTurnsRemaining: 0,
+    deckGunLoad: slice.load,
+    deckGunAwaitingReload: slice.awaitingReload,
+    deckGunReloadTurnsRemaining: slice.reloadTurnsRemaining,
   };
 }
 

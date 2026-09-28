@@ -5,7 +5,6 @@ import {
   HYDROPHONE_UNDERWAY_SPEED_KN,
   RADAR_SURFACE_DEPTH_M,
 } from './constants.js';
-import { normalizeHeading } from './geo.js';
 import type { HullClass, SensorDef, UnitState } from './types.js';
 import { isHullClass, resolveVesselIdentity } from './vessel.js';
 
@@ -207,8 +206,4 @@ export function defaultHydrophoneSensor(
 
 export function resolveHydrophoneMaxRangeNm(sensor: SensorDef | undefined): number {
   return sensor?.maxRangeNm ?? HYDROPHONE_MAX_RANGE_NM;
-}
-
-export function normalizeListenBearing(deg: number): number {
-  return normalizeHeading(deg);
 }
