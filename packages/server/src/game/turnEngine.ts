@@ -290,6 +290,13 @@ export function rollbackToTurn(save: GameSave, turnNumber: number): GameSave {
   const history = save.history.filter((h) => h.turnNumber < turnNumber);
   const gameTimeSeconds =
     snap.gameTimeSeconds ?? snap.turn.gameTimeSeconds ?? save.turn.gameTimeSeconds ?? 0;
+  // Match T1 semantics: drop combat cues logged after the restored turn so
+  // bridge/umpire views do not keep post-rollback detonations or CRT lines.
+  // (T1 restore clears both entirely — equivalent to retaining nothing pre-resolve.)
+  const recentDetonations = (save.recentDetonations ?? []).filter(
+    (d) => d.turnNumber <= turnNumber,
+  );
+  const combatLog = (save.combatLog ?? []).filter((e) => e.turnNumber <= turnNumber);
   return {
     ...save,
     updatedAt: new Date().toISOString(),
@@ -298,6 +305,8 @@ export function rollbackToTurn(save: GameSave, turnNumber: number): GameSave {
     // Prefer weapon tracks snapshotted with the turn (AAR / post-persist saves).
     torpedoes: structuredClone(snap.torpedoes ?? []),
     depthCharges: structuredClone(snap.depthCharges ?? []),
+    recentDetonations,
+    combatLog,
     turn: {
       number: turnNumber + 1,
       phase: 'open',
