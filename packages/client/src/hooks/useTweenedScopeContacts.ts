@@ -5,13 +5,17 @@ import {
   type RadarContact,
 } from '@war-patrol/shared';
 
-/** Wall-clock duration for contact polar moves after a sensor update (museum trial). */
-export const CONTACT_TWEEN_MS = 60_000;
+/**
+ * Wall-clock duration for contact polar moves after a sensor update (museum trial).
+ * 20s: readable bearing/range crawl without eating most of the default ~180s
+ * order window (was 60s); still longer than LOST_KEEP_MS so moves ≠ flash.
+ */
+export const CONTACT_TWEEN_MS = 20_000;
 
 /** How long lost contacts linger while fading on the scope. */
 const LOST_KEEP_MS = 8_000;
 
-/** Tick while a tween / fade is active — smooth enough for a 60s crawl. */
+/** Tick while a tween / fade is active — smooth enough for a 20s crawl. */
 const TWEEN_TICK_MS = 50;
 /** Idle tick for sweep-fade housekeeping when nothing is moving. */
 const IDLE_TICK_MS = 200;

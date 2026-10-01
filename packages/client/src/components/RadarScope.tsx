@@ -46,7 +46,7 @@ function defaultScaleNm(sensorMaxNm: number): RadarRangePresetNm {
 
 /**
  * Traditional round PPI radar scope — own ship center, true bearings on the rim.
- * Sweep + 60s contact polar tween after updates (museum trial); no previous-turn ghosts.
+ * Sweep + 20s contact polar tween after updates (museum trial); no previous-turn ghosts.
  */
 function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
   const [scaleNm, setScaleNm] = useState<RadarRangePresetNm>(() => defaultScaleNm(maxRangeNm));

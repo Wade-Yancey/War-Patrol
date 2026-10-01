@@ -57,7 +57,7 @@ function polar(deg: number, r: number): { x: number; y: number } {
 /**
  * Forward-cone active search sonar scope — not an omnidirectional PPI.
  * Blips + anonymous contact list only while the set is toggled ON.
- * Same 60s contact polar tween as radar (no previous-turn ghosts).
+ * Same 20s contact polar tween as radar (no previous-turn ghosts).
  */
 function ActiveSonarScopeInner({
   contacts,
