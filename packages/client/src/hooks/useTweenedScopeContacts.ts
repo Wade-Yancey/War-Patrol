@@ -45,7 +45,7 @@ function contactsKey(contacts: RadarContact[]): string {
   return contacts
     .map(
       (c) =>
-        `${c.id}:${c.bearing.toFixed(1)}:${c.rangeNm.toFixed(2)}:${c.strength}:${c.signature}:${c.estimatedDepthM ?? ''}:${c.labelN}`,
+        `${c.id}:${c.bearing.toFixed(1)}:${c.rangeNm.toFixed(2)}:${c.strength}:${c.signature}:${c.domain}:${c.estimatedDepthM ?? ''}:${c.labelN}`,
     )
     .join('|');
 }

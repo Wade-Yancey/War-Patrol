@@ -33,6 +33,7 @@ import {
   unprojectFromUv,
   type TorpedoRoomId,
 } from '@war-patrol/shared';
+import { MapAircraftMarker } from './ContactGlyphs';
 
 interface Props {
   area: BoundingBox;
@@ -800,6 +801,8 @@ function GroundTruthMapInner({
               : ''
           }`,
           sunk: unit.condition === 'sunk',
+          isAircraft: unit.type === 'Aircraft',
+          heading,
           label: `${unit.speed.toFixed(0)} KN · HDG ${heading.toFixed(0)}° · CRS ${ordered.toFixed(0)}°${
             unit.type === 'Submarine' && unit.position.depth > 0
               ? ` · ${unit.position.depth.toFixed(0)} M`
@@ -1455,25 +1458,38 @@ function GroundTruthMapInner({
             .filter((m) => m.onPlot)
             .map((m) => (
               <g key={m.id}>
-                <circle
-                  cx={m.x}
-                  cy={m.y}
-                  r={8}
-                  fill="none"
-                  stroke={m.color}
-                  strokeWidth={1.5}
-                  strokeOpacity={m.sunk ? 0.35 : 1}
-                />
-                <circle cx={m.x} cy={m.y} r={3} fill={m.color} opacity={m.sunk ? 0.35 : 1} />
-                <line
-                  x1={m.x}
-                  y1={m.y}
-                  x2={m.tipX}
-                  y2={m.tipY}
-                  stroke={m.color}
-                  strokeWidth={2}
-                  strokeLinecap="square"
-                />
+                {m.isAircraft ? (
+                  <MapAircraftMarker
+                    x={m.x}
+                    y={m.y}
+                    heading={m.heading}
+                    color={m.color}
+                    opacity={m.sunk ? 0.35 : 1}
+                    size={10}
+                  />
+                ) : (
+                  <>
+                    <circle
+                      cx={m.x}
+                      cy={m.y}
+                      r={8}
+                      fill="none"
+                      stroke={m.color}
+                      strokeWidth={1.5}
+                      strokeOpacity={m.sunk ? 0.35 : 1}
+                    />
+                    <circle cx={m.x} cy={m.y} r={3} fill={m.color} opacity={m.sunk ? 0.35 : 1} />
+                    <line
+                      x1={m.x}
+                      y1={m.y}
+                      x2={m.tipX}
+                      y2={m.tipY}
+                      stroke={m.color}
+                      strokeWidth={2}
+                      strokeLinecap="square"
+                    />
+                  </>
+                )}
                 <text
                   className="map-plot-label"
                   x={m.x + m.labelDx}

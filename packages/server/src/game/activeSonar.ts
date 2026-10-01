@@ -6,6 +6,7 @@ import {
   coarsenActiveSonarDepthM,
   defaultRadarSignature,
   ensureContactLabel,
+  radarContactDomain,
   findActiveSonarSensor,
   isInsideActiveSonarCone,
   isRadarTargetable,
@@ -98,6 +99,7 @@ export function buildActiveSonarContacts(own: UnitState, save: GameSave): Active
       rangeNm: Math.round(rangeNm * 100) / 100,
       strength: Math.round(strength * 100) / 100,
       signature,
+      domain: radarContactDomain(other),
       estimatedDepthM: coarsenActiveSonarDepthM(other.position.depth),
     });
   }

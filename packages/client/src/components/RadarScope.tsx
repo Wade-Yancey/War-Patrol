@@ -6,6 +6,7 @@ import {
   type ScopeLabelPlacement,
   type ScopeLabelRequest,
 } from '@war-patrol/shared';
+import { RadarAirBlip, RadarSurfaceBlip } from './ContactGlyphs';
 import { useTweenedScopeContacts } from '../hooks/useTweenedScopeContacts';
 import { ScopeContactLabelLayer } from './ScopeContactLabelLayer';
 
@@ -32,7 +33,7 @@ function contactsKey(contacts: RadarContact[]): string {
   return contacts
     .map(
       (c) =>
-        `${c.id}:${c.bearing.toFixed(1)}:${c.rangeNm.toFixed(2)}:${c.strength}:${c.signature}`,
+        `${c.id}:${c.bearing.toFixed(1)}:${c.rangeNm.toFixed(2)}:${c.strength}:${c.signature}:${c.domain}`,
     )
     .join('|');
 }
@@ -117,7 +118,7 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
       const r = frac * SCOPE_R;
       const x = CX + Math.cos(rad) * r;
       const y = CY + Math.sin(rad) * r;
-      const blipR = 4 + 5 * b.strength;
+      const blipR = b.domain === 'air' ? Math.max(8, 4 + 5 * b.strength) : 4 + 5 * b.strength;
       const inScale = b.displayRangeNm <= scaleNm;
       const showLabel = b.live && inScale;
       const opacity = b.live
@@ -252,9 +253,11 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
         {blips.map((b) => (
           <g key={b.id}>
             <g opacity={b.opacity}>
-              <circle cx={b.x} cy={b.y} r={b.r + 2} fill="none" stroke="#7dff9a" strokeWidth={1.5} />
-              <circle cx={b.x} cy={b.y} r={b.r} fill="#b8ffc8" />
-              <circle cx={b.x} cy={b.y} r={Math.max(2, b.r * 0.45)} fill="#e8ffe8" />
+              {b.domain === 'air' ? (
+                <RadarAirBlip x={b.x} y={b.y} r={b.r} />
+              ) : (
+                <RadarSurfaceBlip x={b.x} y={b.y} r={b.r} />
+              )}
             </g>
           </g>
         ))}
