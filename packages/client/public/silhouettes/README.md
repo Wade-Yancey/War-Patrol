@@ -9,7 +9,7 @@ Side-profile / recognition plates for the Sensors visual optics tab (sub perisco
 | Fleet Submarine | `submarine.png` | Side-profile plate with alpha (halftone hull, bow right). Bundled via Vite at `packages/client/src/assets/silhouettes/submarine.png`. |
 | Oiler | `oiler.png` | Cimarron-class (T3-S2-A1) fleet oiler plate with alpha (halftone hull, bow right). Bundled via Vite at `packages/client/src/assets/silhouettes/oiler.png`. |
 | Aircraft Carrier | `carrier.png` | Shōkaku-class fleet carrier plate with alpha (grayscale hull, bow right; derived from port-side reference, flipped). Bundled via Vite at `packages/client/src/assets/silhouettes/carrier.png`. |
-| Fighter — Zeke plate | `zeke.png` | Mitsubishi A6M Zeke recognition plate (top-down + profile insets, grayscale midtones + alpha). Page white punched to transparency; **not** crushed to a black silhouette. Selected via `silhouettePlate: "zeke"` / `classId` containing `zeke` or `a6m`. Source: store `media/zeke-fighter-reference.jpg`. |
+| Fighter — Zeke plate | `zeke.png` | Mitsubishi A6M Zeke **nose-up top-down** grayscale plate (alpha; not a crushed black silhouette). Selected via `silhouettePlate: "zeke"` / `classId` containing `zeke` or `a6m`. Same port/starboard flip as hull plates; optics size uses `periscopeSilhouetteScale(rangeNm)` like ships. Source: store `media/zeke-topdown-silhouette.png`. |
 
 Keep public + Vite asset copies byte-identical when updating a plate. Preserve PNG transparency (`tRNS` / alpha) so the plate composites over the optics sky/sea. CRT grain/scanlines are CSS overlays above the `<img>` — do not bake them into the PNG.
 

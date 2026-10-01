@@ -3097,7 +3097,8 @@ label {
 .periscope-silhouette {
   /* Plain Vite-bundled PNG with alpha — no filters; transparent over sky/sea.
      Natural aspect from width/height attrs (DD 349×79, sub 350×55).
-     Default art is bow-right; --flip mirrors for port AOB (see periscopeSilhouetteFlipX). */
+     Default art is bow-right; --flip mirrors for port AOB (see periscopeSilhouetteFlipX).
+     Parent `.periscope-selected` applies --peri-scale from range (closer = larger). */
   display: block;
   flex: 0 0 auto;
   box-sizing: border-box;
@@ -3111,6 +3112,15 @@ label {
   border: none;
   user-select: none;
   -webkit-user-drag: none;
+}
+
+/* Nose-up top-down airframes (Zeke): size by height so range scale reads clearly
+   without forcing fighter wingspan to destroyer plate width. */
+.periscope-silhouette--air {
+  width: auto;
+  height: min(42vw, 12rem);
+  max-width: min(92vw, 18rem);
+  min-height: 0;
 }
 
 .periscope-silhouette--flip {
