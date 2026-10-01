@@ -9,6 +9,7 @@ import {
   findRadarSensor,
   isRadarSurfaced,
   isRadarTargetable,
+  radarContactDomain,
   type GameSave,
   type RadarContact,
   type RadarSignature,
@@ -87,6 +88,7 @@ export function buildRadarContacts(own: UnitState, save: GameSave): RadarPicture
       rangeNm: Math.round(rangeNm * 100) / 100,
       strength: Math.round(strength * 100) / 100,
       signature,
+      domain: radarContactDomain(other),
     });
   }
 

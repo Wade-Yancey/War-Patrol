@@ -1036,6 +1036,12 @@ export interface UmpireView {
 }
 
 /**
+ * FoW-safe platform band for PPI glyphs.
+ * `air` may paint a plane silhouette without naming class/side (still Cn only).
+ */
+export type RadarContactDomain = 'surface' | 'air';
+
+/**
  * Server-filtered radar contact (ARCH-SP-05 / ARCH-DET).
  * Polar only — never other units' absolute lat/lon or identity.
  */
@@ -1058,6 +1064,11 @@ export interface RadarContact {
    * Not a class/side/name — operators see only small/medium/large.
    */
   signature: RadarSignature;
+  /**
+   * Surface vs air echo band for distinct PPI glyphs.
+   * Implies “airborne” without class/side/name — still Contact-N anonymity.
+   */
+  domain: RadarContactDomain;
   /**
    * Active-sonar only: precise estimated keel depth (m, positive down),
    * ground truth rounded to the nearest whole meter for display — active

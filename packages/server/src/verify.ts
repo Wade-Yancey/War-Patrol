@@ -520,6 +520,11 @@ async function main() {
   );
   check('radar contact signature is small (surfaced sub)', contacts[0].signature === 'small');
   check(
+    'radar contact domain surface (sub hull)',
+    contacts[0].domain === 'surface',
+    `got ${String(contacts[0].domain)}`,
+  );
+  check(
     'radar contact has stable labelN',
     typeof contacts[0].labelN === 'number' && (contacts[0].labelN as number) >= 1,
     `got ${String(contacts[0].labelN)}`,
@@ -4136,6 +4141,30 @@ async function main() {
             (c) => c.silhouetteClass === 'Fighter' && c.silhouettePlate === 'zeke',
           ),
       );
+
+      // Radar FoW: aircraft paint as domain=air (plane glyph) without class/type leak.
+      {
+        const psRadarSave = runtime.requireGame(psId);
+        const urakaze = psRadarSave.units.find((u) => u.id === 'dd-urakaze');
+        if (urakaze) {
+          const airPic = buildRadarContacts(urakaze, psRadarSave);
+          const airHit = airPic.contacts.find((c) => c.domain === 'air');
+          check(
+            'philippine-sea radar paints zeke as domain air',
+            Boolean(airHit),
+            `contacts=${airPic.contacts.length} domains=${airPic.contacts.map((c) => c.domain).join(',')}`,
+          );
+          check(
+            'philippine-sea air radar contact FoW (no type/class/name)',
+            Boolean(airHit) &&
+              !('type' in airHit!) &&
+              !('class' in airHit!) &&
+              !('name' in airHit!) &&
+              !('faction' in airHit!) &&
+              typeof airHit!.labelN === 'number',
+          );
+        }
+      }
     }
 
     {

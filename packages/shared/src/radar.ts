@@ -2,8 +2,20 @@ import { RADAR_MAX_RANGE_NM, RADAR_SURFACE_DEPTH_M } from './constants.js';
 import { defaultActiveSonarSensor } from './activeSonar.js';
 import { defaultHydrophoneSensor } from './hydrophone.js';
 import { defaultLookoutSensor } from './periscope.js';
-import type { HullClass, LatLonDepth, RadarSignature, SensorDef, UnitState } from './types.js';
+import type {
+  HullClass,
+  LatLonDepth,
+  RadarContactDomain,
+  RadarSignature,
+  SensorDef,
+  UnitState,
+} from './types.js';
 import { isHullClass, resolveVesselIdentity } from './vessel.js';
+
+/** FoW-safe PPI domain — air vs surface without naming class/side. */
+export function radarContactDomain(unit: Pick<UnitState, 'type'>): RadarContactDomain {
+  return unit.type === 'Aircraft' ? 'air' : 'surface';
+}
 
 /** Sensible class defaults when scenario/library omit radarSignature. */
 export function defaultRadarSignature(
