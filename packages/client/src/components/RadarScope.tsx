@@ -21,9 +21,15 @@ interface Props {
   ownHeading: number;
 }
 
-/** Operator-selectable PPI display scales (nm). Server still sends true ranges. */
-export const RADAR_RANGE_PRESETS_NM = [5, 10, 25, 50] as const;
-export type RadarRangePresetNm = (typeof RADAR_RANGE_PRESETS_NM)[number];
+/**
+ * Fraction past sensor max for the furthest default PPI scale.
+ * Keeps max-range contacts inside the rim instead of sitting on it
+ * (25 nm radar → 28 nm display).
+ */
+export const RADAR_PPI_SCALE_OVERSCAN_FRAC = 0.12;
+
+/** Fixed operator zoom-in / wide steps (nm). Sensor-fit step is derived. */
+const RADAR_RANGE_FIXED_PRESETS_NM = [5, 10, 50] as const;
 
 /** Large square canvas; CSS scales to dominate the viewport. */
 const SIZE = 900;
@@ -41,11 +47,20 @@ function contactsKey(contacts: RadarContact[]): string {
     .join('|');
 }
 
-function defaultScaleNm(sensorMaxNm: number): RadarRangePresetNm {
+/** Default / furthest fit scale: sensor max plus a small overscan past the rim. */
+export function radarPpiFitScaleNm(sensorMaxNm: number): number {
   const max = sensorMaxNm > 0 ? sensorMaxNm : 25;
-  // Prefer largest preset that does not exceed the installed sensor, else 25.
-  const fit = [...RADAR_RANGE_PRESETS_NM].reverse().find((p) => p <= max);
-  return fit ?? 25;
+  return Math.round(max * (1 + RADAR_PPI_SCALE_OVERSCAN_FRAC));
+}
+
+/** Operator-selectable PPI scales for this sensor (nm). Includes overscanned fit. */
+export function radarRangePresetsNm(sensorMaxNm: number): number[] {
+  const fit = radarPpiFitScaleNm(sensorMaxNm);
+  return [...new Set<number>([...RADAR_RANGE_FIXED_PRESETS_NM, fit])].sort((a, b) => a - b);
+}
+
+function defaultScaleNm(sensorMaxNm: number): number {
+  return radarPpiFitScaleNm(sensorMaxNm);
 }
 
 /**
@@ -53,7 +68,8 @@ function defaultScaleNm(sensorMaxNm: number): RadarRangePresetNm {
  * Sweep + 20s contact polar tween after updates (museum trial); no previous-turn ghosts.
  */
 function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
-  const [scaleNm, setScaleNm] = useState<RadarRangePresetNm>(() => defaultScaleNm(maxRangeNm));
+  const [scaleNm, setScaleNm] = useState(() => defaultScaleNm(maxRangeNm));
+  const rangePresetsNm = useMemo(() => radarRangePresetsNm(maxRangeNm), [maxRangeNm]);
   const tweened = useTweenedScopeContacts(contacts);
 
   useEffect(() => {
@@ -283,7 +299,7 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
             PPI · TRUE · {scaleNm} NM
           </p>
           <div className="radar-scale-buttons" role="group" aria-label="Radar range scale">
-            {RADAR_RANGE_PRESETS_NM.map((preset) => (
+            {rangePresetsNm.map((preset) => (
               <button
                 key={preset}
                 type="button"
