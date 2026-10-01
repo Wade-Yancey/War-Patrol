@@ -6,8 +6,11 @@ import {
   type ScopeLabelPlacement,
   type ScopeLabelRequest,
 } from '@war-patrol/shared';
-import { RadarAirBlip, RadarSurfaceBlip } from './ContactGlyphs';
-import { useTweenedScopeContacts } from '../hooks/useTweenedScopeContacts';
+import { RadarAirBlip, RadarMotionChevron, RadarSurfaceBlip } from './ContactGlyphs';
+import {
+  scopeMotionAngleDeg,
+  useTweenedScopeContacts,
+} from '../hooks/useTweenedScopeContacts';
 import { ScopeContactLabelLayer } from './ScopeContactLabelLayer';
 
 interface Props {
@@ -124,6 +127,10 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
       const opacity = b.live
         ? Math.max(0.92, 0.85 + 0.15 * b.strength)
         : Math.max(0.2, b.fade * 0.55);
+      const motionAngle =
+        b.live && b.motionFrom && b.motionTo
+          ? scopeMotionAngleDeg(b.motionFrom, b.motionTo, scaleNm, SCOPE_R)
+          : null;
       return {
         ...b,
         x,
@@ -131,6 +138,7 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
         opacity,
         r: blipR,
         labelN: showLabel ? b.labelN : undefined,
+        motionAngle,
       };
     });
 
@@ -257,6 +265,9 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
                 <RadarAirBlip x={b.x} y={b.y} r={b.r} />
               ) : (
                 <RadarSurfaceBlip x={b.x} y={b.y} r={b.r} />
+              )}
+              {b.motionAngle != null && (
+                <RadarMotionChevron x={b.x} y={b.y} angleDeg={b.motionAngle} blipR={b.r} />
               )}
             </g>
           </g>

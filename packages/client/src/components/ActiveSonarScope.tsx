@@ -13,8 +13,11 @@ import {
   playSonarPingSample,
   SONAR_PING_OWN_GAIN,
 } from '../audio/sonarPing';
-import { RadarAirBlip, RadarSurfaceBlip } from './ContactGlyphs';
-import { useTweenedScopeContacts } from '../hooks/useTweenedScopeContacts';
+import { RadarAirBlip, RadarMotionChevron, RadarSurfaceBlip } from './ContactGlyphs';
+import {
+  scopeMotionAngleDeg,
+  useTweenedScopeContacts,
+} from '../hooks/useTweenedScopeContacts';
 import { ScopeContactLabelLayer } from './ScopeContactLabelLayer';
 
 interface Props {
@@ -170,6 +173,10 @@ function ActiveSonarScopeInner({
       const opacity = b.live
         ? Math.max(0.92, 0.85 + 0.15 * b.strength)
         : Math.max(0.2, b.fade * 0.55);
+      const motionAngle =
+        b.live && b.motionFrom && b.motionTo
+          ? scopeMotionAngleDeg(b.motionFrom, b.motionTo, scaleNm, SCOPE_R)
+          : null;
       return {
         ...b,
         x,
@@ -177,6 +184,7 @@ function ActiveSonarScopeInner({
         opacity,
         r: blipR,
         labelN: showLabel ? b.labelN : undefined,
+        motionAngle,
       };
     });
 
@@ -296,6 +304,9 @@ function ActiveSonarScopeInner({
                   <RadarAirBlip x={b.x} y={b.y} r={b.r} />
                 ) : (
                   <RadarSurfaceBlip x={b.x} y={b.y} r={b.r} />
+                )}
+                {b.motionAngle != null && (
+                  <RadarMotionChevron x={b.x} y={b.y} angleDeg={b.motionAngle} blipR={b.r} />
                 )}
               </g>
             </g>

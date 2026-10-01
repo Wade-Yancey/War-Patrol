@@ -27,6 +27,15 @@ export interface TweenedBlip extends RadarContact {
   fade: number;
   bornAt: number;
   lastSeenAt: number;
+  /**
+   * Prior→new polar for a PPI motion cue (same Contact N / track id).
+   * Absent for first-seen contacts (no invented direction).
+   * During the 60s tween this is the active displacement; after settle it stays
+   * until the next polar update. Screen direction is derived in the scope from
+   * these polars at the current display scale (world-true as seen on the PPI).
+   */
+  motionFrom?: { bearing: number; rangeNm: number };
+  motionTo?: { bearing: number; rangeNm: number };
 }
 
 interface Track {
@@ -39,6 +48,11 @@ interface Track {
   bornAt: number;
   lastSeenAt: number;
   live: boolean;
+  /** Last prior→new polar pair for the motion chevron (undefined until 2nd fix). */
+  motionFromBearing?: number;
+  motionFromRangeNm?: number;
+  motionToBearing?: number;
+  motionToRangeNm?: number;
 }
 
 function contactsKey(contacts: RadarContact[]): string {
@@ -91,6 +105,9 @@ function hasMotion(map: Map<string, Track>, now: number): boolean {
  * Same contact id tweens; new contacts appear at target; lost contacts fade then drop.
  * Mid-animation updates restart from the current displayed polar to the new target.
  * Own-ship is always PPI center (caller does not pass a previous-own mark).
+ * When a contact gets a second (or later) polar fix, {@link TweenedBlip.motionFrom}/
+ * {@link TweenedBlip.motionTo} carry that displacement for a PPI motion chevron —
+ * first-seen contacts have no cue (no invented direction).
  */
 export function useTweenedScopeContacts(contacts: RadarContact[]): TweenedBlip[] {
   const [now, setNow] = useState(() => Date.now());
@@ -117,6 +134,7 @@ export function useTweenedScopeContacts(contacts: RadarContact[]): TweenedBlip[]
           bornAt: t,
           lastSeenAt: t,
           live: true,
+          // First fix — no motion cue until a later polar update.
         });
         continue;
       }
@@ -137,6 +155,11 @@ export function useTweenedScopeContacts(contacts: RadarContact[]): TweenedBlip[]
           bornAt: prev.bornAt,
           lastSeenAt: t,
           live: true,
+          // Cue from previous settled (or mid-tween) polar → new server polar.
+          motionFromBearing: displayed.bearing,
+          motionFromRangeNm: displayed.rangeNm,
+          motionToBearing: c.bearing,
+          motionToRangeNm: c.rangeNm,
         });
       } else {
         map.set(c.id, {
@@ -189,6 +212,11 @@ export function useTweenedScopeContacts(contacts: RadarContact[]): TweenedBlip[]
     const { bearing, rangeNm } = interpolatePolar(track, now);
     const age = now - track.lastSeenAt;
     const fade = track.live ? 1 : Math.max(0, 1 - age / LOST_KEEP_MS);
+    const hasMotion =
+      track.motionFromBearing != null &&
+      track.motionFromRangeNm != null &&
+      track.motionToBearing != null &&
+      track.motionToRangeNm != null;
     blips.push({
       ...track.contact,
       displayBearing: bearing,
@@ -197,7 +225,55 @@ export function useTweenedScopeContacts(contacts: RadarContact[]): TweenedBlip[]
       fade,
       bornAt: track.bornAt,
       lastSeenAt: track.lastSeenAt,
+      ...(hasMotion
+        ? {
+            motionFrom: {
+              bearing: track.motionFromBearing!,
+              rangeNm: track.motionFromRangeNm!,
+            },
+            motionTo: {
+              bearing: track.motionToBearing!,
+              rangeNm: track.motionToRangeNm!,
+            },
+          }
+        : {}),
     });
   }
   return blips;
+}
+
+/** PPI / cone scope polar → canvas XY (bearing 000 = up). */
+export function scopePolarToXy(
+  bearing: number,
+  rangeNm: number,
+  scaleNm: number,
+  cx: number,
+  cy: number,
+  scopeR: number,
+): { x: number; y: number } {
+  const frac = Math.min(1, rangeNm / Math.max(scaleNm, 0.001));
+  const rad = ((bearing - 90) * Math.PI) / 180;
+  const r = frac * scopeR;
+  return { x: cx + Math.cos(rad) * r, y: cy + Math.sin(rad) * r };
+}
+
+/**
+ * Screen-space heading (degrees, SVG rotate: 0 = +x / east on PPI) of the
+ * displacement from prior polar → new polar at the current display scale.
+ * Returns null when the cue is missing or the on-scope move is negligible.
+ */
+export function scopeMotionAngleDeg(
+  from: { bearing: number; rangeNm: number },
+  to: { bearing: number; rangeNm: number },
+  scaleNm: number,
+  scopeR: number,
+  /** Minimum on-scope pixel travel before a chevron is shown. */
+  minPx = 4,
+): number | null {
+  const a = scopePolarToXy(from.bearing, from.rangeNm, scaleNm, 0, 0, scopeR);
+  const b = scopePolarToXy(to.bearing, to.rangeNm, scaleNm, 0, 0, scopeR);
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  if (dx * dx + dy * dy < minPx * minPx) return null;
+  return (Math.atan2(dy, dx) * 180) / Math.PI;
 }

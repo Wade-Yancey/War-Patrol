@@ -85,3 +85,35 @@ export function MapAircraftMarker({
     </g>
   );
 }
+
+interface MotionChevronProps {
+  x: number;
+  y: number;
+  /** SVG rotate degrees (0 = +x / east on PPI) — screen motion of prior→new polar. */
+  angleDeg: number;
+  /** Blip radius; chevron sits just beyond the echo. */
+  blipR: number;
+}
+
+/**
+ * Small PPI / sonar motion cue — one chevron per moving contact, pointing along
+ * the on-scope displacement from previous polar to new (museum-clear, not noisy).
+ */
+export function RadarMotionChevron({ x, y, angleDeg, blipR }: MotionChevronProps) {
+  const tip = blipR + 3;
+  return (
+    <g
+      transform={`translate(${x} ${y}) rotate(${angleDeg})`}
+      aria-label="Contact motion direction"
+    >
+      <path
+        d={`M ${tip},-4.5 L ${tip + 9},0 L ${tip},4.5`}
+        fill="none"
+        stroke="#b8ffc8"
+        strokeWidth={1.75}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </g>
+  );
+}
