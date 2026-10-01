@@ -103,8 +103,8 @@ function obstacleBox(o: ScopeLabelObstacle): Box {
   };
 }
 
-function preferLeft(x: number, cx: number, scopeR: number): boolean {
-  // Prefer the side with more room toward the rim.
+function preferLeft(x: number, cx: number): boolean {
+  // Prefer labeling toward center when the blip is on the outer half.
   return x >= cx;
 }
 
@@ -146,8 +146,8 @@ function placeOne(
   const tryPlace = (flipSide: boolean, staggerDown: boolean): ScopeLabelPlacement | null => {
     for (let step = 0; step <= (staggerDown ? MAX_STAGGER_STEPS : 0); step++) {
       const left = flipSide
-        ? !preferLeft(req.x, opts.cx, opts.scopeR)
-        : preferLeft(req.x, opts.cx, opts.scopeR);
+        ? !preferLeft(req.x, opts.cx)
+        : preferLeft(req.x, opts.cx);
       const baseX = left ? req.x - req.blipR - pad : req.x + req.blipR + pad;
       const baseY = req.y + 5 + (staggerDown ? step * STAGGER_STEP : 0);
       const textAnchor: 'start' | 'end' = left ? 'end' : 'start';
@@ -199,11 +199,11 @@ function placeOne(
       labelN: req.labelN,
       text,
       visible: true,
-      labelX: preferLeft(req.x, opts.cx, opts.scopeR)
+      labelX: preferLeft(req.x, opts.cx)
         ? req.x - req.blipR - pad
         : req.x + req.blipR + pad,
       labelY: req.y + 5,
-      textAnchor: preferLeft(req.x, opts.cx, opts.scopeR) ? 'end' : 'start',
+      textAnchor: preferLeft(req.x, opts.cx) ? 'end' : 'start',
       fontSize,
     }
   );
