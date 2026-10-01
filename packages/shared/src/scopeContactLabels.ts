@@ -5,17 +5,14 @@ import { formatContactDesignation } from './contactBook.js';
  * Keeps BRG/RNG off the plot (table owns those); only Cn designations on-scope.
  */
 
-export type ScopeLabelKind = 'live' | 'ghost';
-
 export interface ScopeLabelRequest {
-  /** Stable contact id (same id may appear as both live + ghost). */
+  /** Stable contact id. */
   id: string;
   labelN: number;
   /** Blip center in scope SVG coords. */
   x: number;
   y: number;
   blipR: number;
-  kind: ScopeLabelKind;
 }
 
 export interface ScopeLabelObstacle {
@@ -32,15 +29,12 @@ export interface LayoutScopeLabelsOptions {
   /** Soft keep-out boxes (e.g. sonar cone HDG tip). */
   obstacles?: ScopeLabelObstacle[];
   fontSizeLive?: number;
-  /** Kept for API compat; ghost text is never shown. */
-  fontSizeGhost?: number;
 }
 
 export interface ScopeLabelPlacement {
   id: string;
-  kind: ScopeLabelKind;
   labelN: number;
-  /** Display string — short Cn for live; ghosts stay invisible marks. */
+  /** Display string — short Cn. */
   text: string;
   visible: boolean;
   labelX: number;
@@ -69,7 +63,7 @@ function textWidth(text: string, fontSize: number): number {
   return Math.max(1, text.length * fontSize * CHAR_W);
 }
 
-function labelText(_kind: ScopeLabelKind, labelN: number): string {
+function labelText(labelN: number): string {
   return formatContactDesignation(labelN);
 }
 
@@ -109,107 +103,89 @@ function obstacleBox(o: ScopeLabelObstacle): Box {
   };
 }
 
-function preferLeft(x: number, cx: number, scopeR: number): boolean {
-  return x > cx + scopeR * 0.35;
+function preferLeft(x: number, cx: number): boolean {
+  // Prefer labeling toward center when the blip is on the outer half.
+  return x >= cx;
 }
 
-function clampTowardCenter(
+function clampToDisk(
   labelX: number,
   labelY: number,
-  cx: number,
-  cy: number,
-  maxR: number,
-): { x: number; y: number } {
-  const dx = labelX - cx;
-  const dy = labelY - cy;
-  const dist = Math.hypot(dx, dy);
-  if (dist <= maxR || dist < 1e-6) return { x: labelX, y: labelY };
-  const s = maxR / dist;
-  return { x: cx + dx * s, y: cy + dy * s };
-}
-
-function sideForBlip(
-  req: ScopeLabelRequest,
+  textAnchor: 'start' | 'end',
+  text: string,
+  fontSize: number,
   cx: number,
   cy: number,
   scopeR: number,
-  pad: number,
-  forceInward: boolean,
-): { labelX: number; textAnchor: 'start' | 'end'; onLeft: boolean } {
-  const blipDist = Math.hypot(req.x - cx, req.y - cy);
-  const nearRim = blipDist > scopeR * 0.78;
-  let onLeft = preferLeft(req.x, cx, scopeR);
-  if (forceInward || nearRim) {
-    // Prefer the side toward scope center (horizontal component).
-    onLeft = req.x >= cx;
-  }
-  return {
-    labelX: onLeft ? req.x - req.blipR - pad : req.x + req.blipR + pad,
-    textAnchor: onLeft ? 'end' : 'start',
-    onLeft,
-  };
-}
-
-function overlapsAny(box: Box, others: Box[]): boolean {
-  for (const o of others) {
-    if (boxesOverlap(box, o)) return true;
-  }
-  return false;
+): { x: number; y: number } {
+  const box = boxFor(labelX, labelY, textAnchor, text, fontSize);
+  const midX = (box.left + box.right) / 2;
+  const midY = (box.top + box.bottom) / 2;
+  const dx = midX - cx;
+  const dy = midY - cy;
+  const dist = Math.hypot(dx, dy);
+  const maxR = scopeR - RIM_INSET;
+  if (dist <= maxR || dist < 1e-6) return { x: labelX, y: labelY };
+  const scale = maxR / dist;
+  const nx = cx + dx * scale;
+  const ny = cy + dy * scale;
+  const shiftX = nx - midX;
+  const shiftY = ny - midY;
+  return { x: labelX + shiftX, y: labelY + shiftY };
 }
 
 function placeOne(
   req: ScopeLabelRequest,
-  opts: Required<
-    Pick<LayoutScopeLabelsOptions, 'cx' | 'cy' | 'scopeR' | 'fontSizeLive' | 'fontSizeGhost'>
-  >,
+  opts: Pick<LayoutScopeLabelsOptions, 'cx' | 'cy' | 'scopeR' | 'fontSizeLive'>,
   occupied: Box[],
 ): ScopeLabelPlacement {
-  const fontSize = opts.fontSizeLive;
+  const fontSize = opts.fontSizeLive ?? 16;
+  const text = labelText(req.labelN);
   const pad = LIVE_PAD;
-  const text = labelText(req.kind, req.labelN);
-  const maxLabelR = opts.scopeR - RIM_INSET;
 
-  const tryPlace = (forceInward: boolean, flip: boolean): ScopeLabelPlacement | null => {
-    let side = sideForBlip(req, opts.cx, opts.cy, opts.scopeR, pad, forceInward);
-    if (flip) {
-      side = {
-        onLeft: !side.onLeft,
-        labelX: !side.onLeft ? req.x - req.blipR - pad : req.x + req.blipR + pad,
-        textAnchor: !side.onLeft ? 'end' : 'start',
-      };
-    }
+  const tryPlace = (flipSide: boolean, staggerDown: boolean): ScopeLabelPlacement | null => {
+    for (let step = 0; step <= (staggerDown ? MAX_STAGGER_STEPS : 0); step++) {
+      const left = flipSide
+        ? !preferLeft(req.x, opts.cx)
+        : preferLeft(req.x, opts.cx);
+      const baseX = left ? req.x - req.blipR - pad : req.x + req.blipR + pad;
+      const baseY = req.y + 5 + (staggerDown ? step * STAGGER_STEP : 0);
+      const textAnchor: 'start' | 'end' = left ? 'end' : 'start';
+      const clamped = clampToDisk(
+        baseX,
+        baseY,
+        textAnchor,
+        text,
+        fontSize,
+        opts.cx,
+        opts.cy,
+        opts.scopeR,
+      );
+      const box = boxFor(clamped.x, clamped.y, textAnchor, text, fontSize);
+      if (occupied.some((o) => boxesOverlap(box, o))) continue;
 
-    for (let step = 0; step <= MAX_STAGGER_STEPS; step++) {
-      const sign = step === 0 ? 0 : step % 2 === 1 ? -1 : 1;
-      const mag = Math.ceil(step / 2) * STAGGER_STEP;
-      const rawY = req.y + 5 + sign * mag;
-      const clamped = clampTowardCenter(side.labelX, rawY, opts.cx, opts.cy, maxLabelR);
-      const box = boxFor(clamped.x, clamped.y, side.textAnchor, text, fontSize);
-      if (!overlapsAny(box, occupied)) {
-        const dy = Math.abs(clamped.y - req.y);
-        const dx = Math.abs(clamped.x - req.x);
-        const needLeader = dy >= LEADER_MIN_DY || dx > req.blipR + pad + 6;
-        const leader = needLeader
+      const dy = Math.abs(clamped.y - req.y);
+      const leader =
+        dy >= LEADER_MIN_DY
           ? {
               x1: req.x,
               y1: req.y,
-              x2: side.onLeft ? box.right + 2 : box.left - 2,
-              y2: clamped.y - 2,
+              x2: left ? clamped.x : clamped.x,
+              y2: clamped.y - fontSize * 0.35,
             }
           : undefined;
-        return {
-          id: req.id,
-          kind: req.kind,
-          labelN: req.labelN,
-          text,
-          visible: true,
-          labelX: clamped.x,
-          labelY: clamped.y,
-          textAnchor: side.textAnchor,
-          fontSize,
-          leader,
-        };
-      }
+
+      return {
+        id: req.id,
+        labelN: req.labelN,
+        text,
+        visible: true,
+        labelX: clamped.x,
+        labelY: clamped.y,
+        textAnchor,
+        fontSize,
+        leader,
+      };
     }
     return null;
   };
@@ -220,24 +196,21 @@ function placeOne(
     tryPlace(false, true) ??
     tryPlace(true, true) ?? {
       id: req.id,
-      kind: req.kind,
       labelN: req.labelN,
       text,
-      // Live always shows something when placement fails; ghosts never reach placeOne.
       visible: true,
-      labelX: preferLeft(req.x, opts.cx, opts.scopeR)
+      labelX: preferLeft(req.x, opts.cx)
         ? req.x - req.blipR - pad
         : req.x + req.blipR + pad,
       labelY: req.y + 5,
-      textAnchor: preferLeft(req.x, opts.cx, opts.scopeR) ? 'end' : 'start',
+      textAnchor: preferLeft(req.x, opts.cx) ? 'end' : 'start',
       fontSize,
     }
   );
 }
 
 /**
- * Layout Contact-N labels for polar CRT scopes.
- * Live labels only — previous-turn ghost/shadow requests are accepted but never visible.
+ * Layout Contact-N labels for polar CRT scopes (live contacts only).
  */
 export function layoutScopeContactLabels(
   requests: ScopeLabelRequest[],
@@ -247,10 +220,8 @@ export function layoutScopeContactLabels(
   const cy = options.cy;
   const scopeR = options.scopeR;
   const fontSizeLive = options.fontSizeLive ?? 16;
-  const fontSizeGhost = options.fontSizeGhost ?? 12;
 
-  const liveReqs = requests.filter((r) => r.kind === 'live');
-  const ghostReqs = requests.filter((r) => r.kind === 'ghost');
+  const liveReqs = [...requests];
 
   // Stable visual order: closer to top of scope first so stagger fans downward.
   liveReqs.sort((a, b) => a.y - b.y || a.x - b.x || a.labelN - b.labelN);
@@ -258,7 +229,7 @@ export function layoutScopeContactLabels(
   const occupied: Box[] = (options.obstacles ?? []).map(obstacleBox);
   const out: ScopeLabelPlacement[] = [];
 
-  const opts = { cx, cy, scopeR, fontSizeLive, fontSizeGhost };
+  const opts = { cx, cy, scopeR, fontSizeLive };
 
   for (const req of liveReqs) {
     const placed = placeOne(req, opts, occupied);
@@ -268,21 +239,6 @@ export function layoutScopeContactLabels(
       );
     }
     out.push(placed);
-  }
-
-  // Shadows are marks only — never emit Cn text for ghosts.
-  for (const req of ghostReqs) {
-    out.push({
-      id: req.id,
-      kind: 'ghost',
-      labelN: req.labelN,
-      text: labelText('ghost', req.labelN),
-      visible: false,
-      labelX: req.x,
-      labelY: req.y,
-      textAnchor: 'start',
-      fontSize: fontSizeGhost,
-    });
   }
 
   return out;

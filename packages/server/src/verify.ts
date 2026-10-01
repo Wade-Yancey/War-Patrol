@@ -72,11 +72,7 @@ import {
   turnToward,
 } from '@war-patrol/shared';
 import { buildPeriscopeContacts } from './game/periscope.js';
-import {
-  buildRadarContacts,
-  buildRadarGhosts,
-  previousTurnUnitStates,
-} from './game/radar.js';
+import { buildRadarContacts } from './game/radar.js';
 
 type Json = Record<string, unknown>;
 
@@ -109,9 +105,9 @@ async function main() {
     const scopeR = 390;
     const clustered = layoutScopeContactLabels(
       [
-        { id: 'a', labelN: 1, x: cx + 80, y: cy - 40, blipR: 6, kind: 'live' },
-        { id: 'b', labelN: 2, x: cx + 88, y: cy - 36, blipR: 6, kind: 'live' },
-        { id: 'c', labelN: 3, x: cx + 84, y: cy - 32, blipR: 6, kind: 'live' },
+        { id: 'a', labelN: 1, x: cx + 80, y: cy - 40, blipR: 6 },
+        { id: 'b', labelN: 2, x: cx + 88, y: cy - 36, blipR: 6 },
+        { id: 'c', labelN: 3, x: cx + 84, y: cy - 32, blipR: 6 },
       ],
       { cx, cy, scopeR },
     );
@@ -125,36 +121,8 @@ async function main() {
     const spread = Math.max(...ys) - Math.min(...ys);
     check('scope labels stagger clustered live Y', spread >= 14, `spread=${spread}`);
 
-    const nearGhost = layoutScopeContactLabels(
-      [
-        { id: 'same', labelN: 4, x: cx + 100, y: cy, blipR: 7, kind: 'live' },
-        { id: 'same', labelN: 4, x: cx + 108, y: cy + 4, blipR: 5, kind: 'ghost' },
-      ],
-      { cx, cy, scopeR },
-    );
-    const ghostNear = nearGhost.find((p) => p.kind === 'ghost');
-    check(
-      'scope labels hide near ghost text',
-      ghostNear?.visible === false,
-      JSON.stringify(ghostNear),
-    );
-
-    const farGhost = layoutScopeContactLabels(
-      [
-        { id: 'same', labelN: 5, x: cx + 60, y: cy, blipR: 7, kind: 'live' },
-        { id: 'same', labelN: 5, x: cx - 120, y: cy + 80, blipR: 5, kind: 'ghost' },
-      ],
-      { cx, cy, scopeR },
-    );
-    const ghostFar = farGhost.find((p) => p.kind === 'ghost');
-    check(
-      'scope labels never show ghost/shadow Cn text',
-      ghostFar?.visible === false,
-      JSON.stringify(ghostFar),
-    );
-
     const liveOnly = layoutScopeContactLabels(
-      [{ id: 'rim', labelN: 1, x: cx, y: cy - scopeR + 8, blipR: 8, kind: 'live' }],
+      [{ id: 'rim', labelN: 1, x: cx, y: cy - scopeR + 8, blipR: 8 }],
       { cx, cy, scopeR },
     )[0];
     const rimDist = Math.hypot((liveOnly?.labelX ?? 0) - cx, (liveOnly?.labelY ?? 0) - cy);
@@ -557,11 +525,7 @@ async function main() {
     `got ${String(contacts[0].labelN)}`,
   );
   check('radar has max range', typeof rv.radarMaxRangeNm === 'number' && (rv.radarMaxRangeNm as number) > 0);
-  check(
-    'radar ghosts empty before first resolve',
-    !rv.radarGhostContacts || (rv.radarGhostContacts as unknown[]).length === 0,
-  );
-  check('radar ghost own-ship absent before resolve', !rv.radarGhostOwnShip);
+  check('radar ghosts removed from vessel view', !('radarGhostContacts' in rv) && !('radarGhostOwnShip' in rv));
   const porter = (uv.units as Json[]).find((u) => u.id === 'dd-101')!;
   const gato = (uv.units as Json[]).find((u) => u.id === 'ss-212')!;
   check('destroyer radarSignature medium', porter.radarSignature === 'medium');
@@ -1531,67 +1495,25 @@ async function main() {
   check('history snapshot', after.history.length === 1);
   check('history stores gameTime', after.history[0]!.gameTimeSeconds === 28800 + 180);
 
-  // Radar previous-turn ghosts (one turn deep, world-true vs current own).
-  const prevUnits = previousTurnUnitStates(after);
-  check('radar ghost previous-turn units from opening', Boolean(prevUnits && prevUnits.length >= 2));
-  const porterGhosts = buildRadarGhosts(blueAfter, after);
-  const gatoPrev = prevUnits?.find((u) => u.id === 'ss-212');
-  const porterPrev = prevUnits?.find((u) => u.id === 'dd-101');
-  check('radar ghost own-ship after move', Boolean(porterGhosts.ownShip), JSON.stringify(porterGhosts.ownShip));
-  if (porterGhosts.ownShip && porterPrev) {
-    const expectOwn = bearingRangeNm(blueAfter.position, porterPrev.position);
-    check(
-      'radar ghost own-ship world-true vs current',
-      Math.abs(porterGhosts.ownShip.bearing - expectOwn.bearing) < 0.2 &&
-        Math.abs(porterGhosts.ownShip.rangeNm - expectOwn.rangeNm) < 0.02,
-      `got ${porterGhosts.ownShip.bearing}/${porterGhosts.ownShip.rangeNm} expect ${expectOwn.bearing}/${expectOwn.rangeNm}`,
-    );
-  }
+  // Previous-turn radar ghosts removed — vessel view must not reintroduce them after resolve.
+  const radarNoGhostView = await api('GET', `/api/games/${gameId}/view`, undefined, radarToken);
+  check('radar view after resolve ok', radarNoGhostView.status === 200);
+  const rnv = radarNoGhostView.json.view as Json;
   check(
-    'radar ghost paints prior contact (gato was surfaced)',
-    porterGhosts.contacts.length >= 1,
-    `got ${porterGhosts.contacts.length}`,
-  );
-  if (porterGhosts.contacts[0] && gatoPrev) {
-    const worldTrue = bearingRangeNm(blueAfter.position, gatoPrev.position);
-    const pastedLast = porterPrev
-      ? bearingRangeNm(porterPrev.position, gatoPrev.position)
-      : null;
-    const ghost = porterGhosts.contacts[0]!;
-    check(
-      'radar ghost contact world-true (not pasted last BRG/RNG)',
-      Math.abs(ghost.bearing - worldTrue.bearing) < 0.2 &&
-        Math.abs(ghost.rangeNm - worldTrue.rangeNm) < 0.02,
-      `ghost=${ghost.bearing}/${ghost.rangeNm} world=${worldTrue.bearing}/${worldTrue.rangeNm}`,
-    );
-    if (pastedLast && Math.abs(blueAfter.position.lat - porterPrev!.position.lat) > 1e-6) {
-      const differsFromPaste =
-        Math.abs(ghost.bearing - pastedLast.bearing) > 0.5 ||
-        Math.abs(ghost.rangeNm - pastedLast.rangeNm) > 0.05;
-      check(
-        'radar ghost differs from pasted last-turn polar after steam',
-        differsFromPaste,
-        `ghost=${ghost.bearing}/${ghost.rangeNm} paste=${pastedLast.bearing}/${pastedLast.rangeNm}`,
-      );
-    }
-  }
-  const radarGhostView = await api('GET', `/api/games/${gameId}/view`, undefined, radarToken);
-  check('radar ghost view ok', radarGhostView.status === 200);
-  const rgv = radarGhostView.json.view as Json;
-  check(
-    'vessel view includes radarGhostContacts',
-    Array.isArray(rgv.radarGhostContacts) && (rgv.radarGhostContacts as unknown[]).length >= 1,
+    'vessel view has no radarGhostContacts after resolve',
+    !('radarGhostContacts' in rnv),
   );
   check(
-    'vessel view includes radarGhostOwnShip',
-    Boolean(rgv.radarGhostOwnShip) &&
-      typeof (rgv.radarGhostOwnShip as Json).bearing === 'number',
+    'vessel view has no radarGhostOwnShip after resolve',
+    !('radarGhostOwnShip' in rnv),
   );
   check(
-    'radar ghost FoW polar only',
-    !(rgv.radarGhostContacts as Json[])[0] ||
-      (!('position' in (rgv.radarGhostContacts as Json[])[0]!) &&
-        !('lat' in (rgv.radarGhostContacts as Json[])[0]!)),
+    'vessel view has no sonarGhostContacts after resolve',
+    !('sonarGhostContacts' in rnv),
+  );
+  check(
+    'vessel view has no sonarGhostOwnShip after resolve',
+    !('sonarGhostOwnShip' in rnv),
   );
 
   const umpireAfter = await api('GET', `/api/games/${gameId}/view`, undefined, umpireToken);

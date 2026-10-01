@@ -5,7 +5,6 @@ import {
   formatContactDesignation,
   layoutScopeContactLabels,
   type RadarContact,
-  type RadarGhostOwnShip,
   type ScopeLabelPlacement,
   type ScopeLabelRequest,
 } from '@war-patrol/shared';
@@ -14,12 +13,11 @@ import {
   playSonarPingSample,
   SONAR_PING_OWN_GAIN,
 } from '../audio/sonarPing';
+import { useTweenedScopeContacts } from '../hooks/useTweenedScopeContacts';
 import { ScopeContactLabelLayer } from './ScopeContactLabelLayer';
 
 interface Props {
   contacts: RadarContact[];
-  ghostContacts?: RadarContact[];
-  ghostOwnShip?: RadarGhostOwnShip;
   maxRangeNm: number;
   halfAngleDeg: number;
   ownHeading: number;
@@ -35,11 +33,6 @@ const SIZE = 900;
 const CX = SIZE / 2;
 const CY = SIZE / 2;
 const SCOPE_R = 390;
-
-interface PersistedBlip extends RadarContact {
-  bornAt: number;
-  lastSeenAt: number;
-}
 
 function contactsKey(contacts: RadarContact[]): string {
   return contacts
@@ -64,20 +57,17 @@ function polar(deg: number, r: number): { x: number; y: number } {
 /**
  * Forward-cone active search sonar scope — not an omnidirectional PPI.
  * Blips + anonymous contact list only while the set is toggled ON.
+ * Same 60s contact polar tween as radar (no previous-turn ghosts).
  */
 function ActiveSonarScopeInner({
   contacts,
-  ghostContacts = [],
-  ghostOwnShip,
   maxRangeNm,
   halfAngleDeg,
   ownHeading,
   pinging,
 }: Props) {
-  const [now, setNow] = useState(() => Date.now());
   const [scaleNm, setScaleNm] = useState<SonarRangePresetNm>(() => defaultScaleNm(maxRangeNm));
-  const persistRef = useRef<Map<string, PersistedBlip>>(new Map());
-  const key = contactsKey(contacts);
+  const tweened = useTweenedScopeContacts(contacts);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const pingBufferRef = useRef<AudioBuffer | null>(null);
@@ -86,31 +76,6 @@ function ActiveSonarScopeInner({
   useEffect(() => {
     setScaleNm(defaultScaleNm(maxRangeNm));
   }, [maxRangeNm]);
-
-  useEffect(() => {
-    const map = persistRef.current;
-    const seen = new Set<string>();
-    const t = Date.now();
-    for (const c of contacts) {
-      seen.add(c.id);
-      const prev = map.get(c.id);
-      if (prev) {
-        map.set(c.id, { ...c, bornAt: prev.bornAt, lastSeenAt: t });
-      } else {
-        map.set(c.id, { ...c, bornAt: t, lastSeenAt: t });
-      }
-    }
-    for (const id of [...map.keys()]) {
-      if (!seen.has(id) && t - (map.get(id)?.lastSeenAt ?? 0) > 8000) {
-        map.delete(id);
-      }
-    }
-  }, [key, contacts]);
-
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 200);
-    return () => window.clearInterval(id);
-  }, []);
 
   // Active-search ping sample while sonar is ON (same WAV hydrophones hear).
   useEffect(() => {
@@ -190,60 +155,30 @@ function ActiveSonarScopeInner({
     [contacts, scaleNm],
   );
 
-  const contactIndexById = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const c of contacts) {
-      map.set(c.id, c.labelN);
-    }
-    return map;
-  }, [contacts]);
-
-  const blips = [...persistRef.current.values()]
-    .filter((b) => b.rangeNm <= scaleNm || contactIndexById.has(b.id))
+  const blips = tweened
+    .filter((b) => b.displayRangeNm <= scaleNm || (b.live && b.rangeNm <= scaleNm))
     .map((b) => {
-      const age = now - b.lastSeenAt;
-      const fade = Math.max(0, 1 - age / 7000);
-      const frac = Math.min(1, b.rangeNm / Math.max(scaleNm, 0.001));
-      const rad = ((b.bearing - 90) * Math.PI) / 180;
+      const frac = Math.min(1, b.displayRangeNm / Math.max(scaleNm, 0.001));
+      const rad = ((b.displayBearing - 90) * Math.PI) / 180;
       const r = frac * SCOPE_R;
       const x = CX + Math.cos(rad) * r;
       const y = CY + Math.sin(rad) * r;
       const blipR = 4 + 5 * b.strength;
-      const labelN = contactIndexById.get(b.id) ?? b.labelN;
-      const live = contactIndexById.has(b.id) && b.rangeNm <= scaleNm;
-      const opacity = live ? Math.max(0.92, 0.85 + 0.15 * b.strength) : Math.max(0.25, fade * 0.55);
+      const inScale = b.displayRangeNm <= scaleNm;
+      const showLabel = b.live && inScale;
+      const opacity = b.live
+        ? Math.max(0.92, 0.85 + 0.15 * b.strength)
+        : Math.max(0.2, b.fade * 0.55);
       return {
         ...b,
         x,
         y,
         opacity,
         r: blipR,
-        labelN: live ? labelN : undefined,
+        labelN: showLabel ? b.labelN : undefined,
       };
     });
 
-  const ghostBlips = useMemo(
-    () =>
-      ghostContacts
-        .filter((c) => c.rangeNm <= scaleNm)
-        .map((c) => {
-          const frac = Math.min(1, c.rangeNm / Math.max(scaleNm, 0.001));
-          const rad = ((c.bearing - 90) * Math.PI) / 180;
-          const r = frac * SCOPE_R;
-          const x = CX + Math.cos(rad) * r;
-          const y = CY + Math.sin(rad) * r;
-          const blipR = 3 + 3.5 * c.strength;
-          return {
-            ...c,
-            x,
-            y,
-            r: blipR,
-          };
-        }),
-    [ghostContacts, scaleNm],
-  );
-
-  /** Live contacts only — previous-turn ghosts are marks without Cn text. */
   const contactLabelPlacements: ScopeLabelPlacement[] = useMemo(() => {
     const requests: ScopeLabelRequest[] = [];
     for (const b of blips) {
@@ -254,7 +189,6 @@ function ActiveSonarScopeInner({
         x: b.x,
         y: b.y,
         blipR: b.r,
-        kind: 'live',
       });
     }
     // Cone tip HDG numeral — keep Contact labels off it.
@@ -265,17 +199,6 @@ function ActiveSonarScopeInner({
       obstacles: [{ x: tip.x, y: tip.y, w: 48, h: 28 }],
     });
   }, [blips, tip.x, tip.y]);
-
-  const ghostOwnMark = useMemo(() => {
-    if (!ghostOwnShip || ghostOwnShip.rangeNm > scaleNm) return null;
-    const frac = Math.min(1, ghostOwnShip.rangeNm / Math.max(scaleNm, 0.001));
-    const rad = ((ghostOwnShip.bearing - 90) * Math.PI) / 180;
-    const r = frac * SCOPE_R;
-    return {
-      x: CX + Math.cos(rad) * r,
-      y: CY + Math.sin(rad) * r,
-    };
-  }, [ghostOwnShip, scaleNm]);
 
   return (
     <div className="radar-scope radar-console">
@@ -365,28 +288,6 @@ function ActiveSonarScopeInner({
 
           <circle cx={CX} cy={CY} r={5} fill="#3dff6a" />
 
-          {ghostOwnMark && (
-            <g aria-label="Previous-turn own ship" opacity={0.35}>
-              <circle
-                cx={ghostOwnMark.x}
-                cy={ghostOwnMark.y}
-                r={7}
-                fill="none"
-                stroke="#5a9a68"
-                strokeWidth={1.5}
-                strokeDasharray="3 3"
-              />
-              <circle cx={ghostOwnMark.x} cy={ghostOwnMark.y} r={2.5} fill="#5a9a68" />
-            </g>
-          )}
-
-          {ghostBlips.map((b) => (
-            <g key={b.id} opacity={0.28}>
-              <circle cx={b.x} cy={b.y} r={b.r + 1} fill="none" stroke="#5a9a68" strokeWidth={1} />
-              <circle cx={b.x} cy={b.y} r={b.r} fill="#3a7a4a" />
-            </g>
-          ))}
-
           {blips.map((b) => (
             <g key={b.id}>
               <g opacity={b.opacity}>
@@ -468,9 +369,6 @@ export const ActiveSonarScope = memo(ActiveSonarScopeInner, (prev, next) => {
     prev.halfAngleDeg === next.halfAngleDeg &&
     prev.ownHeading === next.ownHeading &&
     prev.pinging === next.pinging &&
-    contactsKey(prev.contacts) === contactsKey(next.contacts) &&
-    contactsKey(prev.ghostContacts ?? []) === contactsKey(next.ghostContacts ?? []) &&
-    prev.ghostOwnShip?.bearing === next.ghostOwnShip?.bearing &&
-    prev.ghostOwnShip?.rangeNm === next.ghostOwnShip?.rangeNm
+    contactsKey(prev.contacts) === contactsKey(next.contacts)
   );
 });
