@@ -74,11 +74,20 @@ function silhouetteAlt(
   plate: string | undefined,
 ): string {
   if (plate === 'kagero') return 'Kagerō destroyer silhouette';
-  if (plate === 'zeke') return 'Mitsubishi Zeke fighter recognition plate';
+  if (plate === 'zeke') return 'Mitsubishi Zeke fighter silhouette';
   if (hullClass === 'Fleet Submarine') return 'Submarine silhouette';
   if (hullClass === 'Oiler') return 'Oiler silhouette';
   if (hullClass === 'Aircraft Carrier') return 'Aircraft carrier silhouette';
   return 'Destroyer silhouette';
+}
+
+/** Top-down airframe plates (nose-up) — distinct CSS sizing from side-profile hulls. */
+function isAirSilhouettePlate(
+  hullClass: HullClass | string | undefined,
+  plate: string | undefined,
+): boolean {
+  if (plate === 'zeke') return true;
+  return hullClass === 'Fighter' || hullClass === 'Bomber';
 }
 
 function contactDesignation(c: PeriscopeContact): string {
@@ -132,7 +141,6 @@ function PeriscopeScopeInner({
 
   const selected = effectiveId ? (sorted.find((c) => c.id === effectiveId) ?? null) : null;
 
-  const scale = selected ? Math.max(periscopeSilhouetteScale(selected.rangeNm, maxRangeNm), 0.55) : 1;
   const viewportLabel =
     variant === 'lookout' ? 'Lookout visual contact' : 'Periscope visual contact';
   const isFeather = selected?.kind === 'periscope';
@@ -140,11 +148,19 @@ function PeriscopeScopeInner({
   const plateClass = selected?.silhouetteClass;
   const plateKey = selected?.silhouettePlate;
   const plateSrc = silhouetteSrcForContact(plateClass, plateKey);
+  const airPlate = isAirSilhouettePlate(plateClass, plateKey);
+  // Same range falloff as hull plates (`periscopeSilhouetteScale`). Air top-downs
+  // use the full 0.25–1 curve; thin side-profiles keep a 0.55 readability floor.
+  const rawScale = selected
+    ? periscopeSilhouetteScale(selected.rangeNm, maxRangeNm)
+    : 1;
+  const scale = selected ? (airPlate ? rawScale : Math.max(rawScale, 0.55)) : 1;
   const plateSize =
     (plateKey ? SILHOUETTE_SIZE[plateKey] : undefined) ??
     SILHOUETTE_SIZE[plateClass ?? ''] ??
     SILHOUETTE_SIZE.Destroyer;
-  // Bow-right plates: flip for port AOB so the bow faces the observed aspect.
+  // Hull plates: bow-right, flip for port AOB. Air top-downs (nose-up): same
+  // flip helper mirrors left/right for port aspect (no separate heading rotate).
   const flipPlate =
     !isFeather &&
     selected != null &&
@@ -188,7 +204,7 @@ function PeriscopeScopeInner({
             ) : (
               <img
                 key={plateSrc}
-                className={`periscope-silhouette${flipPlate ? ' periscope-silhouette--flip' : ''}`}
+                className={`periscope-silhouette${airPlate ? ' periscope-silhouette--air' : ''}${flipPlate ? ' periscope-silhouette--flip' : ''}`}
                 src={plateSrc}
                 alt={silhouetteAlt(plateClass, plateKey)}
                 width={plateSize.width}

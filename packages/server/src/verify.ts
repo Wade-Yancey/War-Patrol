@@ -57,6 +57,7 @@ import {
   rollSubmarineImplosion,
   periscopeSilhouetteUrl,
   periscopeSilhouetteFlipX,
+  periscopeSilhouetteScale,
   silhouettePlateForClassId,
   silhouetteUrlForClass,
   silhouetteUrlForOptics,
@@ -1029,6 +1030,23 @@ async function main() {
   check(
     'silhouette flip: missing course (feather) → no flip',
     periscopeSilhouetteFlipX(0, 45, undefined) === false,
+  );
+  // Optics plate size vs range — ships + air share this curve (closer = larger).
+  check(
+    'silhouette scale: contact range 0 → full size',
+    periscopeSilhouetteScale(0, 10) === 1,
+  );
+  check(
+    'silhouette scale: mid range → mid size',
+    periscopeSilhouetteScale(5, 10) === 0.63,
+  );
+  check(
+    'silhouette scale: at sensor max → 0.25',
+    periscopeSilhouetteScale(10, 10) === 0.25,
+  );
+  check(
+    'silhouette scale: beyond max clamps to 0.25',
+    periscopeSilhouetteScale(99, 10) === 0.25,
   );
   {
     const here = path.dirname(fileURLToPath(import.meta.url));

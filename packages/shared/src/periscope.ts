@@ -241,7 +241,7 @@ export const OILER_SILHOUETTE_URL = '/silhouettes/oiler.png';
 export const CARRIER_SILHOUETTE_URL = '/silhouettes/carrier.png';
 /** Kagerō-class IJN destroyer plate (distinct from US Fletcher `destroyer.png`). */
 export const KAGERO_SILHOUETTE_URL = '/silhouettes/kagero.png';
-/** Mitsubishi A6M Zeke recognition plate (distinct from generic Fighter fallback). */
+/** Mitsubishi A6M Zeke nose-up top-down plate (distinct from generic Fighter fallback). */
 export const ZEKE_SILHOUETTE_URL = '/silhouettes/zeke.png';
 
 /**
