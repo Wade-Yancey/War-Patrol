@@ -4,6 +4,7 @@ import {
   RADAR_SIGNATURE_STRENGTH,
   bearingRangeNm,
   canUseSensorStation,
+  coarsenPeriscopeCourseDeg,
   defaultRadarSignature,
   ensureContactLabel,
   findRadarSensor,
@@ -89,6 +90,8 @@ export function buildRadarContacts(own: UnitState, save: GameSave): RadarPicture
       strength: Math.round(strength * 100) / 100,
       signature,
       domain: radarContactDomain(other),
+      // FoW-safe facing for PPI chevron — true course, no identity leak.
+      courseDeg: coarsenPeriscopeCourseDeg(other.heading),
     });
   }
 

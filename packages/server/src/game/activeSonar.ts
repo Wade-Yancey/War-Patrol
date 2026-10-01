@@ -4,6 +4,7 @@ import {
   bearingRangeNm,
   canUseSensorStation,
   coarsenActiveSonarDepthM,
+  coarsenPeriscopeCourseDeg,
   defaultRadarSignature,
   ensureContactLabel,
   radarContactDomain,
@@ -100,6 +101,7 @@ export function buildActiveSonarContacts(own: UnitState, save: GameSave): Active
       strength: Math.round(strength * 100) / 100,
       signature,
       domain: radarContactDomain(other),
+      courseDeg: coarsenPeriscopeCourseDeg(other.heading),
       estimatedDepthM: coarsenActiveSonarDepthM(other.position.depth),
     });
   }

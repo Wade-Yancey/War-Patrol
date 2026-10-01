@@ -89,25 +89,29 @@ export function MapAircraftMarker({
 interface MotionChevronProps {
   x: number;
   y: number;
-  /** SVG rotate degrees (0 = +x / east on PPI) — screen motion of prior→new polar. */
-  angleDeg: number;
+  /**
+   * True course / facing degrees (0 = north / up on PPI) — same convention as
+   * {@link MapAircraftMarker} heading rotate.
+   */
+  courseDeg: number;
   /** Blip radius; chevron sits just beyond the echo. */
   blipR: number;
 }
 
 /**
- * Small PPI / sonar motion cue — one chevron per moving contact, pointing along
- * the on-scope displacement from previous polar to new (museum-clear, not noisy).
+ * Small PPI / sonar facing cue — one chevron per contact with known course,
+ * pointing the way the contact is facing (true heading), not tween displacement.
  */
-export function RadarMotionChevron({ x, y, angleDeg, blipR }: MotionChevronProps) {
+export function RadarMotionChevron({ x, y, courseDeg, blipR }: MotionChevronProps) {
   const tip = blipR + 3;
   return (
     <g
-      transform={`translate(${x} ${y}) rotate(${angleDeg})`}
-      aria-label="Contact motion direction"
+      transform={`translate(${x} ${y}) rotate(${courseDeg})`}
+      aria-label="Contact facing direction"
     >
+      {/* Nose-up V (0° = north / up); rotate by true course. */}
       <path
-        d={`M ${tip},-4.5 L ${tip + 9},0 L ${tip},4.5`}
+        d={`M -4.5,${-tip} L 0,${-(tip + 9)} L 4.5,${-tip}`}
         fill="none"
         stroke="#b8ffc8"
         strokeWidth={1.75}

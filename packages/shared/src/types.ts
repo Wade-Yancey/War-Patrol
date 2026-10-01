@@ -1070,6 +1070,13 @@ export interface RadarContact {
    */
   domain: RadarContactDomain;
   /**
+   * Precise true course / facing degrees [0, 360) (nearest whole degree) —
+   * ground-truth hull heading for the PPI facing chevron. Same FoW band as
+   * optics `courseDeg`: numbers are accurate once painted; identity stays
+   * Contact-N only. Omitted when heading is unknown (no chevron).
+   */
+  courseDeg?: number;
+  /**
    * Active-sonar only: precise estimated keel depth (m, positive down),
    * ground truth rounded to the nearest whole meter for display — active
    * sonar is 100% accurate, same as radar. Omitted on radar contacts (0 when
