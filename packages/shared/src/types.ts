@@ -1067,17 +1067,6 @@ export interface RadarContact {
   estimatedDepthM?: number;
 }
 
-/**
- * Previous-turn own-ship mark on the radar (or active-sonar) PPI —
- * polar from **current** own (PPI center). One turn deep only.
- */
-export interface RadarGhostOwnShip {
-  /** True bearing from current own to last-resolve own position. */
-  bearing: number;
-  /** Range (nm) from current own to last-resolve own position. */
-  rangeNm: number;
-}
-
 /** Filtered vessel/station view — never other units' ground truth. */
 export interface VesselView {
   role: 'vessel';
@@ -1174,15 +1163,6 @@ export interface VesselView {
    * Omitted for non-radar stations — never full unit list.
    */
   radarContacts?: RadarContact[];
-  /**
-   * Previous-turn radar ghosts (one turn deep): faint unlabeled echoes
-   * (marks only — no Cn text) reprojected world-true vs **current** own.
-   * Never pasted last BRG/RNG onto the current center. Cleared when no prior
-   * snapshot / contact not painted last turn. Polar only — no absolute positions.
-   */
-  radarGhostContacts?: RadarContact[];
-  /** Previous-turn own-ship position as a dim PPI mark (vs current center). */
-  radarGhostOwnShip?: RadarGhostOwnShip;
   /** Configured max radar range for the scope rings (nm). */
   radarMaxRangeNm?: number;
   /** False when radar set cannot emit (e.g. submarine submerged). */
@@ -1206,13 +1186,6 @@ export interface VesselView {
    * Forward cone only — omitted for non-sonar stations.
    */
   sonarContacts?: RadarContact[];
-  /**
-   * Previous-turn active-sonar ghosts (same one-turn world-true treatment as
-   * radar). Omitted when sonar is off / unavailable or no prior snapshot.
-   */
-  sonarGhostContacts?: RadarContact[];
-  /** Previous-turn own-ship mark on the sonar scope (vs current center). */
-  sonarGhostOwnShip?: RadarGhostOwnShip;
   /** Configured max active-sonar range (nm). */
   sonarMaxRangeNm?: number;
   /** Cone half-angle about own heading (degrees). */

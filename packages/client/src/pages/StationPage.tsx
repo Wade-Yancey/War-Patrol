@@ -1011,8 +1011,6 @@ export function StationPage() {
                 ) : (
                   <RadarScope
                     contacts={vessel.radarContacts ?? []}
-                    ghostContacts={vessel.radarGhostContacts}
-                    ghostOwnShip={vessel.radarGhostOwnShip}
                     maxRangeNm={vessel.radarMaxRangeNm ?? 25}
                     ownHeading={vessel.unit.heading}
                   />
@@ -1219,8 +1217,6 @@ export function StationPage() {
                 ) : (
                   <ActiveSonarScope
                     contacts={vessel.sonarContacts ?? []}
-                    ghostContacts={vessel.sonarGhostContacts}
-                    ghostOwnShip={vessel.sonarGhostOwnShip}
                     maxRangeNm={vessel.sonarMaxRangeNm ?? 8}
                     halfAngleDeg={vessel.sonarHalfAngleDeg ?? 30}
                     ownHeading={vessel.unit.heading}

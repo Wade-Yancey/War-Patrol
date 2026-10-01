@@ -6,11 +6,10 @@ interface Props {
 
 /**
  * CRT Contact-N label layer for polar scopes (radar PPI / active sonar cone).
- * Placement comes from layoutScopeContactLabels — this only paints live Cn.
- * Ghost/shadow marks are unlabeled elsewhere on the PPI.
+ * Placement comes from layoutScopeContactLabels — this only paints visible Cn.
  */
 export function ScopeContactLabelLayer({ placements }: Props) {
-  const items = placements.filter((p) => p.kind === 'live' && p.visible);
+  const items = placements.filter((p) => p.visible);
   if (items.length === 0) return null;
 
   return (
