@@ -529,6 +529,13 @@ async function main() {
     typeof contacts[0].labelN === 'number' && (contacts[0].labelN as number) >= 1,
     `got ${String(contacts[0].labelN)}`,
   );
+  check(
+    'radar contact has FoW facing courseDeg',
+    typeof contacts[0].courseDeg === 'number' &&
+      (contacts[0].courseDeg as number) >= 0 &&
+      (contacts[0].courseDeg as number) < 360,
+    `got ${String(contacts[0].courseDeg)}`,
+  );
   check('radar has max range', typeof rv.radarMaxRangeNm === 'number' && (rv.radarMaxRangeNm as number) > 0);
   check('radar ghosts removed from vessel view', !('radarGhostContacts' in rv) && !('radarGhostOwnShip' in rv));
   const porter = (uv.units as Json[]).find((u) => u.id === 'dd-101')!;
@@ -4162,6 +4169,15 @@ async function main() {
               !('name' in airHit!) &&
               !('faction' in airHit!) &&
               typeof airHit!.labelN === 'number',
+          );
+          const zeke = psRadarSave.units.find((u) => u.id === 'ac-zeke-cap');
+          check(
+            'philippine-sea air radar contact carries facing courseDeg',
+            Boolean(airHit) &&
+              typeof airHit!.courseDeg === 'number' &&
+              zeke != null &&
+              airHit!.courseDeg === Math.round(((zeke.heading % 360) + 360) % 360),
+            `courseDeg=${airHit?.courseDeg} want≈${zeke?.heading}`,
           );
         }
       }

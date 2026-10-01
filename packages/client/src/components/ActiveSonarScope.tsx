@@ -14,10 +14,7 @@ import {
   SONAR_PING_OWN_GAIN,
 } from '../audio/sonarPing';
 import { RadarAirBlip, RadarMotionChevron, RadarSurfaceBlip } from './ContactGlyphs';
-import {
-  scopeMotionAngleDeg,
-  useTweenedScopeContacts,
-} from '../hooks/useTweenedScopeContacts';
+import { useTweenedScopeContacts } from '../hooks/useTweenedScopeContacts';
 import { ScopeContactLabelLayer } from './ScopeContactLabelLayer';
 
 interface Props {
@@ -42,7 +39,7 @@ function contactsKey(contacts: RadarContact[]): string {
   return contacts
     .map(
       (c) =>
-        `${c.id}:${c.bearing.toFixed(1)}:${c.rangeNm.toFixed(2)}:${c.strength}:${c.signature}:${c.domain}:${c.estimatedDepthM ?? ''}`,
+        `${c.id}:${c.bearing.toFixed(1)}:${c.rangeNm.toFixed(2)}:${c.strength}:${c.signature}:${c.domain}:${c.courseDeg ?? ''}:${c.estimatedDepthM ?? ''}`,
     )
     .join('|');
 }
@@ -173,10 +170,8 @@ function ActiveSonarScopeInner({
       const opacity = b.live
         ? Math.max(0.92, 0.85 + 0.15 * b.strength)
         : Math.max(0.2, b.fade * 0.55);
-      const motionAngle =
-        b.live && b.motionFrom && b.motionTo
-          ? scopeMotionAngleDeg(b.motionFrom, b.motionTo, scaleNm, SCOPE_R)
-          : null;
+      const courseDeg =
+        b.live && b.courseDeg != null && Number.isFinite(b.courseDeg) ? b.courseDeg : null;
       return {
         ...b,
         x,
@@ -184,7 +179,7 @@ function ActiveSonarScopeInner({
         opacity,
         r: blipR,
         labelN: showLabel ? b.labelN : undefined,
-        motionAngle,
+        courseDeg,
       };
     });
 
@@ -305,8 +300,8 @@ function ActiveSonarScopeInner({
                 ) : (
                   <RadarSurfaceBlip x={b.x} y={b.y} r={b.r} />
                 )}
-                {b.motionAngle != null && (
-                  <RadarMotionChevron x={b.x} y={b.y} angleDeg={b.motionAngle} blipR={b.r} />
+                {b.courseDeg != null && (
+                  <RadarMotionChevron x={b.x} y={b.y} courseDeg={b.courseDeg} blipR={b.r} />
                 )}
               </g>
             </g>
