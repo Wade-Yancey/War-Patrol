@@ -22,7 +22,11 @@ export interface DiveControlsProps {
   maxDepthM?: number;
   orderStepM?: number;
   disabled?: boolean;
-  onSubmit: (depthM: number) => void;
+  /**
+   * Depth order submit. `emergencyBlow: true` only when the Emergency Blow
+   * preset is applied (Surface / dial / other presets omit the flag).
+   */
+  onSubmit: (depthM: number, opts?: { emergencyBlow?: boolean }) => void;
 }
 
 /**
@@ -50,15 +54,17 @@ export function DiveControls({
   const draftRisk = submarineDepthRisk(draftDepth);
   const keelRisk = submarineDepthRisk(depth);
 
-  const submitDepthOrder = (depthM: number) => {
-    onSubmit(depthM);
+  const submitDepthOrder = (depthM: number, opts?: { emergencyBlow?: boolean }) => {
+    onSubmit(depthM, opts);
   };
 
   const applyPreset = (id: DivePresetId) => {
     const preset = DIVE_PRESETS.find((p) => p.id === id);
     if (!preset || disabled) return;
     onDraftDepthChange(preset.depthM);
-    submitDepthOrder(preset.depthM);
+    submitDepthOrder(preset.depthM, {
+      emergencyBlow: id === 'emergency_blow',
+    });
   };
 
   const riskBanner =
