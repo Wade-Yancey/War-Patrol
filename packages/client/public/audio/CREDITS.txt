@@ -72,3 +72,10 @@ Local copy: torpedo-tube-door.mp3
 Original filename: 847442__mikiko850__industrial-sliding-door.mp3
 Notes: Submarine Controls bridge — one tube-door one-shot per fish in a salvo
 (firer only), staggered ~0.8 s so successive opens stay countable.
+
+Source: Switch 36.wav by LG (Freesound #73077)
+License: as provided for War Patrol (user sample)
+Original: https://freesound.org/people/lg/sounds/73077/
+Local copy: ui-button-click.wav
+Original filename: 73077__lg__switch-36.wav
+Notes: App-wide UI button click (delegated document click on button / role=button).
