@@ -28,6 +28,7 @@ import { buildTorpedoWakeCues } from './wakeCues.js';
  *   of the blast (measured from own ship) — never filtered by firer.
  * - Torpedo hits: firer and target always hear the cue; gain attenuates by
  *   distance to the hit point ({@link TORPEDO_HIT_CONTROLS_REF_NM}).
+ * - Torpedo fire: firer hears tube-door opens (one per fish, staggered).
  * - Aircraft bombs: target always hears; nearby hulls within DC audible
  *   range also hear (aircraft firer is NPC with no Controls station).
  * - Deck-gun fire: firer hears the cannon muzzle report.
@@ -75,13 +76,13 @@ export function buildBridgeDetonations(
       continue;
     }
 
-    if (d.kind === 'deck_gun_fire') {
+    if (d.kind === 'deck_gun_fire' || d.kind === 'torpedo_fire') {
       if (unit.id !== d.firerUnitId) continue;
       bridge.push({
         id: d.id,
         bearing: Math.round(bearing * 10) / 10,
         rangeNm: Math.round(rangeNm * 100) / 100,
-        kind: 'deck_gun_fire',
+        kind: d.kind,
         ...(d.audioDelaySec != null && d.audioDelaySec > 0
           ? { audioDelaySec: d.audioDelaySec }
           : {}),

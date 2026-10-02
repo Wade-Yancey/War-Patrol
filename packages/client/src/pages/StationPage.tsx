@@ -66,6 +66,12 @@ import {
   playDeckGunFireSample,
 } from '../audio/deckGunFire';
 import {
+  TORPEDO_FIRE_CONTROLS_PEAK_GAIN,
+  loadTorpedoFireBuffer,
+  playTorpedoFireSample,
+  torpedoFireBatchWhenSecById,
+} from '../audio/torpedoFire';
+import {
   SUBMARINE_CREAK_AMBIENT_DURATION_SEC,
   SUBMARINE_CREAK_AMBIENT_GAIN,
   SUBMARINE_CREAK_DC_DURATION_SEC,
@@ -202,6 +208,7 @@ export function StationPage() {
       kind:
         | 'depth_charge'
         | 'torpedo_hit'
+        | 'torpedo_fire'
         | 'aircraft_bomb'
         | 'deck_gun_fire'
         | 'deck_gun_hit';
@@ -216,6 +223,7 @@ export function StationPage() {
     buffer: AudioBuffer | null;
     torpedoHitBuffer: AudioBuffer | null;
     deckGunFireBuffer: AudioBuffer | null;
+    torpedoFireBuffer: AudioBuffer | null;
     creakBuffer: AudioBuffer | null;
     ambientBuffer: AudioBuffer | null;
     ambientSource: AudioBufferSourceNode | null;
@@ -225,6 +233,7 @@ export function StationPage() {
     buffer: null,
     torpedoHitBuffer: null,
     deckGunFireBuffer: null,
+    torpedoFireBuffer: null,
     creakBuffer: null,
     ambientBuffer: null,
     ambientSource: null,
@@ -240,6 +249,7 @@ export function StationPage() {
       bridgeAudioRef.current.buffer = null;
       bridgeAudioRef.current.torpedoHitBuffer = null;
       bridgeAudioRef.current.deckGunFireBuffer = null;
+      bridgeAudioRef.current.torpedoFireBuffer = null;
       bridgeAudioRef.current.creakBuffer = null;
       bridgeAudioRef.current.ambientBuffer = null;
     }
@@ -290,6 +300,7 @@ export function StationPage() {
     const needsDc = pending.some((e) => e.kind === 'depth_charge');
     const needsHit = pending.some((e) => isExplosionCue(e.kind));
     const needsGunFire = pending.some((e) => e.kind === 'deck_gun_fire');
+    const needsTubeDoor = pending.some((e) => e.kind === 'torpedo_fire');
     // Load samples independently — a DC fetch failure must not block torpedo hits
     // (and vice versa). Same unlock/queue pattern as the nearby-DC bridge fix.
     if (needsDc && !bridgeAudioRef.current.buffer) {
@@ -313,6 +324,13 @@ export function StationPage() {
         /* keep pending gun fire; unlock may retry */
       }
     }
+    if (needsTubeDoor && !bridgeAudioRef.current.torpedoFireBuffer) {
+      try {
+        bridgeAudioRef.current.torpedoFireBuffer = await loadTorpedoFireBuffer(ctx);
+      } catch {
+        /* keep pending tube doors; unlock may retry */
+      }
+    }
     // Prefetch creak with DC so each staggered blast can schedule a stress burst.
     if (needsDc && onSubCreakBridge) {
       await ensureCreakBuffer(ctx);
@@ -321,6 +339,7 @@ export function StationPage() {
     const dcBuffer = bridgeAudioRef.current.buffer;
     const hitBuffer = bridgeAudioRef.current.torpedoHitBuffer;
     const gunFireBuffer = bridgeAudioRef.current.deckGunFireBuffer;
+    const tubeDoorBuffer = bridgeAudioRef.current.torpedoFireBuffer;
     const creakBuffer = bridgeAudioRef.current.creakBuffer;
     const still: Array<{
       id: string;
@@ -328,6 +347,7 @@ export function StationPage() {
       kind:
         | 'depth_charge'
         | 'torpedo_hit'
+        | 'torpedo_fire'
         | 'aircraft_bomb'
         | 'deck_gun_fire'
         | 'deck_gun_hit';
@@ -355,6 +375,12 @@ export function StationPage() {
     );
     const gunFireWhenById = deckGunFireBatchWhenSecById(gunFireBatch);
 
+    // Multi-fish torpedo salvos: one tube-door per fish, staggered ~0.8 s.
+    const tubeDoorBatch = pending.filter(
+      (e) => e.kind === 'torpedo_fire' && !playedBridgeBlastRef.current.has(e.id),
+    );
+    const tubeDoorWhenById = torpedoFireBatchWhenSecById(tubeDoorBatch);
+
     for (const e of pending) {
       if (playedBridgeBlastRef.current.has(e.id)) continue;
       try {
@@ -369,6 +395,18 @@ export function StationPage() {
             ctx.destination,
             DECK_GUN_FIRE_CONTROLS_PEAK_GAIN,
             { whenSec: gunFireWhenById.get(e.id) ?? Math.max(0, e.audioDelaySec ?? 0) },
+          );
+        } else if (e.kind === 'torpedo_fire') {
+          if (!tubeDoorBuffer) {
+            still.push(e);
+            continue;
+          }
+          playTorpedoFireSample(
+            ctx,
+            tubeDoorBuffer,
+            ctx.destination,
+            TORPEDO_FIRE_CONTROLS_PEAK_GAIN,
+            { whenSec: tubeDoorWhenById.get(e.id) ?? Math.max(0, e.audioDelaySec ?? 0) },
           );
         } else if (isExplosionCue(e.kind)) {
           if (!hitBuffer) {
@@ -1260,12 +1298,21 @@ export function StationPage() {
         {vessel && isControls && !isSensors && (
           <div className="controls-station">
             <section className="panel controls-status-strip" aria-label="Own ship status">
-              {(syncedDamage.visibleBridgeDetonations.length ?? 0) > 0 && (
+              {(() => {
+                const alertEvents = syncedDamage.visibleBridgeDetonations.filter(
+                  (d) =>
+                    d.kind === 'depth_charge' ||
+                    d.kind === 'torpedo_hit' ||
+                    d.kind === 'aircraft_bomb' ||
+                    d.kind === 'deck_gun_hit',
+                );
+                if (!alertEvents.length) return null;
+                return (
                 <div className="controls-bridge-dc-alert" role="status" aria-live="assertive">
                   <span className="controls-bridge-dc-alert-key">BRIDGE</span>
                   <span className="readout">
                     {(() => {
-                      const events = syncedDamage.visibleBridgeDetonations;
+                      const events = alertEvents;
                       const hits = events.filter(
                         (d) => d.kind === 'torpedo_hit' || d.kind === 'aircraft_bomb',
                       ).length;
@@ -1292,7 +1339,8 @@ export function StationPage() {
                     })()}
                   </span>
                 </div>
-              )}
+                );
+              })()}
               <div className="controls-status-grid">
                 <div className="controls-status-item">
                   <span className="controls-status-key">HDG</span>

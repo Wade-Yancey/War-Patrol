@@ -417,6 +417,14 @@ export const FLEET_SUB_DECK_GUN_MAX_SHOTS_PER_TURN = 2;
 export const DECK_GUN_FIRE_STAGGER_SEC = 2;
 
 /**
+ * Wall-clock gap (seconds) between tube-door onsets for a multi-fish torpedo
+ * salvo on sub Controls. Shorter than {@link DECK_GUN_FIRE_STAGGER_SEC} so a
+ * spread still feels like a succession (~0.8 s) without stacking into one blast
+ * against the ~1.5 s door sample. Presentation only — launch physics unchanged.
+ */
+export const TORPEDO_FIRE_STAGGER_SEC = 0.8;
+
+/**
  * Resolved turns after Reload before the deck gun can fire again.
  * Faster than tube/rack reload ({@link TORPEDO_RELOAD_TURNS}) — gun crew pace.
  * Applies once per **salvo** (not per individual round).
@@ -2782,6 +2790,7 @@ export function makeDetonationEvent(opts: {
   kind?:
     | 'depth_charge'
     | 'torpedo_hit'
+    | 'torpedo_fire'
     | 'aircraft_bomb'
     | 'deck_gun_fire'
     | 'deck_gun_hit'

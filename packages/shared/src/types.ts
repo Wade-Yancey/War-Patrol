@@ -418,6 +418,7 @@ export interface WeaponDetonationEvent {
   kind:
     | 'depth_charge'
     | 'torpedo_hit'
+    | 'torpedo_fire'
     | 'aircraft_bomb'
     | 'deck_gun_fire'
     | 'deck_gun_hit'
@@ -428,8 +429,8 @@ export interface WeaponDetonationEvent {
   /**
    * Hit / aim target for torpedo_hit / aircraft_bomb / deck_gun_hit —
    * involved hulls get Controls audio cues (aircraft firer is NPC and has no
-   * station). Deck-gun fire cues are firer-only. Deck-gun miss may name the
-   * nearest surface CPA for umpire GT map labels.
+   * station). Deck-gun / torpedo fire cues are firer-only. Deck-gun miss may
+   * name the nearest surface CPA for umpire GT map labels.
    */
   targetUnitId?: string;
   /**
@@ -443,8 +444,8 @@ export interface WeaponDetonationEvent {
    * presentation delay from intercept fraction within the turn (capped — see
    * `TORPEDO_HIT_AUDIO_MAX_DELAY_SEC`). Depth charges omit this and use the
    * client stagger schedule instead. Aircraft bombs use CPA fraction (same cap).
-   * Deck-gun fire is staggered per round; deck-gun hit may use a short delay so the
-   * cannon cue leads the explosion.
+   * Deck-gun fire and torpedo fire are staggered per round/fish; deck-gun hit
+   * may use a short delay so the cannon cue leads the explosion.
    */
   audioDelaySec?: number;
 }
@@ -1166,13 +1167,15 @@ export interface VesselView {
     kind:
       | 'depth_charge'
       | 'torpedo_hit'
+      | 'torpedo_fire'
       | 'aircraft_bomb'
       | 'deck_gun_fire'
       | 'deck_gun_hit';
     /**
      * Seconds after the cue is heard before the one-shot (and Damage-tab line)
      * should play. Torpedo hits / aircraft bombs: compressed arrival delay (≤
-     * `TORPEDO_HIT_AUDIO_MAX_DELAY_SEC`). Omitted for DC (client stagger).
+     * `TORPEDO_HIT_AUDIO_MAX_DELAY_SEC`). Torpedo / deck-gun fire: per-shot
+     * stagger. Omitted for DC (client stagger).
      */
     audioDelaySec?: number;
   }>;

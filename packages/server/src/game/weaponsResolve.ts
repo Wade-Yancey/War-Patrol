@@ -25,6 +25,7 @@ import {
   lerpLatLonDepth,
   makeDetonationEvent,
   torpedoHitAudioDelaySec,
+  TORPEDO_FIRE_STAGGER_SEC,
   normalizeDepthChargePattern,
   normalizeHeading,
   normalizeTorpedoRoomId,
@@ -91,6 +92,7 @@ export function resolveWeaponsForTurn(
   // --- Launch from orders (consume load; clear weapon order fields after) ---
   const launchedFish: TorpedoTrack[] = [];
   const launchedCharges: DepthChargeTrack[] = [];
+  const launchDetonations: WeaponDetonationEvent[] = [];
 
   units = units.map((unit) => {
     let next = advanceWeaponReloads(unit);
@@ -159,6 +161,19 @@ export function resolveWeaponsForTurn(
             estimatedLengthM: estLen,
           });
           launchedFish.push(fish);
+        }
+        // One tube-door cue per fish (Controls firer), staggered for counting.
+        for (let i = 0; i < count; i++) {
+          launchDetonations.push(
+            makeDetonationEvent({
+              id: `tfire-${nanoid(8)}`,
+              kind: 'torpedo_fire',
+              position: { ...unit.position },
+              turnNumber,
+              firerUnitId: unit.id,
+              ...(i > 0 ? { audioDelaySec: i * TORPEDO_FIRE_STAGGER_SEC } : {}),
+            }),
+          );
         }
         next = consumeTorpedoRoom(next, room, count);
         if (next.torpedoArcBlock) {
@@ -529,6 +544,7 @@ export function resolveWeaponsForTurn(
 
   const recentDetonations = [
     ...priorDetonations.filter((d) => d.turnNumber >= turnNumber - DETONATION_RETENTION_TURNS),
+    ...launchDetonations,
     ...aircraftDetonations,
     ...newDetonations,
     ...deckGunDetonations,

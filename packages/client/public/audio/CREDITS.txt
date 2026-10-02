@@ -64,3 +64,11 @@ Local copy: sub-depth-change.wav
 Original filename: 336367__csaszi__underwater_and-going-lower_csg.wav
 Notes: Submarine Controls dive panel — one-shot when ordered depth changes
 (presets / Submit depth); re-selecting the standing order is silent.
+
+Source: Industrial Sliding Door by mikiko850 (Freesound #847442)
+License: as provided for War Patrol (user sample)
+Original: https://freesound.org/people/mikiko850/sounds/847442/
+Local copy: torpedo-tube-door.mp3
+Original filename: 847442__mikiko850__industrial-sliding-door.mp3
+Notes: Submarine Controls bridge — one tube-door one-shot per fish in a salvo
+(firer only), staggered ~0.8 s so successive opens stay countable.
