@@ -48,3 +48,11 @@ Local copy: deck-gun-fire.wav
 Original filename: 867030__raphavpires__large-cannon-fire.wav
 Notes: Controls bridge — destroyer + fleet-sub deck-gun muzzle report (firer).
 Hit splash reuses explosion.wav (same as torpedo hit) after a short delay.
+
+Source: Ship Bell Single Ring by Sojan (Freesound #353233)
+License: CC0 / public domain
+Original: https://freesound.org/people/Sojan/sounds/353233/
+Local copy: engine-order-bell.wav
+Original filename: 353233__sojan__ship-bell-single-ring.wav
+Notes: Local console engine-order telegraph — one ding when EOT setting changes
+(station Controls + umpire EOT UI); same telegraph position re-click is silent.

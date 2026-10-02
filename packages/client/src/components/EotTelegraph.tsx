@@ -1,4 +1,5 @@
 import { ALL_EOT_SETTINGS, EOT_LABELS, type EotSetting } from '@war-patrol/shared';
+import { playEngineOrderBell } from '../audio/engineOrderBell';
 
 interface Props {
   value: EotSetting;
@@ -20,7 +21,12 @@ export function EotTelegraph({ value, onChange, disabled }: Props) {
             aria-selected={active}
             className={active ? 'active' : undefined}
             disabled={disabled}
-            onClick={() => onChange(setting)}
+            onClick={() => {
+              // Real telegraph move only — re-clicking the same position is a no-op (no ding).
+              if (setting === value) return;
+              void playEngineOrderBell();
+              onChange(setting);
+            }}
           >
             <span className="eot-idx">{String(i + 1).padStart(2, '0')}</span>
             {EOT_LABELS[setting]}
