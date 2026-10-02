@@ -1,8 +1,11 @@
 /** Torpedo tube-door report (Controls bridge — firer submarine). */
 export const TORPEDO_FIRE_SAMPLE_URL = '/audio/torpedo-tube-door.mp3';
 
-/** Peak gain on Controls for the tube-door cue (own-ship launch feel). */
-export const TORPEDO_FIRE_CONTROLS_PEAK_GAIN = 0.7;
+/**
+ * Peak gain on Controls for the tube-door cue.
+ * Kept quiet for speaker ambience (well under deck-gun's 0.7 own-ship report).
+ */
+export const TORPEDO_FIRE_CONTROLS_PEAK_GAIN = 0.25;
 
 /**
  * Wall-clock gap (seconds) between tube-door onsets in a multi-fish salvo.
