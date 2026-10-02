@@ -25,6 +25,7 @@ import {
 } from '@war-patrol/shared';
 import { api } from '../api/client';
 import { getAuthToken, setAuthToken } from '../api/authStorage';
+import { playEngineOrderBell } from '../audio/engineOrderBell';
 import { useGameStream } from '../hooks/useGameStream';
 import { TurnStatus } from '../components/TurnStatus';
 import { CrtShell } from '../components/CrtShell';
@@ -1508,7 +1509,14 @@ export function StationPage() {
                         className="primary"
                         type="button"
                         disabled={!vessel.canSubmitOrders}
-                        onClick={() => void submit({ eot })}
+                        onClick={() => {
+                          // Engine-room confirm ring: only when locking in a real EOT change
+                          // (telegraph already dinged on position move). Re-submit of the
+                          // standing order is silent — no pointless double ding.
+                          const standing = vessel.unit.orders.eot ?? vessel.unit.eot;
+                          if (eot !== standing) void playEngineOrderBell();
+                          void submit({ eot });
+                        }}
                       >
                         Submit engine orders
                       </button>

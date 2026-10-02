@@ -1,4 +1,4 @@
-/** Engine-order telegraph single-ring bell (local console — EOT change). */
+/** Engine-order telegraph single-ring bell (local console — EOT move + confirm). */
 export const ENGINE_ORDER_BELL_SAMPLE_URL = '/audio/engine-order-bell.wav';
 
 /** Peak gain for the telegraph ding on station / umpire EOT UI. */
@@ -36,7 +36,9 @@ async function ensureBell(): Promise<{ ctx: AudioContext; buffer: AudioBuffer }>
 }
 
 /**
- * One-shot telegraph ding for a real EOT setting change.
+ * One-shot ship-bell ding for telegraph pattern:
+ * - telegraph position move (`EotTelegraph`)
+ * - lock-in / submit when the committed EOT actually changes (`StationPage`)
  * Failures (autoplay block, missing sample) are swallowed — UI must stay usable.
  */
 export async function playEngineOrderBell(): Promise<void> {
