@@ -40,15 +40,22 @@ async function ensureDepthChange(): Promise<{ ctx: AudioContext; buffer: AudioBu
   return { ctx: sharedCtx, buffer: sharedBuffer };
 }
 
+export type PlaySubDepthChangeOptions = {
+  /** Override peak gain (e.g. ducked under Emergency Blow venting). */
+  peakGain?: number;
+};
+
 /**
  * One-shot underwater cue when the sub's keel depth changes on turn resolve.
  * Stops any prior play so successive dive turns do not stack the long clip.
  * Failures (autoplay block, missing sample) are swallowed — UI must stay usable.
  */
-export async function playSubDepthChange(): Promise<void> {
+export async function playSubDepthChange(options: PlaySubDepthChangeOptions = {}): Promise<void> {
   try {
     const { ctx, buffer } = await ensureDepthChange();
-    if (SUB_DEPTH_CHANGE_PEAK_GAIN < 0.001) return;
+    const peak =
+      options.peakGain !== undefined ? options.peakGain : SUB_DEPTH_CHANGE_PEAK_GAIN;
+    if (peak < 0.001) return;
     if (activeSource) {
       try {
         activeSource.stop();
@@ -60,7 +67,7 @@ export async function playSubDepthChange(): Promise<void> {
     const source = ctx.createBufferSource();
     const gain = ctx.createGain();
     source.buffer = buffer;
-    gain.gain.value = SUB_DEPTH_CHANGE_PEAK_GAIN;
+    gain.gain.value = peak;
     source.connect(gain);
     gain.connect(ctx.destination);
     source.onended = () => {
