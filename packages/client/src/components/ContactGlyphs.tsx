@@ -15,6 +15,15 @@ interface RadarBlipProps {
   r: number;
 }
 
+interface RadarAirBlipProps extends RadarBlipProps {
+  /**
+   * True course / facing degrees (0 = north / up on PPI) — same convention as
+   * {@link RadarMotionChevron} and {@link MapAircraftMarker}. When omitted or
+   * non-finite, glyph stays nose-up (unrotated), matching the no-chevron case.
+   */
+  courseDeg?: number | null;
+}
+
 /** Concentric CRT echo — surface / submarine / ship contacts. */
 export function RadarSurfaceBlip({ x, y, r }: RadarBlipProps) {
   return (
@@ -28,12 +37,15 @@ export function RadarSurfaceBlip({ x, y, r }: RadarBlipProps) {
 
 /**
  * Aircraft PPI glyph — small top-down silhouette (not a round ship blip).
- * Unrotated on PPI (bearing is position only; heading is not on the echo).
+ * Rotates with FoW `courseDeg` when known (same angle as the facing chevron);
+ * otherwise stays nose-up.
  */
-export function RadarAirBlip({ x, y, r }: RadarBlipProps) {
+export function RadarAirBlip({ x, y, r, courseDeg }: RadarAirBlipProps) {
   const scale = Math.max(0.9, r / 5.2);
+  const facing =
+    courseDeg != null && Number.isFinite(courseDeg) ? ` rotate(${courseDeg})` : '';
   return (
-    <g transform={`translate(${x} ${y}) scale(${scale})`} aria-label="Air contact">
+    <g transform={`translate(${x} ${y})${facing} scale(${scale})`} aria-label="Air contact">
       <path
         d={AIRCRAFT_TOPDOWN_PATH}
         fill="#b8ffc8"
