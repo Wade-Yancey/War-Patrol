@@ -273,7 +273,7 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
           <g key={b.id}>
             <g opacity={b.opacity}>
               {b.domain === 'air' ? (
-                <RadarAirBlip x={b.x} y={b.y} r={b.r} />
+                <RadarAirBlip x={b.x} y={b.y} r={b.r} courseDeg={b.courseDeg} />
               ) : (
                 <RadarSurfaceBlip x={b.x} y={b.y} r={b.r} />
               )}
