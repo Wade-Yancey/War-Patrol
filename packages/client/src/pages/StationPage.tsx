@@ -83,7 +83,12 @@ import {
   playSubmarineCreakSample,
 } from '../audio/submarineCreaking';
 import { playSubDepthChange } from '../audio/subDepthChange';
-import { playEmergencyBlowVenting } from '../audio/emergencyBlowVenting';
+import {
+  EMERGENCY_BLOW_VENTING_PEAK_GAIN,
+  SUB_DEPTH_CHANGE_EMERGENCY_BLOW_GAIN,
+  loadEmergencyBlowVentingBuffer,
+  playEmergencyBlowVentingSample,
+} from '../audio/emergencyBlowVenting';
 
 function tokenKey(gameId: string, accessToken: string, stationId: string) {
   return `wp-token:${gameId}:${accessToken}:${stationId}`;
@@ -231,10 +236,16 @@ export function StationPage() {
   } | null>(null);
   /**
    * Armed when Dive Controls applies the Emergency Blow preset (ordered 0 m).
-   * Cleared on any other depth submit, when ordered depth leaves 0, or when
-   * the keel reaches the surface band after a blow ascent.
+   * Cleared on any other depth submit, when ordered depth leaves 0 *after*
+   * the blow order was observed, or when the keel reaches the surface band.
    */
   const pendingEmergencyBlowRef = useRef(false);
+  /**
+   * Latches once `orderedDepth === 0` while pending. Prevents vessel-stream
+   * refreshes (still carrying the prior non-zero ordered depth) from clearing
+   * the arm before the Emergency Blow submit is acknowledged.
+   */
+  const emergencyBlowOrderSeenRef = useRef(false);
   const ambientCreakBusyRef = useRef(false);
   const bridgeAudioRef = useRef<{
     ctx: AudioContext | null;
@@ -243,6 +254,7 @@ export function StationPage() {
     deckGunFireBuffer: AudioBuffer | null;
     torpedoFireBuffer: AudioBuffer | null;
     creakBuffer: AudioBuffer | null;
+    ventingBuffer: AudioBuffer | null;
     ambientBuffer: AudioBuffer | null;
     ambientSource: AudioBufferSourceNode | null;
     ambientGain: GainNode | null;
@@ -253,6 +265,7 @@ export function StationPage() {
     deckGunFireBuffer: null,
     torpedoFireBuffer: null,
     creakBuffer: null,
+    ventingBuffer: null,
     ambientBuffer: null,
     ambientSource: null,
     ambientGain: null,
@@ -269,6 +282,7 @@ export function StationPage() {
       bridgeAudioRef.current.deckGunFireBuffer = null;
       bridgeAudioRef.current.torpedoFireBuffer = null;
       bridgeAudioRef.current.creakBuffer = null;
+      bridgeAudioRef.current.ventingBuffer = null;
       bridgeAudioRef.current.ambientBuffer = null;
     }
     const ctx = bridgeAudioRef.current.ctx;
@@ -546,6 +560,7 @@ export function StationPage() {
       bridgeAudioRef.current.torpedoHitBuffer = null;
       bridgeAudioRef.current.deckGunFireBuffer = null;
       bridgeAudioRef.current.creakBuffer = null;
+      bridgeAudioRef.current.ventingBuffer = null;
       bridgeAudioRef.current.ambientBuffer = null;
       // Closed ctx → allow replay after remount (React Strict Mode / leave+rejoin).
       playedBridgeBlastRef.current.clear();
@@ -699,14 +714,29 @@ export function StationPage() {
       return;
     }
     if (turn !== prev.turn && Math.abs(keel - prev.depth) > 1e-3) {
-      void playSubDepthChange();
       const ascending = keel < prev.depth - 1e-3;
-      if (pendingEmergencyBlowRef.current && ascending) {
-        void playEmergencyBlowVenting();
+      const blowAscending = pendingEmergencyBlowRef.current && ascending;
+      // Duck the long depth bed under venting so the hiss stays audible.
+      void playSubDepthChange(
+        blowAscending ? { peakGain: SUB_DEPTH_CHANGE_EMERGENCY_BLOW_GAIN } : undefined,
+      );
+      if (blowAscending) {
         void (async () => {
           try {
             const ctx = await ensureBridgeAudioCtx();
             if (ctx.state !== 'running') return;
+            if (!bridgeAudioRef.current.ventingBuffer) {
+              bridgeAudioRef.current.ventingBuffer = await loadEmergencyBlowVentingBuffer(ctx);
+            }
+            const venting = bridgeAudioRef.current.ventingBuffer;
+            if (venting) {
+              playEmergencyBlowVentingSample(
+                ctx,
+                venting,
+                ctx.destination,
+                EMERGENCY_BLOW_VENTING_PEAK_GAIN,
+              );
+            }
             const creak = await ensureCreakBuffer(ctx);
             if (!creak) return;
             playSubmarineCreakSample(
@@ -722,9 +752,19 @@ export function StationPage() {
         })();
       }
     }
-    // Blow is done once surfaced, or cancelled when ordered depth leaves 0 m.
-    if (pendingEmergencyBlowRef.current && (keel <= RADAR_SURFACE_DEPTH_M || ordered > 0)) {
-      pendingEmergencyBlowRef.current = false;
+    // Arming lifecycle: latch when ordered 0 is observed; clear at surface or
+    // only cancel on ordered>0 *after* that latch (avoids stream-race disarm).
+    if (pendingEmergencyBlowRef.current) {
+      if (ordered <= 0) {
+        emergencyBlowOrderSeenRef.current = true;
+      }
+      if (keel <= RADAR_SURFACE_DEPTH_M) {
+        pendingEmergencyBlowRef.current = false;
+        emergencyBlowOrderSeenRef.current = false;
+      } else if (ordered > 0 && emergencyBlowOrderSeenRef.current) {
+        pendingEmergencyBlowRef.current = false;
+        emergencyBlowOrderSeenRef.current = false;
+      }
     }
     depthChangeSfxRef.current = { unitId, depth: keel, turn };
   }, [
@@ -1537,7 +1577,11 @@ export function StationPage() {
                   orderStepM={SUBMARINE_DEPTH_ORDER_STEP_M}
                   disabled={!vessel.canSubmitOrders}
                   onSubmit={(d, opts) => {
-                    pendingEmergencyBlowRef.current = Boolean(opts?.emergencyBlow);
+                    const blow = Boolean(opts?.emergencyBlow);
+                    pendingEmergencyBlowRef.current = blow;
+                    // Wait for orderedDepth === 0 on the stream before treating
+                    // ordered>0 as a cancel (see emergencyBlowOrderSeenRef).
+                    emergencyBlowOrderSeenRef.current = false;
                     void submit({ depth: clampSubmarineDepth(d) });
                   }}
                 />

@@ -80,4 +80,5 @@ Local copy: emergency-blow-venting.wav
 Original filename: 48710__sea-fury__venting.wav
 Notes: Submarine Controls — ballast-vent one-shot on turn resolve while an
 Emergency Blow ascent is in progress (keel rising toward ordered 0 m);
-stacked with hull creak + depth-change cues.
+played on the Controls bridge AudioContext above a ducked depth-change bed
+(+ hull creak) so the hiss stays audible on speakers.

@@ -3,71 +3,48 @@ export const EMERGENCY_BLOW_VENTING_SAMPLE_URL = '/audio/emergency-blow-venting.
 
 /**
  * Peak gain for the venting cue on submarine Controls.
- * Prominent speaker ambience under stacked depth-change (0.6) / deck-gun (0.7).
+ * Sits above the ducked depth-change bed during Emergency Blow so the hiss
+ * stays clear on speakers (depth bed alone is 0.6 and easily masks 0.5).
  */
-export const EMERGENCY_BLOW_VENTING_PEAK_GAIN = 0.5;
-
-let sharedCtx: AudioContext | null = null;
-let sharedBuffer: AudioBuffer | null = null;
-let loadPromise: Promise<AudioBuffer> | null = null;
-let activeSource: AudioBufferSourceNode | null = null;
-
-function audioContextCtor(): typeof AudioContext {
-  return (
-    window.AudioContext ??
-    (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-  );
-}
-
-async function ensureVenting(): Promise<{ ctx: AudioContext; buffer: AudioBuffer }> {
-  const Ctx = audioContextCtor();
-  if (!sharedCtx) sharedCtx = new Ctx();
-  if (sharedCtx.state === 'suspended') {
-    await sharedCtx.resume();
-  }
-  if (!sharedBuffer) {
-    if (!loadPromise) {
-      loadPromise = (async () => {
-        const res = await fetch(EMERGENCY_BLOW_VENTING_SAMPLE_URL);
-        if (!res.ok) throw new Error(`Emergency-blow venting sample fetch ${res.status}`);
-        const raw = await res.arrayBuffer();
-        return sharedCtx!.decodeAudioData(raw.slice(0));
-      })();
-    }
-    sharedBuffer = await loadPromise;
-  }
-  return { ctx: sharedCtx, buffer: sharedBuffer };
-}
+export const EMERGENCY_BLOW_VENTING_PEAK_GAIN = 0.85;
 
 /**
- * One-shot ballast-vent cue when an emergency blow ascent is processed on resolve.
- * Stops any prior play so multi-turn ascents replace rather than stack the clip.
- * Failures (autoplay block, missing sample) are swallowed — UI must stay usable.
+ * Depth-change bed gain while an Emergency Blow ascent resolves.
+ * Duck under venting so the 28 s underwater clip does not bury the hiss.
  */
-export async function playEmergencyBlowVenting(): Promise<void> {
-  try {
-    const { ctx, buffer } = await ensureVenting();
-    if (EMERGENCY_BLOW_VENTING_PEAK_GAIN < 0.001) return;
-    if (activeSource) {
-      try {
-        activeSource.stop();
-      } catch {
-        // Already ended.
-      }
-      activeSource = null;
-    }
-    const source = ctx.createBufferSource();
-    const gain = ctx.createGain();
-    source.buffer = buffer;
-    gain.gain.value = EMERGENCY_BLOW_VENTING_PEAK_GAIN;
-    source.connect(gain);
-    gain.connect(ctx.destination);
-    source.onended = () => {
-      if (activeSource === source) activeSource = null;
-    };
-    activeSource = source;
-    source.start();
-  } catch {
-    // Ignore unlock / network / decode errors for optional bridge SFX.
-  }
+export const SUB_DEPTH_CHANGE_EMERGENCY_BLOW_GAIN = 0.22;
+
+export async function loadEmergencyBlowVentingBuffer(ctx: AudioContext): Promise<AudioBuffer> {
+  const res = await fetch(EMERGENCY_BLOW_VENTING_SAMPLE_URL);
+  if (!res.ok) throw new Error(`Emergency-blow venting sample fetch ${res.status}`);
+  const raw = await res.arrayBuffer();
+  return ctx.decodeAudioData(raw.slice(0));
+}
+
+export type PlayEmergencyBlowVentingOptions = {
+  /** Seconds from `ctx.currentTime` before the one-shot starts (default 0). */
+  whenSec?: number;
+};
+
+/**
+ * One-shot ballast-vent cue into the Controls bridge destination.
+ * Prefer the unlocked bridge `AudioContext` so resolve-time playback is not
+ * gated on a fresh suspended context.
+ */
+export function playEmergencyBlowVentingSample(
+  ctx: AudioContext,
+  buffer: AudioBuffer,
+  destination: AudioNode,
+  peakGain: number,
+  options: PlayEmergencyBlowVentingOptions = {},
+): void {
+  if (peakGain < 0.001) return;
+  const whenSec = Math.max(0, options.whenSec ?? 0);
+  const source = ctx.createBufferSource();
+  const gain = ctx.createGain();
+  source.buffer = buffer;
+  gain.gain.value = peakGain;
+  source.connect(gain);
+  gain.connect(destination);
+  source.start(ctx.currentTime + whenSec);
 }
