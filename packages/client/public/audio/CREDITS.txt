@@ -72,3 +72,12 @@ Local copy: torpedo-tube-door.mp3
 Original filename: 847442__mikiko850__industrial-sliding-door.mp3
 Notes: Submarine Controls bridge — one tube-door one-shot per fish in a salvo
 (firer only), staggered ~0.8 s so successive opens stay countable.
+
+Source: Venting.wav by Sea Fury (Freesound #48710)
+License: as provided for War Patrol (user sample)
+Original: https://freesound.org/people/Sea%20Fury/sounds/48710/
+Local copy: emergency-blow-venting.wav
+Original filename: 48710__sea-fury__venting.wav
+Notes: Submarine Controls — ballast-vent one-shot on turn resolve while an
+Emergency Blow ascent is in progress (keel rising toward ordered 0 m);
+stacked with hull creak + depth-change cues.
