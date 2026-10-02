@@ -9,7 +9,6 @@ import {
   submarineDepthRisk,
   type DivePresetId,
 } from '@war-patrol/shared';
-import { playSubDepthChange } from '../audio/subDepthChange';
 import { TouchNumber } from './TouchNumber';
 
 export interface DiveControlsProps {
@@ -52,11 +51,6 @@ export function DiveControls({
   const keelRisk = submarineDepthRisk(depth);
 
   const submitDepthOrder = (depthM: number) => {
-    const coarseNext = Math.round(depthM / orderStepM) * orderStepM;
-    // Real depth-order change only — re-selecting the standing order is silent.
-    if (coarseNext !== coarseOrdered) {
-      void playSubDepthChange();
-    }
     onSubmit(depthM);
   };
 
