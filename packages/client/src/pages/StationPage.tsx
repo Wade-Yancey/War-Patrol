@@ -82,6 +82,7 @@ import {
   loadSubmarineCreakingBuffer,
   playSubmarineCreakSample,
 } from '../audio/submarineCreaking';
+import { playSubDepthChange } from '../audio/subDepthChange';
 
 function tokenKey(gameId: string, accessToken: string, stationId: string) {
   return `wp-token:${gameId}:${accessToken}:${stationId}`;
@@ -218,6 +219,15 @@ export function StationPage() {
   >([]);
   /** Latest sub keel depth for ambient creak scheduling + DC stress burst. */
   const subDepthRef = useRef(0);
+  /**
+   * Seed for depth-change SFX: play once when turn advances and own keel moved.
+   * Null until first sub-Controls observation (initial load stays silent).
+   */
+  const depthChangeSfxRef = useRef<{
+    unitId: string;
+    depth: number;
+    turn: number;
+  } | null>(null);
   const ambientCreakBusyRef = useRef(false);
   const bridgeAudioRef = useRef<{
     ctx: AudioContext | null;
@@ -663,6 +673,33 @@ export function StationPage() {
       cancelled = true;
     };
   }, [onControlsBridge, vessel, vessel?.bridgeDetonations, vessel?.stateVersion]);
+
+  // Sub Controls: underwater depth-change cue when keel actually moves on resolve.
+  // Silent on UI depth submit / re-order; silent when turn advances but depth holds.
+  useEffect(() => {
+    if (!onSubCreakBridge || !vessel) {
+      depthChangeSfxRef.current = null;
+      return;
+    }
+    const unitId = vessel.unit.id;
+    const keel = vessel.unit.position.depth;
+    const turn = vessel.turn.number;
+    const prev = depthChangeSfxRef.current;
+    if (!prev || prev.unitId !== unitId) {
+      depthChangeSfxRef.current = { unitId, depth: keel, turn };
+      return;
+    }
+    if (turn !== prev.turn && Math.abs(keel - prev.depth) > 1e-3) {
+      void playSubDepthChange();
+    }
+    depthChangeSfxRef.current = { unitId, depth: keel, turn };
+  }, [
+    onSubCreakBridge,
+    vessel,
+    vessel?.unit.id,
+    vessel?.unit.position.depth,
+    vessel?.turn.number,
+  ]);
 
   // Own-ship sunk popup on Controls + Sensors — wait until audio-synced
   // presentation reaches sunk (same delay as blast SFX / Damage report).

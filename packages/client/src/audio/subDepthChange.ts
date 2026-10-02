@@ -1,11 +1,12 @@
-/** Underwater depth-change one-shot for submarine dive orders (Controls). */
+/** Underwater depth-change one-shot for submarine keel motion (Controls). */
 export const SUB_DEPTH_CHANGE_SAMPLE_URL = '/audio/sub-depth-change.wav';
 
 /**
- * Peak gain for own-ship depth-order SFX on the submarine station.
- * Below short telegraph dings; above quiet ambient creaks / facility hum.
+ * Peak gain for own-ship depth-change SFX on the submarine Controls station.
+ * Loud enough for BT speakers after a resolve dive/ascent; below tube-door /
+ * deck-gun peaks (0.7) so stacked bridge cues do not clip.
  */
-export const SUB_DEPTH_CHANGE_PEAK_GAIN = 0.32;
+export const SUB_DEPTH_CHANGE_PEAK_GAIN = 0.6;
 
 let sharedCtx: AudioContext | null = null;
 let sharedBuffer: AudioBuffer | null = null;
@@ -40,8 +41,8 @@ async function ensureDepthChange(): Promise<{ ctx: AudioContext; buffer: AudioBu
 }
 
 /**
- * One-shot underwater cue when the sub's ordered depth changes.
- * Stops any prior play so rapid re-orders do not stack the long clip.
+ * One-shot underwater cue when the sub's keel depth changes on turn resolve.
+ * Stops any prior play so successive dive turns do not stack the long clip.
  * Failures (autoplay block, missing sample) are swallowed — UI must stay usable.
  */
 export async function playSubDepthChange(): Promise<void> {
@@ -68,6 +69,6 @@ export async function playSubDepthChange(): Promise<void> {
     activeSource = source;
     source.start();
   } catch {
-    // Ignore unlock / network / decode errors for optional UI SFX.
+    // Ignore unlock / network / decode errors for optional bridge SFX.
   }
 }
