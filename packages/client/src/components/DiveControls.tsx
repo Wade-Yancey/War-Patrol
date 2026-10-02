@@ -9,6 +9,7 @@ import {
   submarineDepthRisk,
   type DivePresetId,
 } from '@war-patrol/shared';
+import { playSubDepthChange } from '../audio/subDepthChange';
 import { TouchNumber } from './TouchNumber';
 
 export interface DiveControlsProps {
@@ -50,11 +51,20 @@ export function DiveControls({
   const draftRisk = submarineDepthRisk(draftDepth);
   const keelRisk = submarineDepthRisk(depth);
 
+  const submitDepthOrder = (depthM: number) => {
+    const coarseNext = Math.round(depthM / orderStepM) * orderStepM;
+    // Real depth-order change only — re-selecting the standing order is silent.
+    if (coarseNext !== coarseOrdered) {
+      void playSubDepthChange();
+    }
+    onSubmit(depthM);
+  };
+
   const applyPreset = (id: DivePresetId) => {
     const preset = DIVE_PRESETS.find((p) => p.id === id);
     if (!preset || disabled) return;
     onDraftDepthChange(preset.depthM);
-    onSubmit(preset.depthM);
+    submitDepthOrder(preset.depthM);
   };
 
   const riskBanner =
@@ -170,7 +180,7 @@ export function DiveControls({
           className="primary"
           type="button"
           disabled={disabled}
-          onClick={() => onSubmit(draftDepth)}
+          onClick={() => submitDepthOrder(draftDepth)}
         >
           Submit depth
         </button>
