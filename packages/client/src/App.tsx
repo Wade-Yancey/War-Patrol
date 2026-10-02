@@ -1,6 +1,4 @@
-import { useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
-import { installUiButtonClickSfx } from './audio/uiButtonClick';
 import { LandingPage } from './pages/LandingPage';
 import { JoinPage } from './pages/JoinPage';
 import { UmpirePage } from './pages/UmpirePage';
@@ -20,8 +18,6 @@ function UmpireRoute() {
 }
 
 export function App() {
-  useEffect(() => installUiButtonClickSfx(), []);
-
   return (
     <BrowserRouter>
       <Routes>
