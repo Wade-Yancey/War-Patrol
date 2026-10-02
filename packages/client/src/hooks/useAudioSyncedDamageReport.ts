@@ -10,6 +10,7 @@ import {
 } from '@war-patrol/shared';
 import { depthChargeBatchWhenSecById } from '../audio/depthCharge';
 import { deckGunFireBatchWhenSecById } from '../audio/deckGunFire';
+import { torpedoFireBatchWhenSecById } from '../audio/torpedoFire';
 import { torpedoHitBatchWhenSecById } from '../audio/torpedoHit';
 
 export type ScheduleDamageReveal = (detonationId: string, whenSec: number) => void;
@@ -129,6 +130,8 @@ export function useAudioSyncedDamageReport(
     const hitWhenById = torpedoHitBatchWhenSecById(hitBatch);
     const gunFireBatch = events.filter((e) => e.kind === 'deck_gun_fire');
     const gunFireWhenById = deckGunFireBatchWhenSecById(gunFireBatch);
+    const tubeDoorBatch = events.filter((e) => e.kind === 'torpedo_fire');
+    const tubeDoorWhenById = torpedoFireBatchWhenSecById(tubeDoorBatch);
     for (const e of events) {
       if (scheduledDetonationIdsRef.current.has(e.id)) continue;
       let whenSec = 0;
@@ -138,6 +141,8 @@ export function useAudioSyncedDamageReport(
         whenSec = Math.max(0, e.audioDelaySec ?? 0);
       } else if (e.kind === 'deck_gun_fire') {
         whenSec = gunFireWhenById.get(e.id) ?? Math.max(0, e.audioDelaySec ?? 0);
+      } else if (e.kind === 'torpedo_fire') {
+        whenSec = tubeDoorWhenById.get(e.id) ?? Math.max(0, e.audioDelaySec ?? 0);
       } else {
         whenSec = dcWhenById.get(e.id) ?? 0;
       }

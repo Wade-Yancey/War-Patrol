@@ -2500,6 +2500,7 @@ async function main() {
       DESTROYER_DECK_GUN_MAX_SHOTS_PER_TURN,
       FLEET_SUB_DECK_GUN_MAX_SHOTS_PER_TURN,
       DECK_GUN_FIRE_STAGGER_SEC,
+      TORPEDO_FIRE_STAGGER_SEC,
       DECK_GUN_HIT_DAMAGE,
       DECK_GUN_HIT_CHANCE_CENTER,
       DECK_GUN_HIT_CHANCE_EDGE,
@@ -2562,6 +2563,7 @@ async function main() {
       maxDeckGunShotsPerTurn({ class: 'Fleet Submarine', type: 'Submarine' }) === 2,
     );
     check('deck gun fire stagger 2s', DECK_GUN_FIRE_STAGGER_SEC === 2);
+    check('torpedo fire stagger 0.8s', TORPEDO_FIRE_STAGGER_SEC === 0.8);
     check(
       'clamp deck gun shot count to ammo',
       clampDeckGunShotCount(6, { class: 'Destroyer', type: 'Ship', deckGunLoad: 2 }) === 2,
@@ -4643,6 +4645,46 @@ async function main() {
       'torpedo has launch + path',
       Boolean(fish[0]?.launchPosition) && Array.isArray(fish[0]?.path) && (fish[0]!.path!.length >= 1),
     );
+    {
+      const afterLaunch = await api('GET', `/api/games/${torpId}/view`, undefined, torpTok);
+      const launchBridge = (
+        afterLaunch.json.view as {
+          bridgeDetonations?: Array<{ kind: string; audioDelaySec?: number }>;
+        }
+      ).bridgeDetonations;
+      const tubeDoors = (launchBridge ?? []).filter((d) => d.kind === 'torpedo_fire');
+      check(
+        'firer Controls gets torpedo_fire bridge cues (one per fish)',
+        tubeDoors.length === 3,
+        `bridge=${JSON.stringify(launchBridge)}`,
+      );
+      const delays = tubeDoors.map((d) => d.audioDelaySec ?? 0).sort((a, b) => a - b);
+      check(
+        'torpedo_fire cues stagger 0 / 0.8 / 1.6 s',
+        delays.length === 3 &&
+          Math.abs(delays[0]! - 0) < 1e-9 &&
+          Math.abs(delays[1]! - 0.8) < 1e-9 &&
+          Math.abs(delays[2]! - 1.6) < 1e-9,
+        `delays=${JSON.stringify(delays)}`,
+      );
+      const ddJoin = await api('POST', `/api/games/${torpId}/auth/vessel`, {
+        accessToken: 'porter-demo',
+        password: 'blue',
+        stationId: 'controls',
+      });
+      const ddTok = String(ddJoin.json.token);
+      const ddLaunch = await api('GET', `/api/games/${torpId}/view`, undefined, ddTok);
+      const ddBridge = (
+        ddLaunch.json.view as {
+          bridgeDetonations?: Array<{ kind: string }>;
+        }
+      ).bridgeDetonations;
+      check(
+        'destroyer Controls does not get torpedo_fire cues',
+        !(ddBridge ?? []).some((d) => d.kind === 'torpedo_fire'),
+        `bridge=${JSON.stringify(ddBridge)}`,
+      );
+    }
     const headings = [...new Set(fish.map((f) => Math.round(((f.heading ?? 0) % 360) + 360) % 360))];
     const expectedFan = torpedoSpreadHeadings(beamSol.fireHeading, 3, 2).map((h) =>
       Math.round(((h % 360) + 360) % 360),
