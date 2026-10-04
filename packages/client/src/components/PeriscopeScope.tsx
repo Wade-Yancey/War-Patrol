@@ -114,11 +114,10 @@ function contactsKey(contacts: PeriscopeContact[]): string {
  * Shared visual optics CRT — one desktop row:
  * helm-style bearing compass (left) · silhouette viewer (center) · contact table (right).
  *
- * Used for fleet-sub periscope and surface-ship lookout. Destroyer / ship
- * contacts → `destroyer.png`; Fleet Submarine hull contacts → `submarine.png`.
- * DD lookout periscope feathers (`kind: 'periscope'`) → stick/feather SVG (not a hull plate).
- * Unknown classes fall back to the destroyer plate. CRT grain/scanline overlay
- * sits above the optics without hiding alpha.
+ * Used for fleet-sub periscope and surface-ship lookout. Hull plates seat on the
+ * sky/sea waterline; air plates float in the upper sky; feathers rise from near
+ * the horizon. Sinking = soft list + waterline immersion; damageLook = coarse
+ * plate tone / stack plume (no HP). CRT grain/scanline overlay sits above optics.
  */
 function PeriscopeScopeInner({
   contacts,
@@ -197,36 +196,54 @@ function PeriscopeScopeInner({
           <p className="periscope-empty mono muted">No visual contacts within {maxRangeNm} nm</p>
         ) : selected ? (
           <div
-            className={`periscope-selected${
-              !isFeather && selected.sinking ? ' periscope-selected--sinking' : ''
-            }`}
+            className={[
+              'periscope-selected',
+              isFeather
+                ? 'periscope-selected--feather'
+                : airPlate
+                  ? 'periscope-selected--air'
+                  : 'periscope-selected--hull',
+              !isFeather && selected.sinking ? 'periscope-selected--sinking' : '',
+              !isFeather && selected.damageLook
+                ? `periscope-selected--${selected.damageLook}`
+                : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
             style={{ ['--peri-scale' as string]: String(scale) }}
           >
             {isFeather ? (
-              <PeriscopeFeatherSvg className="periscope-feather" />
+              <div className="periscope-plate-wrap periscope-plate-wrap--feather">
+                <PeriscopeFeatherSvg className="periscope-feather" />
+              </div>
             ) : imgFailed ? (
               <p className="periscope-img-error mono" role="alert">
                 Silhouette failed to load
               </p>
             ) : (
               <div
-                className={`periscope-plate-wrap${
-                  selected.sinking ? ' periscope-plate-wrap--sinking' : ''
-                }${
-                  selected.damageLook
-                    ? ` periscope-plate-wrap--${selected.damageLook}`
-                    : ''
-                }`}
+                className={[
+                  'periscope-plate-wrap',
+                  airPlate ? 'periscope-plate-wrap--air' : 'periscope-plate-wrap--hull',
+                  selected.sinking ? 'periscope-plate-wrap--sinking' : '',
+                  selected.damageLook ? `periscope-plate-wrap--${selected.damageLook}` : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
               >
                 <img
                   key={plateSrc}
-                  className={`periscope-silhouette${airPlate ? ' periscope-silhouette--air' : ''}${
-                    flipPlate ? ' periscope-silhouette--flip' : ''
-                  }${selected.sinking ? ' periscope-silhouette--sinking' : ''}${
+                  className={[
+                    'periscope-silhouette',
+                    airPlate ? 'periscope-silhouette--air' : '',
+                    flipPlate ? 'periscope-silhouette--flip' : '',
+                    selected.sinking ? 'periscope-silhouette--sinking' : '',
                     selected.damageLook
-                      ? ` periscope-silhouette--${selected.damageLook}`
-                      : ''
-                  }`}
+                      ? `periscope-silhouette--${selected.damageLook}`
+                      : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
                   src={plateSrc}
                   alt={silhouetteAlt(plateClass, plateKey)}
                   width={plateSize.width}
@@ -237,11 +254,9 @@ function PeriscopeScopeInner({
                   onError={() => setImgFailed(true)}
                   onLoad={() => setImgFailed(false)}
                 />
+                {/* Soft stack plume for heavy damage / sinking — no scar overlays. */}
                 {selected.damageLook === 'smoking' && (
                   <div className="periscope-damage-smoke" aria-hidden />
-                )}
-                {selected.damageLook === 'scarred' && (
-                  <div className="periscope-damage-scar" aria-hidden />
                 )}
               </div>
             )}
