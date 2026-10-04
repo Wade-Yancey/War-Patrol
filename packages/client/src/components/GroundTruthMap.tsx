@@ -536,14 +536,17 @@ function GroundTruthMapInner({
         if (!anyOn) return null;
         const last = pts[pts.length - 1]!;
         const prev = pts[pts.length - 2]!;
+        const isAircraft = unit.type === 'Aircraft';
         return {
           id: unit.id,
           color,
           points: pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '),
+          /** Screen xy for air breadcrumb ticks (omit ship wakes). */
+          xy: isAircraft ? pts.map((p) => ({ x: p.x, y: p.y })) : null,
           /** Last inbound screen delta — keep unit labels off the trail. */
           inboundDx: last.x - prev.x,
           /** Air trails use a dotted stroke so they don't read as ship wakes. */
-          isAircraft: unit.type === 'Aircraft',
+          isAircraft,
         };
       })
       .filter(
@@ -553,6 +556,7 @@ function GroundTruthMapInner({
           id: string;
           color: string;
           points: string;
+          xy: { x: number; y: number }[] | null;
           inboundDx: number;
           isAircraft: boolean;
         } => Boolean(x),
@@ -1192,19 +1196,34 @@ function GroundTruthMapInner({
             ))}
           </g>
 
-          {/* Trails under labels/units — ships solid, aircraft dotted (CRT-friendly) */}
+          {/* Trails under labels/units — ships solid wake; aircraft dotted + ticks */}
           {trailPolylines.map((t) => (
-            <polyline
-              key={`trail-${t.id}`}
-              points={t.points}
-              fill="none"
-              stroke={t.color}
-              strokeWidth={t.isAircraft ? 1.5 : 1.25}
-              strokeOpacity={t.isAircraft ? 0.72 : 0.55}
-              strokeDasharray={t.isAircraft ? '1.5 3.5' : undefined}
-              strokeLinejoin="round"
-              strokeLinecap="round"
-            />
+            <g key={`trail-${t.id}`} className={t.isAircraft ? 'map-trail-air' : 'map-trail-surface'}>
+              <polyline
+                points={t.points}
+                fill="none"
+                stroke={t.color}
+                strokeWidth={t.isAircraft ? 1.85 : 1.25}
+                strokeOpacity={t.isAircraft ? 0.8 : 0.55}
+                strokeDasharray={t.isAircraft ? '2.5 5' : undefined}
+                strokeLinejoin="round"
+                strokeLinecap={t.isAircraft ? 'butt' : 'round'}
+              />
+              {/* Prior-turn breadcrumbs only — skip tip under the aircraft glyph */}
+              {t.isAircraft &&
+                t.xy?.slice(0, -1).map((p, i) => (
+                  <circle
+                    key={`trail-tick-${t.id}-${i}`}
+                    cx={p.x}
+                    cy={p.y}
+                    r={2.25}
+                    fill="none"
+                    stroke={t.color}
+                    strokeWidth={1.1}
+                    strokeOpacity={0.85}
+                  />
+                ))}
+            </g>
           ))}
 
           {/* Entire intended move this resolve (helm + EOT over turn length) */}
@@ -1215,24 +1234,24 @@ function GroundTruthMapInner({
                   points={m.points}
                   fill="none"
                   stroke={m.color}
-                  strokeWidth={m.isAircraft ? 1.35 : 1.5}
+                  strokeWidth={m.isAircraft ? 1.5 : 1.5}
                   strokeOpacity={0.7}
-                  strokeDasharray={m.isAircraft ? '1.5 2.5 5 2.5' : '5 4'}
+                  strokeDasharray={m.isAircraft ? '2 3 7 3' : '5 4'}
                   strokeLinejoin="round"
-                  strokeLinecap="round"
+                  strokeLinecap={m.isAircraft ? 'butt' : 'round'}
                 />
                 {m.isAircraft ? (
                   /* Diamond tip — air predicted end vs vessel circle */
                   <rect
-                    x={m.endX - 2.75}
-                    y={m.endY - 2.75}
-                    width={5.5}
-                    height={5.5}
+                    x={m.endX - 3}
+                    y={m.endY - 3}
+                    width={6}
+                    height={6}
                     transform={`rotate(45 ${m.endX} ${m.endY})`}
                     fill="none"
                     stroke={m.color}
-                    strokeWidth={1.25}
-                    strokeOpacity={0.85}
+                    strokeWidth={1.35}
+                    strokeOpacity={0.9}
                   />
                 ) : (
                   <circle
