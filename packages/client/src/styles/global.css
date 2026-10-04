@@ -3010,12 +3010,14 @@ label {
 }
 
 .periscope-viewport {
-  /* Sky/sea plane — mid blues so Wade’s white plate + black lines stay readable. */
+  /* Sky/sea plane — mid blues so Wade’s white plate + black lines stay readable.
+     Horizon band is the waterline for hull silhouettes (see .periscope-plate-wrap--hull). */
   --peri-sky-top: #9ec4e0;
   --peri-sky-horizon: #b7d4ea;
   --peri-sea-top: #4f87ae;
   --peri-sea-deep: #2f6288;
   --peri-horizon-line: color-mix(in srgb, #e8f2fa 70%, transparent);
+  --peri-horizon-pct: 42%;
 
   position: relative;
   display: flex;
@@ -3028,8 +3030,8 @@ label {
   background: linear-gradient(
     180deg,
     var(--peri-sky-top) 0%,
-    var(--peri-sky-horizon) 42%,
-    var(--peri-sea-top) 42.2%,
+    var(--peri-sky-horizon) var(--peri-horizon-pct),
+    var(--peri-sea-top) calc(var(--peri-horizon-pct) + 0.2%),
     var(--peri-sea-deep) 100%
   );
   overflow: hidden;
@@ -3054,17 +3056,18 @@ label {
   position: absolute;
   left: 0;
   right: 0;
-  top: 42%;
+  top: var(--peri-horizon-pct);
   height: 1px;
   background: var(--peri-horizon-line);
   opacity: 0.9;
+  z-index: 2;
 }
 
 .periscope-sea {
   position: absolute;
   left: 0;
   right: 0;
-  top: 42%;
+  top: var(--peri-horizon-pct);
   bottom: 0;
   background: linear-gradient(
     180deg,
@@ -3072,6 +3075,7 @@ label {
     transparent 50%
   );
   pointer-events: none;
+  z-index: 1;
 }
 
 /* Subtle CRT grain + horizontal scanlines over the optics plane only.
@@ -3140,18 +3144,49 @@ label {
 }
 
 .periscope-selected {
-  /* Flex child of viewport — not absolute; real box size so <img> can paint. */
-  position: relative;
+  /* Fill the viewport; plate + readouts are absolutely seated (waterline / sky). */
+  position: absolute;
+  inset: 0;
   z-index: 3;
+  pointer-events: none;
+}
+
+.periscope-plate-wrap {
+  position: absolute;
+  left: 50%;
   display: flex;
-  flex-direction: column;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
-  gap: 0.55rem;
-  width: min(100%, 24rem);
-  padding: 1.25rem 0.75rem 1rem;
-  transform: scale(var(--peri-scale, 1));
+  pointer-events: none;
+}
+
+/*
+ * Hull plates sit on the horizon waterline: wrap bottom edge = --peri-horizon-pct.
+ * Range scale grows from the keel so nearer ships stay seated, not floating.
+ */
+.periscope-plate-wrap--hull {
+  top: auto;
+  bottom: calc(100% - var(--peri-horizon-pct));
+  transform: translateX(-50%) scale(var(--peri-scale, 1));
+  transform-origin: center bottom;
+  transition: transform 280ms ease-out;
+}
+
+/* Air top-downs float in the upper sky band (not on the waterline). */
+.periscope-plate-wrap--air {
+  top: 22%;
+  bottom: auto;
+  transform: translate(-50%, -50%) scale(var(--peri-scale, 1));
   transform-origin: center center;
+  transition: transform 280ms ease-out;
+}
+
+/* Feather stick rises from near the waterline into the sky. */
+.periscope-plate-wrap--feather {
+  top: auto;
+  bottom: calc(100% - var(--peri-horizon-pct));
+  transform: translateX(-50%) scale(var(--peri-scale, 1));
+  transform-origin: center bottom;
   transition: transform 280ms ease-out;
 }
 
@@ -3159,20 +3194,24 @@ label {
   /* Plain Vite-bundled PNG with alpha — no filters; transparent over sky/sea.
      Natural aspect from width/height attrs (DD 349×79, sub 350×55).
      Default art is bow-right; --flip mirrors for port AOB (see periscopeSilhouetteFlipX).
-     Parent `.periscope-selected` applies --peri-scale from range (closer = larger). */
+     Parent plate wrap applies --peri-scale from range (closer = larger). */
   display: block;
   flex: 0 0 auto;
   box-sizing: border-box;
   width: min(92vw, 22rem);
-  max-width: 100%;
+  max-width: min(92vw, 22rem);
   height: auto;
   min-height: 2rem;
   object-fit: contain;
-  object-position: center center;
+  object-position: center bottom;
   background: transparent;
   border: none;
   user-select: none;
   -webkit-user-drag: none;
+  transition:
+    transform 420ms ease-out,
+    opacity 420ms ease-out,
+    filter 280ms ease-out;
 }
 
 /* Nose-up top-down airframes (Zeke): size by height so range scale reads clearly
@@ -3182,118 +3221,86 @@ label {
   height: min(42vw, 12rem);
   max-width: min(92vw, 18rem);
   min-height: 0;
+  object-position: center center;
 }
 
 .periscope-silhouette--flip {
   transform: scaleX(-1);
 }
 
-/* Selected sinking contact — sit the plate on the sea band. */
-.periscope-selected--sinking {
-  justify-content: flex-end;
-  padding-bottom: 22%;
-  padding-top: 0.5rem;
-}
-
-.periscope-plate-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-}
-
 /*
- * Sinking pose: show half the silhouette PNG, rotate ~90° so the cut edge
- * reads as the hull diving into the water background.
+ * Sinking pose: keep the silhouette readable as a hull — soft list + waterline
+ * immersion (clip at horizon). Wrap bottom stays on the waterline; short height
+ * shows only remaining freeboard / superstructure. No half-PNG / 90° tip-over.
  */
 .periscope-plate-wrap--sinking {
-  width: min(48vw, 11rem);
-  height: min(48vw, 11rem);
   overflow: hidden;
-  align-items: flex-end;
-  justify-content: center;
+  /* Visible freeboard above the waterline — most of the hull is under. */
+  height: clamp(1.75rem, 5vw, 2.85rem);
+  align-items: flex-start;
 }
 
 .periscope-silhouette--sinking {
-  /* Left half of the plate, stood on end into the sea. */
-  clip-path: inset(0 50% 0 0);
-  transform: rotate(90deg);
-  transform-origin: center center;
-  width: min(92vw, 22rem);
-  max-width: none;
-  margin-bottom: -8%;
-  opacity: 0.92;
-  transition: transform 420ms ease-out, opacity 420ms ease-out;
+  /* Soft list; keel hangs below the wrap and is clipped at the waterline. */
+  transform: rotate(-12deg);
+  transform-origin: 50% 85%;
+  margin-top: -18%;
+  opacity: 0.9;
+  filter: contrast(1.06) saturate(0.75) brightness(0.85);
 }
 
 .periscope-silhouette--sinking.periscope-silhouette--flip {
-  clip-path: inset(0 0 0 50%);
-  transform: scaleX(-1) rotate(90deg);
+  transform: scaleX(-1) rotate(-12deg);
+  transform-origin: 50% 85%;
 }
 
-/* Coarse damage: scar tint / smoke cue — never HP stages. */
+/* Coarse damage: plate tone only for scarred; soft plume for smoking — never HP stages. */
 .periscope-silhouette--scarred {
-  filter: contrast(1.08) saturate(0.85) brightness(0.92);
+  filter: contrast(1.06) saturate(0.88) brightness(0.9);
 }
 
 .periscope-silhouette--smoking {
-  filter: contrast(1.12) saturate(0.7) brightness(0.82);
+  filter: contrast(1.1) saturate(0.72) brightness(0.8);
 }
 
 .periscope-silhouette--sinking.periscope-silhouette--scarred,
 .periscope-silhouette--sinking.periscope-silhouette--smoking {
-  /* Keep rotate/flip transforms; layer filter separately. */
-  filter: contrast(1.12) saturate(0.65) brightness(0.78);
+  filter: contrast(1.1) saturate(0.68) brightness(0.78);
 }
 
-.periscope-damage-scar {
-  position: absolute;
-  inset: 28% 18% 42% 35%;
-  background: linear-gradient(
-    105deg,
-    transparent 0%,
-    rgba(28, 18, 10, 0.35) 42%,
-    transparent 70%
-  );
-  pointer-events: none;
-  mix-blend-mode: multiply;
-}
-
-.periscope-plate-wrap--sinking .periscope-damage-scar {
-  inset: 35% 20% 20% 20%;
-  transform: rotate(90deg);
-}
-
+/* Soft stack plume — intentional, low-contrast, rises from amidships. */
 .periscope-damage-smoke {
   position: absolute;
-  left: 42%;
-  top: 8%;
-  width: 28%;
-  height: 55%;
+  left: 48%;
+  bottom: 55%;
+  width: 22%;
+  height: 120%;
   pointer-events: none;
+  transform: translateX(-50%);
   background:
-    radial-gradient(ellipse at 50% 80%, rgba(40, 40, 40, 0.45) 0%, transparent 62%),
-    radial-gradient(ellipse at 40% 45%, rgba(70, 70, 70, 0.28) 0%, transparent 55%),
-    radial-gradient(ellipse at 60% 20%, rgba(90, 90, 90, 0.18) 0%, transparent 50%);
-  filter: blur(1.5px);
-  animation: periscope-smoke-drift 2.4s ease-in-out infinite alternate;
+    radial-gradient(ellipse 55% 40% at 50% 85%, rgba(36, 38, 42, 0.38) 0%, transparent 70%),
+    radial-gradient(ellipse 45% 35% at 42% 55%, rgba(55, 58, 62, 0.22) 0%, transparent 68%),
+    radial-gradient(ellipse 40% 30% at 58% 25%, rgba(70, 74, 78, 0.14) 0%, transparent 65%);
+  filter: blur(2px);
+  opacity: 0.85;
+  animation: periscope-smoke-drift 3.2s ease-in-out infinite alternate;
 }
 
 .periscope-plate-wrap--sinking .periscope-damage-smoke {
-  left: 20%;
-  top: 10%;
-  width: 45%;
-  height: 50%;
+  left: 40%;
+  bottom: 70%;
+  width: 30%;
+  height: 160%;
+  opacity: 0.7;
 }
 
 @keyframes periscope-smoke-drift {
   0% {
-    transform: translateY(0) scale(1);
-    opacity: 0.75;
+    transform: translateX(-50%) translateY(4%) scale(0.96);
+    opacity: 0.7;
   }
   100% {
-    transform: translateY(-10%) scale(1.08);
+    transform: translateX(-46%) translateY(-8%) scale(1.06);
     opacity: 0.95;
   }
 }
@@ -3302,7 +3309,10 @@ label {
   .periscope-damage-smoke {
     animation: none;
   }
-  .periscope-silhouette--sinking {
+  .periscope-silhouette,
+  .periscope-plate-wrap--hull,
+  .periscope-plate-wrap--air,
+  .periscope-plate-wrap--feather {
     transition: none;
   }
 }
@@ -3321,25 +3331,38 @@ label {
 }
 
 .periscope-img-error {
+  position: absolute;
+  left: 50%;
+  top: 38%;
+  transform: translate(-50%, -50%);
   margin: 0;
   padding: 0.75rem 1rem;
   color: #0a1620;
   background: #ffffff;
   border: 1px solid #0a1620;
+  pointer-events: none;
 }
 
 .periscope-readouts {
+  /* Seat in the sea band below the waterline so plates stay unobscured. */
+  position: absolute;
+  left: 50%;
+  bottom: 6%;
+  transform: translateX(-50%);
+  z-index: 4;
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   align-items: baseline;
   gap: 0.35rem 0.75rem;
   row-gap: 0.2rem;
+  width: min(92%, 22rem);
   padding: 0.35rem 0.65rem;
   font-size: 0.82rem;
   color: var(--phosphor);
   background: color-mix(in srgb, var(--bg-crt) 82%, transparent);
   border: 1px solid color-mix(in srgb, var(--phosphor-dim) 40%, transparent);
+  pointer-events: none;
 }
 
 .periscope-readouts > .readout {
