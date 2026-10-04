@@ -123,10 +123,18 @@ export const ACTIVE_SONAR_MAX_RANGE_NM = 8;
 export const ACTIVE_SONAR_HALF_ANGLE_DEG = 30;
 
 /**
- * Wall-clock seconds between active-sonar pings (own set + hydrophone hear).
+ * Wall-clock seconds between active-sonar pings (own set + hydrophone hear +
+ * close-aboard sub Controls hull hear).
  * Stub cadence ~ASDIC search (was 2 s — too rapid for a believable ping cycle).
  */
 export const ACTIVE_SONAR_PING_INTERVAL_SEC = 6;
+
+/**
+ * Max range (nm) at which another vessel’s active search sonar is audible on
+ * submerged submarine Controls (hull-coupled through the water — very close
+ * only; hydrophone remains the long-range listen path).
+ */
+export const ACTIVE_SONAR_CONTROLS_AUDIBLE_NM = 0.8;
 
 /**
  * Periscope / lookout visual max range (nm) — short stub.

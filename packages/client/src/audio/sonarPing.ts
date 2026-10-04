@@ -1,8 +1,14 @@
-/** Shared active-search sonar ping sample (destroyer Sensors + hydrophone hear). */
+/** Shared active-search sonar ping sample (destroyer Sensors + hydrophone + close sub Controls). */
 export const SONAR_PING_SAMPLE_URL = '/audio/sonar-ping.wav';
 
 /** Own-set peak gain when search sonar is ON (Sensors screen). */
 export const SONAR_PING_OWN_GAIN = 0.32;
+
+/** Re-export: point-blank peak / proximity curve for hull-coupled enemy pings on sub Controls. */
+export {
+  ACTIVE_SONAR_CONTROLS_PEAK_GAIN,
+  activeSonarControlsPeakGain,
+} from '@war-patrol/shared';
 
 /** Peak gain for a hydrophone-heard ping given range×beam gain in [0, 1]. */
 export function hydrophonePingPeakGain(contactGain: number): number {

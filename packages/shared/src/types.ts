@@ -1180,6 +1180,17 @@ export interface VesselView {
     audioDelaySec?: number;
   }>;
   /**
+   * Nearby other-vessel active-sonar pings audible through the hull on
+   * submerged submarine Controls (bridge ambient path). Polar only — range
+   * for proximity gain; no emitter identity. Omitted when none / not applicable
+   * (surfaced, non-sub, Sensors station — Sensors uses hydrophone instead).
+   */
+  bridgeActiveSonarPings?: Array<{
+    id: string;
+    bearing: number;
+    rangeNm: number;
+  }>;
+  /**
    * Radar picture for stations with the `radar` capability.
    * Omitted for non-radar stations — never full unit list.
    */

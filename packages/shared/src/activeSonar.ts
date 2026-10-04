@@ -1,4 +1,5 @@
 import {
+  ACTIVE_SONAR_CONTROLS_AUDIBLE_NM,
   ACTIVE_SONAR_HALF_ANGLE_DEG,
   ACTIVE_SONAR_MAX_RANGE_NM,
   RADAR_SURFACE_DEPTH_M,
@@ -62,6 +63,29 @@ export function isActiveSonarPinging(
   if (unit.condition === 'sunk') return false;
   if (unit.subsystems?.activeSonar === 'disabled') return false;
   return true;
+}
+
+/**
+ * Peak Web Audio gain for a nearby enemy active-sonar ping on sub Controls
+ * speakers at point-blank. Kept above facility hum (0.08) but well below own
+ * Sensors ping (0.32) and combat one-shots — unnerving, not deafening.
+ */
+export const ACTIVE_SONAR_CONTROLS_PEAK_GAIN = 0.16;
+
+/**
+ * Controls bridge peak gain for a nearby active-sonar ping from range (nm).
+ *
+ * - Silent at / beyond {@link ACTIVE_SONAR_CONTROLS_AUDIBLE_NM} (server also
+ *   filters bridge cues past this radius).
+ * - Inside: `gain = PEAK × t²` where `t = 1 − range / rMax` — quadratic so
+ *   volume grows noticeably as the pinger closes.
+ */
+export function activeSonarControlsPeakGain(rangeNm: number): number {
+  const r = Math.max(0, rangeNm);
+  const rMax = ACTIVE_SONAR_CONTROLS_AUDIBLE_NM;
+  if (!(rMax > 0) || r >= rMax) return 0;
+  const t = 1 - r / rMax;
+  return ACTIVE_SONAR_CONTROLS_PEAK_GAIN * t * t;
 }
 
 /**

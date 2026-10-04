@@ -8,15 +8,19 @@ import type {
   VesselView,
 } from '@war-patrol/shared';
 import {
+  ACTIVE_SONAR_CONTROLS_AUDIBLE_NM,
   DEPTH_CHARGE_CONTROLS_AUDIBLE_NM,
+  RADAR_SURFACE_DEPTH_M,
   bearingRangeNm,
   buildOwnDamageLog,
+  isActiveSonarPinging,
   isV1PlayerUnit,
   reconcileFormations,
 } from '@war-patrol/shared';
 import type { SseHub } from './sse.js';
 import { buildActiveSonarContacts } from './activeSonar.js';
 import { buildHydrophoneContacts } from './hydrophone.js';
+import { opaqueTrackId } from './opaqueTrackId.js';
 import { buildPeriscopeContacts } from './periscope.js';
 import { buildRadarContacts } from './radar.js';
 import { buildTorpedoWakeCues } from './wakeCues.js';
@@ -100,6 +104,38 @@ export function buildBridgeDetonations(
     });
   }
   return bridge;
+}
+
+/**
+ * Hull-coupled active-sonar pings for submerged submarine Controls.
+ *
+ * Another vessel with search sonar ON within
+ * {@link ACTIVE_SONAR_CONTROLS_AUDIBLE_NM} — polar only (range for proximity
+ * gain). Sensors stations omit this; they already hear pings via hydrophone.
+ */
+export function buildBridgeActiveSonarPings(
+  unit: UnitState,
+  save: GameSave,
+): NonNullable<VesselView['bridgeActiveSonarPings']> {
+  if (unit.type !== 'Submarine') return [];
+  if (unit.condition === 'sunk') return [];
+  if (unit.position.depth <= RADAR_SURFACE_DEPTH_M) return [];
+
+  const pings: NonNullable<VesselView['bridgeActiveSonarPings']> = [];
+  for (const other of save.units) {
+    if (other.id === unit.id) continue;
+    if (other.type === 'Aircraft') continue;
+    if (!isActiveSonarPinging(other)) continue;
+    const { bearing, rangeNm } = bearingRangeNm(unit.position, other.position);
+    if (rangeNm > ACTIVE_SONAR_CONTROLS_AUDIBLE_NM || rangeNm <= 0) continue;
+    pings.push({
+      id: `b-as-${opaqueTrackId([unit.id, other.id, 'bridge', 'ping'])}`,
+      bearing: Math.round(bearing * 10) / 10,
+      rangeNm: Math.round(rangeNm * 100) / 100,
+    });
+  }
+  pings.sort((a, b) => a.bearing - b.bearing || a.rangeNm - b.rangeNm);
+  return pings;
 }
 
 /** Build umpire polylines from start positions + history snapshots + current. */
@@ -286,6 +322,12 @@ export function buildVesselView(
   if (onControlsStation || onSensorsStation) {
     const bridge = buildBridgeDetonations(unit, save);
     if (bridge.length) view.bridgeDetonations = bridge;
+  }
+
+  // Close-aboard enemy active sonar on sub Controls only (not Sensors).
+  if (onControlsStation && !onSensorsStation) {
+    const bridgePings = buildBridgeActiveSonarPings(unit, save);
+    if (bridgePings.length) view.bridgeActiveSonarPings = bridgePings;
   }
 
   if (station.capabilities.includes('radar')) {
