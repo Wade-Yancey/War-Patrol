@@ -6,6 +6,7 @@
   "scripts": {
     "build": "pnpm -r run build",
     "dev": "pnpm --parallel --filter @war-patrol/server --filter @war-patrol/client run dev",
+    "dev:setup": "node scripts/dev.mjs",
     "dev:server": "pnpm --filter @war-patrol/server run dev",
     "dev:client": "pnpm --filter @war-patrol/client run dev",
     "start": "pnpm --filter @war-patrol/server run start",

@@ -9,22 +9,30 @@ Hosted game shell only: create/load games, umpire + vessel auth, SSE state push,
 ## Requirements
 
 - Node.js 20+
-- [pnpm](https://pnpm.io/) 9+ (via Corepack)
+- [pnpm](https://pnpm.io/) 9+ (standalone install is fine; Corepack is optional)
 
 ## Quick start
 
-Enable pnpm with Corepack (Node 20+), then install and run:
+One command (installs deps, builds shared, starts client + server). Prefers an
+existing `pnpm` on PATH; only tries Corepack when pnpm is missing, and never
+prints noisy Corepack errors if it is absent:
 
 ```bash
-corepack enable
-corepack prepare pnpm@9.15.0 --activate
+node scripts/dev.mjs
+```
+
+Equivalent after pnpm is already available: `pnpm dev:setup`.
+
+Manual steps (same outcome):
+
+```bash
 pnpm install
 pnpm --filter @war-patrol/shared build
 pnpm dev
 ```
 
 - Client: http://127.0.0.1:5173  
-- API: http://127.0.0.1:8787  
+- API: http://127.0.0.1:8787 
 
 Demo scenario passwords: umpire `umpire`, destroyer `blue`, submarine `red`.
 
