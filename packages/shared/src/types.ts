@@ -1360,13 +1360,14 @@ export interface PeriscopeContact {
    */
   silhouettePlate?: string;
   /**
-   * FoW sinking pose — true when the contact is in the multi-turn sinking phase.
-   * Optics tilt/clip the silhouette; does not expose HP or turn countdown.
+   * FoW status — true when the contact is in the multi-turn sinking phase.
+   * Status-only for now (client silhouette presentation deferred); does not
+   * expose HP or turn countdown.
    */
   sinking?: boolean;
   /**
-   * Coarse battle-damage cue from optics only (scar / smoke) — not precise HP.
-   * Omitted when the hull reads undamaged.
+   * Coarse battle-damage FoW status (`scarred` / `smoking`) — not precise HP.
+   * Status-only for now (client overlays deferred). Omitted when undamaged.
    */
   damageLook?: OpticsDamageLook;
 }
