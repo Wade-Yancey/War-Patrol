@@ -542,10 +542,20 @@ function GroundTruthMapInner({
           points: pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '),
           /** Last inbound screen delta — keep unit labels off the trail. */
           inboundDx: last.x - prev.x,
+          /** Air trails use a dotted stroke so they don't read as ship wakes. */
+          isAircraft: unit.type === 'Aircraft',
         };
       })
       .filter(
-        (x): x is { id: string; color: string; points: string; inboundDx: number } => Boolean(x),
+        (
+          x,
+        ): x is {
+          id: string;
+          color: string;
+          points: string;
+          inboundDx: number;
+          isAircraft: boolean;
+        } => Boolean(x),
       );
   }, [units, trailByUnit, view]);
 
@@ -728,6 +738,7 @@ function GroundTruthMapInner({
           endY: end.y,
           /** Screen delta of the move — keep labels off the predicted track tip. */
           outboundDx: end.x - start.x,
+          isAircraft: unit.type === 'Aircraft',
         };
       })
       .filter(
@@ -740,6 +751,7 @@ function GroundTruthMapInner({
           endX: number;
           endY: number;
           outboundDx: number;
+          isAircraft: boolean;
         } => Boolean(x),
       );
   }, [units, view, turnLen, showMovePrediction]);
@@ -1180,15 +1192,16 @@ function GroundTruthMapInner({
             ))}
           </g>
 
-          {/* Trails under labels/units — simple polylines (CRT-friendly, cheap) */}
+          {/* Trails under labels/units — ships solid, aircraft dotted (CRT-friendly) */}
           {trailPolylines.map((t) => (
             <polyline
               key={`trail-${t.id}`}
               points={t.points}
               fill="none"
               stroke={t.color}
-              strokeWidth={1.25}
-              strokeOpacity={0.55}
+              strokeWidth={t.isAircraft ? 1.5 : 1.25}
+              strokeOpacity={t.isAircraft ? 0.72 : 0.55}
+              strokeDasharray={t.isAircraft ? '1.5 3.5' : undefined}
               strokeLinejoin="round"
               strokeLinecap="round"
             />
@@ -1202,21 +1215,36 @@ function GroundTruthMapInner({
                   points={m.points}
                   fill="none"
                   stroke={m.color}
-                  strokeWidth={1.5}
+                  strokeWidth={m.isAircraft ? 1.35 : 1.5}
                   strokeOpacity={0.7}
-                  strokeDasharray="5 4"
+                  strokeDasharray={m.isAircraft ? '1.5 2.5 5 2.5' : '5 4'}
                   strokeLinejoin="round"
                   strokeLinecap="round"
                 />
-                <circle
-                  cx={m.endX}
-                  cy={m.endY}
-                  r={3}
-                  fill="none"
-                  stroke={m.color}
-                  strokeWidth={1.25}
-                  strokeOpacity={0.85}
-                />
+                {m.isAircraft ? (
+                  /* Diamond tip — air predicted end vs vessel circle */
+                  <rect
+                    x={m.endX - 2.75}
+                    y={m.endY - 2.75}
+                    width={5.5}
+                    height={5.5}
+                    transform={`rotate(45 ${m.endX} ${m.endY})`}
+                    fill="none"
+                    stroke={m.color}
+                    strokeWidth={1.25}
+                    strokeOpacity={0.85}
+                  />
+                ) : (
+                  <circle
+                    cx={m.endX}
+                    cy={m.endY}
+                    r={3}
+                    fill="none"
+                    stroke={m.color}
+                    strokeWidth={1.25}
+                    strokeOpacity={0.85}
+                  />
+                )}
               </g>
             ))}
           </g>
