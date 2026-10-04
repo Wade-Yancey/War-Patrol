@@ -29,9 +29,16 @@ export type FlightLevel = 'low' | 'medium' | 'high';
 
 /**
  * Hull / airframe condition.
- * `sunk` = sunk for ships/subs, destroyed for aircraft — unit stops contributing.
+ * `sinking` = ships/subs in a short post-lethal phase (still optically visible).
+ * `sunk` = fully under / destroyed — unit stops contributing; optics drop the contact.
  */
-export type UnitCondition = 'afloat' | 'sunk';
+export type UnitCondition = 'afloat' | 'sinking' | 'sunk';
+
+/**
+ * Coarse optics-only battle-damage look (FoW). Never raw HP or fine stages.
+ * Omitted when the hull reads undamaged.
+ */
+export type OpticsDamageLook = 'scarred' | 'smoking';
 
 /** Binary station / set health (umpire-editable). */
 export type SubsystemState = 'intact' | 'disabled';
@@ -497,8 +504,13 @@ export interface UnitState {
    * Defaults to `medium` for Aircraft; omitted or ignored otherwise.
    */
   flightLevel?: FlightLevel;
-  /** Afloat vs sunk/destroyed. Defaults afloat. */
+  /** Afloat vs sinking vs sunk/destroyed. Defaults afloat. */
   condition: UnitCondition;
+  /**
+   * Turns remaining in the post-lethal sinking phase (ships/subs).
+   * Set when entering `sinking`; cleared when fully `sunk`. Absent otherwise.
+   */
+  sinkingTurnsRemaining?: number;
   /** Propulsion + sensors integrity. Defaults intact. */
   subsystems: UnitSubsystems;
   /** Current heading degrees true (bow direction). */
@@ -1342,6 +1354,16 @@ export interface PeriscopeContact {
    * Identity is implied by the image only — not a side/name leak.
    */
   silhouettePlate?: string;
+  /**
+   * FoW sinking pose — true when the contact is in the multi-turn sinking phase.
+   * Optics tilt/clip the silhouette; does not expose HP or turn countdown.
+   */
+  sinking?: boolean;
+  /**
+   * Coarse battle-damage cue from optics only (scar / smoke) — not precise HP.
+   * Omitted when the hull reads undamaged.
+   */
+  damageLook?: OpticsDamageLook;
 }
 
 export type ClientView = UmpireView | VesselView;

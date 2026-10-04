@@ -102,7 +102,12 @@ function formatCourse(courseDeg: number): string {
 }
 
 function contactsKey(contacts: PeriscopeContact[]): string {
-  return contacts.map((c) => `${c.id}:${c.kind ?? 'hull'}`).join('|');
+  return contacts
+    .map(
+      (c) =>
+        `${c.id}:${c.kind ?? 'hull'}:${c.sinking ? 's' : ''}:${c.damageLook ?? ''}`,
+    )
+    .join('|');
 }
 
 /**
@@ -192,7 +197,9 @@ function PeriscopeScopeInner({
           <p className="periscope-empty mono muted">No visual contacts within {maxRangeNm} nm</p>
         ) : selected ? (
           <div
-            className="periscope-selected"
+            className={`periscope-selected${
+              !isFeather && selected.sinking ? ' periscope-selected--sinking' : ''
+            }`}
             style={{ ['--peri-scale' as string]: String(scale) }}
           >
             {isFeather ? (
@@ -202,19 +209,41 @@ function PeriscopeScopeInner({
                 Silhouette failed to load
               </p>
             ) : (
-              <img
-                key={plateSrc}
-                className={`periscope-silhouette${airPlate ? ' periscope-silhouette--air' : ''}${flipPlate ? ' periscope-silhouette--flip' : ''}`}
-                src={plateSrc}
-                alt={silhouetteAlt(plateClass, plateKey)}
-                width={plateSize.width}
-                height={plateSize.height}
-                decoding="sync"
-                loading="eager"
-                draggable={false}
-                onError={() => setImgFailed(true)}
-                onLoad={() => setImgFailed(false)}
-              />
+              <div
+                className={`periscope-plate-wrap${
+                  selected.sinking ? ' periscope-plate-wrap--sinking' : ''
+                }${
+                  selected.damageLook
+                    ? ` periscope-plate-wrap--${selected.damageLook}`
+                    : ''
+                }`}
+              >
+                <img
+                  key={plateSrc}
+                  className={`periscope-silhouette${airPlate ? ' periscope-silhouette--air' : ''}${
+                    flipPlate ? ' periscope-silhouette--flip' : ''
+                  }${selected.sinking ? ' periscope-silhouette--sinking' : ''}${
+                    selected.damageLook
+                      ? ` periscope-silhouette--${selected.damageLook}`
+                      : ''
+                  }`}
+                  src={plateSrc}
+                  alt={silhouetteAlt(plateClass, plateKey)}
+                  width={plateSize.width}
+                  height={plateSize.height}
+                  decoding="sync"
+                  loading="eager"
+                  draggable={false}
+                  onError={() => setImgFailed(true)}
+                  onLoad={() => setImgFailed(false)}
+                />
+                {selected.damageLook === 'smoking' && (
+                  <div className="periscope-damage-smoke" aria-hidden />
+                )}
+                {selected.damageLook === 'scarred' && (
+                  <div className="periscope-damage-scar" aria-hidden />
+                )}
+              </div>
             )}
             <div className="periscope-readouts mono">
               <span className="readout">
@@ -230,6 +259,9 @@ function PeriscopeScopeInner({
                 Number.isFinite(selected.courseDeg) && (
                   <span className="muted">crs {formatCourse(selected.courseDeg)}</span>
                 )}
+              {!isFeather && selected.sinking && (
+                <span className="muted">sinking</span>
+              )}
             </div>
           </div>
         ) : null}
@@ -280,6 +312,13 @@ function PeriscopeScopeInner({
                           Number.isFinite(c.courseDeg) && (
                             <span>crs {formatCourse(c.courseDeg)}</span>
                           )}
+                        {c.kind !== 'periscope' && c.sinking && <span>sinking</span>}
+                        {c.kind !== 'periscope' && c.damageLook === 'smoking' && (
+                          <span>smoke</span>
+                        )}
+                        {c.kind !== 'periscope' && c.damageLook === 'scarred' && !c.sinking && (
+                          <span>scar</span>
+                        )}
                       </span>
                     </button>
                   </li>
@@ -313,7 +352,9 @@ export const PeriscopeScope = memo(PeriscopeScopeInner, (prev, next) => {
         c.courseDeg === o.courseDeg &&
         c.silhouetteClass === o.silhouetteClass &&
         c.silhouettePlate === o.silhouettePlate &&
-        (c.kind ?? 'hull') === (o.kind ?? 'hull')
+        (c.kind ?? 'hull') === (o.kind ?? 'hull') &&
+        Boolean(c.sinking) === Boolean(o.sinking) &&
+        (c.damageLook ?? '') === (o.damageLook ?? '')
       );
     })
   );

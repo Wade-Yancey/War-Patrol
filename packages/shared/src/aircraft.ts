@@ -133,7 +133,7 @@ export function resolveAircraftLoiterCenter(
 ): LatLonDepth {
   if (loiter.centerUnitId) {
     const parent = unitsById.get(loiter.centerUnitId);
-    if (parent && parent.condition !== 'sunk') {
+    if (parent && parent.condition !== 'sunk' && parent.condition !== 'sinking') {
       return {
         lat: parent.position.lat,
         lon: parent.position.lon,
@@ -152,7 +152,7 @@ export function applyAircraftLoiterStandingOrders(units: UnitState[]): UnitState
   const byId = new Map(units.map((u) => [u.id, u]));
   return units.map((unit) => {
     if (unit.type !== 'Aircraft' || !unit.aircraftLoiter) return unit;
-    if (unit.condition === 'sunk') return unit;
+    if (unit.condition === 'sunk' || unit.condition === 'sinking') return unit;
     if (unit.orders.aircraftAttack) return unit;
 
     const loiter = unit.aircraftLoiter;

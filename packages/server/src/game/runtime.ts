@@ -41,6 +41,7 @@ import {
   normalizePositionForType,
   resolveBeamM,
   resolveCondition,
+  VESSEL_SINKING_TURNS,
   resolveFaction,
   resolveFlightLevel,
   resolveLengthM,
@@ -290,7 +291,7 @@ function normalizeUnit(unit: UnitState): UnitState {
   });
   let speed = unit.speed;
   let eot = unit.eot;
-  if (condition === 'sunk' || subsystems.propulsion === 'disabled') {
+  if (condition === 'sunk' || condition === 'sinking' || subsystems.propulsion === 'disabled') {
     speed = 0;
     eot = 'stop';
   } else {
@@ -302,6 +303,19 @@ function normalizeUnit(unit: UnitState): UnitState {
       }) * propulsionSpeedFactor(subsystems.propulsion);
     speed = clampSpeedToMax(speed, ceiling);
   }
+  const sinkingTurnsRemaining =
+    condition === 'sinking'
+      ? Math.max(
+          1,
+          Math.floor(
+            typeof unit.sinkingTurnsRemaining === 'number' &&
+              Number.isFinite(unit.sinkingTurnsRemaining)
+              ? unit.sinkingTurnsRemaining
+              : VESSEL_SINKING_TURNS,
+          ),
+        )
+      : undefined;
+
   const next: UnitState = {
     ...unit,
     side: sideFromFaction(faction),
@@ -311,6 +325,7 @@ function normalizeUnit(unit: UnitState): UnitState {
     position,
     flightLevel,
     condition,
+    sinkingTurnsRemaining,
     subsystems,
     heading,
     orderedCourse,
@@ -959,7 +974,7 @@ export class GameRuntime {
       let eot = patch.eot;
 
       if (patch.aircraftLoiter !== undefined) {
-        if (unit.type !== 'Aircraft' || unit.condition === 'sunk') {
+        if (unit.type !== 'Aircraft' || unit.condition === 'sunk' || unit.condition === 'sinking') {
           throw Object.assign(new Error('Only afloat aircraft can loiter'), { statusCode: 400 });
         }
         if (patch.aircraftLoiter === null) {
@@ -976,7 +991,12 @@ export class GameRuntime {
           };
           if (parentId) {
             const parent = save.units.find((u) => u.id === parentId);
-            if (!parent || parent.condition === 'sunk' || parent.type === 'Aircraft') {
+            if (
+              !parent ||
+              parent.condition === 'sunk' ||
+              parent.condition === 'sinking' ||
+              parent.type === 'Aircraft'
+            ) {
               throw Object.assign(new Error('Invalid loiter center unit'), { statusCode: 400 });
             }
             center = {
@@ -1571,6 +1591,13 @@ export class GameRuntime {
       }
       if (patch.condition !== undefined) {
         unit.condition = resolveCondition(patch.condition);
+        if (unit.condition === 'sinking') {
+          if (unit.sinkingTurnsRemaining == null || unit.sinkingTurnsRemaining <= 0) {
+            unit.sinkingTurnsRemaining = VESSEL_SINKING_TURNS;
+          }
+        } else {
+          unit.sinkingTurnsRemaining = undefined;
+        }
       }
       if (patch.subsystems) {
         unit.subsystems = resolveSubsystems({

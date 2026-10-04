@@ -2,6 +2,7 @@
  * Granular combat casualty model — propulsion / per-station sensors /
  * steering / dive planes. See docs/simulation-physics.md (project store).
  */
+import { VESSEL_SINKING_TURNS } from './constants.js';
 import { normalizeHeading } from './geo.js';
 import type {
   CasualtyEffect,
@@ -14,6 +15,7 @@ import type {
   UnitState,
   UnitSubsystems,
 } from './types.js';
+import { isHullLost } from './vessel.js';
 
 function hasSensorKind(
   unit: Pick<UnitState, 'sensors'>,
@@ -174,13 +176,45 @@ export function canUseSensorStation(
   unit: Pick<UnitState, 'condition' | 'subsystems' | 'type'>,
   kind: 'radar' | 'hydrophone' | 'active_sonar' | 'lookout',
 ): SensorUseResult {
-  if (unit.condition === 'sunk') return { ok: false, reason: 'sunk' };
+  if (isHullLost(unit.condition)) return { ok: false, reason: 'sunk' };
   if (kind === 'lookout' && unit.type === 'Ship') return { ok: true };
   if (isSensorStationDisabled(unit.subsystems, kind)) {
     return { ok: false, reason: 'sensors_disabled' };
   }
   return { ok: true };
 }
+
+/**
+ * Enter post-lethal loss: ships/subs get a short sinking phase; aircraft go
+ * straight to destroyed (`sunk`). Already-lost hulls are left unchanged.
+ */
+export function beginLethalHullLoss(unit: UnitState): UnitState {
+  if (isHullLost(unit.condition)) return unit;
+
+  const offline: UnitState = {
+    ...unit,
+    health: 0,
+    speed: 0,
+    eot: 'stop',
+    activeSonarEnabled: false,
+    periscopeRaised: false,
+    periscopeExposure: 0,
+    plotStampTurns: 0,
+    subsystems: disabledAllSubsystems(),
+  };
+
+  // Aircraft: no multi-turn sinking silhouette — instant destroyed.
+  if (unit.type === 'Aircraft') {
+    return { ...offline, condition: 'sunk', sinkingTurnsRemaining: undefined };
+  }
+
+  return {
+    ...offline,
+    condition: 'sinking',
+    sinkingTurnsRemaining: VESSEL_SINKING_TURNS,
+  };
+}
+
 
 export function propulsionSpeedFactor(propulsion: PropulsionState | undefined): number {
   if (propulsion === 'disabled') return 0;
@@ -410,24 +444,13 @@ export function applyHealthDamageResult(
   damage: number,
   rng: () => number = Math.random,
 ): { unit: UnitState; effects: CasualtyEffect[] } {
-  if (damage <= 0 || unit.condition === 'sunk') {
+  if (damage <= 0 || isHullLost(unit.condition)) {
     return { unit, effects: [] };
   }
   const health = Math.max(0, unit.health - damage);
   if (health <= 0) {
     return {
-      unit: {
-        ...unit,
-        health: 0,
-        condition: 'sunk',
-        speed: 0,
-        eot: 'stop',
-        activeSonarEnabled: false,
-        periscopeRaised: false,
-        periscopeExposure: 0,
-        plotStampTurns: 0,
-        subsystems: disabledAllSubsystems(),
-      },
+      unit: beginLethalHullLoss({ ...unit, health: 0 }),
       effects: [],
     };
   }

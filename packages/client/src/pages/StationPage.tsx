@@ -842,7 +842,8 @@ export function StationPage() {
 
   // Own-ship sunk popup on Controls + Sensors — wait until audio-synced
   // presentation reaches sunk (same delay as blast SFX / Damage report).
-  const ownShipSunk = syncedDamage.condition === 'sunk';
+  const ownShipSunk =
+    syncedDamage.condition === 'sunk' || syncedDamage.condition === 'sinking';
   const presentationSunk = ownShipSunk;
   /** Soften Sensors “sunk” copy until blast-synced presentation catches up. */
   const sunkSetOfflineBlurb = presentationSunk ? 'Set offline — sunk' : 'Set offline';

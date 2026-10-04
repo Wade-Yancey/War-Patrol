@@ -1,5 +1,6 @@
 import {
   PERISCOPE_DEPTH_M,
+  advanceSinkingUnits,
   applyAircraftLoiterStandingOrders,
   applyCrushDepthImplosions,
   applyUnitKinematics,
@@ -70,8 +71,12 @@ export function resolveTurn(save: GameSave): GameSave {
     save.units.map((u) => [u.id, { ...u.position } as const]),
   );
 
+  // Tick prior-turn sinking countdowns before kinematics / weapons so newly
+  // lethal hulls (set later this resolve) keep a full VESSEL_SINKING_TURNS linger.
+  const afterSinking = advanceSinkingUnits(save.units);
+
   // Standing aircraft loiter injects orbit course (+ loiter EOT) before kinematics.
-  const loiterReady = applyAircraftLoiterStandingOrders(save.units);
+  const loiterReady = applyAircraftLoiterStandingOrders(afterSinking);
 
   // Kinematics first (orders still present for weapon launch snapshot).
   const movedUnits = loiterReady.map((unit) => applyUnitOrders(unit, turnLength, false));

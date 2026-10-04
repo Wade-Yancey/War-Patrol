@@ -39,7 +39,7 @@ export function isHydrophoneDepthOk(
 export function isHydrophoneEmitter(
   unit: Pick<UnitState, 'type' | 'condition' | 'speed'>,
 ): boolean {
-  if (unit.condition === 'sunk') return false;
+  if (unit.condition === 'sunk' || unit.condition === 'sinking') return false;
   if (unit.type === 'Aircraft') return false;
   return Math.abs(unit.speed) >= HYDROPHONE_UNDERWAY_SPEED_KN;
 }

@@ -7,8 +7,9 @@ import {
   SUBMARINE_IMPLOSION_CHANCE_PER_TURN,
   SUBMARINE_MAX_DEPTH_M,
 } from './constants.js';
-import { disabledAllSubsystems } from './damage.js';
+import { beginLethalHullLoss } from './damage.js';
 import type { CombatLogEntry, UnitState } from './types.js';
+import { isHullLost } from './vessel.js';
 
 /**
  * Named dive / depth presets for fleet submarines (WWII / early Cold War inspired).
@@ -143,22 +144,10 @@ export function rollSubmarineImplosion(
 }
 
 /**
- * Catastrophic hull loss — same end state as lethal combat damage.
+ * Catastrophic hull loss — same sinking phase as lethal combat damage.
  */
 export function implodeSubmarine(unit: UnitState): UnitState {
-  if (unit.condition === 'sunk') return unit;
-  return {
-    ...unit,
-    health: 0,
-    condition: 'sunk',
-    speed: 0,
-    eot: 'stop',
-    activeSonarEnabled: false,
-    periscopeRaised: false,
-    periscopeExposure: 0,
-    plotStampTurns: 0,
-    subsystems: disabledAllSubsystems(),
-  };
+  return beginLethalHullLoss(unit);
 }
 
 export type CrushImplosionResult = {
@@ -188,7 +177,7 @@ export function applyCrushDepthImplosions(
   const combatLogEntries: CombatLogEntry[] = [];
 
   const next = units.map((unit) => {
-    if (unit.type !== 'Submarine' || unit.condition === 'sunk') return unit;
+    if (unit.type !== 'Submarine' || isHullLost(unit.condition)) return unit;
     if (!isPastCrushDepth(unit.position.depth, crushM)) return unit;
     if (!rollSubmarineImplosion(rng, chance)) return unit;
 
