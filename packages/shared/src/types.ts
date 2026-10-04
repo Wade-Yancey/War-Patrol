@@ -152,7 +152,8 @@ export type TorpedoRoomId = 'forward' | 'aft';
 export interface TorpedoFireOrder {
   /**
    * Which room / tube bank to fire from. Omitted → forward.
-   * Consumes fish from that room only; room must not be awaiting / mid reload.
+   * Consumes fish from that room only. Remaining ready tubes stay fireable
+   * while empty tubes await / mid reload (optional early reload OK).
    */
   room?: TorpedoRoomId;
   /**
@@ -220,7 +221,16 @@ export interface TorpedoArcBlock {
 
 /** Pending depth-charge drop for the current turn (destroyer Controls). */
 export interface DepthChargeDropOrder {
-  pattern: DepthChargePattern;
+  /**
+   * Charges to drop this turn (1 … ready rack). Preferred over legacy `pattern`.
+   * When omitted, count is derived from `pattern` for older saves / clients.
+   */
+  count?: number;
+  /**
+   * Legacy pattern id (single / pair / P6 / P10). Optional when `count` is set;
+   * still used for effect-mod / track tagging when derived from count.
+   */
+  pattern?: DepthChargePattern;
   /** Detonation depth setting meters (positive down). */
   depthSettingM: number;
 }

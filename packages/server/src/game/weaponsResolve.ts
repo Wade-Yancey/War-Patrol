@@ -17,7 +17,8 @@ import {
   TORPEDO_DEFAULT_DEPTH_M,
   createDepthChargeTracks,
   createTorpedoTrack,
-  depthChargePatternCount,
+  depthChargeCountFromOrder,
+  depthChargePatternForCount,
   formatTorpedoMissLogSummary,
   horizontalMissMeters,
   isDepthChargeTarget,
@@ -26,7 +27,6 @@ import {
   makeDetonationEvent,
   torpedoHitAudioDelaySec,
   TORPEDO_FIRE_STAGGER_SEC,
-  normalizeDepthChargePattern,
   normalizeHeading,
   normalizeTorpedoRoomId,
   recordTorpedoClosestApproach,
@@ -201,10 +201,10 @@ export function resolveWeaponsForTurn(
 
     if (orders.dropDepthCharges && canDropDepthCharges(next)) {
       const drop = orders.dropDepthCharges;
-      const pattern = normalizeDepthChargePattern(drop.pattern);
-      const need = depthChargePatternCount(pattern);
       const have = next.depthChargeLoad ?? 0;
-      if (have >= need) {
+      const need = depthChargeCountFromOrder(drop, have);
+      if (have >= need && need > 0) {
+        const pattern = depthChargePatternForCount(need);
         const start = startPositions?.get(unit.id) ?? unit.position;
         const end = unit.position;
         const tracks = createDepthChargeTracks({
@@ -213,6 +213,7 @@ export function resolveWeaponsForTurn(
           startPosition: { ...start, depth: 0 },
           endPosition: { lat: end.lat, lon: end.lon, depth: 0 },
           dropHeading: unit.heading,
+          count: need,
           pattern,
           depthSettingM: clampDepthChargeSetting(drop.depthSettingM),
           launchedTurn: turnNumber,
@@ -225,7 +226,7 @@ export function resolveWeaponsForTurn(
             turnNumber,
             gameTimeSeconds,
             actor: unit,
-            summary: `${unit.name} dropped DC ${pattern} ×${tracks.length} · set ${clampDepthChargeSetting(drop.depthSettingM)} m (along-track trail)`,
+            summary: `${unit.name} dropped DC ×${tracks.length} · set ${clampDepthChargeSetting(drop.depthSettingM)} m (along-track trail)`,
           }),
         );
       }

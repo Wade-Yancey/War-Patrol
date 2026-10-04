@@ -19,6 +19,11 @@ import {
   CLASS_MAX_SPEED_KNOTS,
   CLASS_SPEED_STEP_FRACTION,
   DEPTH_CHARGE_CONTROLS_AUDIBLE_NM,
+  DEPTH_CHARGE_MAX_DEPTH_M,
+  DESTROYER_DEPTH_CHARGE_LOAD,
+  clampDepthChargeSetting,
+  depthChargeCountFromOrder,
+  depthChargeLateralsForCount,
   FLEET_SUB_CRUSH_DEPTH_M,
   FLEET_SUB_PATROL_DEPTH_M,
   FLEET_SUB_TEST_DEPTH_M,
@@ -330,6 +335,17 @@ async function main() {
   check('depth order step is 10 m', SUBMARINE_DEPTH_ORDER_STEP_M === 10);
   check('patrol depth 50 m', FLEET_SUB_PATROL_DEPTH_M === 50);
   check('test depth 90 m', FLEET_SUB_TEST_DEPTH_M === 90);
+  check(
+    'DC fuse max reaches crush depth',
+    DEPTH_CHARGE_MAX_DEPTH_M === FLEET_SUB_CRUSH_DEPTH_M &&
+      clampDepthChargeSetting(200) === FLEET_SUB_CRUSH_DEPTH_M,
+  );
+  check(
+    'DC order count prefers count over pattern',
+    depthChargeCountFromOrder({ count: 24, pattern: 'single' }) === DESTROYER_DEPTH_CHARGE_LOAD &&
+      depthChargeCountFromOrder({ pattern: 'pattern_3' }) === 6 &&
+      depthChargeLateralsForCount(24).length === 24,
+  );
   check('crush depth 150 m', FLEET_SUB_CRUSH_DEPTH_M === 150);
   check('max depth past crush', SUBMARINE_MAX_DEPTH_M === 180);
   check('implosion chance 25%', SUBMARINE_IMPLOSION_CHANCE_PER_TURN === 0.25);
@@ -655,13 +671,13 @@ async function main() {
         ),
     );
     check(
-      'DC pair pending summary is PAIR not PAIR4',
+      'DC pending summary uses count (legacy pattern → ×4)',
       formatPendingOrdersSummary({
         dropDepthCharges: { pattern: 'pair', depthSettingM: 50 },
-      }).includes('DC PAIR ·') &&
-        !formatPendingOrdersSummary({
-          dropDepthCharges: { pattern: 'pair', depthSettingM: 50 },
-        }).includes('PAIR4'),
+      }).includes('DC ×4 ·') &&
+        formatPendingOrdersSummary({
+          dropDepthCharges: { count: 24, depthSettingM: 90 },
+        }).includes('DC ×24 ·'),
     );
   }
   check(
@@ -4721,7 +4737,7 @@ async function main() {
         afterUnit?.torpedoForwardAwaitingReload === true &&
           (afterUnit?.torpedoForwardReloadTurnsRemaining ?? 0) === 0,
       );
-      const blocked = await api(
+      const stillReady = await api(
         'POST',
         `/api/games/${torpId}/orders`,
         {
@@ -4737,7 +4753,11 @@ async function main() {
         },
         torpTok,
       );
-      check('cannot fire forward while awaiting reload', blocked.status === 400);
+      check(
+        'can fire remaining forward fish while awaiting reload',
+        stillReady.status === 200,
+      );
+      await api('POST', `/api/games/${torpId}/orders`, { fireTorpedo: null }, torpTok);
       const aftOk = await api(
         'POST',
         `/api/games/${torpId}/orders`,
@@ -4769,6 +4789,27 @@ async function main() {
         (reloadStart.json as { torpedoForwardReloadTurnsRemaining?: number })
           .torpedoForwardReloadTurnsRemaining === 5,
       );
+      const midReloadFire = await api(
+        'POST',
+        `/api/games/${torpId}/orders`,
+        {
+          fireTorpedo: {
+            room: 'forward',
+            aimHeading: 0,
+            estimatedCourse: 90,
+            estimatedSpeedKn: 14,
+            estimatedRangeNm: 1.5,
+            estimatedLengthM: 115,
+            spreadCount: 1,
+          },
+        },
+        torpTok,
+      );
+      check(
+        'can fire remaining forward fish during reload countdown',
+        midReloadFire.status === 200,
+      );
+      await api('POST', `/api/games/${torpId}/orders`, { fireTorpedo: null }, torpTok);
       for (let i = 0; i < 5; i++) {
         await api('POST', `/api/games/${torpId}/turn/lock`, {}, torpUTok);
         await api('POST', `/api/games/${torpId}/turn/resolve`, {}, torpUTok);
@@ -5320,7 +5361,7 @@ async function main() {
     const drop = await api(
       'POST',
       `/api/games/${dcId}/orders`,
-      { dropDepthCharges: { pattern: 'pattern_3', depthSettingM: 50 } },
+      { dropDepthCharges: { count: 6, depthSettingM: 50 } },
       dcTok,
     );
     check('queue depth charges', drop.status === 200);
@@ -5329,7 +5370,7 @@ async function main() {
     const dcRes = await api('POST', `/api/games/${dcId}/turn/resolve`, {}, dcUTok);
     check('resolve dc turn', dcRes.status === 200);
 
-    // Finite rack depletes; reload delay; umpire rearm.
+    // Finite rack depletes; optional reload does not block remaining ready charges.
     {
       const rackView = await api('GET', `/api/games/${dcId}/view`, undefined, dcTok);
       const rackUnit = (rackView.json.view as {
@@ -5340,17 +5381,21 @@ async function main() {
         };
       }).unit;
       check(
-        'DC rack depleted by pattern_3 (6)',
+        'DC rack depleted by count 6',
         rackUnit?.depthChargeLoad === 18 && rackUnit?.depthChargeAwaitingReload === true,
         `load=${rackUnit?.depthChargeLoad} awaiting=${rackUnit?.depthChargeAwaitingReload}`,
       );
-      const blockedDc = await api(
+      const stillReadyDc = await api(
         'POST',
         `/api/games/${dcId}/orders`,
-        { dropDepthCharges: { pattern: 'single', depthSettingM: 50 } },
+        { dropDepthCharges: { count: 1, depthSettingM: 50 } },
         dcTok,
       );
-      check('cannot drop while awaiting DC reload', blockedDc.status === 400);
+      check(
+        'can drop remaining DCs while awaiting reload',
+        stillReadyDc.status === 200,
+      );
+      await api('POST', `/api/games/${dcId}/orders`, { dropDepthCharges: null }, dcTok);
       const dcReload = await api(
         'POST',
         `/api/games/${dcId}/depth-charge-reload`,
@@ -5363,6 +5408,17 @@ async function main() {
         (dcReload.json as { depthChargeReloadTurnsRemaining?: number })
           .depthChargeReloadTurnsRemaining === 5,
       );
+      const midReloadDc = await api(
+        'POST',
+        `/api/games/${dcId}/orders`,
+        { dropDepthCharges: { count: 2, depthSettingM: 50 } },
+        dcTok,
+      );
+      check(
+        'can drop remaining DCs during reload countdown',
+        midReloadDc.status === 200,
+      );
+      await api('POST', `/api/games/${dcId}/orders`, { dropDepthCharges: null }, dcTok);
       // Reload completion + rearm use a dedicated game below so this game's
       // detonation retention / along-track geometry stay intact for audio checks.
     }
@@ -5721,7 +5777,7 @@ async function main() {
       await api(
         'POST',
         `/api/games/${reloadId}/orders`,
-        { dropDepthCharges: { pattern: 'single', depthSettingM: 50 } },
+        { dropDepthCharges: { count: 1, depthSettingM: 50 } },
         reloadTok,
       );
       await api('POST', `/api/games/${reloadId}/turn/lock`, {}, reloadUTok);
