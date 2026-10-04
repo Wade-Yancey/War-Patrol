@@ -102,7 +102,12 @@ function formatCourse(courseDeg: number): string {
 }
 
 function contactsKey(contacts: PeriscopeContact[]): string {
-  return contacts.map((c) => `${c.id}:${c.kind ?? 'hull'}`).join('|');
+  return contacts
+    .map(
+      (c) =>
+        `${c.id}:${c.kind ?? 'hull'}:${c.sinking ? 's' : ''}:${c.damageLook ?? ''}`,
+    )
+    .join('|');
 }
 
 /**
@@ -115,8 +120,9 @@ function contactsKey(contacts: PeriscopeContact[]): string {
  * Unknown classes fall back to the destroyer plate. CRT grain/scanline overlay
  * sits above the optics without hiding alpha.
  *
- * `sinking` / `damageLook` FoW fields remain on the contact model (status-only);
- * silhouette presentation does not apply sink-clip / scar / smoke overlays.
+ * Layout/silhouette rendering stays on the pre-#186 flex-centered plate model
+ * (no plate-wrap waterline seating, sink-clip/list, or scar/smoke overlays).
+ * `sinking` / `damageLook` are status text only.
  */
 function PeriscopeScopeInner({
   contacts,
@@ -233,6 +239,19 @@ function PeriscopeScopeInner({
                 Number.isFinite(selected.courseDeg) && (
                   <span className="muted">crs {formatCourse(selected.courseDeg)}</span>
                 )}
+              {!isFeather && selected.sinking && (
+                <span className="muted">sinking</span>
+              )}
+              {!isFeather &&
+                !selected.sinking &&
+                selected.damageLook === 'smoking' && (
+                  <span className="muted">smoke</span>
+                )}
+              {!isFeather &&
+                !selected.sinking &&
+                selected.damageLook === 'scarred' && (
+                  <span className="muted">scar</span>
+                )}
             </div>
           </div>
         ) : null}
@@ -283,6 +302,13 @@ function PeriscopeScopeInner({
                           Number.isFinite(c.courseDeg) && (
                             <span>crs {formatCourse(c.courseDeg)}</span>
                           )}
+                        {c.kind !== 'periscope' && c.sinking && <span>sinking</span>}
+                        {c.kind !== 'periscope' &&
+                          !c.sinking &&
+                          c.damageLook === 'smoking' && <span>smoke</span>}
+                        {c.kind !== 'periscope' &&
+                          !c.sinking &&
+                          c.damageLook === 'scarred' && <span>scar</span>}
                       </span>
                     </button>
                   </li>
@@ -316,7 +342,9 @@ export const PeriscopeScope = memo(PeriscopeScopeInner, (prev, next) => {
         c.courseDeg === o.courseDeg &&
         c.silhouetteClass === o.silhouetteClass &&
         c.silhouettePlate === o.silhouettePlate &&
-        (c.kind ?? 'hull') === (o.kind ?? 'hull')
+        (c.kind ?? 'hull') === (o.kind ?? 'hull') &&
+        Boolean(c.sinking) === Boolean(o.sinking) &&
+        (c.damageLook ?? '') === (o.damageLook ?? '')
       );
     })
   );
