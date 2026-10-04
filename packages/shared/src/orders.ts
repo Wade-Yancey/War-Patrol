@@ -79,7 +79,11 @@ export function formatPendingOrdersSummary(orders: UnitOrders | undefined | null
   parts.push(orders!.course !== undefined ? `CRS ${formatCourseDegrees(orders!.course)}` : 'CRS —');
   parts.push(orders!.eot ? EOT_LABELS[orders!.eot] : 'Engine orders —');
   if (orders!.depth !== undefined) {
-    parts.push(`DPT ${formatDepthMeters(orders!.depth)}`);
+    parts.push(
+      orders!.emergencyBlow
+        ? `E-BLOW ${formatDepthMeters(orders!.depth)}`
+        : `DPT ${formatDepthMeters(orders!.depth)}`,
+    );
   }
   if (orders!.fireTorpedo) {
     parts.push(formatTorpedoOrderSummary(orders!.fireTorpedo));

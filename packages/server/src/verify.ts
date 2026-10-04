@@ -2216,6 +2216,131 @@ async function main() {
     umpireToken,
   );
 
+  // Dive planes stuck: ordinary depth rejected; Emergency Blow still rings up surface.
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    {
+      position: { depth: 50 },
+      subsystems: {
+        divePlanes: 'stuck',
+        divePlanesStuckDepth: 50,
+        propulsion: 'intact',
+        steering: 'intact',
+        radar: 'intact',
+        hydrophone: 'intact',
+        activeSonar: 'intact',
+        lookout: 'intact',
+      },
+    },
+    umpireToken,
+  );
+  const stuckDepthReject = await api(
+    'POST',
+    `/api/games/${gameId}/orders`,
+    { depth: 90 },
+    redToken,
+  );
+  check('stuck dive planes reject ordinary depth', stuckDepthReject.status === 400);
+  const blowOk = await api(
+    'POST',
+    `/api/games/${gameId}/orders`,
+    { depth: 0, emergencyBlow: true },
+    redToken,
+  );
+  check('emergency blow allowed while dive planes stuck', blowOk.status === 200);
+  check(
+    'emergency blow orderedDepth live while stuck',
+    runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!.orderedDepth === 0,
+  );
+  // Umpire repair → ordinary depth orders work again.
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    {
+      subsystems: {
+        divePlanes: 'intact',
+        propulsion: 'intact',
+        steering: 'intact',
+        radar: 'intact',
+        hydrophone: 'intact',
+        activeSonar: 'intact',
+        lookout: 'intact',
+      },
+    },
+    umpireToken,
+  );
+  const repairedSub = runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!;
+  check(
+    'umpire dive-plane repair clears stuck lock',
+    repairedSub.subsystems.divePlanes === 'intact' &&
+      repairedSub.subsystems.divePlanesStuckDepth === undefined,
+    JSON.stringify(repairedSub.subsystems),
+  );
+  const depthAfterRepair = await api(
+    'POST',
+    `/api/games/${gameId}/orders`,
+    { depth: 90 },
+    redToken,
+  );
+  check('depth order accepted after dive-plane repair', depthAfterRepair.status === 200);
+  check(
+    'orderedDepth updates after dive-plane repair',
+    runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!.orderedDepth === 90,
+  );
+  // Rudder stuck: course rejected; repair restores helm.
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    {
+      subsystems: {
+        steering: 'stuck',
+        rudderStuckHeading: 45,
+        divePlanes: 'intact',
+        propulsion: 'intact',
+        radar: 'intact',
+        hydrophone: 'intact',
+        activeSonar: 'intact',
+        lookout: 'intact',
+      },
+    },
+    umpireToken,
+  );
+  const stuckHelmReject = await api(
+    'POST',
+    `/api/games/${gameId}/orders`,
+    { course: 180 },
+    redToken,
+  );
+  check('stuck rudder rejects course order', stuckHelmReject.status === 400);
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    {
+      subsystems: {
+        steering: 'intact',
+        divePlanes: 'intact',
+        propulsion: 'intact',
+        radar: 'intact',
+        hydrophone: 'intact',
+        activeSonar: 'intact',
+        lookout: 'intact',
+      },
+    },
+    umpireToken,
+  );
+  const helmAfterRepair = await api(
+    'POST',
+    `/api/games/${gameId}/orders`,
+    { course: 180 },
+    redToken,
+  );
+  check('course order accepted after rudder repair', helmAfterRepair.status === 200);
+  check(
+    'orderedCourse updates after rudder repair',
+    runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!.orderedCourse === 180,
+  );
+
   // Momentum: ahead → reverse cannot cross zero in one resolve
   const ddFresh = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
   ddFresh.speed = 8;
@@ -2493,6 +2618,9 @@ async function main() {
       applyUnitKinematics,
       rollCombatCasualties,
       resolveSubsystems,
+      ensureSubsystemLocks,
+      divePlanesBlockDepthOrders,
+      steeringBlocksCourseOrders,
       PROPULSION_DAMAGED_SPEED_FACTOR,
       DEPTH_CHARGE_DAMAGE_AMOUNT,
       DESTROYER_DECK_GUN_LOAD,
@@ -2947,6 +3075,101 @@ async function main() {
         'dive planes stuck ignores depth order',
         noDive.orderedDepth === 50 && Math.abs(noDive.position.depth - 50) < 0.01,
         `ord=${noDive.orderedDepth} keel=${noDive.position.depth}`,
+      );
+
+      // Emergency Blow bypasses dive-plane jam and retargets the freeze to surface.
+      const blowWhileStuck = applyUnitKinematics(
+        {
+          ...stuckDive,
+          orders: { depth: 0, emergencyBlow: true },
+        },
+        180,
+      );
+      check(
+        'emergency blow while dive planes stuck orders surface',
+        blowWhileStuck.orderedDepth === 0 &&
+          Math.abs(blowWhileStuck.position.depth - 5) < 0.01,
+        `ord=${blowWhileStuck.orderedDepth} keel=${blowWhileStuck.position.depth}`,
+      );
+      check(
+        'emergency blow retargets stuck depth to 0',
+        blowWhileStuck.subsystems.divePlanes === 'stuck' &&
+          blowWhileStuck.subsystems.divePlanesStuckDepth === 0,
+        `planes=${blowWhileStuck.subsystems.divePlanes} lock=${blowWhileStuck.subsystems.divePlanesStuckDepth}`,
+      );
+
+      // Umpire repair must clear jam locks so ordinary depth orders work again.
+      const repairedPlanes = resolveSubsystems({
+        ...stuckDive.subsystems,
+        divePlanes: 'intact',
+      });
+      check(
+        'repair dive planes clears stuck depth lock',
+        repairedPlanes.divePlanes === 'intact' &&
+          repairedPlanes.divePlanesStuckDepth === undefined,
+        JSON.stringify(repairedPlanes),
+      );
+      const afterRepairDive = applyUnitKinematics(
+        {
+          ...stuckDive,
+          subsystems: repairedPlanes,
+          orders: { depth: 90 },
+        },
+        180,
+      );
+      check(
+        'depth order works after dive-plane repair',
+        afterRepairDive.orderedDepth === 90 && afterRepairDive.position.depth > 50,
+        `ord=${afterRepairDive.orderedDepth} keel=${afterRepairDive.position.depth}`,
+      );
+
+      const repairedRudder = resolveSubsystems({
+        steering: 'intact',
+        rudderStuckHeading: 45,
+      });
+      check(
+        'repair steering clears rudder stuck heading',
+        repairedRudder.steering === 'intact' &&
+          repairedRudder.rudderStuckHeading === undefined,
+        JSON.stringify(repairedRudder),
+      );
+      const afterRepairHelm = applyUnitKinematics(
+        {
+          ...stuckRudder,
+          subsystems: repairedRudder,
+          orders: { course: 180 },
+        },
+        180,
+      );
+      check(
+        'helm order works after rudder repair',
+        Math.abs(afterRepairHelm.orderedCourse - 180) < 0.01,
+        `crs=${afterRepairHelm.orderedCourse}`,
+      );
+
+      check(
+        'divePlanesBlockDepthOrders helper',
+        divePlanesBlockDepthOrders({ divePlanes: 'stuck' }) &&
+          !divePlanesBlockDepthOrders({ divePlanes: 'intact' }),
+      );
+      check(
+        'steeringBlocksCourseOrders helper',
+        steeringBlocksCourseOrders({ steering: 'disabled' }) &&
+          !steeringBlocksCourseOrders({ steering: 'intact' }),
+      );
+      const filledLocks = ensureSubsystemLocks(
+        { divePlanes: 'stuck', steering: 'stuck' },
+        {
+          orderedCourse: 123,
+          heading: 10,
+          orderedDepth: 70,
+          position: { lat: 0, lon: 0, depth: 60 },
+        },
+      );
+      check(
+        'ensureSubsystemLocks fills missing jam set-points',
+        filledLocks.rudderStuckHeading === 123 && filledLocks.divePlanesStuckDepth === 70,
+        JSON.stringify(filledLocks),
       );
 
       const radarOnlyOut = resolveSubsystems({ radar: 'disabled' });

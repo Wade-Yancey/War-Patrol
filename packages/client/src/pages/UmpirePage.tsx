@@ -1700,8 +1700,14 @@ export function UmpirePage() {
                                       lookout: editLookout,
                                       steering: editSteering,
                                       divePlanes: editDivePlanes,
+                                      // Jam locks only while stuck/disabled — omit on
+                                      // intact so server repair clears stale freeze depths.
                                       ...(editSteering === 'stuck'
-                                        ? { rudderStuckHeading: Math.round(selectedUnit.heading) }
+                                        ? {
+                                            rudderStuckHeading: Math.round(
+                                              selectedUnit.orderedCourse ?? selectedUnit.heading,
+                                            ),
+                                          }
                                         : {}),
                                       ...(editDivePlanes === 'stuck' || editDivePlanes === 'disabled'
                                         ? { divePlanesStuckDepth: editDepth }

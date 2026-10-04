@@ -359,6 +359,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       course?: number;
       eot?: EotSetting;
       depth?: number;
+      emergencyBlow?: boolean;
       fireTorpedo?: {
         room?: 'forward' | 'aft';
         aimHeading: number;

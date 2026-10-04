@@ -48,6 +48,9 @@ import {
   resolveOrderedDepth,
   resolveStartGameTimeSeconds,
   resolveSubsystems,
+  ensureSubsystemLocks,
+  divePlanesBlockDepthOrders,
+  steeringBlocksCourseOrders,
   propulsionSpeedFactor,
   resolveTurnLengthSeconds,
   resolveTurnRate,
@@ -105,11 +108,7 @@ function applyUmpireHelmPatch(
   };
   if (normalized.course === undefined && normalized.eot === undefined) return;
   unit.orders = mergeOrders(unit.orders, normalized, writerId);
-  if (
-    normalized.course !== undefined &&
-    unit.subsystems?.steering !== 'stuck' &&
-    unit.subsystems?.steering !== 'disabled'
-  ) {
+  if (normalized.course !== undefined && !steeringBlocksCourseOrders(unit.subsystems)) {
     unit.orderedCourse = normalized.course;
   }
 }
@@ -264,7 +263,7 @@ function normalizeUnit(unit: UnitState): UnitState {
       ? normalizeHeading(unit.orderedCourse)
       : heading;
   const condition = resolveCondition(unit.condition);
-  const subsystems = resolveSubsystems(unit.subsystems);
+  const subsystems = ensureSubsystemLocks(unit.subsystems, unit);
   const flightLevel = resolveFlightLevel(identity.type, unit.flightLevel);
   const faction = resolveFaction({
     faction: unit.faction,
@@ -693,6 +692,7 @@ export class GameRuntime {
       course?: number;
       eot?: EotSetting;
       depth?: number;
+      emergencyBlow?: boolean;
       fireTorpedo?: import('@war-patrol/shared').TorpedoFireOrder | null;
       dropDepthCharges?: import('@war-patrol/shared').DepthChargeDropOrder | null;
       fireDeckGun?: import('@war-patrol/shared').DeckGunFireOrder | null;
@@ -707,12 +707,21 @@ export class GameRuntime {
       const station = unit.stations.find((s) => s.id === stationId);
       if (!station) throw Object.assign(new Error('Station not found'), { statusCode: 404 });
 
+      // Keep jam locks populated so order gates and kinematics stay consistent.
+      unit.subsystems = ensureSubsystemLocks(unit.subsystems, unit);
+
       if (patch.course !== undefined && !station.capabilities.includes('helm')) {
         throw Object.assign(new Error('Station cannot set course'), { statusCode: 403 });
       }
       if (patch.eot !== undefined && !station.capabilities.includes('engineering') && !station.capabilities.includes('helm')) {
         // Allow helm OR engineering to set EOT for Phase 1 usability on controls
         throw Object.assign(new Error('Station cannot set EOT'), { statusCode: 403 });
+      }
+      if (patch.eot !== undefined && unit.subsystems?.propulsion === 'disabled') {
+        throw Object.assign(
+          new Error('Propulsion disabled — engine orders blocked until repaired'),
+          { statusCode: 400 },
+        );
       }
       if (patch.depth !== undefined) {
         if (!station.capabilities.includes('helm')) {
@@ -721,6 +730,29 @@ export class GameRuntime {
         if (unit.type !== 'Submarine') {
           throw Object.assign(new Error('Only submarines can set depth'), { statusCode: 400 });
         }
+      }
+      if (patch.course !== undefined && steeringBlocksCourseOrders(unit.subsystems)) {
+        throw Object.assign(
+          new Error(
+            unit.subsystems?.steering === 'stuck'
+              ? 'Rudder stuck — course orders blocked until repaired'
+              : 'Steering disabled — course orders blocked until repaired',
+          ),
+          { statusCode: 400 },
+        );
+      }
+      const emergencyBlow = Boolean(patch.emergencyBlow) && patch.depth !== undefined;
+      if (
+        patch.depth !== undefined &&
+        divePlanesBlockDepthOrders(unit.subsystems) &&
+        !emergencyBlow
+      ) {
+        throw Object.assign(
+          new Error(
+            'Dive planes jammed — depth orders blocked (Emergency Blow still available)',
+          ),
+          { statusCode: 400 },
+        );
       }
       if (patch.fireTorpedo !== undefined && patch.fireTorpedo !== null) {
         if (
@@ -840,25 +872,25 @@ export class GameRuntime {
       const normalizedPatch = {
         ...patch,
         ...(patch.depth !== undefined ? { depth: clampSubmarineDepth(patch.depth) } : {}),
+        ...(emergencyBlow ? { emergencyBlow: true as const } : {}),
       };
       unit.orders = mergeOrders(unit.orders, normalizedPatch, stationId);
       // Steering course is live as soon as helm rings it up (persists across turns).
-      // Rudder stuck / steering disabled: ignore new course set-points.
-      if (
-        normalizedPatch.course !== undefined &&
-        unit.subsystems?.steering !== 'stuck' &&
-        unit.subsystems?.steering !== 'disabled'
-      ) {
+      // Stuck/disabled steering rejects above — safe to apply here.
+      if (normalizedPatch.course !== undefined) {
         unit.orderedCourse = normalizeHeading(normalizedPatch.course);
       }
       // Depth set-point is live; actual depth changes on resolve.
-      // Dive planes stuck/disabled: ignore new depth set-points.
-      if (
-        normalizedPatch.depth !== undefined &&
-        unit.subsystems?.divePlanes !== 'stuck' &&
-        unit.subsystems?.divePlanes !== 'disabled'
-      ) {
+      // Ordinary depth rejected above when planes jammed; Emergency Blow still applies.
+      if (normalizedPatch.depth !== undefined) {
         unit.orderedDepth = clampSubmarineDepth(normalizedPatch.depth);
+        if (emergencyBlow && divePlanesBlockDepthOrders(unit.subsystems)) {
+          // Retarget jam to surface so resolve does not re-freeze at the old depth.
+          unit.subsystems = resolveSubsystems({
+            ...unit.subsystems,
+            divePlanesStuckDepth: 0,
+          });
+        }
       }
       return save;
     });
@@ -1584,10 +1616,45 @@ export class GameRuntime {
         unit.condition = resolveCondition(patch.condition);
       }
       if (patch.subsystems) {
-        unit.subsystems = resolveSubsystems({
+        const merged = {
           ...unit.subsystems,
           ...patch.subsystems,
-        });
+        };
+        // Umpire repair must drop jam locks when leaving stuck/disabled — do not
+        // leave divePlanesStuckDepth / rudderStuckHeading around after intact.
+        if (
+          patch.subsystems.steering !== undefined &&
+          patch.subsystems.steering !== 'stuck'
+        ) {
+          delete merged.rudderStuckHeading;
+        }
+        if (
+          patch.subsystems.divePlanes !== undefined &&
+          patch.subsystems.divePlanes !== 'stuck' &&
+          patch.subsystems.divePlanes !== 'disabled'
+        ) {
+          delete merged.divePlanesStuckDepth;
+        }
+        // Entering a jam without an explicit lock: freeze at current set-point.
+        if (
+          patch.subsystems.steering === 'stuck' &&
+          typeof patch.subsystems.rudderStuckHeading !== 'number'
+        ) {
+          merged.rudderStuckHeading = normalizeHeading(
+            typeof unit.orderedCourse === 'number' ? unit.orderedCourse : unit.heading,
+          );
+        }
+        if (
+          (patch.subsystems.divePlanes === 'stuck' ||
+            patch.subsystems.divePlanes === 'disabled') &&
+          typeof patch.subsystems.divePlanesStuckDepth !== 'number'
+        ) {
+          merged.divePlanesStuckDepth =
+            typeof unit.orderedDepth === 'number' && Number.isFinite(unit.orderedDepth)
+              ? unit.orderedDepth
+              : unit.position.depth;
+        }
+        unit.subsystems = ensureSubsystemLocks(resolveSubsystems(merged), unit);
       }
       // Clamp using effective ceiling (submerged subs → ~9 kn); normalizeUnit re-checks.
       const maxSpeed =
