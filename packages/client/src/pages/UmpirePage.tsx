@@ -99,6 +99,8 @@ export function UmpirePage() {
   const [rollbackTarget, setRollbackTarget] = useState<number | null>(null);
   /** null = LIVE GT; number = read-only AAR review of that resolved turn. */
   const [reviewTurn, setReviewTurn] = useState<number | null>(null);
+  /** Viewport-filling GT / AAR map mode (Esc or Exit to leave). */
+  const [mapFullscreen, setMapFullscreen] = useState(false);
   const [turnNoteDraft, setTurnNoteDraft] = useState('');
   const [turnNoteDirty, setTurnNoteDirty] = useState(false);
   const [turnNoteBusy, setTurnNoteBusy] = useState(false);
@@ -123,6 +125,23 @@ export function UmpirePage() {
     const stillThere = (umpire.historySnapshots ?? []).some((h) => h.turnNumber === reviewTurn);
     if (!stillThere) setReviewTurn(null);
   }, [umpire, reviewTurn]);
+
+  // Fullscreen / AAR map: Esc exits; lock page scroll while open.
+  useEffect(() => {
+    if (!mapFullscreen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      setMapFullscreen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [mapFullscreen]);
 
   const reviewSnapshot = useMemo(() => {
     if (reviewTurn == null || !umpire) return null;
@@ -463,18 +482,41 @@ export function UmpirePage() {
           <>
             <div className="umpire-layout">
               <div className="umpire-primary">
-                <section className="panel umpire-gt-map">
+                <section
+                  className={`panel umpire-gt-map${mapFullscreen ? ' umpire-gt-map--fullscreen' : ''}`}
+                  aria-modal={mapFullscreen || undefined}
+                  role={mapFullscreen ? 'dialog' : undefined}
+                  aria-label={mapFullscreen ? 'Ground truth map fullscreen' : undefined}
+                >
                 <div className="umpire-gt-map-head">
                   <div className="umpire-gt-map-title">
-                    <h2>Ground truth</h2>
+                    <h2>Ground truth{mapFullscreen ? ' · AAR' : ''}</h2>
                     <TurnStatus turn={umpire.turn} turnLengthSeconds={umpire.turnLengthSeconds} />
                     {gtDisplay?.reviewing && (
                       <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
                         AAR snapshot — read-only. Resolve still advances LIVE.
                       </p>
                     )}
+                    {mapFullscreen && (
+                      <p className="muted" style={{ margin: 0, fontSize: '0.75rem' }}>
+                        Fullscreen map — pan/zoom, Ranges, turn scrubber. Esc or Exit to leave.
+                      </p>
+                    )}
                   </div>
                   <div className="umpire-gt-map-actions" role="group" aria-label="Turn advance">
+                    <button
+                      type="button"
+                      className={mapFullscreen ? 'primary' : undefined}
+                      aria-pressed={mapFullscreen}
+                      title={
+                        mapFullscreen
+                          ? 'Exit fullscreen map (Esc)'
+                          : 'Fill the viewport for AAR review'
+                      }
+                      onClick={() => setMapFullscreen((v) => !v)}
+                    >
+                      {mapFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+                    </button>
                     <button
                       type="button"
                       disabled={busy || !isOpen}
