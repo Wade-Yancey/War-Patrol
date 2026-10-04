@@ -11,6 +11,7 @@ import {
   isPeriscopeRaised,
   isPeriscopeTargetable,
   isRaisedPeriscopeSpottable,
+  opticsDamageLookForUnit,
   relativeBearingDeg,
   resolvePeriscopeMaxRangeNm,
   resolveVesselIdentity,
@@ -108,6 +109,8 @@ export function buildPeriscopeContacts(own: UnitState, save: GameSave): Periscop
         classId: other.classId,
       });
       const silhouettePlate = silhouettePlateForClassId(other.classId);
+      const damageLook = opticsDamageLookForUnit(other);
+      const sinking = other.condition === 'sinking';
 
       contacts.push({
         id: `p-${opaqueTrackId([own.id, other.id, 'peri'])}`,
@@ -119,6 +122,8 @@ export function buildPeriscopeContacts(own: UnitState, save: GameSave): Periscop
         courseDeg: coarsenPeriscopeCourseDeg(other.heading),
         silhouetteClass: silhouetteClass as HullClass,
         ...(silhouettePlate ? { silhouettePlate } : {}),
+        ...(sinking ? { sinking: true } : {}),
+        ...(damageLook ? { damageLook } : {}),
       });
       continue;
     }

@@ -72,7 +72,7 @@ export function DamageReportPanel({
   }, [entries.length]);
 
   const healthPct = Math.max(0, Math.min(100, Math.round(health)));
-  const hullBad = condition === 'sunk' || healthPct < 35;
+  const hullBad = condition === 'sunk' || condition === 'sinking' || healthPct < 35;
   const hullWarn = !hullBad && healthPct < 70;
 
   const steeringLabel =

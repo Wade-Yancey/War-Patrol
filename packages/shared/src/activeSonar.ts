@@ -60,7 +60,7 @@ export function isActiveSonarPinging(
 ): boolean {
   if (!unit.activeSonarEnabled) return false;
   if (!hasActiveSonarSensor(unit)) return false;
-  if (unit.condition === 'sunk') return false;
+  if (unit.condition === 'sunk' || unit.condition === 'sinking') return false;
   if (unit.subsystems?.activeSonar === 'disabled') return false;
   return true;
 }

@@ -174,6 +174,13 @@ export const SUBMARINE_MAX_DEPTH_M = 180;
 export const SUBMARINE_IMPLOSION_CHANCE_PER_TURN = 0.25;
 
 /**
+ * Ships/subs linger in `condition: 'sinking'` for this many subsequent resolves
+ * before becoming fully `sunk` (optics drop the contact). Kill-turn sets the
+ * counter; countdown ticks at the start of each later resolve.
+ */
+export const VESSEL_SINKING_TURNS = 3;
+
+/**
  * Fleet-boat dive / ascent rate (meters per in-game minute), positive-down change.
  * Default 3-min turn → {@link SUBMARINE_DEPTH_RATE_M_PER_MIN} × 3 ≈ 45 m toward ordered depth.
  * Crude playable stub — same rate up and down (emergency blow is just ordered 0 m).

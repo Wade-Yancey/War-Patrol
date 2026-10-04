@@ -29,7 +29,12 @@ export const FACTIONS: readonly Faction[] = ['Blue', 'Red', 'Civilian'];
 
 export const FLIGHT_LEVELS: readonly FlightLevel[] = ['low', 'medium', 'high'];
 
-export const UNIT_CONDITIONS: readonly UnitCondition[] = ['afloat', 'sunk'];
+export const UNIT_CONDITIONS: readonly UnitCondition[] = ['afloat', 'sinking', 'sunk'];
+
+/** True when the hull/airframe is lost (sinking or fully sunk/destroyed). */
+export function isHullLost(condition: UnitCondition | undefined): boolean {
+  return condition === 'sunk' || condition === 'sinking';
+}
 
 /** Canonical class → type mapping. */
 export const CLASS_TO_TYPE: Record<HullClass, VesselType> = {
@@ -225,8 +230,28 @@ export function factionAccent(faction: Faction): 'blue' | 'red' | 'civilian' {
  */
 
 export function resolveCondition(value: unknown): UnitCondition {
-  return value === 'sunk' ? 'sunk' : 'afloat';
+  if (value === 'sunk') return 'sunk';
+  if (value === 'sinking') return 'sinking';
+  return 'afloat';
 }
+
+/**
+ * Tick sinking countdowns at the start of a resolve.
+ * Newly lethal units set this turn (after weapons) are not decremented until
+ * the next resolve — so they remain optically visible for
+ * `VESSEL_SINKING_TURNS` full subsequent openings.
+ */
+export function advanceSinkingUnits(units: readonly UnitState[]): UnitState[] {
+  return units.map((unit) => {
+    if (unit.condition !== 'sinking') return unit;
+    const rem = (unit.sinkingTurnsRemaining ?? 1) - 1;
+    if (rem <= 0) {
+      return { ...unit, condition: 'sunk', sinkingTurnsRemaining: undefined };
+    }
+    return { ...unit, sinkingTurnsRemaining: rem };
+  });
+}
+
 
 export function resolveFlightLevel(
   type: VesselType,
@@ -239,13 +264,14 @@ export function resolveFlightLevel(
 
 /** True when unit can still make way under its own power. */
 export function canMakeWay(unit: Pick<UnitState, 'condition' | 'subsystems'>): boolean {
-  return unit.condition !== 'sunk' && unit.subsystems?.propulsion !== 'disabled';
+  return !isHullLost(unit.condition) && unit.subsystems?.propulsion !== 'disabled';
 }
 
 /** True when unit still exists as a radar/contactable target. */
 export function isRadarTargetable(unit: Pick<UnitState, 'condition'>): boolean {
-  return unit.condition !== 'sunk';
+  return !isHullLost(unit.condition);
 }
+
 
 /**
  * Normalize position elevation rules by type:
@@ -283,5 +309,6 @@ export function resolveOrderedDepth(
 /** Operator label for sunk/destroyed by type. */
 export function conditionLabel(type: VesselType, condition: UnitCondition): string {
   if (condition === 'afloat') return type === 'Aircraft' ? 'Airborne' : 'Afloat';
+  if (condition === 'sinking') return type === 'Aircraft' ? 'Going down' : 'Sinking';
   return type === 'Aircraft' ? 'Destroyed' : 'Sunk';
 }

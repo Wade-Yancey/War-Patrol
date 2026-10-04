@@ -1035,7 +1035,7 @@ export function canFireTorpedoFromRoom(
 ): boolean {
   return magazineReadyToFire({
     eligible: isFleetSubTorpedoHull(unit),
-    sunk: unit.condition === 'sunk',
+    sunk: unit.condition === 'sunk' || unit.condition === 'sinking',
     load: torpedoRoomReady(unit, room),
     awaitingReload: torpedoRoomAwaitingReload(unit, room),
     reloadTurnsRemaining: torpedoRoomReloadTurnsRemaining(unit, room),
@@ -1177,7 +1177,7 @@ export function startTorpedoRoomReload(
 ): { ok: true; unit: UnitState } | { ok: false; error: string } {
   const result = startMagazineReload({
     eligible: isFleetSubTorpedoHull(unit),
-    sunk: unit.condition === 'sunk',
+    sunk: unit.condition === 'sunk' || unit.condition === 'sinking',
     awaitingReload: torpedoRoomAwaitingReload(unit, room),
     reloadTurnsRemaining: torpedoRoomReloadTurnsRemaining(unit, room),
     reloadTurns: TORPEDO_RELOAD_TURNS,
@@ -1319,7 +1319,7 @@ export function canDropDepthCharges(
 ): boolean {
   return magazineReadyToFire({
     eligible: isDestroyerDcHull(unit),
-    sunk: unit.condition === 'sunk',
+    sunk: unit.condition === 'sunk' || unit.condition === 'sinking',
     load: unit.depthChargeLoad ?? 0,
     awaitingReload: Boolean(unit.depthChargeAwaitingReload),
     reloadTurnsRemaining: unit.depthChargeReloadTurnsRemaining ?? 0,
@@ -1349,7 +1349,7 @@ export function startDepthChargeReload(
 ): { ok: true; unit: UnitState } | { ok: false; error: string } {
   const result = startMagazineReload({
     eligible: isDestroyerDcHull(unit),
-    sunk: unit.condition === 'sunk',
+    sunk: unit.condition === 'sunk' || unit.condition === 'sinking',
     awaitingReload: Boolean(unit.depthChargeAwaitingReload),
     reloadTurnsRemaining: unit.depthChargeReloadTurnsRemaining ?? 0,
     reloadTurns: DEPTH_CHARGE_RELOAD_TURNS,
@@ -1459,7 +1459,7 @@ export function canFireDeckGun(
 ): boolean {
   return magazineReadyToFire({
     eligible: isDeckGunHull(unit),
-    sunk: unit.condition === 'sunk',
+    sunk: unit.condition === 'sunk' || unit.condition === 'sinking',
     load: unit.deckGunLoad ?? 0,
     awaitingReload: Boolean(unit.deckGunAwaitingReload),
     reloadTurnsRemaining: unit.deckGunReloadTurnsRemaining ?? 0,
@@ -1490,7 +1490,7 @@ export function startDeckGunReload(
 ): { ok: true; unit: UnitState } | { ok: false; error: string } {
   const result = startMagazineReload({
     eligible: isDeckGunHull(unit),
-    sunk: unit.condition === 'sunk',
+    sunk: unit.condition === 'sunk' || unit.condition === 'sinking',
     awaitingReload: Boolean(unit.deckGunAwaitingReload),
     reloadTurnsRemaining: unit.deckGunReloadTurnsRemaining ?? 0,
     reloadTurns: DECK_GUN_RELOAD_TURNS,
@@ -2263,7 +2263,7 @@ export function truncateTorpedoAtHit(
 }
 
 export function isTorpedoTarget(unit: UnitState): boolean {
-  if (unit.condition === 'sunk') return false;
+  if (unit.condition === 'sunk' || unit.condition === 'sinking') return false;
   if (unit.type === 'Aircraft') return false;
   if (unit.type === 'Submarine' && unit.position.depth > RADAR_SURFACE_DEPTH_M) {
     return false;
@@ -2272,7 +2272,7 @@ export function isTorpedoTarget(unit: UnitState): boolean {
 }
 
 export function isDepthChargeTarget(unit: UnitState): boolean {
-  if (unit.condition === 'sunk') return false;
+  if (unit.condition === 'sunk' || unit.condition === 'sinking') return false;
   if (unit.type !== 'Submarine') return false;
   return unit.position.depth > RADAR_SURFACE_DEPTH_M;
 }
@@ -2573,7 +2573,7 @@ export const AIRCRAFT_BOMBING_EFFECTIVE_DEPTH_M = 60;
 export function canOrderAircraftAttack(
   unit: Pick<UnitState, 'type' | 'condition'>,
 ): boolean {
-  return unit.type === 'Aircraft' && unit.condition !== 'sunk';
+  return unit.type === 'Aircraft' && unit.condition !== 'sunk' && unit.condition !== 'sinking';
 }
 
 /**
@@ -2588,7 +2588,7 @@ export function aircraftAttackModesForClass(hullClass: HullClass): AircraftAttac
 export function isAircraftAttackTarget(
   unit: Pick<UnitState, 'type' | 'condition'>,
 ): boolean {
-  if (unit.condition === 'sunk') return false;
+  if (unit.condition === 'sunk' || unit.condition === 'sinking') return false;
   if (unit.type === 'Aircraft') return false;
   return true;
 }

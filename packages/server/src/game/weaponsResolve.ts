@@ -414,7 +414,10 @@ export function resolveWeaponsForTurn(
                 sourceDetonationId: hitDetonationId,
               }),
             );
-            if (damaged.condition === 'sunk') {
+            if (
+              (damaged.condition === 'sunk' || damaged.condition === 'sinking') &&
+              target.condition === 'afloat'
+            ) {
               combatLogEntries.push(
                 logLine({
                   kind: 'unit_sunk',
@@ -519,7 +522,10 @@ export function resolveWeaponsForTurn(
                 sourceDetonationId: dcDetonationId,
               }),
             );
-            if (damaged.condition === 'sunk') {
+            if (
+              (damaged.condition === 'sunk' || damaged.condition === 'sinking') &&
+              target.condition === 'afloat'
+            ) {
               combatLogEntries.push(
                 logLine({
                   kind: 'unit_sunk',

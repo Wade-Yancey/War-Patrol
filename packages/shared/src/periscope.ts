@@ -2,9 +2,22 @@ import { PERISCOPE_MAX_RANGE_NM, RADAR_SURFACE_DEPTH_M } from './constants.js';
 import { divePresetById } from './dive.js';
 import { clamp, normalizeHeading } from './geo.js';
 import { shortestBearingDelta } from './hydrophone.js';
-import type { HullClass, SensorDef, UnitState } from './types.js';
+import type { HullClass, OpticsDamageLook, SensorDef, UnitState } from './types.js';
 import { canUseSensorStation } from './damage.js';
 import { isHullClass, resolveVesselIdentity } from './vessel.js';
+
+/**
+ * Coarse optics-only damage cue from hull health / sinking — never raw HP.
+ * Bands mirror casualty thresholds (sensors &lt; 70, propulsion &lt; 35).
+ */
+export function opticsDamageLookForUnit(
+  unit: Pick<UnitState, 'health' | 'condition'>,
+): OpticsDamageLook | undefined {
+  if (unit.condition === 'sinking') return 'smoking';
+  if (unit.health < 35) return 'smoking';
+  if (unit.health < 70) return 'scarred';
+  return undefined;
+}
 
 /**
  * Max keel depth (m) at which fleet-sub periscope optics are usable.
@@ -98,6 +111,7 @@ export function isPeriscopeDepthOk(
 export function isPeriscopeTargetable(
   unit: Pick<UnitState, 'type' | 'condition' | 'position'>,
 ): boolean {
+  // Fully sunk/destroyed drop from optics; sinking hulls remain visible.
   if (unit.condition === 'sunk') return false;
   if (unit.type === 'Submarine' && unit.position.depth > RADAR_SURFACE_DEPTH_M) {
     return false;
@@ -124,7 +138,8 @@ export function isRaisedPeriscopeSpottable(
     'type' | 'condition' | 'position' | 'periscopeRaised' | 'periscopeExposure'
   >,
 ): boolean {
-  if (unit.condition === 'sunk') return false;
+  // Sinking / sunk boats clear the mast on lethal — no feather contact.
+  if (unit.condition === 'sunk' || unit.condition === 'sinking') return false;
   if (unit.type !== 'Submarine') return false;
   if (!unit.periscopeRaised) return false;
   if (effectivePeriscopeExposure(unit) <= 0) return false;

@@ -798,9 +798,11 @@ function GroundTruthMapInner({
               ? unit.type === 'Aircraft'
                 ? ' · DESTROYED'
                 : ' · SUNK'
-              : ''
+              : unit.condition === 'sinking'
+                ? ' · SINKING'
+                : ''
           }`,
-          sunk: unit.condition === 'sunk',
+          sunk: unit.condition === 'sunk' || unit.condition === 'sinking',
           isAircraft: unit.type === 'Aircraft',
           heading,
           label: `${unit.speed.toFixed(0)} KN · HDG ${heading.toFixed(0)}° · CRS ${ordered.toFixed(0)}°${

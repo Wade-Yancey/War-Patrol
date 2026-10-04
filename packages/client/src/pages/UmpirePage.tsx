@@ -192,7 +192,7 @@ export function UmpirePage() {
       (u) =>
         u.id !== selectedUnit.id &&
         u.type !== 'Aircraft' &&
-        u.condition !== 'sunk',
+        u.condition !== 'sunk' && u.condition !== 'sinking',
     );
   }, [umpire, selectedUnit]);
 
@@ -1216,7 +1216,11 @@ export function UmpirePage() {
                           step={1}
                           unit="kn"
                           showSlider
-                          disabled={editCondition === 'sunk' || editPropulsion === 'disabled'}
+                          disabled={
+                            editCondition === 'sunk' ||
+                            editCondition === 'sinking' ||
+                            editPropulsion === 'disabled'
+                          }
                           hint={`Class cap ±${editMaxSpeed} kn · tap readout to type`}
                         />
                         <p className="mono muted" style={{ margin: 0, fontSize: '0.75rem' }}>
@@ -1489,7 +1493,7 @@ export function UmpirePage() {
                                   (u) =>
                                     u.id !== selectedUnit.id &&
                                     u.type !== 'Aircraft' &&
-                                    u.condition !== 'sunk',
+                                    u.condition !== 'sunk' && u.condition !== 'sinking',
                                 )
                                 .map((u) => (
                                   <option key={u.id} value={u.id}>
@@ -1552,6 +1556,9 @@ export function UmpirePage() {
                             >
                               <option value="afloat">
                                 {conditionLabel(editType, 'afloat')}
+                              </option>
+                              <option value="sinking">
+                                {conditionLabel(editType, 'sinking')}
                               </option>
                               <option value="sunk">{conditionLabel(editType, 'sunk')}</option>
                             </select>

@@ -34,6 +34,9 @@ import {
   SUBMARINE_IMPLOSION_CHANCE_PER_TURN,
   SUBMARINE_MAX_DEPTH_M,
   SUBMERGED_MAX_SPEED_KNOTS,
+  VESSEL_SINKING_TURNS,
+  advanceSinkingUnits,
+  opticsDamageLookForUnit,
   TORPEDO_SPREAD_MAX_DEG,
   TORPEDO_SPREAD_MIN_DEG,
   applyCrushDepthImplosions,
@@ -423,7 +426,11 @@ async function main() {
       rng: () => 0.1,
       chance: 0.25,
     });
-    check('implosion sinks past crush', boom.units[0]!.condition === 'sunk');
+    check(
+      'implosion enters sinking past crush',
+      boom.units[0]!.condition === 'sinking' &&
+        boom.units[0]!.sinkingTurnsRemaining === VESSEL_SINKING_TURNS,
+    );
     check('implosion log kind', boom.combatLogEntries[0]?.kind === 'hull_implosion');
     const safe = applyCrushDepthImplosions(units as never, {
       turnNumber: 3,
@@ -2935,6 +2942,51 @@ async function main() {
       );
       check('DC overkill last applied is remainder 12', applied[4] === 12);
       check('DC overkill no phantom after sunk', healthDamageApplied(u, applyHealthDamage(u, 22)) === 0);
+      check(
+        'DC overkill enters sinking not instant sunk',
+        u.condition === 'sinking' && u.sinkingTurnsRemaining === VESSEL_SINKING_TURNS,
+        `condition=${u.condition} turns=${u.sinkingTurnsRemaining}`,
+      );
+      check(
+        'sinking hull still optically targetable',
+        isPeriscopeTargetable({
+          type: 'Submarine',
+          condition: 'sinking',
+          position: { lat: 0, lon: 0, depth: 0 },
+        }) === true,
+      );
+      check(
+        'fully sunk hull not optically targetable',
+        isPeriscopeTargetable({
+          type: 'Submarine',
+          condition: 'sunk',
+          position: { lat: 0, lon: 0, depth: 0 },
+        }) === false,
+      );
+      let sinkingTick = [u];
+      for (let t = 0; t < VESSEL_SINKING_TURNS - 1; t++) {
+        sinkingTick = advanceSinkingUnits(sinkingTick);
+        check(
+          `sinking still after tick ${t + 1}`,
+          sinkingTick[0]!.condition === 'sinking',
+          `condition=${sinkingTick[0]!.condition}`,
+        );
+      }
+      sinkingTick = advanceSinkingUnits(sinkingTick);
+      check(
+        'sinking completes to sunk after countdown',
+        sinkingTick[0]!.condition === 'sunk' && sinkingTick[0]!.sinkingTurnsRemaining == null,
+      );
+      check('optics damage scarred mid HP', opticsDamageLookForUnit({ health: 55, condition: 'afloat' }) === 'scarred');
+      check('optics damage smoking low HP', opticsDamageLookForUnit({ health: 20, condition: 'afloat' }) === 'smoking');
+      check(
+        'optics damage smoking while sinking',
+        opticsDamageLookForUnit({ health: 0, condition: 'sinking' }) === 'smoking',
+      );
+      check(
+        'optics damage none when healthy',
+        opticsDamageLookForUnit({ health: 90, condition: 'afloat' }) === undefined,
+      );
 
       const events = applied
         .filter((d) => d > 0)

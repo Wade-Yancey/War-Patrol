@@ -118,7 +118,7 @@ export function buildBridgeActiveSonarPings(
   save: GameSave,
 ): NonNullable<VesselView['bridgeActiveSonarPings']> {
   if (unit.type !== 'Submarine') return [];
-  if (unit.condition === 'sunk') return [];
+  if (unit.condition === 'sunk' || unit.condition === 'sinking') return [];
   if (unit.position.depth <= RADAR_SURFACE_DEPTH_M) return [];
 
   const pings: NonNullable<VesselView['bridgeActiveSonarPings']> = [];
