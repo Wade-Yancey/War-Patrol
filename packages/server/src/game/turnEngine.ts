@@ -196,6 +196,8 @@ export type OrdersPatch = {
   course?: number;
   eot?: EotSetting;
   depth?: number;
+  /** Ballast blow — bypasses dive-plane jam for surface orders. */
+  emergencyBlow?: boolean;
   fireTorpedo?: TorpedoFireOrder | null;
   dropDepthCharges?: DepthChargeDropOrder | null;
   fireDeckGun?: DeckGunFireOrder | null;
@@ -215,6 +217,10 @@ export function mergeOrders(
     updatedAt: new Date().toISOString(),
     updatedByStationId: stationId,
   };
+  if (patch.depth !== undefined) {
+    if (patch.emergencyBlow) next.emergencyBlow = true;
+    else delete next.emergencyBlow;
+  }
   if (patch.fireTorpedo === null) {
     delete next.fireTorpedo;
   } else if (patch.fireTorpedo) {

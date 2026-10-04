@@ -957,6 +957,7 @@ export function StationPage() {
       course?: number;
       eot?: EotSetting;
       depth?: number;
+      emergencyBlow?: boolean;
       fireTorpedo?: TorpedoFireOrder | null;
       dropDepthCharges?: DepthChargeDropOrder | null;
       fireDeckGun?: DeckGunFireOrder | null;
@@ -1599,9 +1600,21 @@ export function StationPage() {
                     orderedCourse={vessel.unit.orderedCourse}
                     draftCourse={course}
                     onDraftCourseChange={setCourse}
-                    disabled={!vessel.canSubmitOrders}
+                    disabled={
+                      !vessel.canSubmitOrders ||
+                      vessel.unit.subsystems?.steering === 'stuck' ||
+                      vessel.unit.subsystems?.steering === 'disabled'
+                    }
                     turnRate={vessel.unit.turnRate}
                   >
+                    {(vessel.unit.subsystems?.steering === 'stuck' ||
+                      vessel.unit.subsystems?.steering === 'disabled') && (
+                      <p className="dive-risk dive-risk--warn" role="status">
+                        {vessel.unit.subsystems?.steering === 'stuck'
+                          ? 'Rudder stuck — course orders blocked until repaired.'
+                          : 'Steering disabled — course orders blocked until repaired.'}
+                      </p>
+                    )}
                     <CrtTrainControl
                       label={`Steer · hold · ${COURSE_NUDGE_DEG}°`}
                       onNudge={(dir) =>
@@ -1611,13 +1624,21 @@ export function StationPage() {
                       }
                       decreaseLabel={`Steer course ${COURSE_NUDGE_DEG} degree to port. Hold to repeat.`}
                       increaseLabel={`Steer course ${COURSE_NUDGE_DEG} degree to starboard. Hold to repeat.`}
-                      disabled={!vessel.canSubmitOrders}
+                      disabled={
+                        !vessel.canSubmitOrders ||
+                        vessel.unit.subsystems?.steering === 'stuck' ||
+                        vessel.unit.subsystems?.steering === 'disabled'
+                      }
                     />
                     <div className="control-actions">
                       <button
                         className="primary"
                         type="button"
-                        disabled={!vessel.canSubmitOrders}
+                        disabled={
+                          !vessel.canSubmitOrders ||
+                          vessel.unit.subsystems?.steering === 'stuck' ||
+                          vessel.unit.subsystems?.steering === 'disabled'
+                        }
                         onClick={() => void submit({ course })}
                       >
                         Submit course
@@ -1641,13 +1662,20 @@ export function StationPage() {
                   maxDepthM={SUBMARINE_MAX_DEPTH_M}
                   orderStepM={SUBMARINE_DEPTH_ORDER_STEP_M}
                   disabled={!vessel.canSubmitOrders}
+                  divePlanesLocked={
+                    vessel.unit.subsystems?.divePlanes === 'stuck' ||
+                    vessel.unit.subsystems?.divePlanes === 'disabled'
+                  }
                   onSubmit={(d, opts) => {
                     const blow = Boolean(opts?.emergencyBlow);
                     pendingEmergencyBlowRef.current = blow;
                     // Wait for orderedDepth === 0 on the stream before treating
                     // ordered>0 as a cancel (see emergencyBlowOrderSeenRef).
                     emergencyBlowOrderSeenRef.current = false;
-                    void submit({ depth: clampSubmarineDepth(d) });
+                    void submit({
+                      depth: clampSubmarineDepth(d),
+                      ...(blow ? { emergencyBlow: true } : {}),
+                    });
                   }}
                 />
               </section>
@@ -1731,16 +1759,27 @@ export function StationPage() {
                     <div className="station-instrument-head">
                       <h2>Engine orders</h2>
                     </div>
+                    {vessel.unit.subsystems?.propulsion === 'disabled' && (
+                      <p className="dive-risk dive-risk--warn" role="status">
+                        Propulsion disabled — engine orders blocked until repaired.
+                      </p>
+                    )}
                     <EotTelegraph
                       value={eot}
                       onChange={setEot}
-                      disabled={!vessel.canSubmitOrders}
+                      disabled={
+                        !vessel.canSubmitOrders ||
+                        vessel.unit.subsystems?.propulsion === 'disabled'
+                      }
                     />
                     <div className="control-actions">
                       <button
                         className="primary"
                         type="button"
-                        disabled={!vessel.canSubmitOrders}
+                        disabled={
+                          !vessel.canSubmitOrders ||
+                          vessel.unit.subsystems?.propulsion === 'disabled'
+                        }
                         onClick={() => {
                           // Engine-room confirm ring: only when locking in a real EOT change
                           // (telegraph already dinged on position move). Re-submit of the

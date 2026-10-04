@@ -313,6 +313,11 @@ export interface UnitOrders {
    * Applied to {@link UnitState.position}.depth on turn resolve.
    */
   depth?: number;
+  /**
+   * Blow ballast / Emergency Blow preset. Bypasses dive-plane stuck/disabled
+   * lock so the boat can still order surface (0 m). Ordinary depth orders do not.
+   */
+  emergencyBlow?: boolean;
   /** Fire a torpedo / spread this resolve (consumes load on launch). */
   fireTorpedo?: TorpedoFireOrder;
   /** Drop a depth-charge pattern this resolve (consumes rack load). */

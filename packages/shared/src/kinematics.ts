@@ -12,7 +12,12 @@ import {
   stepSpeedTowardTarget,
 } from './performance.js';
 import type { LatLonDepth, UnitOrders, UnitState } from './types.js';
-import { propulsionSpeedFactor, resolveSubsystems } from './damage.js';
+import {
+  divePlanesBlockDepthOrders,
+  ensureSubsystemLocks,
+  propulsionSpeedFactor,
+  resolveSubsystems,
+} from './damage.js';
 import {
   canMakeWay,
   normalizePositionForType,
@@ -59,7 +64,7 @@ export function applyUnitKinematics(
   }
 
   const orders = unit.orders;
-  const subsystems = resolveSubsystems(unit.subsystems);
+  let subsystems = ensureSubsystemLocks(unit.subsystems, unit);
   let orderedCourse =
     typeof unit.orderedCourse === 'number' ? unit.orderedCourse : unit.heading;
   let orderedDepth = resolveOrderedDepth(unit.type, unit.position.depth, unit.orderedDepth);
@@ -69,6 +74,7 @@ export function applyUnitKinematics(
   let position = { ...unit.position };
 
   // Rudder stuck: helm set-point frozen; ignore new course orders.
+  // Steering disabled: course may update but yaw is blocked below.
   if (subsystems.steering === 'stuck') {
     orderedCourse = normalizeHeading(
       subsystems.rudderStuckHeading ?? orderedCourse,
@@ -78,17 +84,29 @@ export function applyUnitKinematics(
     orderedCourse = normalizeHeading(orders.course);
   }
 
-  // Dive planes stuck/disabled: depth set-point frozen; ignore new depth orders.
-  if (
+  // Dive planes stuck/disabled: depth set-point frozen — except Emergency Blow
+  // (ballast blow), which may still order surface and retarget the jam to 0 m.
+  const emergencyBlow =
     unit.type === 'Submarine' &&
-    (subsystems.divePlanes === 'stuck' || subsystems.divePlanes === 'disabled')
-  ) {
+    Boolean(orders.emergencyBlow) &&
+    orders.depth !== undefined;
+  const diveLocked =
+    unit.type === 'Submarine' && divePlanesBlockDepthOrders(subsystems);
+  if (diveLocked && !emergencyBlow) {
     orderedDepth = clampSubmarineDepth(
       subsystems.divePlanesStuckDepth ?? orderedDepth,
     );
   } else if (orders.depth !== undefined && unit.type === 'Submarine') {
     // Depth order updates the standing set-point; keel depth steps toward it this resolve.
     orderedDepth = clampSubmarineDepth(orders.depth);
+    if (emergencyBlow && diveLocked) {
+      // Keep planes jammed/disabled, but freeze at surface so the next resolve
+      // does not pull the boat back down to the old stuck depth.
+      subsystems = resolveSubsystems({
+        ...subsystems,
+        divePlanesStuckDepth: 0,
+      });
+    }
   }
   if (unit.type === 'Submarine') {
     const nextDepth = stepDepthTowardOrdered(
@@ -149,6 +167,7 @@ export function applyUnitKinematics(
     eot,
     speed,
     position,
+    subsystems,
     orders: nextOrders,
   };
 }

@@ -21,7 +21,13 @@ export interface DiveControlsProps {
   onDraftDepthChange: (depthM: number) => void;
   maxDepthM?: number;
   orderStepM?: number;
+  /** Phase / station lock — disables every control including Emergency Blow. */
   disabled?: boolean;
+  /**
+   * Dive planes stuck or disabled. Ordinary depth presets / dial / submit are
+   * locked; Emergency Blow stays available (ballast blow bypass).
+   */
+  divePlanesLocked?: boolean;
   /**
    * Depth order submit. `emergencyBlow: true` only when the Emergency Blow
    * preset is applied (Surface / dial / other presets omit the flag).
@@ -41,6 +47,7 @@ export function DiveControls({
   maxDepthM = SUBMARINE_MAX_DEPTH_M,
   orderStepM = SUBMARINE_DEPTH_ORDER_STEP_M,
   disabled = false,
+  divePlanesLocked = false,
   onSubmit,
 }: DiveControlsProps) {
   const depthLabel = formatCoarseDepthMeters(depth);
@@ -50,6 +57,7 @@ export function DiveControls({
   const coarseOrdered = Math.round(orderedDepth / orderStepM) * orderStepM;
   const coarseDraft = Math.round(draftDepth / orderStepM) * orderStepM;
   const onOrdered = coarseDepth === coarseOrdered;
+  const ordinaryDisabled = disabled || divePlanesLocked;
 
   const draftRisk = submarineDepthRisk(draftDepth);
   const keelRisk = submarineDepthRisk(depth);
@@ -60,10 +68,12 @@ export function DiveControls({
 
   const applyPreset = (id: DivePresetId) => {
     const preset = DIVE_PRESETS.find((p) => p.id === id);
-    if (!preset || disabled) return;
+    if (!preset) return;
+    const isEmergency = id === 'emergency_blow';
+    if (disabled || (divePlanesLocked && !isEmergency)) return;
     onDraftDepthChange(preset.depthM);
     submitDepthOrder(preset.depthM, {
-      emergencyBlow: id === 'emergency_blow',
+      emergencyBlow: isEmergency,
     });
   };
 
@@ -132,10 +142,18 @@ export function DiveControls({
         </p>
       )}
 
+      {divePlanesLocked && !disabled && (
+        <p className="dive-risk dive-risk--warn" role="status">
+          Dive planes jammed — ordinary depth orders blocked. Emergency Blow still
+          available.
+        </p>
+      )}
+
       <div className="dive-presets" role="group" aria-label="Dive depth presets">
         {DIVE_PRESETS.map((preset) => {
           const active = Math.round(draftDepth) === preset.depthM;
           const isEmergency = preset.id === 'emergency_blow';
+          const presetDisabled = disabled || (divePlanesLocked && !isEmergency);
           return (
             <button
               key={preset.id}
@@ -147,8 +165,12 @@ export function DiveControls({
               ]
                 .filter(Boolean)
                 .join(' ')}
-              disabled={disabled}
-              title={`${preset.label}: ${preset.depthM} m — ${preset.rationale}`}
+              disabled={presetDisabled}
+              title={
+                divePlanesLocked && !isEmergency
+                  ? 'Dive planes jammed — use Emergency Blow to surface'
+                  : `${preset.label}: ${preset.depthM} m — ${preset.rationale}`
+              }
               onClick={() => applyPreset(preset.id)}
             >
               <span className="dive-preset-label">{preset.label}</span>
@@ -166,7 +188,7 @@ export function DiveControls({
         max={maxDepthM}
         step={orderStepM}
         unit="m"
-        disabled={disabled}
+        disabled={ordinaryDisabled}
         format={(v) => formatCoarseDepthMeters(v)}
         parse={(raw) => {
           const n = Number(String(raw).replace(/[^\d.-]/g, ''));
@@ -179,7 +201,7 @@ export function DiveControls({
         <button
           className="primary"
           type="button"
-          disabled={disabled}
+          disabled={ordinaryDisabled}
           onClick={() => submitDepthOrder(draftDepth)}
         >
           Submit depth

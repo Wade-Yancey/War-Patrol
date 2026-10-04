@@ -94,6 +94,7 @@ export const api = {
       course?: number;
       eot?: EotSetting;
       depth?: number;
+      emergencyBlow?: boolean;
       fireTorpedo?: {
         room?: 'forward' | 'aft';
         aimHeading: number;

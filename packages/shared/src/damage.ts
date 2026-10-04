@@ -96,6 +96,11 @@ function parseDivePlanes(value: unknown): DivePlanesState {
 /**
  * Normalize / migrate subsystem blobs from saves and umpire patches.
  * Legacy `{ sensors: 'disabled' }` expands to all sensor stations disabled.
+ *
+ * Lock fields (`rudderStuckHeading`, `divePlanesStuckDepth`) are kept only while
+ * the matching subsystem is in a jammed/disabled state — umpire repair to
+ * `intact` always drops them so depth/helm orders are not left frozen by a
+ * stale lock after the UI shows repaired.
  */
 export function resolveSubsystems(
   partial?: Partial<UnitSubsystems> & { sensors?: SubsystemState } | null,
@@ -124,13 +129,58 @@ export function resolveSubsystems(
       next.rudderStuckHeading = normalizeHeading(h);
     }
   }
+  // Explicit: intact / disabled steering never carries a jammed-heading lock.
   if (next.divePlanes === 'stuck' || next.divePlanes === 'disabled') {
     const depth = partial.divePlanesStuckDepth;
     if (typeof depth === 'number' && Number.isFinite(depth)) {
       next.divePlanesStuckDepth = Math.max(0, depth);
     }
   }
+  // Explicit: intact dive planes never carry a jammed-depth lock.
 
+  return next;
+}
+
+/** True when dive planes block ordinary depth set-points (Emergency Blow still allowed). */
+export function divePlanesBlockDepthOrders(
+  subsystems?: Partial<UnitSubsystems> | null,
+): boolean {
+  const s = resolveSubsystems(subsystems);
+  return s.divePlanes === 'stuck' || s.divePlanes === 'disabled';
+}
+
+/** True when steering blocks new helm course set-points. */
+export function steeringBlocksCourseOrders(
+  subsystems?: Partial<UnitSubsystems> | null,
+): boolean {
+  const s = resolveSubsystems(subsystems);
+  return s.steering === 'stuck' || s.steering === 'disabled';
+}
+
+/**
+ * Fill missing jam locks from the unit's current set-points so stuck/disabled
+ * never freezes on an implicit/undefined lock after umpire edits or legacy saves.
+ */
+export function ensureSubsystemLocks(
+  subsystems: Partial<UnitSubsystems> | null | undefined,
+  unit: Pick<UnitState, 'orderedCourse' | 'heading' | 'orderedDepth' | 'position'>,
+): UnitSubsystems {
+  const next = resolveSubsystems(subsystems);
+  if (next.steering === 'stuck' && next.rudderStuckHeading == null) {
+    next.rudderStuckHeading = normalizeHeading(
+      typeof unit.orderedCourse === 'number' ? unit.orderedCourse : unit.heading,
+    );
+  }
+  if (
+    (next.divePlanes === 'stuck' || next.divePlanes === 'disabled') &&
+    next.divePlanesStuckDepth == null
+  ) {
+    const depth =
+      typeof unit.orderedDepth === 'number' && Number.isFinite(unit.orderedDepth)
+        ? unit.orderedDepth
+        : unit.position.depth;
+    next.divePlanesStuckDepth = Math.max(0, depth);
+  }
   return next;
 }
 
