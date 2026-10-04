@@ -42,15 +42,17 @@ function formatTorpedoOrderSummary(
 function formatDepthChargeOrderSummary(
   drop: NonNullable<UnitOrders['dropDepthCharges']>,
 ): string {
-  const pat =
-    drop.pattern === 'pattern_5'
-      ? 'P10'
-      : drop.pattern === 'pattern_3'
-        ? 'P6'
-        : drop.pattern === 'pair'
-          ? 'PAIR'
-          : '1';
-  return `DC ${pat} · SET ${formatDepthMeters(drop.depthSettingM)}`;
+  const count =
+    drop.count != null && Number.isFinite(Number(drop.count))
+      ? Math.max(1, Math.floor(Number(drop.count)))
+      : drop.pattern === 'pattern_5'
+        ? 10
+        : drop.pattern === 'pattern_3'
+          ? 6
+          : drop.pattern === 'pair'
+            ? 4
+            : 1;
+  return `DC ×${count} · SET ${formatDepthMeters(drop.depthSettingM)}`;
 }
 
 function formatDeckGunOrderSummary(

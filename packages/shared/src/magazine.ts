@@ -41,7 +41,7 @@ export function resolveMagazineSlice(opts: {
   };
 }
 
-/** True when the magazine can expend rounds (not sunk / awaiting / counting down). */
+/** True when the magazine can expend rounds (not sunk; optionally not awaiting / counting down). */
 export function magazineReadyToFire(opts: {
   eligible: boolean;
   sunk: boolean;
@@ -50,12 +50,19 @@ export function magazineReadyToFire(opts: {
   reloadTurnsRemaining: number;
   /** Extra gate (e.g. deck-gun depth). Default true. */
   extraOk?: boolean;
+  /**
+   * When false, remaining ready rounds stay fireable while awaiting / mid reload
+   * (depth-charge rack + torpedo rooms). Default true (deck gun still locks).
+   */
+  blockWhileReloading?: boolean;
 }): boolean {
   if (!opts.eligible) return false;
   if (opts.sunk) return false;
   if (opts.extraOk === false) return false;
-  if (opts.awaitingReload) return false;
-  if ((opts.reloadTurnsRemaining ?? 0) > 0) return false;
+  if (opts.blockWhileReloading !== false) {
+    if (opts.awaitingReload) return false;
+    if ((opts.reloadTurnsRemaining ?? 0) > 0) return false;
+  }
   return opts.load > 0;
 }
 

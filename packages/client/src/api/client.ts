@@ -105,7 +105,8 @@ export const api = {
         spreadDeg?: number;
       } | null;
       dropDepthCharges?: {
-        pattern: 'single' | 'pair' | 'pattern_3' | 'pattern_5';
+        count?: number;
+        pattern?: 'single' | 'pair' | 'pattern_3' | 'pattern_5';
         depthSettingM: number;
       } | null;
       fireDeckGun?: {

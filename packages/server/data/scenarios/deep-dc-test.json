@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "deep-dc-test",
   "name": "Deep depth-charge test",
-  "description": "ASW drill at deep keel: Fletcher nearly overhead a Gato at the Deep dive preset (90 m / ~300 ft). Same lat/lon start \u2014 horizontal miss \u2248 0 for DC pattern drops; set fuse ~90 m to match. Exercises submerged hull creaks + DC hydrophone/Controls audio. Passwords: umpire / blue / red (same tokens as demo).",
+  "description": "ASW drill at deep keel: Fletcher nearly overhead a Gato at the Deep dive preset (90 m / ~300 ft). Same lat/lon start \u2014 horizontal miss \u2248 0 for DC drops; set fuse ~90 m to match (fuse slider goes to crush 150 m). Exercises submerged hull creaks + DC hydrophone/Controls audio. Passwords: umpire / blue / red (same tokens as demo).",
   "mode": "pvp",
   "operatingArea": {
     "minLat": 34.35,

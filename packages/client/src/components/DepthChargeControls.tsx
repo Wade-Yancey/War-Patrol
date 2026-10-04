@@ -1,13 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   DEPTH_CHARGE_DEFAULT_DEPTH_M,
   DEPTH_CHARGE_MAX_DEPTH_M,
   DEPTH_CHARGE_MIN_DEPTH_M,
   DEPTH_CHARGE_RELOAD_TURNS,
   DESTROYER_DEPTH_CHARGE_LOAD,
-  depthChargePatternCount,
+  depthChargeCountFromOrder,
   type DepthChargeDropOrder,
-  type DepthChargePattern,
   type DepthChargeTrack,
 } from '@war-patrol/shared';
 import { TouchNumber } from './TouchNumber';
@@ -25,14 +24,7 @@ interface Props {
   onReload?: () => void;
 }
 
-const PATTERNS: Array<{ id: DepthChargePattern; label: string }> = [
-  { id: 'single', label: 'Single' },
-  { id: 'pair', label: 'Pair' },
-  { id: 'pattern_3', label: 'Pattern 6' },
-  { id: 'pattern_5', label: 'Pattern 10' },
-];
-
-/** Destroyer depth-charge drop panel — pattern + depth setting + rack reload. */
+/** Destroyer depth-charge drop panel — count slider + depth setting + optional rack reload. */
 export function DepthChargeControls({
   depthChargeLoad,
   awaitingReload = false,
@@ -45,23 +37,38 @@ export function DepthChargeControls({
   onClear,
   onReload,
 }: Props) {
-  const [pattern, setPattern] = useState<DepthChargePattern>(
-    () => pending?.pattern ?? 'pattern_3',
+  const maxDrop = Math.max(0, Math.floor(depthChargeLoad));
+  const pendingCount = pending
+    ? depthChargeCountFromOrder(pending, Math.max(maxDrop, DESTROYER_DEPTH_CHARGE_LOAD))
+    : 6;
+  const [count, setCount] = useState(() =>
+    Math.min(Math.max(1, pendingCount), Math.max(1, maxDrop || 1)),
   );
   const [depthSettingM, setDepthSettingM] = useState(
     () => pending?.depthSettingM ?? DEPTH_CHARGE_DEFAULT_DEPTH_M,
   );
 
-  const need = depthChargePatternCount(pattern);
-  const rackBlocked = awaitingReload || reloadTurnsRemaining > 0 || depthChargeLoad <= 0;
-  const canDrop = !rackBlocked && depthChargeLoad >= need;
+  useEffect(() => {
+    if (maxDrop <= 0) return;
+    setCount((c) => Math.min(Math.max(1, c), maxDrop));
+  }, [maxDrop]);
+
+  const need = maxDrop > 0 ? Math.min(Math.max(1, count), maxDrop) : 0;
+  const empty = maxDrop <= 0;
+  const canDrop = !disabled && !empty && need > 0;
 
   let rackStatus = `${depthChargeLoad}/${DESTROYER_DEPTH_CHARGE_LOAD} ready`;
   if (reloadTurnsRemaining > 0) {
-    rackStatus = `reloading · ${reloadTurnsRemaining} turn${reloadTurnsRemaining === 1 ? '' : 's'} left`;
+    rackStatus =
+      maxDrop > 0
+        ? `${depthChargeLoad}/${DESTROYER_DEPTH_CHARGE_LOAD} ready · reloading · ${reloadTurnsRemaining} turn${reloadTurnsRemaining === 1 ? '' : 's'} left`
+        : `reloading · ${reloadTurnsRemaining} turn${reloadTurnsRemaining === 1 ? '' : 's'} left`;
   } else if (awaitingReload) {
-    rackStatus = 'awaiting reload';
-  } else if (depthChargeLoad <= 0) {
+    rackStatus =
+      maxDrop > 0
+        ? `${depthChargeLoad}/${DESTROYER_DEPTH_CHARGE_LOAD} ready · reload available`
+        : 'empty — awaiting reload';
+  } else if (empty) {
     rackStatus = 'empty — umpire rearm';
   }
 
@@ -70,7 +77,7 @@ export function DepthChargeControls({
       <div className="station-instrument-head">
         <h2>Depth charges</h2>
         <p className="muted station-instrument-blurb">
-          Rack {rackStatus} · reload {DEPTH_CHARGE_RELOAD_TURNS} turns
+          Rack {rackStatus} · reload {DEPTH_CHARGE_RELOAD_TURNS} turns (optional)
         </p>
       </div>
 
@@ -89,22 +96,17 @@ export function DepthChargeControls({
         </div>
       )}
 
-      <fieldset className="weapons-plot-fieldset" disabled={disabled || rackBlocked}>
-        <legend className="mono">Pattern</legend>
-        <div className="weapons-plot-row">
-          {PATTERNS.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              className={pattern === p.id ? 'primary' : undefined}
-              aria-pressed={pattern === p.id}
-              onClick={() => setPattern(p.id)}
-            >
-              {p.label} ({depthChargePatternCount(p.id)})
-            </button>
-          ))}
-        </div>
-      </fieldset>
+      <TouchNumber
+        label="Charges to drop"
+        value={need || 1}
+        onChange={setCount}
+        min={1}
+        max={Math.max(1, maxDrop || 1)}
+        step={1}
+        unit=""
+        disabled={disabled || empty}
+        hint={empty ? 'Rack empty' : `1–${maxDrop} (full rack OK)`}
+      />
 
       <TouchNumber
         label="Depth setting"
@@ -114,17 +116,17 @@ export function DepthChargeControls({
         max={DEPTH_CHARGE_MAX_DEPTH_M}
         step={5}
         unit="m"
-        disabled={disabled || rackBlocked}
+        disabled={disabled || empty}
       />
 
       <div className="control-actions">
         <button
           className="primary"
           type="button"
-          disabled={disabled || !canDrop}
-          onClick={() => onSubmit({ pattern, depthSettingM })}
+          disabled={!canDrop}
+          onClick={() => onSubmit({ count: need, depthSettingM })}
         >
-          Queue depth-charge drop ({need})
+          Queue depth-charge drop ({need || 0})
         </button>
         {pending && onClear && (
           <button type="button" disabled={disabled} onClick={onClear}>
@@ -135,7 +137,8 @@ export function DepthChargeControls({
 
       {pending && (
         <p className="mono readout" style={{ margin: 0 }}>
-          Of record: {pending.pattern} · set {pending.depthSettingM} m
+          Of record: ×{depthChargeCountFromOrder(pending, DESTROYER_DEPTH_CHARGE_LOAD)} · set{' '}
+          {pending.depthSettingM} m
         </p>
       )}
 

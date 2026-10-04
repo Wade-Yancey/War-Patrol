@@ -72,19 +72,24 @@ function parseRelAim(raw: string): number | null {
   return Math.round(foldRelativeBearing(n));
 }
 
+/** Ready fish stay fireable while empty tubes await / mid reload. */
 function roomCanFire(room: RoomState): boolean {
-  return room.ready > 0 && !room.awaitingReload && room.reloadTurnsRemaining <= 0;
+  return room.ready > 0;
 }
 
 function roomStatus(room: RoomState, capacity: number): string {
+  if (room.ready <= 0) {
+    if (room.reloadTurnsRemaining > 0) {
+      return `empty · reloading · ${room.reloadTurnsRemaining} turn${room.reloadTurnsRemaining === 1 ? '' : 's'} left`;
+    }
+    if (room.awaitingReload) return 'empty — awaiting reload';
+    return 'empty — umpire rearm';
+  }
   if (room.reloadTurnsRemaining > 0) {
-    return `reloading · ${room.reloadTurnsRemaining} turn${room.reloadTurnsRemaining === 1 ? '' : 's'} left`;
+    return `${room.ready}/${capacity} ready · reloading · ${room.reloadTurnsRemaining} turn${room.reloadTurnsRemaining === 1 ? '' : 's'} left`;
   }
   if (room.awaitingReload) {
-    return 'awaiting reload';
-  }
-  if (room.ready <= 0) {
-    return 'empty — umpire rearm';
+    return `${room.ready}/${capacity} ready · reload available`;
   }
   return `${room.ready}/${capacity} ready`;
 }
@@ -208,7 +213,7 @@ export function TorpedoCalculator({
         <p className="muted station-instrument-blurb">
           {TORPEDO_SPEED_KN} kn · {TORPEDO_MAX_RUN_NM} nm · bow ±
           {TORPEDO_FORWARD_ARC_HALF_DEG}° / stern ±{TORPEDO_AFT_ARC_HALF_DEG}° · reload{' '}
-          {TORPEDO_RELOAD_TURNS} turns
+          {TORPEDO_RELOAD_TURNS} turns (optional; ready tubes stay live)
         </p>
       </div>
 

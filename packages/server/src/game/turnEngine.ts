@@ -5,8 +5,9 @@ import {
   applyUnitKinematics,
   clampDepthChargeSetting,
   clampSubmarineDepth,
+  depthChargeCountFromOrder,
+  depthChargePatternForCount,
   normalizeAircraftAttackMode,
-  normalizeDepthChargePattern,
   normalizeDeckGunFireOrder,
   normalizeHeading,
   clampTorpedoSpreadCount,
@@ -226,8 +227,10 @@ export function mergeOrders(
   if (patch.dropDepthCharges === null) {
     delete next.dropDepthCharges;
   } else if (patch.dropDepthCharges) {
+    const count = depthChargeCountFromOrder(patch.dropDepthCharges);
     next.dropDepthCharges = {
-      pattern: normalizeDepthChargePattern(patch.dropDepthCharges.pattern),
+      count,
+      pattern: depthChargePatternForCount(count),
       depthSettingM: clampDepthChargeSetting(patch.dropDepthCharges.depthSettingM),
     };
   }

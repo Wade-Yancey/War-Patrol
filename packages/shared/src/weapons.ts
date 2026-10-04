@@ -15,6 +15,7 @@
  * See docs/simulation-physics.md in the project store.
  */
 import {
+  FLEET_SUB_CRUSH_DEPTH_M,
   KNOTS_TO_MPS,
   METERS_PER_NM,
   RADAR_SURFACE_DEPTH_M,
@@ -259,7 +260,8 @@ export const DEPTH_CHARGE_SINK_MPS = 3.5;
 
 export const DEPTH_CHARGE_DEFAULT_DEPTH_M = 50;
 export const DEPTH_CHARGE_MIN_DEPTH_M = 15;
-export const DEPTH_CHARGE_MAX_DEPTH_M = 90;
+/** Fuse cap reaches fleet-sub crush depth so deep boats stay engageable. */
+export const DEPTH_CHARGE_MAX_DEPTH_M = FLEET_SUB_CRUSH_DEPTH_M;
 
 /** Fletcher-class ready rack capacity (finite magazine; depletes per charge dropped). */
 export const DESTROYER_DEPTH_CHARGE_LOAD = 24;
@@ -485,15 +487,94 @@ export const DECK_GUN_SCATTER_BEARING_DEG = 1.5;
 export const DECK_GUN_HIT_AUDIO_DELAY_SEC = 0.85;
 
 /**
- * Along-track release fractions in [0, 1] from move start→end for a pattern.
+ * Along-track release fractions in [0, 1] from move start→end for N charges.
  * Spaced so a multi-charge rack leaves a trail, not one midpoint dump.
  */
-export function depthChargeReleaseFractions(pattern: DepthChargePattern): number[] {
-  const n = depthChargePatternCount(pattern);
+export function depthChargeReleaseFractionsForCount(count: number): number[] {
+  const n = Math.max(1, Math.floor(count));
   if (n <= 1) return [0.5];
   const first = 0.12;
   const last = 0.88;
   return Array.from({ length: n }, (_, i) => first + ((last - first) * i) / (n - 1));
+}
+
+/** @deprecated Prefer {@link depthChargeReleaseFractionsForCount}. */
+export function depthChargeReleaseFractions(pattern: DepthChargePattern): number[] {
+  return depthChargeReleaseFractionsForCount(depthChargePatternCount(pattern));
+}
+
+/** Clamp drop count to [1, maxLoad] (0 when the rack is empty). */
+export function clampDepthChargeDropCount(raw: unknown, maxLoad: number): number {
+  const cap = Math.max(0, Math.floor(maxLoad));
+  if (cap <= 0) return 0;
+  const n = Math.floor(Number(raw));
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(cap, n);
+}
+
+/**
+ * Resolve how many charges an order drops.
+ * Prefers `count`; falls back to legacy pattern tables; defaults to 1.
+ */
+export function depthChargeCountFromOrder(
+  drop: Pick<{ count?: number; pattern?: DepthChargePattern }, 'count' | 'pattern'>,
+  maxLoad: number = DESTROYER_DEPTH_CHARGE_LOAD,
+): number {
+  if (drop.count != null && drop.count !== undefined) {
+    return clampDepthChargeDropCount(drop.count, maxLoad);
+  }
+  if (drop.pattern != null) {
+    return clampDepthChargeDropCount(
+      depthChargePatternCount(normalizeDepthChargePattern(drop.pattern)),
+      maxLoad,
+    );
+  }
+  return clampDepthChargeDropCount(1, maxLoad);
+}
+
+/** Map a charge count onto the nearest legacy pattern for effect mod / track tag. */
+export function depthChargePatternForCount(count: number): DepthChargePattern {
+  const n = Math.max(1, Math.floor(count));
+  if (n <= 1) return 'single';
+  if (n <= 4) return 'pair';
+  if (n <= 6) return 'pattern_3';
+  return 'pattern_5';
+}
+
+/**
+ * Lateral thrower offsets (m, + = starboard) for an arbitrary charge count.
+ * Exact legacy tables when N matches a pattern; otherwise a zig-zag fan.
+ */
+export function depthChargeLateralsForCount(count: number): number[] {
+  const n = Math.max(1, Math.floor(count));
+  for (const pat of ['single', 'pair', 'pattern_3', 'pattern_5'] as const) {
+    const table = DEPTH_CHARGE_PATTERN_LATERAL_M[pat];
+    if (table.length === n) return [...table];
+  }
+  if (n === 1) return [0];
+  const span = 55;
+  return Array.from({ length: n }, (_, i) => {
+    const t = (i / (n - 1)) * 2 - 1;
+    const mag = Math.abs(t) * span;
+    return (i % 2 === 0 ? -1 : 1) * mag;
+  });
+}
+
+/** Ahead/lateral fan used when the firer barely moved. */
+export function depthChargeOffsetsForCount(
+  count: number,
+): ReadonlyArray<{ aheadM: number; lateralM: number }> {
+  const n = Math.max(1, Math.floor(count));
+  for (const pat of ['single', 'pair', 'pattern_3', 'pattern_5'] as const) {
+    const table = DEPTH_CHARGE_PATTERN_OFFSETS[pat];
+    if (table.length === n) return table;
+  }
+  const laterals = depthChargeLateralsForCount(n);
+  const step = n <= 1 ? 0 : 120 / (n - 1);
+  return laterals.map((lateralM, i) => ({
+    aheadM: -10 - i * step,
+    lateralM,
+  }));
 }
 
 /** Linear interpolate lat/lon (surface keel) between two points. */
@@ -932,7 +1013,10 @@ export function torpedoRoomReloadTurnsRemaining(
   return Math.max(0, Math.floor(Number(n) || 0));
 }
 
-/** True when the room has fish and is not waiting on / mid reload. */
+/**
+ * True when the room has ready fish.
+ * Remaining tubes stay fireable while empty tubes await / mid reload.
+ */
 export function canFireTorpedoFromRoom(
   unit: Pick<
     UnitState,
@@ -955,6 +1039,7 @@ export function canFireTorpedoFromRoom(
     load: torpedoRoomReady(unit, room),
     awaitingReload: torpedoRoomAwaitingReload(unit, room),
     reloadTurnsRemaining: torpedoRoomReloadTurnsRemaining(unit, room),
+    blockWhileReloading: false,
   });
 }
 
@@ -1216,6 +1301,11 @@ export function resolveDepthChargeMagazineState(
   };
 }
 
+/**
+ * True when the rack has ready charges.
+ * Remaining charges stay droppable while the rack awaits / mid reload
+ * (optional early reload does not lock leftover ammo).
+ */
 export function canDropDepthCharges(
   unit: Pick<
     UnitState,
@@ -1233,6 +1323,7 @@ export function canDropDepthCharges(
     load: unit.depthChargeLoad ?? 0,
     awaitingReload: Boolean(unit.depthChargeAwaitingReload),
     reloadTurnsRemaining: unit.depthChargeReloadTurnsRemaining ?? 0,
+    blockWhileReloading: false,
   });
 }
 
@@ -1799,26 +1890,35 @@ export function createDepthChargeTracks(opts: {
   firerUnitId: string;
   /**
    * Firer position at turn start (pre-kinematics). With {@link endPosition},
-   * multi-charge patterns space drops along this segment.
+   * multi-charge drops space along this segment.
    */
   startPosition: LatLonDepth;
   /** Firer position after kinematics this turn. */
   endPosition: LatLonDepth;
   /** Track / bow heading for lateral thrower offsets. */
   dropHeading: number;
-  pattern: DepthChargePattern;
+  /** Number of charges to drop (1 … rack). Preferred over legacy pattern. */
+  count?: number;
+  /** Legacy pattern — used when `count` omitted; also tags tracks for effect mod. */
+  pattern?: DepthChargePattern;
   depthSettingM: number;
   launchedTurn: number;
 }): DepthChargeTrack[] {
   const setting = clampDepthChargeSetting(opts.depthSettingM);
-  const pattern = opts.pattern;
-  const laterals =
-    DEPTH_CHARGE_PATTERN_LATERAL_M[pattern] ?? DEPTH_CHARGE_PATTERN_LATERAL_M.single;
-  const fractions = depthChargeReleaseFractions(pattern);
+  const count = Math.max(
+    1,
+    opts.count != null
+      ? Math.floor(opts.count)
+      : depthChargePatternCount(normalizeDepthChargePattern(opts.pattern)),
+  );
+  const pattern = opts.pattern
+    ? normalizeDepthChargePattern(opts.pattern)
+    : depthChargePatternForCount(count);
+  const laterals = depthChargeLateralsForCount(count);
+  const fractions = depthChargeReleaseFractionsForCount(count);
   const trackNm = bearingRangeNm(opts.startPosition, opts.endPosition).rangeNm;
   const useTrack = trackNm >= DEPTH_CHARGE_TRACK_SPREAD_MIN_NM;
-  const legacy =
-    DEPTH_CHARGE_PATTERN_OFFSETS[pattern] ?? DEPTH_CHARGE_PATTERN_OFFSETS.single;
+  const legacy = depthChargeOffsetsForCount(count);
 
   return fractions.map((frac, i) => {
     let pos: LatLonDepth;

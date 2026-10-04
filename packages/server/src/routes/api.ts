@@ -370,7 +370,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         spreadDeg?: number;
       } | null;
       dropDepthCharges?: {
-        pattern: 'single' | 'pair' | 'pattern_3' | 'pattern_5';
+        count?: number;
+        pattern?: 'single' | 'pair' | 'pattern_3' | 'pattern_5';
         depthSettingM: number;
       } | null;
       fireDeckGun?: {

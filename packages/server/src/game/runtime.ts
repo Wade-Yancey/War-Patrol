@@ -734,16 +734,9 @@ export class GameRuntime {
         }
         const room = normalizeTorpedoRoomId(patch.fireTorpedo.room);
         if (!canFireTorpedoFromRoom(unit, room)) {
-          const have = torpedoRoomReady(unit, room);
-          if (have <= 0) {
-            throw Object.assign(new Error(`No torpedoes remaining in ${room} room`), {
-              statusCode: 400,
-            });
-          }
-          throw Object.assign(
-            new Error(`${room} room awaiting reload — press Reload and wait`),
-            { statusCode: 400 },
-          );
+          throw Object.assign(new Error(`No torpedoes remaining in ${room} room`), {
+            statusCode: 400,
+          });
         }
         if (!(Number(patch.fireTorpedo.estimatedLengthM) > 0)) {
           throw Object.assign(new Error('Target length estimate required'), { statusCode: 400 });
@@ -785,13 +778,7 @@ export class GameRuntime {
           });
         }
         if (!canDropDepthCharges(unit)) {
-          if ((unit.depthChargeLoad ?? 0) <= 0) {
-            throw Object.assign(new Error('No depth charges remaining'), { statusCode: 400 });
-          }
-          throw Object.assign(
-            new Error('Depth-charge rack awaiting reload — press Reload and wait'),
-            { statusCode: 400 },
-          );
+          throw Object.assign(new Error('No depth charges remaining'), { statusCode: 400 });
         }
       }
       if (patch.fireDeckGun !== undefined && patch.fireDeckGun !== null) {
@@ -1153,7 +1140,8 @@ export class GameRuntime {
   }
 
   /**
-   * Immediate Controls action: start a torpedo-room reload countdown after a salvo.
+   * Immediate Controls action: start a torpedo-room reload countdown after a salvo
+   * (optional — remaining ready fish stay fireable during the countdown).
    * Completes over {@link TORPEDO_RELOAD_TURNS} resolves — not an instant rearm.
    */
   async startTorpedoReload(
@@ -1184,7 +1172,8 @@ export class GameRuntime {
   }
 
   /**
-   * Immediate Controls action: start a depth-charge rack reload countdown after a drop.
+   * Immediate Controls action: start a depth-charge rack reload countdown after a drop
+   * (optional — remaining ready charges stay droppable during the countdown).
    */
   async startDepthChargeReload(
     gameId: string,

@@ -278,7 +278,12 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
     }
   }, []);
 
-  /** One-shot depth-charge detonations when new contacts appear in hearing. */
+  /**
+   * One-shot depth-charge detonations when new contacts appear in hearing.
+   * Played ids are retained for the component lifetime — do not prune when a
+   * contact briefly leaves the live set (SSE flicker), or the batch re-fires
+   * and the operator hears a looping bed instead of N discrete bangs.
+   */
   const playDepthChargeSamples = useCallback(() => {
     const ctx = audioCtxRef.current;
     const master = masterGainRef.current;
@@ -286,11 +291,8 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
     if (!ctx || !master || !dcBuffer || ctx.state !== 'running') return;
     const bearing = listenRef.current;
     const charges = contactsRef.current.filter((c) => c.kind === 'depth_charge');
-    const liveIds = new Set(charges.map((c) => c.id));
-    for (const id of [...playedDcIdsRef.current]) {
-      if (!liveIds.has(id)) playedDcIdsRef.current.delete(id);
-    }
-    // New contacts in this hear-batch: one sample per charge, staggered over ~1.5 min.
+    // New contacts in this hear-batch: one sample per charge, staggered so N
+    // detonations stay countable (same spread helper as Controls bridge).
     const fresh = charges
       .filter((c) => !playedDcIdsRef.current.has(c.id))
       .slice()
