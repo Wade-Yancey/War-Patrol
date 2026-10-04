@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
+  ACTIVE_SONAR_PING_INTERVAL_SEC,
   EOT_LABELS,
   PERISCOPE_DEPTH_M,
   RADAR_SURFACE_DEPTH_M,
   SUBMARINE_DEPTH_ORDER_STEP_M,
   SUBMARINE_MAX_DEPTH_M,
+  activeSonarControlsPeakGain,
   clampSubmarineDepth,
   conditionLabel,
   controlsInstrumentTabsForHull,
@@ -54,6 +56,10 @@ import {
   loadControlsAmbientBuffer,
   startControlsAmbientLoop,
 } from '../audio/controlsAmbient';
+import {
+  loadSonarPingBuffer,
+  playSonarPingSample,
+} from '../audio/sonarPing';
 import {
   TORPEDO_HIT_CONTROLS_PEAK_GAIN,
   loadTorpedoHitBuffer,
@@ -256,6 +262,7 @@ export function StationPage() {
     creakBuffer: AudioBuffer | null;
     ventingBuffer: AudioBuffer | null;
     ambientBuffer: AudioBuffer | null;
+    sonarPingBuffer: AudioBuffer | null;
     ambientSource: AudioBufferSourceNode | null;
     ambientGain: GainNode | null;
   }>({
@@ -267,9 +274,12 @@ export function StationPage() {
     creakBuffer: null,
     ventingBuffer: null,
     ambientBuffer: null,
+    sonarPingBuffer: null,
     ambientSource: null,
     ambientGain: null,
   });
+  /** Latest close-aboard enemy ping cues for the Controls hull-hear interval. */
+  const bridgeSonarPingsRef = useRef<NonNullable<VesselView['bridgeActiveSonarPings']>>([]);
 
   const ensureBridgeAudioCtx = async (): Promise<AudioContext> => {
     if (!bridgeAudioRef.current.ctx || bridgeAudioRef.current.ctx.state === 'closed') {
@@ -284,6 +294,7 @@ export function StationPage() {
       bridgeAudioRef.current.creakBuffer = null;
       bridgeAudioRef.current.ventingBuffer = null;
       bridgeAudioRef.current.ambientBuffer = null;
+      bridgeAudioRef.current.sonarPingBuffer = null;
     }
     const ctx = bridgeAudioRef.current.ctx;
     if (ctx.state === 'suspended') await ctx.resume();
@@ -562,6 +573,7 @@ export function StationPage() {
       bridgeAudioRef.current.creakBuffer = null;
       bridgeAudioRef.current.ventingBuffer = null;
       bridgeAudioRef.current.ambientBuffer = null;
+      bridgeAudioRef.current.sonarPingBuffer = null;
       // Closed ctx → allow replay after remount (React Strict Mode / leave+rejoin).
       playedBridgeBlastRef.current.clear();
       if (ctx && ctx.state !== 'closed') void ctx.close();
@@ -574,6 +586,12 @@ export function StationPage() {
   const atPeriscopeDepth = depthM <= PERISCOPE_DEPTH_M;
   /** Ambient creak loop only while keel is below the radar surface band. */
   const submergedForCreak = onSubCreakBridge && depthM > RADAR_SURFACE_DEPTH_M;
+  bridgeSonarPingsRef.current = vessel?.bridgeActiveSonarPings ?? [];
+  /** Hull-coupled enemy pings: submerged sub Controls with at least one close emitter. */
+  const hearBridgeSonar =
+    onSubCreakBridge &&
+    depthM > RADAR_SURFACE_DEPTH_M &&
+    (vessel?.bridgeActiveSonarPings?.length ?? 0) > 0;
 
   // Submarine Controls: occasional hull creaks while submerged; denser with depth.
   useEffect(() => {
@@ -695,6 +713,52 @@ export function StationPage() {
       cancelled = true;
     };
   }, [onControlsBridge, vessel, vessel?.bridgeDetonations, vessel?.stateVersion]);
+
+  // Sub Controls: hull-coupled nearby enemy active-sonar pings (same 6 s cadence).
+  // Volume from proximity only — silent beyond ACTIVE_SONAR_CONTROLS_AUDIBLE_NM.
+  useEffect(() => {
+    if (!hearBridgeSonar) return;
+    let cancelled = false;
+    let timer: number | null = null;
+
+    const playBridgePings = async () => {
+      if (cancelled) return;
+      const pings = bridgeSonarPingsRef.current;
+      if (!pings.length) return;
+      try {
+        const ctx = await ensureBridgeAudioCtx();
+        if (cancelled || ctx.state !== 'running') return;
+        if (!bridgeAudioRef.current.sonarPingBuffer) {
+          bridgeAudioRef.current.sonarPingBuffer = await loadSonarPingBuffer(ctx);
+        }
+        const buffer = bridgeAudioRef.current.sonarPingBuffer;
+        if (!buffer || cancelled) return;
+        for (const ping of pings) {
+          const peak = activeSonarControlsPeakGain(ping.rangeNm);
+          if (peak < 0.001) continue;
+          playSonarPingSample(ctx, buffer, ctx.destination, peak);
+        }
+      } catch {
+        /* autoplay / sample — ignore */
+      }
+    };
+
+    void playBridgePings();
+    timer = window.setInterval(() => void playBridgePings(), ACTIVE_SONAR_PING_INTERVAL_SEC * 1000);
+
+    const unlock = () => {
+      void playBridgePings();
+    };
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
+
+    return () => {
+      cancelled = true;
+      if (timer != null) window.clearInterval(timer);
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+  }, [hearBridgeSonar]);
 
   // Sub Controls: underwater depth-change cue when keel actually moves on resolve.
   // Silent on UI depth submit / re-order; silent when turn advances but depth holds.

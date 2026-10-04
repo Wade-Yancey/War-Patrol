@@ -18,6 +18,8 @@ import {
   CLASS_LENGTH_M,
   CLASS_MAX_SPEED_KNOTS,
   CLASS_SPEED_STEP_FRACTION,
+  ACTIVE_SONAR_CONTROLS_AUDIBLE_NM,
+  ACTIVE_SONAR_CONTROLS_PEAK_GAIN,
   DEPTH_CHARGE_CONTROLS_AUDIBLE_NM,
   FLEET_SUB_CRUSH_DEPTH_M,
   FLEET_SUB_PATROL_DEPTH_M,
@@ -65,6 +67,7 @@ import {
   isV1PlayerUnit,
   isHydrophoneEmitter,
   isPeriscopeTargetable,
+  activeSonarControlsPeakGain,
   controlsInstrumentTabsForHull,
   formatPendingOrdersSummary,
   snapWallDuration,
@@ -93,6 +96,29 @@ async function main() {
   check('formatWallDuration minutes-first', formatWallDuration(180) === '3m');
   check('formatWallDuration with seconds', formatWallDuration(210) === '3m 30s');
   check('parseWallDuration bare minutes', parseWallDuration('3') === 180);
+
+  // Sub Controls hull-coupled active-sonar proximity curve (shared with client).
+  check(
+    'bridge sonar silent at/beyond audible range',
+    activeSonarControlsPeakGain(ACTIVE_SONAR_CONTROLS_AUDIBLE_NM) === 0 &&
+      activeSonarControlsPeakGain(ACTIVE_SONAR_CONTROLS_AUDIBLE_NM + 0.1) === 0,
+  );
+  check(
+    'bridge sonar peak at point-blank',
+    Math.abs(activeSonarControlsPeakGain(0) - ACTIVE_SONAR_CONTROLS_PEAK_GAIN) < 1e-12,
+  );
+  {
+    const mid = activeSonarControlsPeakGain(ACTIVE_SONAR_CONTROLS_AUDIBLE_NM * 0.5);
+    const near = activeSonarControlsPeakGain(ACTIVE_SONAR_CONTROLS_AUDIBLE_NM * 0.25);
+    check(
+      'bridge sonar louder when closer (quadratic)',
+      mid > 0 &&
+        near > mid &&
+        Math.abs(mid - ACTIVE_SONAR_CONTROLS_PEAK_GAIN * 0.25) < 1e-12 &&
+        Math.abs(near - ACTIVE_SONAR_CONTROLS_PEAK_GAIN * 0.5625) < 1e-12,
+      `mid=${mid} near=${near}`,
+    );
+  }
 
   // Visible designations are short Cn / Pn; numbering book stays Contact N.
   check('formatContactDesignation C1', formatContactDesignation(1) === 'C1');
@@ -1274,6 +1300,96 @@ async function main() {
     (c) => c.kind === 'active_sonar_ping',
   );
   check('sub hydrophone hears active sonar pings', pingContacts.length >= 1, `got ${pingContacts.length}`);
+
+  // Sub Controls hull hear: only when the pinger is very close (≤ audible nm).
+  // Park Gato ~0.4 nm north of Porter, sonar still ON, submerged.
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { position: { lat: 34.35, lon: -120.1, depth: 0 }, speed: 12, eot: 'ahead_standard' },
+    umpireToken,
+  );
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { position: { lat: 34.35665, lon: -120.1, depth: 40 } },
+    umpireToken,
+  );
+  {
+    const closeRange = bearingRangeNm(
+      { lat: 34.35665, lon: -120.1 },
+      { lat: 34.35, lon: -120.1 },
+    ).rangeNm;
+    check(
+      'bridge-sonar fixture within audible range',
+      closeRange > 0 && closeRange < ACTIVE_SONAR_CONTROLS_AUDIBLE_NM,
+      `rangeNm=${closeRange}`,
+    );
+  }
+  const subControlsClose = await api('GET', `/api/games/${gameId}/view`, undefined, redToken);
+  const bridgePings = (subControlsClose.json.view as Json).bridgeActiveSonarPings as
+    | Array<Json>
+    | undefined;
+  check(
+    'sub Controls hears close enemy active sonar',
+    Array.isArray(bridgePings) && bridgePings.length >= 1,
+    `pings=${JSON.stringify(bridgePings)}`,
+  );
+  if (bridgePings?.[0]) {
+    check(
+      'bridge sonar cue polar only (no identity)',
+      typeof bridgePings[0].bearing === 'number' &&
+        typeof bridgePings[0].rangeNm === 'number' &&
+        typeof bridgePings[0].id === 'string' &&
+        (bridgePings[0].rangeNm as number) <= ACTIVE_SONAR_CONTROLS_AUDIBLE_NM &&
+        !('name' in bridgePings[0]) &&
+        !('side' in bridgePings[0]) &&
+        !('firerUnitId' in bridgePings[0]),
+      JSON.stringify(bridgePings[0]),
+    );
+  }
+  const subSensorsClose = await api('GET', `/api/games/${gameId}/view`, undefined, subSensorsToken);
+  check(
+    'sub Sensors omits bridgeActiveSonarPings (hydrophone path)',
+    !('bridgeActiveSonarPings' in (subSensorsClose.json.view as Json)),
+  );
+  // Beyond close range → Controls silent even with sonar ON.
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { position: { lat: 34.39, lon: -120.1, depth: 40 } },
+    umpireToken,
+  );
+  const subControlsFar = await api('GET', `/api/games/${gameId}/view`, undefined, redToken);
+  check(
+    'sub Controls silent for far active sonar',
+    !('bridgeActiveSonarPings' in (subControlsFar.json.view as Json)),
+  );
+  // Restore close geometry, surface → hull path silent.
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { position: { lat: 34.35665, lon: -120.1, depth: 0 } },
+    umpireToken,
+  );
+  const subControlsSurf = await api('GET', `/api/games/${gameId}/view`, undefined, redToken);
+  check(
+    'surfaced sub Controls silent for nearby active sonar',
+    !('bridgeActiveSonarPings' in (subControlsSurf.json.view as Json)),
+  );
+  // Restore submerged depth + prior hydrophone fixture positions for later checks.
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { position: { lat: 34.42, lon: -119.95, depth: 40 } },
+    umpireToken,
+  );
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { position: { lat: 34.35, lon: -120.1 }, speed: 12, eot: 'ahead_standard' },
+    umpireToken,
+  );
   await api('POST', `/api/games/${gameId}/active-sonar`, { enabled: false }, radarToken);
 
   // Stop Porter → propeller silent but (when sonar off) no ping either
