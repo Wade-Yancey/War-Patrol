@@ -10,11 +10,16 @@ import { buildApp } from './app.js';
 import { runtime } from './game/runtime.js';
 import {
   AIRCRAFT_INTERCEPT_DAMAGE,
+  AIRCRAFT_INTERCEPT_MAX_TARGET_DEPTH_M,
+  AIRCRAFT_ATTACK_ALIGN_DEG,
+  AIRCRAFT_ATTACK_HARD_TURN_DEG,
   resolveAircraftAttackEffect,
   aircraftAttackModesForClass,
+  aircraftAttackPursuitEot,
   formatAircraftAttackModeTag,
   canOrderAircraftAttack,
   isAircraftAttackTarget,
+  PERISCOPE_DEPTH_M,
   applyVesselStandingOrders,
   canOrderVesselStanding,
   formatVesselStandingModeTag,
@@ -321,6 +326,39 @@ async function main() {
       'aircraft strafe surface can damage like intercept',
       strafeSurf.outcome === 'hit' || strafeSurf.outcome === 'near_miss',
       `outcome=${strafeSurf.outcome} dmg=${strafeSurf.damage}`,
+    );
+    const strafePd = resolveAircraftAttackEffect({
+      mode: 'strafe',
+      missDistanceM: 40,
+      targetDepthM: 18,
+      targetType: 'Submarine',
+      seed: 'strafe-pd-18',
+    });
+    check(
+      'aircraft strafe effective vs PD sub (18 m)',
+      (strafePd.outcome === 'hit' || strafePd.outcome === 'near_miss') &&
+        AIRCRAFT_INTERCEPT_MAX_TARGET_DEPTH_M === PERISCOPE_DEPTH_M &&
+        PERISCOPE_DEPTH_M >= 18,
+      `outcome=${strafePd.outcome} dmg=${strafePd.damage} peri=${PERISCOPE_DEPTH_M}`,
+    );
+    const strafePeriExact = resolveAircraftAttackEffect({
+      mode: 'strafe',
+      missDistanceM: 40,
+      targetDepthM: PERISCOPE_DEPTH_M,
+      targetType: 'Submarine',
+      seed: 'strafe-peri-exact',
+    });
+    check(
+      'aircraft strafe effective at exact peri depth',
+      strafePeriExact.outcome === 'hit' || strafePeriExact.outcome === 'near_miss',
+      `outcome=${strafePeriExact.outcome}`,
+    );
+    check(
+      'aircraft attack pursuit EOT throttles off-axis',
+      aircraftAttackPursuitEot(0, 0) === 'ahead_flank' &&
+        aircraftAttackPursuitEot(0, AIRCRAFT_ATTACK_ALIGN_DEG + 1) ===
+          'ahead_standard' &&
+        aircraftAttackPursuitEot(0, AIRCRAFT_ATTACK_HARD_TURN_DEG + 1) === 'stop',
     );
     const bombHit = resolveAircraftAttackEffect({
       mode: 'bombing_run',
@@ -6412,8 +6450,11 @@ async function main() {
         pendingOrders?.aircraftAttack?.targetUnitId === 'dd-urakaze',
     );
     check(
-      'intercept auto-rings full band',
-      pendingOrders?.eot === 'ahead_flank',
+      'intercept auto-rings pursuit band EOT',
+      pendingOrders?.eot === 'ahead_flank' ||
+        pendingOrders?.eot === 'ahead_standard' ||
+        pendingOrders?.eot === 'stop',
+      `eot=${pendingOrders?.eot}`,
     );
 
     await api('POST', `/api/games/${airId}/turn/lock`, {}, airTok);
@@ -6814,6 +6855,245 @@ async function main() {
       }
     ).units?.find((u) => u.id === 'ac-zeke-cap');
     check('loiter cleared', !loiterUnit3?.aircraftLoiter);
+
+    // Loiter + strafe PD sub: break CAP → release → resume loiter; clear-loiter keeps attack.
+    {
+      await api(
+        'POST',
+        `/api/games/${airId}/units/ac-zeke-cap/orders`,
+        { aircraftLoiter: { centerUnitId: 'cv-shokaku' } },
+        airTok,
+      );
+      // Park Zeke pointed away from a close PD Cavalla so pursuit must break orbit.
+      await api(
+        'PATCH',
+        `/api/games/${airId}/units/ac-zeke-cap`,
+        {
+          position: { lat: 34.42, lon: -119.98, depth: 0 },
+          heading: 270,
+          orderedCourse: 270,
+          speed: 200,
+        },
+        airTok,
+      );
+      await api(
+        'PATCH',
+        `/api/games/${airId}/units/ss-cavalla`,
+        {
+          position: { lat: 34.422, lon: -119.975, depth: 18 },
+          heading: 90,
+          orderedCourse: 90,
+          speed: 0,
+          health: 100,
+        },
+        airTok,
+      );
+      const strafePdOrder = await api(
+        'POST',
+        `/api/games/${airId}/units/ac-zeke-cap/orders`,
+        { aircraftAttack: { mode: 'strafe', targetUnitId: 'ss-cavalla' } },
+        airTok,
+      );
+      check('queue strafe on PD sub while loitering', strafePdOrder.status === 200);
+      const beforeBreak = await api('GET', `/api/games/${airId}/view`, undefined, airTok);
+      const breakRoster =
+        (beforeBreak.json.view as { units?: UnitState[] }).units ?? [];
+      const zekeBreak = breakRoster.find((u) => u.id === 'ac-zeke-cap');
+      const turnLenBreak =
+        Number(
+          (beforeBreak.json.view as { turnLengthSeconds?: number }).turnLengthSeconds,
+        ) || 180;
+      if (zekeBreak) {
+        const withAttack = predictUnitMovePath(zekeBreak, turnLenBreak, breakRoster);
+        const loiterOnly: UnitState = { ...zekeBreak, orders: {} };
+        const rosterLoiter = breakRoster.map((u) =>
+          u.id === 'ac-zeke-cap' ? loiterOnly : u,
+        );
+        const naive = predictUnitMovePath(loiterOnly, turnLenBreak, rosterLoiter);
+        const tipDiff =
+          withAttack && naive
+            ? Math.hypot(
+                withAttack[1]!.lat - naive[1]!.lat,
+                withAttack[1]!.lon - naive[1]!.lon,
+              )
+            : 0;
+        check(
+          'loiter+strafe breaks CAP on GT predicted path',
+          Boolean(withAttack && naive && tipDiff > 1e-5),
+          `tipDiff=${tipDiff}`,
+        );
+        check(
+          'loiter state kept while attack live',
+          zekeBreak.aircraftLoiter?.centerUnitId === 'cv-shokaku' &&
+            zekeBreak.orders.aircraftAttack?.mode === 'strafe',
+        );
+      } else {
+        check('loiter+strafe breaks CAP on GT predicted path', false, 'missing zeke');
+        check('loiter state kept while attack live', false, 'missing zeke');
+      }
+
+      let released = false;
+      let resumedLoiterCourse = false;
+      for (let i = 0; i < 12; i++) {
+        await api('POST', `/api/games/${airId}/turn/lock`, {}, airTok);
+        await api('POST', `/api/games/${airId}/turn/resolve`, {}, airTok);
+        const snap = await api('GET', `/api/games/${airId}/view`, undefined, airTok);
+        const uv = snap.json.view as {
+          combatLog?: Array<{ kind?: string; summary?: string; turnNumber?: number }>;
+          units?: Array<{
+            id: string;
+            aircraftLoiter?: { centerUnitId?: string };
+            orderedCourse?: number;
+            orders?: { aircraftAttack?: unknown };
+          }>;
+          turn?: { number?: number };
+        };
+        const z = uv.units?.find((u) => u.id === 'ac-zeke-cap');
+        const turnJustResolved = (uv.turn?.number ?? 1) - 1;
+        const lines = (uv.combatLog ?? []).filter(
+          (e) =>
+            e.turnNumber === turnJustResolved &&
+            (e.kind === 'aircraft_attack' ||
+              e.kind === 'aircraft_attack_damage' ||
+              e.kind === 'aircraft_attack_miss'),
+        );
+        if (
+          lines.some(
+            (e) => e.kind === 'aircraft_attack' && (e.summary ?? '').includes('strafe'),
+          )
+        ) {
+          released = true;
+          check(
+            'strafe PD release clears attack, keeps loiter config',
+            !z?.orders?.aircraftAttack &&
+              z?.aircraftLoiter?.centerUnitId === 'cv-shokaku',
+          );
+          // Next resolve should resume CAP orbit (course changes off the attack run).
+          const courseAtRelease = z?.orderedCourse;
+          await api('POST', `/api/games/${airId}/turn/lock`, {}, airTok);
+          await api('POST', `/api/games/${airId}/turn/resolve`, {}, airTok);
+          const afterResume = await api('GET', `/api/games/${airId}/view`, undefined, airTok);
+          const z2 = (
+            afterResume.json.view as {
+              units?: Array<{
+                id: string;
+                aircraftLoiter?: { centerUnitId?: string };
+                orderedCourse?: number;
+                orders?: { aircraftAttack?: unknown };
+              }>;
+            }
+          ).units?.find((u) => u.id === 'ac-zeke-cap');
+          resumedLoiterCourse =
+            Boolean(z2?.aircraftLoiter?.centerUnitId === 'cv-shokaku') &&
+            !z2?.orders?.aircraftAttack &&
+            typeof z2?.orderedCourse === 'number' &&
+            typeof courseAtRelease === 'number' &&
+            Math.abs(
+              ((z2.orderedCourse - courseAtRelease + 540) % 360) - 180,
+            ) > 5;
+          check(
+            'loiter resumes after strafe clears',
+            resumedLoiterCourse,
+            `courseAtRelease=${courseAtRelease} resumed=${z2?.orderedCourse}`,
+          );
+          break;
+        }
+        if (!z?.orders?.aircraftAttack) break;
+      }
+      check('loiter+strafe PD sub eventually releases', released);
+
+      // Clear-loiter must not kill a live standing attack.
+      await api(
+        'POST',
+        `/api/games/${airId}/units/ac-zeke-cap/orders`,
+        { aircraftLoiter: { centerUnitId: 'cv-shokaku' } },
+        airTok,
+      );
+      await api(
+        'PATCH',
+        `/api/games/${airId}/units/ac-zeke-cap`,
+        {
+          position: { lat: 34.4, lon: -120.05, depth: 0 },
+          heading: 90,
+          orderedCourse: 90,
+          speed: 220,
+        },
+        airTok,
+      );
+      await api(
+        'PATCH',
+        `/api/games/${airId}/units/ss-cavalla`,
+        {
+          position: { lat: 34.55, lon: -119.9, depth: 18 },
+          health: 100,
+        },
+        airTok,
+      );
+      await api(
+        'POST',
+        `/api/games/${airId}/units/ac-zeke-cap/orders`,
+        { aircraftAttack: { mode: 'strafe', targetUnitId: 'ss-cavalla' } },
+        airTok,
+      );
+      const clearWhileAttack = await api(
+        'POST',
+        `/api/games/${airId}/units/ac-zeke-cap/orders`,
+        { aircraftLoiter: null },
+        airTok,
+      );
+      check('clear loiter while attack live', clearWhileAttack.status === 200);
+      const kept = await api('GET', `/api/games/${airId}/view`, undefined, airTok);
+      const keptZ = (
+        kept.json.view as {
+          units?: Array<{
+            id: string;
+            aircraftLoiter?: unknown;
+            orders?: { aircraftAttack?: { mode?: string; targetUnitId?: string }; course?: number };
+          }>;
+        }
+      ).units?.find((u) => u.id === 'ac-zeke-cap');
+      check(
+        'clear loiter keeps standing strafe',
+        !keptZ?.aircraftLoiter &&
+          keptZ?.orders?.aircraftAttack?.mode === 'strafe' &&
+          keptZ.orders.aircraftAttack.targetUnitId === 'ss-cavalla',
+      );
+      check(
+        'clear loiter re-asserts attack course',
+        typeof keptZ?.orders?.course === 'number',
+      );
+      await api('POST', `/api/games/${airId}/turn/lock`, {}, airTok);
+      await api('POST', `/api/games/${airId}/turn/resolve`, {}, airTok);
+      const afterClearLoiter = await api('GET', `/api/games/${airId}/view`, undefined, airTok);
+      const afterZ = (
+        afterClearLoiter.json.view as {
+          units?: Array<{
+            id: string;
+            orderedCourse?: number;
+            position?: { lat: number; lon: number };
+            orders?: { aircraftAttack?: { mode?: string } };
+          }>;
+        }
+      ).units?.find((u) => u.id === 'ac-zeke-cap');
+      const afterCav = (
+        afterClearLoiter.json.view as {
+          units?: Array<{ id: string; position?: { lat: number; lon: number } }>;
+        }
+      ).units?.find((u) => u.id === 'ss-cavalla');
+      if (afterZ?.position && afterCav?.position && afterZ.orderedCourse != null) {
+        const { bearing } = bearingRangeNm(afterZ.position, afterCav.position);
+        const courseErr = Math.abs(
+          ((afterZ.orderedCourse - bearing + 540) % 360) - 180,
+        );
+        check(
+          'strafe still steers after clear loiter',
+          afterZ.orders?.aircraftAttack?.mode === 'strafe' && courseErr < 40,
+          `ordered=${afterZ.orderedCourse} bearing=${bearing} err=${courseErr}`,
+        );
+      } else {
+        check('strafe still steers after clear loiter', false, 'missing units');
+      }
+    }
 
     // Hydrophone still blind to aircraft after attack resolve.
     const ssAuth = await api('POST', `/api/games/${airId}/auth/vessel`, {

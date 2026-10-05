@@ -131,6 +131,46 @@ export function aircraftAttackEot() {
 }
 
 /**
+ * Absolute heading error (deg) onto an attack course — used to throttle speed
+ * while breaking CAP so full-band pursuit does not fly a huge off-axis loop.
+ */
+export function aircraftAttackHeadingErrorDeg(
+  headingDeg: number,
+  attackCourseDeg: number,
+): number {
+  let delta = normalizeHeading(attackCourseDeg) - normalizeHeading(headingDeg);
+  if (delta > 180) delta -= 360;
+  if (delta < -180) delta += 360;
+  return Math.abs(delta);
+}
+
+/**
+ * Off-axis threshold (deg): above this, attack inject uses cruise instead of full
+ * so the plane can turn onto the run without rocketing away from the target.
+ */
+export const AIRCRAFT_ATTACK_ALIGN_DEG = 45;
+
+/**
+ * Large off-axis threshold (deg): above this, use loiter band (tightest museum
+ * turn geometry — turn rate is deg/min, not speed-dependent).
+ */
+export const AIRCRAFT_ATTACK_HARD_TURN_DEG = 90;
+
+/**
+ * Pursuit EOT for a standing attack: full when roughly aligned, otherwise a
+ * slower band so break-from-loiter acquires the target instead of orbiting away.
+ */
+export function aircraftAttackPursuitEot(
+  headingDeg: number,
+  attackCourseDeg: number,
+) {
+  const err = aircraftAttackHeadingErrorDeg(headingDeg, attackCourseDeg);
+  if (err > AIRCRAFT_ATTACK_HARD_TURN_DEG) return AIRCRAFT_BAND_EOT.loiter;
+  if (err > AIRCRAFT_ATTACK_ALIGN_DEG) return AIRCRAFT_BAND_EOT.cruise;
+  return AIRCRAFT_BAND_EOT.full;
+}
+
+/**
  * Resolve loiter center for this turn (tracks parent hull when set).
  */
 export function resolveAircraftLoiterCenter(
@@ -172,9 +212,10 @@ export function aircraftAttackOrderedCourse(
 }
 
 /**
- * Inject course (+ full-band EOT when unset) for aircraft with a standing attack.
+ * Inject course + pursuit-band EOT for aircraft with a standing attack.
  * Clears the attack when the target is gone / invalid, or bombing has no bomb left.
- * Attack steering wins over loiter for the same resolve.
+ * Attack steering always wins over loiter for the same resolve (and overwrites any
+ * leftover loiter-band EOT so CAP cannot pin the plane at orbit speed).
  */
 export function applyAircraftAttackStandingOrders(units: UnitState[]): UnitState[] {
   const byId = new Map(units.map((u) => [u.id, u]));
@@ -207,7 +248,8 @@ export function applyAircraftAttackStandingOrders(units: UnitState[]): UnitState
         targetUnitId: targetId,
       } satisfies AircraftAttackOrder,
       course,
-      ...(unit.orders.eot === undefined ? { eot: aircraftAttackEot() } : {}),
+      // Always re-assert pursuit EOT — do not keep a prior loiter-band leftover.
+      eot: aircraftAttackPursuitEot(unit.heading, course),
     };
     return { ...unit, orders: nextOrders };
   });
@@ -251,7 +293,8 @@ export function applyAircraftLoiterStandingOrders(units: UnitState[]): UnitState
 
 /**
  * Apply standing aircraft orders in resolve / GT-prediction order:
- * attack steering first, then loiter (loiter yields while attack is active).
+ * attack steering first, then loiter (loiter yields while attack is active so the
+ * plane breaks CAP to prosecute, then resumes the orbit after the attack clears).
  */
 export function applyAircraftStandingOrders(units: UnitState[]): UnitState[] {
   return applyAircraftLoiterStandingOrders(applyAircraftAttackStandingOrders(units));

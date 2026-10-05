@@ -65,6 +65,7 @@ import {
   bearingRangeNm,
   buildAircraftLoiterState,
   aircraftLoiterEot,
+  aircraftAttackPursuitEot,
   clampAircraftLoiterRadiusM,
   AIRCRAFT_LOITER_DEFAULT_RADIUS_M,
   canOrderAircraftAttack,
@@ -959,9 +960,13 @@ export class GameRuntime {
    * rejoinFormation clears the flag and optionally resyncs to standing group orders.
    * Optional aircraftAttack sets a standing intercept / strafe / bombing run
    * (aircraft only) — persists across turns, auto-steers toward the target, and
-   * auto-releases when CPA is in range. Unless course/eot are also provided,
-   * steers toward the target at full band on the order click.
+   * auto-releases when CPA is in range. Breaks loiter/CAP while active, then
+   * loiter resumes when the attack clears. Unless course/eot are also provided,
+   * steers toward the target with pursuit-band EOT (full when aligned; slower
+   * when off-axis so the turn acquires the run).
    * Optional aircraftLoiter sets/clears a standing orbit (persists across turns).
+   * Clearing loiter re-asserts a live attack helm; starting loiter does not
+   * downgrade a live attack to orbit speed.
    * Optional vesselStanding sets intercept / attack / evade zigzag for ships/subs.
    */
   async submitUmpireUnitOrders(
@@ -1032,6 +1037,25 @@ export class GameRuntime {
         }
         if (patch.aircraftLoiter === null) {
           delete unit.aircraftLoiter;
+          // Clearing loiter must not leave a "dead" standing attack: re-assert
+          // attack helm so the plane keeps prosecuting after CAP is cancelled.
+          if (
+            patch.aircraftAttack === undefined &&
+            unit.orders.aircraftAttack &&
+            course === undefined &&
+            eot === undefined
+          ) {
+            const resumeTargetId = String(
+              unit.orders.aircraftAttack.targetUnitId ?? '',
+            ).trim();
+            const resumeTarget = resumeTargetId
+              ? save.units.find((u) => u.id === resumeTargetId)
+              : undefined;
+            if (resumeTarget && isAircraftAttackTarget(resumeTarget)) {
+              course = bearingRangeNm(unit.position, resumeTarget.position).bearing;
+              eot = aircraftAttackPursuitEot(unit.heading, course);
+            }
+          }
         } else {
           const parentId =
             patch.aircraftLoiter.centerUnitId === null
@@ -1063,8 +1087,12 @@ export class GameRuntime {
             center,
             centerUnitId: parentId,
           });
-          // Default loiter band unless this request also overrides EOT.
-          if (eot === undefined) {
+          // Default loiter band unless this request overrides EOT — but never
+          // downgrade a live standing attack to orbit speed (attack wins).
+          const attackLive =
+            patch.aircraftAttack !== null &&
+            (patch.aircraftAttack !== undefined || Boolean(unit.orders.aircraftAttack));
+          if (eot === undefined && !attackLive) {
             eot = aircraftLoiterEot();
           }
         }
@@ -1095,12 +1123,13 @@ export class GameRuntime {
               statusCode: 400,
             });
           }
-          // Default attack profile: steer toward target at full band unless overridden.
+          // Break CAP / loiter: steer toward target. Pursuit EOT throttles when
+          // off-axis so the plane turns onto the run instead of rocketing away.
           if (course === undefined) {
             course = bearingRangeNm(unit.position, target.position).bearing;
           }
           if (eot === undefined) {
-            eot = 'ahead_flank';
+            eot = aircraftAttackPursuitEot(unit.heading, course);
           }
           unit.orders = mergeOrders(
             unit.orders,
