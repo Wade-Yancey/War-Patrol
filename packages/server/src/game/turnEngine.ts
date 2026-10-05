@@ -178,7 +178,8 @@ function applyPeriscopePlotStamps(units: UnitState[], save: GameSave): UnitState
 /**
  * Apply helm/EOT/depth kinematics.
  * When `clearOrders` is false, weapon order fields are preserved for launch this resolve.
- * Shared with umpire GT move prediction ({@link applyUnitKinematics}).
+ * Shared with umpire GT move prediction ({@link applyUnitKinematics} /
+ * {@link predictUnitMovePath} — prediction applies loiter standing orders first).
  */
 function applyUnitOrders(
   unit: UnitState,

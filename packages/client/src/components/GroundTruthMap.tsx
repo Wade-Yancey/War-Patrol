@@ -290,7 +290,7 @@ function unitsSignature(units: UnitState[]): string {
   return units
     .map(
       (u) =>
-        `${u.id}:${u.position.lat.toFixed(5)},${u.position.lon.toFixed(5)},${u.heading.toFixed(1)},${normalizeHeading(u.orderedCourse ?? u.heading).toFixed(1)},${u.speed.toFixed(1)},${u.eot},${u.orders?.course ?? ''},${u.orders?.eot ?? ''},${u.orders?.depth ?? ''},${u.orderedDepth?.toFixed?.(0) ?? u.orderedDepth},${u.position.depth.toFixed(0)},${u.turnRate},${u.maxSpeed},${u.type},${u.class},${u.name},${u.faction},${u.condition},${u.subsystems?.propulsion},${u.subsystems?.steering},${u.subsystems?.radar},${u.subsystems?.hydrophone},${u.subsystems?.activeSonar},${u.subsystems?.lookout},${u.subsystems?.divePlanes},${u.flightLevel ?? ''},${sensorsSignature(u)}`,
+        `${u.id}:${u.position.lat.toFixed(5)},${u.position.lon.toFixed(5)},${u.heading.toFixed(1)},${normalizeHeading(u.orderedCourse ?? u.heading).toFixed(1)},${u.speed.toFixed(1)},${u.eot},${u.orders?.course ?? ''},${u.orders?.eot ?? ''},${u.orders?.depth ?? ''},${u.orderedDepth?.toFixed?.(0) ?? u.orderedDepth},${u.position.depth.toFixed(0)},${u.turnRate},${u.maxSpeed},${u.type},${u.class},${u.name},${u.faction},${u.condition},${u.subsystems?.propulsion},${u.subsystems?.steering},${u.subsystems?.radar},${u.subsystems?.hydrophone},${u.subsystems?.activeSonar},${u.subsystems?.lookout},${u.subsystems?.divePlanes},${u.flightLevel ?? ''},${u.aircraftLoiter ? `${u.aircraftLoiter.centerUnitId ?? ''}@${u.aircraftLoiter.centerLat.toFixed(5)},${u.aircraftLoiter.centerLon.toFixed(5)},r${Math.round(u.aircraftLoiter.radiusM)}` : ''},${u.orders?.aircraftAttack ? `${u.orders.aircraftAttack.mode}>${u.orders.aircraftAttack.targetUnitId}` : ''},${sensorsSignature(u)}`,
     )
     .join('|');
 }
@@ -845,14 +845,16 @@ function GroundTruthMapInner({
   }, [torpedoes, depthCharges, detonations, view, unitAccentById, units]);
 
   /**
-   * Entire intended move for this resolve — helm turn + EOT speed over turn length,
-   * then one track segment to the predicted end position (matches turnEngine).
+   * Entire intended move for this resolve — loiter standing orders (when set) +
+   * helm turn + EOT over turn length, then one track to the predicted end
+   * (matches turnEngine.resolveTurn). Recomputes immediately when umpire edits
+   * orders live (course / EOT / loiter / attack), not only after resolve.
    */
   const movePredictions = useMemo(() => {
     if (!showMovePrediction) return [];
     return units
       .map((unit) => {
-        const path = predictUnitMovePath(unit, turnLen);
+        const path = predictUnitMovePath(unit, turnLen, units);
         if (!path || path.length < 2) return null;
         const color = unitAccent(unit);
         const pts = path.map((p) => {
