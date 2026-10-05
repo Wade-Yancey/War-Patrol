@@ -209,7 +209,7 @@ export function predictUnitMovePath(
       ? applyAircraftStandingOrders(peers)
       : peers;
     const afterVessel = hasVesselStanding
-      ? applyVesselStandingOrders(afterAircraft)
+      ? applyVesselStandingOrders(afterAircraft, turnLengthSeconds)
       : afterAircraft;
     prepared = afterVessel.find((u) => u.id === unit.id) ?? unit;
   }

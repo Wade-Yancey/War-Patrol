@@ -2,8 +2,12 @@
  * Umpire vessel standing orders — intercept / attack / evade (zigzag).
  * Ships & submarines only; aircraft keep their own attack / loiter path.
  */
-import { METERS_PER_NM, RADAR_SURFACE_DEPTH_M } from './constants.js';
-import { bearingRangeNm, normalizeHeading } from './geo.js';
+import {
+  DEFAULT_TURN_LENGTH_SECONDS,
+  KNOTS_TO_MPS,
+  RADAR_SURFACE_DEPTH_M,
+} from './constants.js';
+import { bearingRangeNm, clamp, moveAlongHeading, normalizeHeading } from './geo.js';
 import {
   canDropDepthCharges,
   canFireDeckGun,
@@ -16,12 +20,14 @@ import {
   isDestroyerDcHull,
   isFleetSubTorpedoHull,
   maxDeckGunShotsPerTurn,
+  segmentClosestPoint,
   TORPEDO_MAX_RUN_NM,
   unitLengthBeam,
 } from './weapons.js';
 import type {
   DepthChargeDropOrder,
   DeckGunFireOrder,
+  LatLonDepth,
   TorpedoFireOrder,
   TorpedoRoomId,
   UnitOrders,
@@ -45,7 +51,13 @@ export const VESSEL_EVADE_EOT = 'ahead_full' as const;
  */
 export const VESSEL_EVADE_ZIGZAG_AMPLITUDE_DEG = 30;
 
-/** Destroyer ASW auto-drop gate (horizontal meters) for standing Attack. */
+/**
+ * Destroyer ASW auto-drop gate (horizontal meters) for standing Attack.
+ * Measured as **CPA along this turn's firer move segment** (not only the
+ * turn-start plot). Flank simple-pursuit often overshoots: start/end can sit
+ * outside this radius while the along-track DC trail still passes over the
+ * sub — gating on path CPA is what makes Attack actually drop.
+ */
 export const VESSEL_ATTACK_DC_RANGE_M = 600;
 
 /** Deck-gun auto-fire gate (nm) for standing Attack — inside max gun range. */
@@ -151,6 +163,51 @@ function hasOneShotWeaponOrder(orders: UnitOrders): boolean {
   return Boolean(orders.fireTorpedo || orders.dropDepthCharges || orders.fireDeckGun);
 }
 
+/** Shortest-arc heading step (local copy — avoids kinematics ↔ vesselStanding cycle). */
+function turnTowardHeading(current: number, desired: number, maxDelta: number): number {
+  const cur = normalizeHeading(current);
+  const des = normalizeHeading(desired);
+  let delta = des - cur;
+  if (delta > 180) delta -= 360;
+  if (delta < -180) delta += 360;
+  const applied = clamp(delta, -maxDelta, maxDelta);
+  return normalizeHeading(cur + applied);
+}
+
+/**
+ * Lightweight firer end-plot for Attack DC CPA (matches turnEngine move segment
+ * closely enough for the drop gate — yaw cap + current way-on distance).
+ * Does not import kinematics (that module already calls applyVesselStandingOrders).
+ */
+export function estimateVesselStandingMoveEnd(
+  unit: Pick<UnitState, 'position' | 'heading' | 'speed' | 'turnRate'>,
+  orderedCourse: number,
+  turnLengthSeconds: number,
+): LatLonDepth {
+  const seconds = Math.max(0, turnLengthSeconds);
+  const maxDelta = unit.turnRate * (seconds / 60);
+  const heading = turnTowardHeading(unit.heading, orderedCourse, maxDelta);
+  const speed = Math.abs(unit.speed);
+  const distance = speed * KNOTS_TO_MPS * seconds;
+  if (distance <= 0) return { ...unit.position };
+  const moveHeading = unit.speed >= 0 ? heading : normalizeHeading(heading + 180);
+  return moveAlongHeading(unit.position, moveHeading, distance);
+}
+
+/**
+ * Horizontal CPA (meters) of the firer's this-turn move segment to the target
+ * plot. Used for standing Attack DC auto-queue.
+ */
+export function vesselAttackDepthChargePathCpaM(
+  firer: Pick<UnitState, 'position' | 'heading' | 'speed' | 'turnRate'>,
+  target: Pick<UnitState, 'position'>,
+  orderedCourse: number,
+  turnLengthSeconds: number = DEFAULT_TURN_LENGTH_SECONDS,
+): number {
+  const end = estimateVesselStandingMoveEnd(firer, orderedCourse, turnLengthSeconds);
+  return segmentClosestPoint(firer.position, end, target.position).missM;
+}
+
 function buildTruthDeckGunOrder(
   firer: UnitState,
   target: UnitState,
@@ -175,13 +232,21 @@ function buildTruthDeckGunOrder(
 function buildTruthDepthChargeOrder(
   firer: UnitState,
   target: UnitState,
+  orderedCourse: number,
+  turnLengthSeconds: number,
 ): DepthChargeDropOrder | null {
   if (!isDestroyerDcHull(firer) || !canDropDepthCharges(firer)) return null;
   if (target.type !== 'Submarine') return null;
+  // Submerged / PD / deep — anything deeper than radar surface band.
+  // Surfaced subs are deck-gun targets, not DC.
   if (target.position.depth <= RADAR_SURFACE_DEPTH_M) return null;
-  const { rangeNm } = bearingRangeNm(firer.position, target.position);
-  const rangeM = rangeNm * METERS_PER_NM;
-  if (rangeM > VESSEL_ATTACK_DC_RANGE_M) return null;
+  const cpaM = vesselAttackDepthChargePathCpaM(
+    firer,
+    target,
+    orderedCourse,
+    turnLengthSeconds,
+  );
+  if (cpaM > VESSEL_ATTACK_DC_RANGE_M) return null;
   const load = Math.max(0, Math.floor(Number(firer.depthChargeLoad) || 0));
   const want = load >= 6 ? 6 : load >= 4 ? 4 : load >= 2 ? 2 : 1;
   const count = depthChargeCountFromOrder({ count: want }, load);
@@ -235,14 +300,22 @@ function buildTruthTorpedoOrder(
  * Auto-queue one weapon order for standing Attack when in engagement range.
  * Priority: destroyer ASW DC → deck gun (surface) → sub torpedo.
  * Uses ground-truth aim (umpire NPC prosecute — mirrors aircraft CPA truth).
+ * DC gate uses path CPA along this turn's move (see {@link VESSEL_ATTACK_DC_RANGE_M}).
  */
 export function vesselAttackWeaponOrder(
   firer: UnitState,
   target: UnitState,
+  opts?: { orderedCourse?: number; turnLengthSeconds?: number },
 ): Partial<Pick<UnitOrders, 'fireTorpedo' | 'dropDepthCharges' | 'fireDeckGun'>> {
   if (hasOneShotWeaponOrder(firer.orders)) return {};
 
-  const dc = buildTruthDepthChargeOrder(firer, target);
+  const course =
+    typeof opts?.orderedCourse === 'number'
+      ? opts.orderedCourse
+      : vesselInterceptOrderedCourse(firer.position, target.position);
+  const turnLengthSeconds = opts?.turnLengthSeconds ?? DEFAULT_TURN_LENGTH_SECONDS;
+
+  const dc = buildTruthDepthChargeOrder(firer, target, course, turnLengthSeconds);
   if (dc) return { dropDepthCharges: dc };
 
   const gun = buildTruthDeckGunOrder(firer, target);
@@ -259,9 +332,18 @@ export function vesselAttackWeaponOrder(
  * Clears the order when the required target is gone / invalid.
  * Attack may also queue a one-shot weapon order when in engage range.
  * Evade advances zigzag leg each call (period 2 turns).
+ *
+ * @param turnLengthSeconds In-game seconds for this resolve — used by Attack DC
+ *   path-CPA gating (defaults to {@link DEFAULT_TURN_LENGTH_SECONDS}).
  */
-export function applyVesselStandingOrders(units: UnitState[]): UnitState[] {
+export function applyVesselStandingOrders(
+  units: UnitState[],
+  turnLengthSeconds: number = DEFAULT_TURN_LENGTH_SECONDS,
+): UnitState[] {
   const byId = new Map(units.map((u) => [u.id, u]));
+  const turnLen = Number.isFinite(turnLengthSeconds)
+    ? Math.max(0, turnLengthSeconds)
+    : DEFAULT_TURN_LENGTH_SECONDS;
   return units.map((unit) => {
     if (!unit.orders.vesselStanding) return unit;
     if (!canOrderVesselStanding(unit)) {
@@ -314,7 +396,12 @@ export function applyVesselStandingOrders(units: UnitState[]): UnitState[] {
     const preferredEot =
       standing.mode === 'attack' ? VESSEL_ATTACK_EOT : VESSEL_INTERCEPT_EOT;
     const weaponPatch =
-      standing.mode === 'attack' ? vesselAttackWeaponOrder(unit, target!) : {};
+      standing.mode === 'attack'
+        ? vesselAttackWeaponOrder(unit, target!, {
+            orderedCourse: course,
+            turnLengthSeconds: turnLen,
+          })
+        : {};
     const nextOrders: UnitOrders = {
       ...unit.orders,
       vesselStanding: {
