@@ -12,6 +12,7 @@ import {
   AIRCRAFT_INTERCEPT_DAMAGE,
   resolveAircraftAttackEffect,
   aircraftAttackModesForClass,
+  formatAircraftAttackModeTag,
   canOrderAircraftAttack,
   isAircraftAttackTarget,
   CLASS_BEAM_M,
@@ -283,6 +284,12 @@ async function main() {
     check(
       'bomber attack modes lead with bombing run',
       aircraftAttackModesForClass('Bomber')[0] === 'bombing_run',
+    );
+    check(
+      'aircraft attack mode tags for GT / pending',
+      formatAircraftAttackModeTag('bombing_run') === 'BOMB' &&
+        formatAircraftAttackModeTag('strafe') === 'STR' &&
+        formatAircraftAttackModeTag('intercept') === 'INT',
     );
     check(
       'aircraft can order attack when afloat',
