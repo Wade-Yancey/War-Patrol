@@ -552,6 +552,16 @@ export function UmpirePage() {
                   reviewTurn={reviewTurn}
                   onReviewTurn={setReviewTurn}
                 />
+                <GroundTruthMap
+                  area={umpire.operatingArea}
+                  units={gtDisplay?.units ?? umpire.units}
+                  trails={gtDisplay?.trails ?? umpire.trails}
+                  torpedoes={gtDisplay?.torpedoes ?? umpire.torpedoes}
+                  depthCharges={gtDisplay?.depthCharges ?? umpire.depthCharges}
+                  detonations={gtDisplay?.detonations ?? umpire.recentDetonations}
+                  turnLengthSeconds={umpire.turnLengthSeconds}
+                  showMovePrediction={!gtDisplay?.reviewing}
+                />
                 {reviewTurn != null && (
                   <div className="aar-turn-note" aria-label="AAR turn note">
                     <label htmlFor="aar-turn-note-input">
@@ -584,16 +594,6 @@ export function UmpirePage() {
                     </div>
                   </div>
                 )}
-                <GroundTruthMap
-                  area={umpire.operatingArea}
-                  units={gtDisplay?.units ?? umpire.units}
-                  trails={gtDisplay?.trails ?? umpire.trails}
-                  torpedoes={gtDisplay?.torpedoes ?? umpire.torpedoes}
-                  depthCharges={gtDisplay?.depthCharges ?? umpire.depthCharges}
-                  detonations={gtDisplay?.detonations ?? umpire.recentDetonations}
-                  turnLengthSeconds={umpire.turnLengthSeconds}
-                  showMovePrediction={!gtDisplay?.reviewing}
-                />
                 </section>
 
                 <section className="panel stack umpire-combat-log-panel">
