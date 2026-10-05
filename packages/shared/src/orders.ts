@@ -12,7 +12,8 @@ export function hasPendingOrders(orders: UnitOrders | undefined | null): boolean
     orders.fireTorpedo !== undefined ||
     orders.dropDepthCharges !== undefined ||
     orders.fireDeckGun !== undefined ||
-    orders.aircraftAttack !== undefined
+    orders.aircraftAttack !== undefined ||
+    orders.vesselStanding !== undefined
   );
 }
 
@@ -73,6 +74,17 @@ function formatAircraftAttackOrderSummary(
   return `AIR ${mode} → ${attack.targetUnitId}`;
 }
 
+function formatVesselStandingOrderSummary(
+  standing: NonNullable<UnitOrders['vesselStanding']>,
+): string {
+  // Local tag (avoid cycle: orders ← vesselStanding). Keep in sync with
+  // formatVesselStandingModeTag.
+  const mode =
+    standing.mode === 'attack' ? 'ATK' : standing.mode === 'evade' ? 'EVA' : 'INT';
+  const target = standing.targetUnitId ? ` → ${standing.targetUnitId}` : '';
+  return `VES ${mode}${target}`;
+}
+
 /**
  * Compact of-record summary for a unit's in-progress orders.
  * Missing halves show as `—` so the umpire sees partial submissions.
@@ -100,6 +112,9 @@ export function formatPendingOrdersSummary(orders: UnitOrders | undefined | null
   }
   if (orders!.aircraftAttack) {
     parts.push(formatAircraftAttackOrderSummary(orders!.aircraftAttack));
+  }
+  if (orders!.vesselStanding) {
+    parts.push(formatVesselStandingOrderSummary(orders!.vesselStanding));
   }
   return parts.join(' · ');
 }

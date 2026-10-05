@@ -17,6 +17,7 @@ import {
   clamp,
   findActiveSonarSensor,
   formatAircraftAttackModeTag,
+  formatVesselStandingModeTag,
   formatTorpedoMissTrackLabel,
   isActiveSonarPinging,
   isFleetSubTorpedoHull,
@@ -291,7 +292,7 @@ function unitsSignature(units: UnitState[]): string {
   return units
     .map(
       (u) =>
-        `${u.id}:${u.position.lat.toFixed(5)},${u.position.lon.toFixed(5)},${u.heading.toFixed(1)},${normalizeHeading(u.orderedCourse ?? u.heading).toFixed(1)},${u.speed.toFixed(1)},${u.eot},${u.orders?.course ?? ''},${u.orders?.eot ?? ''},${u.orders?.depth ?? ''},${u.orderedDepth?.toFixed?.(0) ?? u.orderedDepth},${u.position.depth.toFixed(0)},${u.turnRate},${u.maxSpeed},${u.type},${u.class},${u.name},${u.faction},${u.condition},${u.subsystems?.propulsion},${u.subsystems?.steering},${u.subsystems?.radar},${u.subsystems?.hydrophone},${u.subsystems?.activeSonar},${u.subsystems?.lookout},${u.subsystems?.divePlanes},${u.flightLevel ?? ''},${u.aircraftLoiter ? `${u.aircraftLoiter.centerUnitId ?? ''}@${u.aircraftLoiter.centerLat.toFixed(5)},${u.aircraftLoiter.centerLon.toFixed(5)},r${Math.round(u.aircraftLoiter.radiusM)}` : ''},${u.orders?.aircraftAttack ? `${u.orders.aircraftAttack.mode}>${u.orders.aircraftAttack.targetUnitId}` : ''},${sensorsSignature(u)}`,
+        `${u.id}:${u.position.lat.toFixed(5)},${u.position.lon.toFixed(5)},${u.heading.toFixed(1)},${normalizeHeading(u.orderedCourse ?? u.heading).toFixed(1)},${u.speed.toFixed(1)},${u.eot},${u.orders?.course ?? ''},${u.orders?.eot ?? ''},${u.orders?.depth ?? ''},${u.orderedDepth?.toFixed?.(0) ?? u.orderedDepth},${u.position.depth.toFixed(0)},${u.turnRate},${u.maxSpeed},${u.type},${u.class},${u.name},${u.faction},${u.condition},${u.subsystems?.propulsion},${u.subsystems?.steering},${u.subsystems?.radar},${u.subsystems?.hydrophone},${u.subsystems?.activeSonar},${u.subsystems?.lookout},${u.subsystems?.divePlanes},${u.flightLevel ?? ''},${u.aircraftLoiter ? `${u.aircraftLoiter.centerUnitId ?? ''}@${u.aircraftLoiter.centerLat.toFixed(5)},${u.aircraftLoiter.centerLon.toFixed(5)},r${Math.round(u.aircraftLoiter.radiusM)}` : ''},${u.orders?.aircraftAttack ? `${u.orders.aircraftAttack.mode}>${u.orders.aircraftAttack.targetUnitId}` : ''},${u.orders?.vesselStanding ? `${u.orders.vesselStanding.mode}>${u.orders.vesselStanding.targetUnitId ?? ''}:${u.orders.vesselStanding.evadeLeg ?? ''}` : ''},${sensorsSignature(u)}`,
     )
     .join('|');
 }
@@ -871,17 +872,32 @@ function GroundTruthMapInner({
   }, [torpedoes, depthCharges, detonations, view, unitAccentById, units]);
 
   /**
-   * Standing aircraft attack intent — dashed aircraft→target line + BOMB/STR/INT
-   * tag. Persists for the life of orders.aircraftAttack (same span as loiter
-   * prediction visibility), not a one-frame flash on order click.
+   * Standing aircraft / vessel intent — dashed unit→target line + mode tag.
+   * Persists for the life of orders.aircraftAttack / orders.vesselStanding
+   * (same span as loiter prediction visibility), not a one-frame flash on order click.
+   * Evade without a threat target draws no line (zigzag is on the move prediction).
    */
   const attackIntentOverlays = useMemo(() => {
     const byId = new Map(units.map((u) => [u.id, u]));
     return units
       .map((unit) => {
-        const attack = unit.orders?.aircraftAttack;
-        if (unit.type !== 'Aircraft' || !attack) return null;
-        const targetId = String(attack.targetUnitId ?? '').trim();
+        const airAttack = unit.orders?.aircraftAttack;
+        const vessel = unit.orders?.vesselStanding;
+        let modeTag = '';
+        let targetId = '';
+        if (unit.type === 'Aircraft' && airAttack) {
+          modeTag = formatAircraftAttackModeTag(airAttack.mode);
+          targetId = String(airAttack.targetUnitId ?? '').trim();
+        } else if (
+          (unit.type === 'Ship' || unit.type === 'Submarine') &&
+          vessel
+        ) {
+          modeTag = formatVesselStandingModeTag(vessel.mode);
+          targetId = String(vessel.targetUnitId ?? '').trim();
+          if (!targetId) return null;
+        } else {
+          return null;
+        }
         const target = targetId ? byId.get(targetId) : undefined;
         if (!target) return null;
         const color = unitAccent(unit);
@@ -893,7 +909,6 @@ function GroundTruthMapInner({
         if (!uvBBoxHitsPlot(pts)) return null;
         const lineParts = clipPolylineParts(pts);
         if (!lineParts.length) return null;
-        const modeTag = formatAircraftAttackModeTag(attack.mode);
         return {
           id: unit.id,
           color,
@@ -927,9 +942,10 @@ function GroundTruthMapInner({
 
   /**
    * Entire intended move for this resolve — aircraft standing attack / loiter
-   * (when set) + helm turn + EOT over turn length, then one track to the predicted
-   * end (matches turnEngine.resolveTurn). Recomputes immediately when umpire
-   * edits orders live (course / EOT / loiter / attack), not only after resolve.
+   * and vessel standing intercept / attack / evade (when set) + helm turn + EOT
+   * over turn length, then one track to the predicted end (matches
+   * turnEngine.resolveTurn). Recomputes immediately when umpire edits orders
+   * live (course / EOT / loiter / attack / vessel standing), not only after resolve.
    */
   const movePredictions = useMemo(() => {
     if (!showMovePrediction) return [];
@@ -1039,14 +1055,18 @@ function GroundTruthMapInner({
           label: `${unit.speed.toFixed(0)} KN · HDG ${heading.toFixed(0)}° · CRS ${ordered.toFixed(0)}°${
             unit.type === 'Submarine' && unit.position.depth > 0
               ? ` · ${unit.position.depth.toFixed(0)} M`
-              : unit.type === 'Aircraft'
-                ? ` · FL ${(unit.flightLevel ?? 'medium').toUpperCase()}${
-                    unit.orders?.aircraftAttack
-                      ? ` · ${formatAircraftAttackModeTag(unit.orders.aircraftAttack.mode)}`
-                      : unit.aircraftLoiter
-                        ? ' · LOITER'
-                        : ''
-                  }`
+              : ''
+          }${
+            unit.type === 'Aircraft'
+              ? ` · FL ${(unit.flightLevel ?? 'medium').toUpperCase()}${
+                  unit.orders?.aircraftAttack
+                    ? ` · ${formatAircraftAttackModeTag(unit.orders.aircraftAttack.mode)}`
+                    : unit.aircraftLoiter
+                      ? ' · LOITER'
+                      : ''
+                }`
+              : unit.orders?.vesselStanding
+                ? ` · ${formatVesselStandingModeTag(unit.orders.vesselStanding.mode)}`
                 : ''
           }`,
           onPlot: uvHitsPlot(u, v),
@@ -1498,7 +1518,7 @@ function GroundTruthMapInner({
             ))}
           </g>
 
-          {/* Standing aircraft attack intent — aircraft → target until order clears */}
+          {/* Standing attack / vessel intent — unit → target until order clears */}
           <g className="map-attack-intents" pointerEvents="none">
             {attackIntentOverlays.map((a) => (
               <g key={`atk-${a.id}`} opacity={0.85}>

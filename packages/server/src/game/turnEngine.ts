@@ -2,6 +2,7 @@ import {
   PERISCOPE_DEPTH_M,
   advanceSinkingUnits,
   applyAircraftStandingOrders,
+  applyVesselStandingOrders,
   applyCrushDepthImplosions,
   applyUnitKinematics,
   clampDepthChargeSetting,
@@ -9,6 +10,7 @@ import {
   depthChargeCountFromOrder,
   depthChargePatternForCount,
   normalizeAircraftAttackMode,
+  normalizeVesselStandingMode,
   normalizeDeckGunFireOrder,
   normalizeHeading,
   clampTorpedoSpreadCount,
@@ -16,6 +18,7 @@ import {
   normalizeTorpedoRoomId,
   resolveTurnLengthSeconds,
   type AircraftAttackOrder,
+  type VesselStandingOrder,
   type DeckGunFireOrder,
   type DepthChargeDropOrder,
   type EotSetting,
@@ -75,8 +78,10 @@ export function resolveTurn(save: GameSave): GameSave {
   // lethal hulls (set later this resolve) keep a full VESSEL_SINKING_TURNS linger.
   const afterSinking = advanceSinkingUnits(save.units);
 
-  // Standing aircraft attack / loiter inject course (+ band EOT) before kinematics.
-  const standingReady = applyAircraftStandingOrders(afterSinking);
+  // Standing aircraft attack / loiter + vessel intercept / attack / evade inject
+  // course (+ preferred EOT) before kinematics.
+  const afterAircraft = applyAircraftStandingOrders(afterSinking);
+  const standingReady = applyVesselStandingOrders(afterAircraft);
 
   // Kinematics first (orders still present for weapon launch snapshot).
   const movedUnits = standingReady.map((unit) => applyUnitOrders(unit, turnLength, false));
@@ -103,14 +108,29 @@ export function resolveTurn(save: GameSave): GameSave {
   );
 
   // Clear helm/EOT/depth / one-shot weapon fields after resolve. Standing aircraft
-  // attack orders persist until auto-release / cancel / target gone (like loiter).
+  // attack and vessel standing orders persist until cancel / target gone (like loiter).
   const resolvedUnits = weapons.units.map((u) => {
     const attack = u.orders.aircraftAttack;
+    const vessel = u.orders.vesselStanding;
+    const next: UnitOrders = {};
+    if (attack) {
+      next.aircraftAttack = { mode: attack.mode, targetUnitId: attack.targetUnitId };
+    }
+    if (vessel) {
+      next.vesselStanding = {
+        mode: vessel.mode,
+        ...(vessel.targetUnitId ? { targetUnitId: vessel.targetUnitId } : {}),
+        ...(typeof vessel.evadeBaseCourse === 'number'
+          ? { evadeBaseCourse: vessel.evadeBaseCourse }
+          : {}),
+        ...(vessel.evadeLeg === 0 || vessel.evadeLeg === 1
+          ? { evadeLeg: vessel.evadeLeg }
+          : {}),
+      };
+    }
     return {
       ...u,
-      orders: (attack
-        ? { aircraftAttack: { mode: attack.mode, targetUnitId: attack.targetUnitId } }
-        : {}) as UnitOrders,
+      orders: next,
     };
   });
 
@@ -188,7 +208,8 @@ function applyPeriscopePlotStamps(units: UnitState[], save: GameSave): UnitState
  * Apply helm/EOT/depth kinematics.
  * When `clearOrders` is false, weapon order fields are preserved for launch this resolve.
  * Shared with umpire GT move prediction ({@link applyUnitKinematics} /
- * {@link predictUnitMovePath} — prediction applies aircraft standing orders first).
+ * {@link predictUnitMovePath} — prediction applies aircraft + vessel standing
+ * orders first).
  */
 function applyUnitOrders(
   unit: UnitState,
@@ -212,6 +233,7 @@ export type OrdersPatch = {
   dropDepthCharges?: DepthChargeDropOrder | null;
   fireDeckGun?: DeckGunFireOrder | null;
   aircraftAttack?: AircraftAttackOrder | null;
+  vesselStanding?: VesselStandingOrder | null;
 };
 
 export function mergeOrders(
@@ -267,6 +289,24 @@ export function mergeOrders(
       mode: normalizeAircraftAttackMode(patch.aircraftAttack.mode),
       targetUnitId: String(patch.aircraftAttack.targetUnitId ?? '').trim(),
     };
+  }
+  if (patch.vesselStanding === null) {
+    delete next.vesselStanding;
+  } else if (patch.vesselStanding) {
+    const mode = normalizeVesselStandingMode(patch.vesselStanding.mode);
+    const targetUnitId = String(patch.vesselStanding.targetUnitId ?? '').trim() || undefined;
+    const standing: VesselStandingOrder = { mode };
+    if (targetUnitId) standing.targetUnitId = targetUnitId;
+    if (mode === 'evade') {
+      if (
+        typeof patch.vesselStanding.evadeBaseCourse === 'number' &&
+        Number.isFinite(patch.vesselStanding.evadeBaseCourse)
+      ) {
+        standing.evadeBaseCourse = normalizeHeading(patch.vesselStanding.evadeBaseCourse);
+      }
+      standing.evadeLeg = patch.vesselStanding.evadeLeg === 1 ? 1 : 0;
+    }
+    next.vesselStanding = standing;
   }
   return next;
 }

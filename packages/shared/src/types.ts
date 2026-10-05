@@ -289,6 +289,28 @@ export interface AircraftAttackOrder {
   targetUnitId: string;
 }
 
+/** Umpire-ordered vessel standing order (ship / sub — intercept / attack / evade). */
+export type VesselStandingMode = 'intercept' | 'attack' | 'evade';
+
+export interface VesselStandingOrder {
+  mode: VesselStandingMode;
+  /**
+   * Target hull id. Required for intercept / attack.
+   * Optional for evade: when set, base course runs away from that threat.
+   */
+  targetUnitId?: string;
+  /**
+   * Evade zigzag base course (° true). Refreshed from threat when
+   * `targetUnitId` is set; otherwise frozen at order start.
+   */
+  evadeBaseCourse?: number;
+  /**
+   * Evade zigzag leg: 0 = port (−amp), 1 = starboard (+amp).
+   * Advances each resolve (period = 2 turns).
+   */
+  evadeLeg?: 0 | 1;
+}
+
 /**
  * Standing NPC aircraft loiter — auto-orbits each resolve without umpire helm.
  * Cleared only by umpire cancel (survives turn order wipe).
@@ -331,6 +353,13 @@ export interface UnitOrders {
    * release, invalid/gone target, empty bomb rack (bombing), or umpire cancel.
    */
   aircraftAttack?: AircraftAttackOrder;
+  /**
+   * Standing umpire vessel order (intercept / attack / evade zigzag).
+   * Ships & subs only. Persists across resolves until umpire Clear, target
+   * gone (intercept/attack), or hull lost. Attack may auto-queue weapons
+   * when in engagement range (DC / deck gun / torpedo) without clearing.
+   */
+  vesselStanding?: VesselStandingOrder;
   updatedAt?: string;
   updatedByStationId?: string;
 }
