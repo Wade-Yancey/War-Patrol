@@ -1,11 +1,12 @@
 /**
- * NPC aircraft helpers — bomb magazine, loiter standing order, attack mode labels.
+ * NPC aircraft helpers — bomb magazine, loiter / attack standing orders.
  * Attack CPA / damage math lives in weapons.ts (shared with resolve).
  */
 import { METERS_PER_NM } from './constants.js';
 import { AIRCRAFT_BAND_EOT } from './eot.js';
 import { bearingRangeNm, moveAlongHeading, normalizeHeading } from './geo.js';
 import type {
+  AircraftAttackOrder,
   AircraftLoiterState,
   LatLonDepth,
   UnitState,
@@ -124,6 +125,11 @@ export function aircraftLoiterEot() {
   return AIRCRAFT_BAND_EOT.loiter;
 }
 
+/** Preferred EOT when a standing attack order is active (full speed band). */
+export function aircraftAttackEot() {
+  return AIRCRAFT_BAND_EOT.full;
+}
+
 /**
  * Resolve loiter center for this turn (tracks parent hull when set).
  */
@@ -145,8 +151,71 @@ export function resolveAircraftLoiterCenter(
 }
 
 /**
+ * True when a hull can still be the target of a standing aircraft attack
+ * (mirrors weapons.isAircraftAttackTarget — kept local to avoid cycle).
+ */
+export function isStandingAircraftAttackTarget(
+  unit: Pick<UnitState, 'type' | 'condition'> | undefined,
+): boolean {
+  if (!unit) return false;
+  if (unit.condition === 'sunk' || unit.condition === 'sinking') return false;
+  if (unit.type === 'Aircraft') return false;
+  return true;
+}
+
+/** Course that steers the aircraft toward the attack target plot. */
+export function aircraftAttackOrderedCourse(
+  aircraftPos: LatLonDepth,
+  targetPos: LatLonDepth,
+): number {
+  return bearingRangeNm(aircraftPos, targetPos).bearing;
+}
+
+/**
+ * Inject course (+ full-band EOT when unset) for aircraft with a standing attack.
+ * Clears the attack when the target is gone / invalid, or bombing has no bomb left.
+ * Attack steering wins over loiter for the same resolve.
+ */
+export function applyAircraftAttackStandingOrders(units: UnitState[]): UnitState[] {
+  const byId = new Map(units.map((u) => [u.id, u]));
+  return units.map((unit) => {
+    if (unit.type !== 'Aircraft' || !unit.orders.aircraftAttack) return unit;
+    if (unit.condition === 'sunk' || unit.condition === 'sinking') {
+      const { aircraftAttack: _a, ...rest } = unit.orders;
+      return { ...unit, orders: rest };
+    }
+
+    const attack = unit.orders.aircraftAttack;
+    const targetId = String(attack.targetUnitId ?? '').trim();
+    const target = targetId ? byId.get(targetId) : undefined;
+
+    if (!isStandingAircraftAttackTarget(target)) {
+      const { aircraftAttack: _a, ...rest } = unit.orders;
+      return { ...unit, orders: rest };
+    }
+
+    if (attack.mode === 'bombing_run' && !hasBombLoad(unit)) {
+      const { aircraftAttack: _a, ...rest } = unit.orders;
+      return { ...unit, orders: rest };
+    }
+
+    const course = aircraftAttackOrderedCourse(unit.position, target!.position);
+    const nextOrders: UnitState['orders'] = {
+      ...unit.orders,
+      aircraftAttack: {
+        mode: attack.mode,
+        targetUnitId: targetId,
+      } satisfies AircraftAttackOrder,
+      course,
+      ...(unit.orders.eot === undefined ? { eot: aircraftAttackEot() } : {}),
+    };
+    return { ...unit, orders: nextOrders };
+  });
+}
+
+/**
  * Inject course (+ loiter-band EOT when unset) for aircraft with a standing loiter.
- * Skips when a pending attack run is queued (attack steering wins this turn).
+ * Skips when a standing attack order is active (attack steering wins).
  */
 export function applyAircraftLoiterStandingOrders(units: UnitState[]): UnitState[] {
   const byId = new Map(units.map((u) => [u.id, u]));
@@ -178,4 +247,12 @@ export function applyAircraftLoiterStandingOrders(units: UnitState[]): UnitState
       },
     };
   });
+}
+
+/**
+ * Apply standing aircraft orders in resolve / GT-prediction order:
+ * attack steering first, then loiter (loiter yields while attack is active).
+ */
+export function applyAircraftStandingOrders(units: UnitState[]): UnitState[] {
+  return applyAircraftLoiterStandingOrders(applyAircraftAttackStandingOrders(units));
 }

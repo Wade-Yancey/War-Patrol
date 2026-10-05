@@ -2550,6 +2550,14 @@ export const AIRCRAFT_ATTACK_NEAR_M = 900;
 /** Beyond this CPA the run is out of reach this turn (far miss). */
 export const AIRCRAFT_ATTACK_FAR_M = 2200;
 
+/**
+ * True when CPA is close enough to auto-release weapons on a standing attack
+ * (≤ {@link AIRCRAFT_ATTACK_FAR_M}). Farther → keep pursuing, no drop/guns.
+ */
+export function isAircraftAttackReleaseRange(missDistanceM: number): boolean {
+  return Math.max(0, Number(missDistanceM) || 0) <= AIRCRAFT_ATTACK_FAR_M;
+}
+
 /** Strafe / intercept gun damage (museum-scale). */
 export const AIRCRAFT_INTERCEPT_DAMAGE = 14;
 /** Explicit gun-strafe alias (same museum HP as intercept). */

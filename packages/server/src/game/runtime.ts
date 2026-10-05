@@ -947,8 +947,10 @@ export class GameRuntime {
    * Umpire individual helm/EOT for any hull (player or NPC).
    * Optional breakFormation detaches a convoy member so later group applies skip it;
    * rejoinFormation clears the flag and optionally resyncs to standing group orders.
-   * Optional aircraftAttack queues an intercept / strafe / bombing run (aircraft only) and,
-   * unless course/eot are also provided, steers toward the target at full band.
+   * Optional aircraftAttack sets a standing intercept / strafe / bombing run
+   * (aircraft only) — persists across turns, auto-steers toward the target, and
+   * auto-releases when CPA is in range. Unless course/eot are also provided,
+   * steers toward the target at full band on the order click.
    * Optional aircraftLoiter sets/clears a standing orbit (persists across turns).
    */
   async submitUmpireUnitOrders(

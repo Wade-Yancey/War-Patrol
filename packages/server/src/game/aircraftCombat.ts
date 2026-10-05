@@ -1,5 +1,7 @@
 /**
  * NPC aircraft attack-run resolve (intercept / strafe / bombing).
+ * Standing multi-turn orders: pursue until CPA is in release range, then
+ * auto-fire and clear. Far geometry keeps the order for the next resolve.
  * Kept separate from torpedo/DC substeps so destroyer deck-gun work can land
  * beside weaponsResolve without merge thrash on this path.
  */
@@ -11,6 +13,7 @@ import {
   formatAircraftAttackModeLabel,
   hasBombLoad,
   healthDamageApplied,
+  isAircraftAttackReleaseRange,
   isAircraftAttackTarget,
   isAircraftGunAttackMode,
   makeDetonationEvent,
@@ -31,9 +34,15 @@ export type AircraftCombatResolveResult = {
   detonations: WeaponDetonationEvent[];
 };
 
+function clearAircraftAttackOrder(unit: UnitState): UnitState {
+  const { aircraftAttack: _a, ...rest } = unit.orders;
+  return { ...unit, orders: rest };
+}
+
 /**
- * Resolve pending `orders.aircraftAttack` after kinematics.
- * Bombing consumes one bomb when dropped (not far-miss out of reach).
+ * Resolve standing `orders.aircraftAttack` after kinematics.
+ * Auto-release when CPA ≤ AIRCRAFT_ATTACK_FAR_M (2200 m); otherwise keep
+ * pursuing. Bombing consumes one bomb when dropped (not far pursuit).
  * Bombing hit / near-miss / ineffective emit `aircraft_bomb` bridge/hydro cues.
  */
 export function resolveAircraftAttacksForTurn(opts: {
@@ -73,37 +82,17 @@ export function resolveAircraftAttacksForTurn(opts: {
     if (!attacker) continue;
     const target = unitMap.get(pending.targetUnitId);
     const modeLabel = formatAircraftAttackModeLabel(pending.mode);
-    combatLogEntries.push(
-      logLine({
-        kind: 'aircraft_attack',
-        turnNumber,
-        gameTimeSeconds,
-        actor: attacker,
-        target: target && isAircraftAttackTarget(target) ? target : undefined,
-        summary: `${attacker.name} ${modeLabel} vs ${
-          (target?.name ?? pending.targetUnitId) || 'unknown'
-        }`,
-      }),
-    );
-
-    // Clear attack order whether or not the target is valid.
-    let clearedAttacker: UnitState = {
-      ...attacker,
-      orders: (() => {
-        const { aircraftAttack: _a, ...rest } = attacker.orders;
-        return rest;
-      })(),
-    };
-    units = units.map((u) => (u.id === attacker.id ? clearedAttacker : u));
-    unitMap.set(attacker.id, clearedAttacker);
 
     if (!target || !isAircraftAttackTarget(target)) {
+      const cleared = clearAircraftAttackOrder(attacker);
+      units = units.map((u) => (u.id === attacker.id ? cleared : u));
+      unitMap.set(attacker.id, cleared);
       combatLogEntries.push(
         logLine({
-          kind: 'aircraft_attack_miss',
+          kind: 'aircraft_attack',
           turnNumber,
           gameTimeSeconds,
-          actor: clearedAttacker,
+          actor: cleared,
           summary: `${attacker.name} ${modeLabel} aborted — no valid target`,
         }),
       );
@@ -111,13 +100,16 @@ export function resolveAircraftAttacksForTurn(opts: {
     }
 
     // Bombing requires a ready bomb; guns (intercept / strafe) never consume.
-    if (pending.mode === 'bombing_run' && !hasBombLoad(clearedAttacker)) {
+    if (pending.mode === 'bombing_run' && !hasBombLoad(attacker)) {
+      const cleared = clearAircraftAttackOrder(attacker);
+      units = units.map((u) => (u.id === attacker.id ? cleared : u));
+      unitMap.set(attacker.id, cleared);
       combatLogEntries.push(
         logLine({
           kind: 'aircraft_attack_miss',
           turnNumber,
           gameTimeSeconds,
-          actor: clearedAttacker,
+          actor: cleared,
           target,
           summary: `${attacker.name} bombing run aborted — no bombs remaining`,
         }),
@@ -135,6 +127,28 @@ export function resolveAircraftAttacksForTurn(opts: {
       targetStart: tgtStart,
       targetEnd: tgtEnd,
     });
+
+    // Still inbound — keep the standing order, no weapon release this turn.
+    if (!isAircraftAttackReleaseRange(approach.missM)) {
+      continue;
+    }
+
+    combatLogEntries.push(
+      logLine({
+        kind: 'aircraft_attack',
+        turnNumber,
+        gameTimeSeconds,
+        actor: attacker,
+        target,
+        summary: `${attacker.name} ${modeLabel} vs ${target.name}`,
+      }),
+    );
+
+    // In release range: fire once, then clear the standing order.
+    let clearedAttacker = clearAircraftAttackOrder(attacker);
+    units = units.map((u) => (u.id === attacker.id ? clearedAttacker : u));
+    unitMap.set(attacker.id, clearedAttacker);
+
     const effect = resolveAircraftAttackEffect({
       mode: pending.mode,
       missDistanceM: approach.missM,
@@ -143,7 +157,7 @@ export function resolveAircraftAttacksForTurn(opts: {
       seed: `${attacker.id}|${target.id}|${pending.mode}|${turnNumber}`,
     });
 
-    // Far miss = out of reach — bomb stays on the rack. Any closer proceeds.
+    // Far miss shouldn't reach here (release gate), but keep bomb-safe.
     const droppedBomb =
       pending.mode === 'bombing_run' && effect.outcome !== 'far_miss';
     if (droppedBomb) {

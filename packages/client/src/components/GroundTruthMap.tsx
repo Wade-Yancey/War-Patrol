@@ -845,10 +845,10 @@ function GroundTruthMapInner({
   }, [torpedoes, depthCharges, detonations, view, unitAccentById, units]);
 
   /**
-   * Entire intended move for this resolve — loiter standing orders (when set) +
-   * helm turn + EOT over turn length, then one track to the predicted end
-   * (matches turnEngine.resolveTurn). Recomputes immediately when umpire edits
-   * orders live (course / EOT / loiter / attack), not only after resolve.
+   * Entire intended move for this resolve — aircraft standing attack / loiter
+   * (when set) + helm turn + EOT over turn length, then one track to the predicted
+   * end (matches turnEngine.resolveTurn). Recomputes immediately when umpire
+   * edits orders live (course / EOT / loiter / attack), not only after resolve.
    */
   const movePredictions = useMemo(() => {
     if (!showMovePrediction) return [];

@@ -1,7 +1,7 @@
 import {
   PERISCOPE_DEPTH_M,
   advanceSinkingUnits,
-  applyAircraftLoiterStandingOrders,
+  applyAircraftStandingOrders,
   applyCrushDepthImplosions,
   applyUnitKinematics,
   clampDepthChargeSetting,
@@ -75,11 +75,11 @@ export function resolveTurn(save: GameSave): GameSave {
   // lethal hulls (set later this resolve) keep a full VESSEL_SINKING_TURNS linger.
   const afterSinking = advanceSinkingUnits(save.units);
 
-  // Standing aircraft loiter injects orbit course (+ loiter EOT) before kinematics.
-  const loiterReady = applyAircraftLoiterStandingOrders(afterSinking);
+  // Standing aircraft attack / loiter inject course (+ band EOT) before kinematics.
+  const standingReady = applyAircraftStandingOrders(afterSinking);
 
   // Kinematics first (orders still present for weapon launch snapshot).
-  const movedUnits = loiterReady.map((unit) => applyUnitOrders(unit, turnLength, false));
+  const movedUnits = standingReady.map((unit) => applyUnitOrders(unit, turnLength, false));
 
   // Periscope auto-lower when too deep; plot stamp accrue/reset (no frozen bonus).
   const stampedUnits = applyPeriscopePlotStamps(movedUnits, save);
@@ -102,8 +102,17 @@ export function resolveTurn(save: GameSave): GameSave {
     startPositions,
   );
 
-  // Clear remaining helm/EOT/depth orders after weapons consumed fire/drop fields.
-  const resolvedUnits = weapons.units.map((u) => ({ ...u, orders: {} as UnitOrders }));
+  // Clear helm/EOT/depth / one-shot weapon fields after resolve. Standing aircraft
+  // attack orders persist until auto-release / cancel / target gone (like loiter).
+  const resolvedUnits = weapons.units.map((u) => {
+    const attack = u.orders.aircraftAttack;
+    return {
+      ...u,
+      orders: (attack
+        ? { aircraftAttack: { mode: attack.mode, targetUnitId: attack.targetUnitId } }
+        : {}) as UnitOrders,
+    };
+  });
 
   const nextTurnState = {
     number: save.turn.number + 1,
@@ -179,7 +188,7 @@ function applyPeriscopePlotStamps(units: UnitState[], save: GameSave): UnitState
  * Apply helm/EOT/depth kinematics.
  * When `clearOrders` is false, weapon order fields are preserved for launch this resolve.
  * Shared with umpire GT move prediction ({@link applyUnitKinematics} /
- * {@link predictUnitMovePath} — prediction applies loiter standing orders first).
+ * {@link predictUnitMovePath} — prediction applies aircraft standing orders first).
  */
 function applyUnitOrders(
   unit: UnitState,

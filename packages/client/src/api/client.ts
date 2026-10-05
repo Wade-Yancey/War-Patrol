@@ -141,7 +141,7 @@ export const api = {
   /**
    * Umpire: individual helm/EOT (any hull). Optional breakFormation / rejoinFormation
    * for convoy members — does not use the Navigation heading fiat path.
-   * Optional aircraftAttack queues intercept / strafe / bombing for NPC aircraft.
+   * Optional aircraftAttack sets a standing intercept / strafe / bombing order.
    * Optional aircraftLoiter sets/clears a standing orbit.
    */
   umpireUnitOrders: (
