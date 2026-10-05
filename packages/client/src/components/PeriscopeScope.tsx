@@ -247,33 +247,42 @@ function PeriscopeScopeInner({
                   ? formatPeriscopeDesignation(selected.labelN)
                   : formatContactDesignation(selected.labelN)}
               </span>
-              <span>{formatRelBearing(selected.relativeBearing)}</span>
-              <span className="muted">{selected.rangeNm.toFixed(2)} nm</span>
-              {!isFeather && <span className="muted">{selected.speedKn.toFixed(1)} kn</span>}
-              {!isFeather &&
-                selected.courseDeg != null &&
-                Number.isFinite(selected.courseDeg) && (
-                  <span className="muted">crs {formatCourse(selected.courseDeg)}</span>
+              {/*
+                Fixed-height meta row (nowrap + overflow) so scar/smoke/sinking
+                chips never wrap onto a second line and shove the plate upward
+                inside the flex-centered `.periscope-selected` stack.
+              */}
+              <div className="periscope-readouts-meta">
+                <span>{formatRelBearing(selected.relativeBearing)}</span>
+                <span className="muted">{selected.rangeNm.toFixed(2)} nm</span>
+                {!isFeather && (
+                  <span className="muted">{selected.speedKn.toFixed(1)} kn</span>
                 )}
-              {!isFeather && selected.sinking && (
-                <span className="periscope-status-chip periscope-status-chip--sinking">
-                  sinking
-                </span>
-              )}
-              {!isFeather &&
-                !selected.sinking &&
-                selected.damageLook === 'smoking' && (
-                  <span className="periscope-status-chip periscope-status-chip--smoke">
-                    smoke
+                {!isFeather &&
+                  selected.courseDeg != null &&
+                  Number.isFinite(selected.courseDeg) && (
+                    <span className="muted">crs {formatCourse(selected.courseDeg)}</span>
+                  )}
+                {!isFeather && selected.sinking && (
+                  <span className="periscope-status-chip periscope-status-chip--sinking">
+                    sinking
                   </span>
                 )}
-              {!isFeather &&
-                !selected.sinking &&
-                selected.damageLook === 'scarred' && (
-                  <span className="periscope-status-chip periscope-status-chip--scar">
-                    scar
-                  </span>
-                )}
+                {!isFeather &&
+                  !selected.sinking &&
+                  selected.damageLook === 'smoking' && (
+                    <span className="periscope-status-chip periscope-status-chip--smoke">
+                      smoke
+                    </span>
+                  )}
+                {!isFeather &&
+                  !selected.sinking &&
+                  selected.damageLook === 'scarred' && (
+                    <span className="periscope-status-chip periscope-status-chip--scar">
+                      scar
+                    </span>
+                  )}
+              </div>
             </div>
           </div>
         ) : null}
