@@ -339,10 +339,14 @@ async function main() {
       startRangeM > VESSEL_ATTACK_DC_RANGE_M && pathCpaM <= VESSEL_ATTACK_DC_RANGE_M,
       `start=${startRangeM.toFixed(0)} cpa=${pathCpaM.toFixed(0)}`,
     );
-    const atkWeapons = vesselAttackWeaponOrder(ddStub as UnitState, ssStub as UnitState, {
-      orderedCourse: 180,
-      turnLengthSeconds: 180,
-    });
+    const atkWeapons = vesselAttackWeaponOrder(
+      ddStub as unknown as UnitState,
+      ssStub as unknown as UnitState,
+      {
+        orderedCourse: 180,
+        turnLengthSeconds: 180,
+      },
+    );
     check(
       'attack auto-queues DC on path CPA (PD sub)',
       Boolean(atkWeapons.dropDepthCharges),
@@ -359,8 +363,8 @@ async function main() {
         {
           ...ddStub,
           orders: { vesselStanding: { mode: 'intercept', targetUnitId: 'ss-cpa' } },
-        } as UnitState,
-        ssStub as UnitState,
+        } as unknown as UnitState,
+        ssStub as unknown as UnitState,
       ],
       180,
     );
@@ -370,7 +374,7 @@ async function main() {
       !intDd?.orders.dropDepthCharges,
     );
     const attackApplied = applyVesselStandingOrders(
-      [ddStub as UnitState, ssStub as UnitState],
+      [ddStub as unknown as UnitState, ssStub as unknown as UnitState],
       180,
     );
     const atkDd = attackApplied.find((u) => u.id === 'dd-cpa');
