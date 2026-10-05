@@ -5,6 +5,7 @@ import {
   periscopeSilhouetteFlipX,
   periscopeSilhouetteScale,
   type HullClass,
+  type OpticsDamageLook,
   type PeriscopeContact,
 } from '@war-patrol/shared';
 /** Vite-bundled PNGs (alpha) — guaranteed in the client graph (not fragile public-path strings). */
@@ -96,6 +97,20 @@ function contactDesignation(c: PeriscopeContact): string {
     : formatContactDesignation(c.labelN);
 }
 
+/**
+ * Additive CSS modifier for the existing plate `<img>` — filter/opacity only.
+ * Priority: sinking > smoking > scarred. Never wraps, clips, or tilts the plate.
+ */
+function silhouetteDamageClass(
+  sinking: boolean | undefined,
+  damageLook: OpticsDamageLook | undefined,
+): string {
+  if (sinking) return ' periscope-silhouette--sinking';
+  if (damageLook === 'smoking') return ' periscope-silhouette--smoking';
+  if (damageLook === 'scarred') return ' periscope-silhouette--scarred';
+  return '';
+}
+
 /** Precise true course readout — padded like own HDG readout. */
 function formatCourse(courseDeg: number): string {
   return `${String(Math.round(courseDeg) % 360).padStart(3, '0')}°`;
@@ -122,7 +137,8 @@ function contactsKey(contacts: PeriscopeContact[]): string {
  *
  * Layout/silhouette rendering stays on the pre-#186 flex-centered plate model
  * (no plate-wrap waterline seating, sink-clip/list, or scar/smoke overlays).
- * `sinking` / `damageLook` are status text only.
+ * `sinking` / `damageLook` keep status text; the plate itself gets additive
+ * filter/opacity modifiers only (no layout shift).
  */
 function PeriscopeScopeInner({
   contacts,
@@ -213,7 +229,7 @@ function PeriscopeScopeInner({
             ) : (
               <img
                 key={plateSrc}
-                className={`periscope-silhouette${airPlate ? ' periscope-silhouette--air' : ''}${flipPlate ? ' periscope-silhouette--flip' : ''}`}
+                className={`periscope-silhouette${airPlate ? ' periscope-silhouette--air' : ''}${flipPlate ? ' periscope-silhouette--flip' : ''}${silhouetteDamageClass(selected.sinking, selected.damageLook)}`}
                 src={plateSrc}
                 alt={silhouetteAlt(plateClass, plateKey)}
                 width={plateSize.width}
@@ -240,17 +256,23 @@ function PeriscopeScopeInner({
                   <span className="muted">crs {formatCourse(selected.courseDeg)}</span>
                 )}
               {!isFeather && selected.sinking && (
-                <span className="muted">sinking</span>
+                <span className="periscope-status-chip periscope-status-chip--sinking">
+                  sinking
+                </span>
               )}
               {!isFeather &&
                 !selected.sinking &&
                 selected.damageLook === 'smoking' && (
-                  <span className="muted">smoke</span>
+                  <span className="periscope-status-chip periscope-status-chip--smoke">
+                    smoke
+                  </span>
                 )}
               {!isFeather &&
                 !selected.sinking &&
                 selected.damageLook === 'scarred' && (
-                  <span className="muted">scar</span>
+                  <span className="periscope-status-chip periscope-status-chip--scar">
+                    scar
+                  </span>
                 )}
             </div>
           </div>
@@ -302,13 +324,25 @@ function PeriscopeScopeInner({
                           Number.isFinite(c.courseDeg) && (
                             <span>crs {formatCourse(c.courseDeg)}</span>
                           )}
-                        {c.kind !== 'periscope' && c.sinking && <span>sinking</span>}
+                        {c.kind !== 'periscope' && c.sinking && (
+                          <span className="periscope-status-chip periscope-status-chip--sinking">
+                            sinking
+                          </span>
+                        )}
                         {c.kind !== 'periscope' &&
                           !c.sinking &&
-                          c.damageLook === 'smoking' && <span>smoke</span>}
+                          c.damageLook === 'smoking' && (
+                            <span className="periscope-status-chip periscope-status-chip--smoke">
+                              smoke
+                            </span>
+                          )}
                         {c.kind !== 'periscope' &&
                           !c.sinking &&
-                          c.damageLook === 'scarred' && <span>scar</span>}
+                          c.damageLook === 'scarred' && (
+                            <span className="periscope-status-chip periscope-status-chip--scar">
+                              scar
+                            </span>
+                          )}
                       </span>
                     </button>
                   </li>

@@ -3188,6 +3188,56 @@ label {
   transform: scaleX(-1);
 }
 
+/*
+ * Additive FoW damage cues on the existing plate <img> only.
+ * Filters / opacity — no wrappers, waterline seating, sink-clip, tilt, or overlays.
+ * Priority applied in JSX: sinking > smoking > scarred.
+ */
+.periscope-silhouette--scarred {
+  /* Warm battle-worn plate — readable, no glow */
+  filter: sepia(0.28) saturate(0.82) contrast(1.06) brightness(0.96);
+}
+
+.periscope-silhouette--smoking {
+  /* Heavier smoke/fire tone + slight fade */
+  filter: sepia(0.42) saturate(0.5) contrast(1.1) brightness(0.88);
+  opacity: 0.9;
+}
+
+.periscope-silhouette--sinking {
+  /* Cool, washed-out hull — still centered; no immersion clip */
+  filter: grayscale(0.62) sepia(0.18) hue-rotate(170deg) saturate(0.65) brightness(0.82);
+  opacity: 0.72;
+}
+
+/* Status chips sit in readout / contact-list rows — beside data, never on the plate. */
+.periscope-status-chip {
+  display: inline-block;
+  flex: 0 0 auto;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid color-mix(in srgb, currentColor 45%, transparent);
+  border-radius: 2px;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.35;
+}
+
+.periscope-status-chip--scar {
+  color: #d2b07a;
+  background: color-mix(in srgb, #6a4e28 28%, transparent);
+}
+
+.periscope-status-chip--smoke {
+  color: #e0a060;
+  background: color-mix(in srgb, #6a3a18 32%, transparent);
+}
+
+.periscope-status-chip--sinking {
+  color: #8eb8c8;
+  background: color-mix(in srgb, #1a3a4a 40%, transparent);
+}
+
 /* DD lookout feather — thin mast SVG, not a hull plate. */
 .periscope-feather {
   display: block;

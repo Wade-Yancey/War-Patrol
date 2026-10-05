@@ -1361,13 +1361,14 @@ export interface PeriscopeContact {
   silhouettePlate?: string;
   /**
    * FoW status — true when the contact is in the multi-turn sinking phase.
-   * Client may show status text; silhouette tilt/clip presentation is deferred.
+   * Client may show status text plus additive plate filter/opacity (no tilt/clip).
    * Does not expose HP or turn countdown.
    */
   sinking?: boolean;
   /**
    * Coarse battle-damage FoW status (`scarred` / `smoking`) — not precise HP.
-   * Client may show status text; scar/smoke overlays are deferred. Omitted when undamaged.
+   * Client may show status text plus additive plate filter/opacity (no scar/smoke overlays).
+   * Omitted when undamaged.
    */
   damageLook?: OpticsDamageLook;
 }
