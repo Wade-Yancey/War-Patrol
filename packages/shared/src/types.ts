@@ -767,6 +767,12 @@ export interface ScenarioUnitSeed {
   formationId?: string;
   /** Optional seed: start detached from formation group orders. */
   formationDetached?: boolean;
+  /**
+   * Optional standing aircraft loiter (NPC CAP). When set on an Aircraft seed,
+   * create-from-scenario copies it onto the unit so CAP orbits without an
+   * umpire Start-loiter click.
+   */
+  aircraftLoiter?: AircraftLoiterState;
 }
 
 export interface Scenario {

@@ -4029,6 +4029,10 @@ async function main() {
       scArr.some((s) => s.id === 'cavalla-shokaku-philippine-sea'),
     );
     check(
+      'cavalla-shokaku-philippine-sea-wide scenario listed',
+      scArr.some((s) => s.id === 'cavalla-shokaku-philippine-sea-wide'),
+    );
+    check(
       'deep-dc-test scenario listed',
       scArr.some((s) => s.id === 'deep-dc-test'),
     );
@@ -4610,6 +4614,84 @@ async function main() {
           );
         }
       }
+    }
+
+    // Wide-open event variant: same cast, longer approach (~2.6 nm quarter), seeded CAP loiter.
+    {
+      const wideGame = await api('POST', '/api/games', {
+        scenarioId: 'cavalla-shokaku-philippine-sea-wide',
+        name: 'Verify Cavalla × Shōkaku Wide',
+      });
+      check('cavalla-shokaku-wide scenario create', wideGame.status === 200);
+      const wideId = String(wideGame.json.gameId);
+      const wideUmp = await api('POST', `/api/games/${wideId}/auth/umpire`, {
+        password: 'umpire',
+      });
+      const wideUTok = String(wideUmp.json.token);
+      const wideView = await api('GET', `/api/games/${wideId}/view`, undefined, wideUTok);
+      const wideUmpireView = wideView.json.view as {
+        units?: Array<{
+          id: string;
+          heading?: number;
+          accessToken?: string;
+          position?: { lat: number; lon: number; depth: number };
+          aircraftLoiter?: { centerUnitId?: string; radiusM?: number };
+        }>;
+        vesselLinks?: Array<{
+          unitId: string;
+          playerVessel?: boolean;
+          stations?: unknown[];
+        }>;
+        turn?: { gameTimeSeconds?: number };
+      };
+      check(
+        'philippine-sea-wide clock starts ~11:00',
+        wideUmpireView.turn?.gameTimeSeconds === 39600,
+      );
+      const wideUnits = wideUmpireView.units ?? [];
+      const wideCv = wideUnits.find((u) => u.id === 'cv-shokaku');
+      const wideDd = wideUnits.find((u) => u.id === 'dd-urakaze');
+      const wideSs = wideUnits.find((u) => u.id === 'ss-cavalla');
+      const wideZeke = wideUnits.find((u) => u.id === 'ac-zeke-cap');
+      check('philippine-sea-wide cast present', Boolean(wideCv && wideDd && wideSs && wideZeke));
+      check(
+        'philippine-sea-wide cavalla heading not pointed for turn-1 beam shot',
+        wideSs?.heading === 100 &&
+          wideSs.position?.depth === 18 &&
+          Boolean(wideSs.accessToken),
+      );
+      {
+        const wideSave = runtime.requireGame(wideId);
+        const cvUnit = wideSave.units.find((u) => u.id === 'cv-shokaku')!;
+        const ssUnit = wideSave.units.find((u) => u.id === 'ss-cavalla')!;
+        const zekeUnit = wideSave.units.find((u) => u.id === 'ac-zeke-cap')!;
+        const { rangeNm } = bearingRangeNm(ssUnit.position, cvUnit.position);
+        check(
+          'philippine-sea-wide cavalla opens beyond museum beam range',
+          rangeNm >= 2.4 && rangeNm <= 2.8,
+          `rangeNm=${rangeNm.toFixed(3)}`,
+        );
+        check(
+          'philippine-sea-wide zeke CAP seeds loiter on Shōkaku',
+          zekeUnit.aircraftLoiter?.centerUnitId === 'cv-shokaku' &&
+            typeof zekeUnit.aircraftLoiter?.radiusM === 'number' &&
+            zekeUnit.aircraftLoiter.radiusM > 0,
+        );
+      }
+      const wideLinks = wideUmpireView.vesselLinks ?? [];
+      check(
+        'philippine-sea-wide urakaze + cavalla playable',
+        wideLinks.find((l) => l.unitId === 'dd-urakaze')?.playerVessel === true &&
+          wideLinks.find((l) => l.unitId === 'ss-cavalla')?.playerVessel === true &&
+          wideLinks.find((l) => l.unitId === 'cv-shokaku')?.playerVessel === false,
+      );
+      const wideSsAuth = await api('POST', `/api/games/${wideId}/auth/vessel`, {
+        accessToken: 'cavalla-demo',
+        password: 'blue',
+        stationId: 'sensors',
+      });
+      check('philippine-sea-wide cavalla sensors auth', wideSsAuth.status === 200);
+      await api('DELETE', `/api/saves/${wideId}`);
     }
 
     {

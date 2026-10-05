@@ -217,6 +217,9 @@ function unitFromScenario(seed: Scenario['units'][number]): UnitState {
           ...(seed.formationDetached ? { formationDetached: true } : {}),
         }
       : {}),
+    ...(identity.type === 'Aircraft' && seed.aircraftLoiter
+      ? { aircraftLoiter: sanitizeAircraftLoiter(seed.aircraftLoiter) }
+      : {}),
   });
 }
 
