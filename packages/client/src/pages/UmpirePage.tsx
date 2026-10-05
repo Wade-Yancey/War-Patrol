@@ -1641,8 +1641,9 @@ export function UmpirePage() {
                           <p className="muted" style={{ margin: '0 0 0.5rem', fontSize: '0.75rem' }}>
                             Standing orbit — auto-steers each resolve at loiter band. Optional
                             parent ship (e.g. Shōkaku) keeps the circle centered on that hull.
-                            Standing attack runs override heading while active; loiter resumes
-                            after the attack completes or is cleared.
+                            Standing attack / strafe / bomb breaks the orbit to prosecute (attack
+                            wins steering), then CAP resumes automatically when the attack clears.
+                            Cancel loiter does not cancel a live attack.
                           </p>
                           {selectedUnit.aircraftLoiter ? (
                             <p className="readout" style={{ margin: '0 0 0.5rem', fontSize: '0.8rem' }}>
