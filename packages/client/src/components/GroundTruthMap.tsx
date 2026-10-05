@@ -430,6 +430,128 @@ function shouldLabelGridValue(value: number, step: number, tickCount: number): b
   return Math.abs(q - Math.round(q)) < 1e-6;
 }
 
+/**
+ * UV overscan beyond the plot (0–1). Point-in-plot culls miss segments that
+ * cross the view with both endpoints outside — that pops trails/wakes/tracks
+ * while the umpire pans/zooms. AABB + clipped strokes use this margin.
+ */
+const PLOT_OVERSCAN_UV = 0.2;
+const PLOT_CLIP_MIN_X = -W * PLOT_OVERSCAN_UV;
+const PLOT_CLIP_MIN_Y = -H * PLOT_OVERSCAN_UV;
+const PLOT_CLIP_MAX_X = W * (1 + PLOT_OVERSCAN_UV);
+const PLOT_CLIP_MAX_Y = H * (1 + PLOT_OVERSCAN_UV);
+
+function uvHitsPlot(u: number, v: number, m = PLOT_OVERSCAN_UV): boolean {
+  return u >= -m && u <= 1 + m && v >= -m && v <= 1 + m;
+}
+
+/** True when the points' axis-aligned bbox intersects the expanded plot. */
+function uvBBoxHitsPlot(pts: { u: number; v: number }[], m = PLOT_OVERSCAN_UV): boolean {
+  if (pts.length === 0) return false;
+  let minU = Infinity;
+  let maxU = -Infinity;
+  let minV = Infinity;
+  let maxV = -Infinity;
+  for (const p of pts) {
+    if (p.u < minU) minU = p.u;
+    if (p.u > maxU) maxU = p.u;
+    if (p.v < minV) minV = p.v;
+    if (p.v > maxV) maxV = p.v;
+  }
+  return !(maxU < -m || minU > 1 + m || maxV < -m || minV > 1 + m);
+}
+
+/** Liang–Barsky segment clip to an axis-aligned pixel rect. */
+function clipSegmentRect(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  minX: number,
+  minY: number,
+  maxX: number,
+  maxY: number,
+): { x0: number; y0: number; x1: number; y1: number } | null {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  let t0 = 0;
+  let t1 = 1;
+  const edges: [number, number][] = [
+    [-dx, x0 - minX],
+    [dx, maxX - x0],
+    [-dy, y0 - minY],
+    [dy, maxY - y0],
+  ];
+  for (let i = 0; i < edges.length; i++) {
+    const p = edges[i]![0];
+    const q = edges[i]![1];
+    if (p === 0) {
+      if (q < 0) return null;
+      continue;
+    }
+    const r = q / p;
+    if (p < 0) {
+      if (r > t1) return null;
+      if (r > t0) t0 = r;
+    } else {
+      if (r < t0) return null;
+      if (r < t1) t1 = r;
+    }
+  }
+  return {
+    x0: x0 + t0 * dx,
+    y0: y0 + t0 * dy,
+    x1: x0 + t1 * dx,
+    y1: y0 + t1 * dy,
+  };
+}
+
+/**
+ * Clip a screen-space polyline into SVG `points` strings inside the overscan
+ * rect. Keeps crossing segments drawn while avoiding huge off-plot coordinates
+ * that make SVG strokes flicker or vanish when zoomed in.
+ */
+function clipPolylineParts(pts: { x: number; y: number }[]): string[] {
+  if (pts.length < 2) return [];
+  const parts: string[] = [];
+  let cur: string[] = [];
+  const flush = () => {
+    if (cur.length >= 2) parts.push(cur.join(' '));
+    cur = [];
+  };
+  const fmt = (x: number, y: number) => `${x.toFixed(1)},${y.toFixed(1)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i]!;
+    const b = pts[i + 1]!;
+    const c = clipSegmentRect(
+      a.x,
+      a.y,
+      b.x,
+      b.y,
+      PLOT_CLIP_MIN_X,
+      PLOT_CLIP_MIN_Y,
+      PLOT_CLIP_MAX_X,
+      PLOT_CLIP_MAX_Y,
+    );
+    if (!c) {
+      flush();
+      continue;
+    }
+    const start = fmt(c.x0, c.y0);
+    const end = fmt(c.x1, c.y1);
+    if (cur.length === 0) {
+      cur.push(start, end);
+    } else if (cur[cur.length - 1] === start) {
+      cur.push(end);
+    } else {
+      flush();
+      cur.push(start, end);
+    }
+  }
+  flush();
+  return parts;
+}
+
 function GroundTruthMapInner({
   area,
   units,
@@ -531,18 +653,25 @@ function GroundTruthMapInner({
           const { u, v } = projectToUv(p.lat, p.lon, view);
           return { x: u * W, y: v * H, u, v };
         });
-        // Skip if entirely off-plot (cheap cull)
-        const anyOn = pts.some((p) => p.u >= -0.08 && p.u <= 1.08 && p.v >= -0.08 && p.v <= 1.08);
-        if (!anyOn) return null;
+        // BBox cull — keep trails that cross the plot even when no vertex is inside.
+        if (!uvBBoxHitsPlot(pts)) return null;
+        const pointParts = clipPolylineParts(pts);
+        if (!pointParts.length) return null;
         const last = pts[pts.length - 1]!;
         const prev = pts[pts.length - 2]!;
         const isAircraft = unit.type === 'Aircraft';
         return {
           id: unit.id,
           color,
-          points: pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '),
-          /** Screen xy for air breadcrumb ticks (omit ship wakes). */
-          xy: isAircraft ? pts.map((p) => ({ x: p.x, y: p.y })) : null,
+          pointParts,
+          /** On-plot prior-turn ticks only (omit tip under the aircraft glyph). */
+          xy: isAircraft
+            ? pts
+                .slice(0, -1)
+                .map((p, i) => ({ x: p.x, y: p.y, i, on: uvHitsPlot(p.u, p.v) }))
+                .filter((p) => p.on)
+                .map(({ x, y, i }) => ({ x, y, i }))
+            : null,
           /** Last inbound screen delta — keep unit labels off the trail. */
           inboundDx: last.x - prev.x,
           /** Air trails use a dotted stroke so they don't read as ship wakes. */
@@ -555,8 +684,8 @@ function GroundTruthMapInner({
         ): x is {
           id: string;
           color: string;
-          points: string;
-          xy: { x: number; y: number }[] | null;
+          pointParts: string[];
+          xy: { x: number; y: number; i: number }[] | null;
           inboundDx: number;
           isAircraft: boolean;
         } => Boolean(x),
@@ -602,21 +731,21 @@ function GroundTruthMapInner({
                   targetName: nearestName,
                 })
               : `FISH · ${t.status.toUpperCase()}`;
+      const trackPts = pathPts.length >= 2 ? pathPts : [origin, tip];
+      const pointParts = clipPolylineParts(trackPts);
       return {
         id: t.id,
         kind: 'torpedo' as const,
         color,
         status: t.status,
-        points: pathPts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '),
+        pointParts,
         origin,
         tip,
         tipX: tip.x + Math.cos(hRad) * tipLen,
         tipY: tip.y + Math.sin(hRad) * tipLen,
         showHeadingPip: tipLen > 0,
         label: statusLabel,
-        onPlot:
-          pathPts.some((p) => p.u >= -0.1 && p.u <= 1.1 && p.v >= -0.1 && p.v <= 1.1) ||
-          (tip.u >= -0.1 && tip.u <= 1.1 && tip.v >= -0.1 && tip.v <= 1.1),
+        onPlot: uvBBoxHitsPlot([...trackPts, tip, origin]),
       };
     });
 
@@ -641,12 +770,11 @@ function GroundTruthMapInner({
         launchedTurn: c.launchedTurn,
         origin,
         tip,
+        lineParts: clipPolylineParts([origin, tip]),
         detonated,
         sinking,
         label,
-        onPlot:
-          (origin.u >= -0.1 && origin.u <= 1.1 && origin.v >= -0.1 && origin.v <= 1.1) ||
-          (tip.u >= -0.1 && tip.u <= 1.1 && tip.v >= -0.1 && tip.v <= 1.1),
+        onPlot: uvBBoxHitsPlot([origin, tip]),
       };
     });
 
@@ -663,11 +791,13 @@ function GroundTruthMapInner({
       .filter((g) => g.length >= 2)
       .map((g) => {
         const sorted = [...g].sort((a, b) => a.id.localeCompare(b.id));
+        const origins = sorted.map((c) => c.origin);
+        const pointParts = clipPolylineParts(origins);
         return {
           id: `dctrail-${sorted[0]!.id}`,
           color: sorted[0]!.color,
-          points: sorted.map((c) => `${c.origin.x.toFixed(1)},${c.origin.y.toFixed(1)}`).join(' '),
-          onPlot: sorted.some((c) => c.onPlot),
+          pointParts,
+          onPlot: uvBBoxHitsPlot(origins) && pointParts.length > 0,
         };
       });
 
@@ -704,11 +834,10 @@ function GroundTruthMapInner({
           color,
           origin,
           tip,
+          lineParts: clipPolylineParts([origin, tip]),
           showLine: e.kind !== 'deck_gun_fire',
           label,
-          onPlot:
-            (origin.u >= -0.1 && origin.u <= 1.1 && origin.v >= -0.1 && origin.v <= 1.1) ||
-            (tip.u >= -0.1 && tip.u <= 1.1 && tip.v >= -0.1 && tip.v <= 1.1),
+          onPlot: uvBBoxHitsPlot([origin, tip]),
         };
       });
 
@@ -730,16 +859,18 @@ function GroundTruthMapInner({
           const { u, v } = projectToUv(p.lat, p.lon, view);
           return { x: u * W, y: v * H, u, v };
         });
-        const anyOn = pts.some((p) => p.u >= -0.08 && p.u <= 1.08 && p.v >= -0.08 && p.v <= 1.08);
-        if (!anyOn) return null;
+        if (!uvBBoxHitsPlot(pts)) return null;
+        const pointParts = clipPolylineParts(pts);
+        if (!pointParts.length) return null;
         const end = pts[pts.length - 1]!;
         const start = pts[0]!;
         return {
           id: unit.id,
           color,
-          points: pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '),
+          pointParts,
           endX: end.x,
           endY: end.y,
+          showTip: uvHitsPlot(end.u, end.v),
           /** Screen delta of the move — keep labels off the predicted track tip. */
           outboundDx: end.x - start.x,
           isAircraft: unit.type === 'Aircraft',
@@ -751,9 +882,10 @@ function GroundTruthMapInner({
         ): x is {
           id: string;
           color: string;
-          points: string;
+          pointParts: string[];
           endX: number;
           endY: number;
+          showTip: boolean;
           outboundDx: number;
           isAircraft: boolean;
         } => Boolean(x),
@@ -828,7 +960,7 @@ function GroundTruthMapInner({
                 ? ` · FL ${(unit.flightLevel ?? 'medium').toUpperCase()}`
                 : ''
           }`,
-          onPlot: u >= -0.05 && u <= 1.05 && v >= -0.05 && v <= 1.05,
+          onPlot: uvHitsPlot(u, v),
         };
       }),
     [units, view, zoom, trailInboundDx, moveOutboundDx],
@@ -1201,21 +1333,24 @@ function GroundTruthMapInner({
           {/* Trails under labels/units — ships solid wake; aircraft dotted + ticks */}
           {trailPolylines.map((t) => (
             <g key={`trail-${t.id}`} className={t.isAircraft ? 'map-trail-air' : 'map-trail-surface'}>
-              <polyline
-                points={t.points}
-                fill="none"
-                stroke={t.color}
-                strokeWidth={t.isAircraft ? 1.85 : 1.25}
-                strokeOpacity={t.isAircraft ? 0.8 : 0.55}
-                strokeDasharray={t.isAircraft ? '2.5 5' : undefined}
-                strokeLinejoin="round"
-                strokeLinecap={t.isAircraft ? 'butt' : 'round'}
-              />
-              {/* Prior-turn breadcrumbs only — skip tip under the aircraft glyph */}
+              {t.pointParts.map((points, partIdx) => (
+                <polyline
+                  key={`trail-seg-${t.id}-${partIdx}`}
+                  points={points}
+                  fill="none"
+                  stroke={t.color}
+                  strokeWidth={t.isAircraft ? 1.85 : 1.25}
+                  strokeOpacity={t.isAircraft ? 0.8 : 0.55}
+                  strokeDasharray={t.isAircraft ? '2.5 5' : undefined}
+                  strokeLinejoin="round"
+                  strokeLinecap={t.isAircraft ? 'butt' : 'round'}
+                />
+              ))}
+              {/* Prior-turn breadcrumbs — already filtered to on-plot ticks */}
               {t.isAircraft &&
-                t.xy?.slice(0, -1).map((p, i) => (
+                t.xy?.map((p) => (
                   <circle
-                    key={`trail-tick-${t.id}-${i}`}
+                    key={`trail-tick-${t.id}-${p.i}`}
                     cx={p.x}
                     cy={p.y}
                     r={2.25}
@@ -1232,40 +1367,44 @@ function GroundTruthMapInner({
           <g className="map-move-predictions" pointerEvents="none">
             {movePredictions.map((m) => (
               <g key={`move-${m.id}`}>
-                <polyline
-                  points={m.points}
-                  fill="none"
-                  stroke={m.color}
-                  strokeWidth={m.isAircraft ? 1.5 : 1.5}
-                  strokeOpacity={0.7}
-                  strokeDasharray={m.isAircraft ? '2 3 7 3' : '5 4'}
-                  strokeLinejoin="round"
-                  strokeLinecap={m.isAircraft ? 'butt' : 'round'}
-                />
-                {m.isAircraft ? (
-                  /* Diamond tip — air predicted end vs vessel circle */
-                  <rect
-                    x={m.endX - 3}
-                    y={m.endY - 3}
-                    width={6}
-                    height={6}
-                    transform={`rotate(45 ${m.endX} ${m.endY})`}
+                {m.pointParts.map((points, partIdx) => (
+                  <polyline
+                    key={`move-seg-${m.id}-${partIdx}`}
+                    points={points}
                     fill="none"
                     stroke={m.color}
-                    strokeWidth={1.35}
-                    strokeOpacity={0.9}
+                    strokeWidth={m.isAircraft ? 1.5 : 1.5}
+                    strokeOpacity={0.7}
+                    strokeDasharray={m.isAircraft ? '2 3 7 3' : '5 4'}
+                    strokeLinejoin="round"
+                    strokeLinecap={m.isAircraft ? 'butt' : 'round'}
                   />
-                ) : (
-                  <circle
-                    cx={m.endX}
-                    cy={m.endY}
-                    r={3}
-                    fill="none"
-                    stroke={m.color}
-                    strokeWidth={1.25}
-                    strokeOpacity={0.85}
-                  />
-                )}
+                ))}
+                {m.showTip &&
+                  (m.isAircraft ? (
+                    /* Diamond tip — air predicted end vs vessel circle */
+                    <rect
+                      x={m.endX - 3}
+                      y={m.endY - 3}
+                      width={6}
+                      height={6}
+                      transform={`rotate(45 ${m.endX} ${m.endY})`}
+                      fill="none"
+                      stroke={m.color}
+                      strokeWidth={1.35}
+                      strokeOpacity={0.9}
+                    />
+                  ) : (
+                    <circle
+                      cx={m.endX}
+                      cy={m.endY}
+                      r={3}
+                      fill="none"
+                      stroke={m.color}
+                      strokeWidth={1.25}
+                      strokeOpacity={0.85}
+                    />
+                  ))}
               </g>
             ))}
           </g>
@@ -1276,9 +1415,10 @@ function GroundTruthMapInner({
               .filter((f) => f.onPlot)
               .map((f) => (
                 <g key={`fish-${f.id}`} opacity={f.status === 'running' ? 1 : 0.75}>
-                  {f.points.includes(' ') || f.points.split(',').length > 2 ? (
+                  {f.pointParts.map((points, partIdx) => (
                     <polyline
-                      points={f.points}
+                      key={`fish-seg-${f.id}-${partIdx}`}
+                      points={points}
                       fill="none"
                       stroke="#ffc857"
                       strokeWidth={1.5}
@@ -1287,131 +1427,147 @@ function GroundTruthMapInner({
                       strokeLinejoin="round"
                       strokeLinecap="round"
                     />
-                  ) : null}
+                  ))}
                   {/* Launch origin */}
-                  <circle
-                    cx={f.origin.x}
-                    cy={f.origin.y}
-                    r={3.5}
-                    fill="none"
-                    stroke="#ffc857"
-                    strokeWidth={1.25}
-                  />
-                  <circle cx={f.origin.x} cy={f.origin.y} r={1.5} fill="#ffc857" />
-                  {/* Tip + heading pip (pip only while running — hit ends at tip) */}
-                  {f.showHeadingPip && (
-                    <line
-                      x1={f.tip.x}
-                      y1={f.tip.y}
-                      x2={f.tipX}
-                      y2={f.tipY}
-                      stroke="#ffc857"
-                      strokeWidth={1.5}
-                      strokeLinecap="square"
-                    />
+                  {uvHitsPlot(f.origin.u, f.origin.v) && (
+                    <>
+                      <circle
+                        cx={f.origin.x}
+                        cy={f.origin.y}
+                        r={3.5}
+                        fill="none"
+                        stroke="#ffc857"
+                        strokeWidth={1.25}
+                      />
+                      <circle cx={f.origin.x} cy={f.origin.y} r={1.5} fill="#ffc857" />
+                    </>
                   )}
-                  <circle
-                    cx={f.tip.x}
-                    cy={f.tip.y}
-                    r={f.status === 'hit' ? 5 : 3.5}
-                    fill={
-                      f.status === 'hit'
-                        ? '#ff6a4a'
-                        : f.status === 'expired'
-                          ? '#a89060'
-                          : '#ffc857'
-                    }
-                    stroke="#061a0e"
-                    strokeWidth={1}
-                  />
-                  <text
-                    className="map-plot-label"
-                    x={f.tip.x + 8}
-                    y={f.tip.y - 6}
-                    fill="#ffc857"
-                    fontSize={8}
-                    fontFamily="IBM Plex Mono, monospace"
-                  >
-                    {f.label}
-                  </text>
+                  {/* Tip + heading pip (pip only while running — hit ends at tip) */}
+                  {uvHitsPlot(f.tip.u, f.tip.v) && (
+                    <>
+                      {f.showHeadingPip && (
+                        <line
+                          x1={f.tip.x}
+                          y1={f.tip.y}
+                          x2={f.tipX}
+                          y2={f.tipY}
+                          stroke="#ffc857"
+                          strokeWidth={1.5}
+                          strokeLinecap="square"
+                        />
+                      )}
+                      <circle
+                        cx={f.tip.x}
+                        cy={f.tip.y}
+                        r={f.status === 'hit' ? 5 : 3.5}
+                        fill={
+                          f.status === 'hit'
+                            ? '#ff6a4a'
+                            : f.status === 'expired'
+                              ? '#a89060'
+                              : '#ffc857'
+                        }
+                        stroke="#061a0e"
+                        strokeWidth={1}
+                      />
+                      <text
+                        className="map-plot-label"
+                        x={f.tip.x + 8}
+                        y={f.tip.y - 6}
+                        fill="#ffc857"
+                        fontSize={8}
+                        fontFamily="IBM Plex Mono, monospace"
+                      >
+                        {f.label}
+                      </text>
+                    </>
+                  )}
                 </g>
               ))}
 
             {weaponOverlays.dropTrails
               .filter((t) => t.onPlot)
-              .map((t) => (
-                <polyline
-                  key={t.id}
-                  points={t.points}
-                  fill="none"
-                  stroke="#7ec8ff"
-                  strokeWidth={1.25}
-                  strokeOpacity={0.55}
-                  strokeDasharray="4 3"
-                  strokeLinejoin="round"
-                  strokeLinecap="round"
-                />
-              ))}
+              .flatMap((t) =>
+                t.pointParts.map((points, partIdx) => (
+                  <polyline
+                    key={`${t.id}-${partIdx}`}
+                    points={points}
+                    fill="none"
+                    stroke="#7ec8ff"
+                    strokeWidth={1.25}
+                    strokeOpacity={0.55}
+                    strokeDasharray="4 3"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                  />
+                )),
+              )}
 
             {weaponOverlays.charges
               .filter((c) => c.onPlot)
               .map((c) => (
                 <g key={`dc-${c.id}`} opacity={c.sinking ? 1 : 0.8}>
                   {/* Drop origin → current (same lat/lon while sinking; still mark both) */}
-                  <line
-                    x1={c.origin.x}
-                    y1={c.origin.y}
-                    x2={c.tip.x}
-                    y2={c.tip.y}
-                    stroke="#7ec8ff"
-                    strokeWidth={1}
-                    strokeOpacity={0.5}
-                    strokeDasharray="2 3"
-                  />
-                  <rect
-                    x={c.origin.x - 3}
-                    y={c.origin.y - 3}
-                    width={6}
-                    height={6}
-                    fill="none"
-                    stroke="#7ec8ff"
-                    strokeWidth={1.25}
-                    transform={`rotate(45 ${c.origin.x} ${c.origin.y})`}
-                  />
-                  {c.detonated ? (
-                    <>
+                  {c.lineParts.map((points, partIdx) => (
+                    <polyline
+                      key={`dc-line-${c.id}-${partIdx}`}
+                      points={points}
+                      fill="none"
+                      stroke="#7ec8ff"
+                      strokeWidth={1}
+                      strokeOpacity={0.5}
+                      strokeDasharray="2 3"
+                    />
+                  ))}
+                  {uvHitsPlot(c.origin.u, c.origin.v) && (
+                    <rect
+                      x={c.origin.x - 3}
+                      y={c.origin.y - 3}
+                      width={6}
+                      height={6}
+                      fill="none"
+                      stroke="#7ec8ff"
+                      strokeWidth={1.25}
+                      transform={`rotate(45 ${c.origin.x} ${c.origin.y})`}
+                    />
+                  )}
+                  {uvHitsPlot(c.tip.u, c.tip.v) &&
+                    (c.detonated ? (
+                      <>
+                        <circle
+                          cx={c.tip.x}
+                          cy={c.tip.y}
+                          r={9}
+                          fill="#7ec8ff"
+                          fillOpacity={0.12}
+                          stroke="#7ec8ff"
+                          strokeWidth={1.25}
+                          strokeDasharray="3 2"
+                        />
+                        <circle cx={c.tip.x} cy={c.tip.y} r={3} fill="#c8f0ff" />
+                      </>
+                    ) : (
                       <circle
                         cx={c.tip.x}
                         cy={c.tip.y}
-                        r={9}
+                        r={3.5}
                         fill="#7ec8ff"
-                        fillOpacity={0.12}
-                        stroke="#7ec8ff"
-                        strokeWidth={1.25}
-                        strokeDasharray="3 2"
+                        stroke="#061a0e"
+                        strokeWidth={1}
                       />
-                      <circle cx={c.tip.x} cy={c.tip.y} r={3} fill="#c8f0ff" />
-                    </>
-                  ) : (
-                    <circle
-                      cx={c.tip.x}
-                      cy={c.tip.y}
-                      r={3.5}
+                    ))}
+                  {uvHitsPlot(c.tip.u, c.tip.v) && (
+                    <text
+                      className="map-plot-label"
+                      x={c.tip.x + 8}
+                      y={c.tip.y + (c.detonated ? 14 : 4)}
                       fill="#7ec8ff"
-                      stroke="#061a0e"
-                      strokeWidth={1}
-                    />
+                      fontSize={8}
+                      fontFamily="IBM Plex Mono, monospace"
+                    >
+                      {c.label}
+                    </text>
                   )}
-                  <text
-                    className="map-plot-label"
-                    x={c.tip.x + 8}
-                    y={c.tip.y + (c.detonated ? 14 : 4)}
-                    fill="#7ec8ff"
-                    fontSize={8}
-                    fontFamily="IBM Plex Mono, monospace"
-                  >
-                    {c.label}
-                  </text>
                 </g>
               ))}
 
@@ -1419,30 +1575,46 @@ function GroundTruthMapInner({
               .filter((g) => g.onPlot)
               .map((g) => (
                 <g key={`gun-${g.id}`} opacity={0.9}>
-                  {g.showLine && (
-                    <line
-                      x1={g.origin.x}
-                      y1={g.origin.y}
-                      x2={g.tip.x}
-                      y2={g.tip.y}
-                      stroke="#e8c07a"
-                      strokeWidth={1.35}
-                      strokeOpacity={0.75}
-                      strokeDasharray="4 3"
-                      strokeLinecap="round"
-                    />
-                  )}
+                  {g.showLine &&
+                    g.lineParts.map((points, partIdx) => (
+                      <polyline
+                        key={`gun-line-${g.id}-${partIdx}`}
+                        points={points}
+                        fill="none"
+                        stroke="#e8c07a"
+                        strokeWidth={1.35}
+                        strokeOpacity={0.75}
+                        strokeDasharray="4 3"
+                        strokeLinecap="round"
+                      />
+                    ))}
                   {/* Muzzle / firer pip */}
-                  <circle
-                    cx={g.origin.x}
-                    cy={g.origin.y}
-                    r={3}
-                    fill="none"
-                    stroke="#e8c07a"
-                    strokeWidth={1.25}
-                  />
-                  <circle cx={g.origin.x} cy={g.origin.y} r={1.25} fill="#e8c07a" />
-                  {g.kind === 'deck_gun_fire' ? null : (
+                  {uvHitsPlot(g.origin.u, g.origin.v) && (
+                    <>
+                      <circle
+                        cx={g.origin.x}
+                        cy={g.origin.y}
+                        r={3}
+                        fill="none"
+                        stroke="#e8c07a"
+                        strokeWidth={1.25}
+                      />
+                      <circle cx={g.origin.x} cy={g.origin.y} r={1.25} fill="#e8c07a" />
+                      {g.kind === 'deck_gun_fire' && (
+                        <text
+                          className="map-plot-label"
+                          x={g.origin.x + 8}
+                          y={g.origin.y - 8}
+                          fill="#e8c07a"
+                          fontSize={8}
+                          fontFamily="IBM Plex Mono, monospace"
+                        >
+                          {g.label}
+                        </text>
+                      )}
+                    </>
+                  )}
+                  {g.kind !== 'deck_gun_fire' && uvHitsPlot(g.tip.u, g.tip.v) && (
                     <>
                       <circle
                         cx={g.tip.x}
@@ -1463,18 +1635,6 @@ function GroundTruthMapInner({
                         {g.label}
                       </text>
                     </>
-                  )}
-                  {g.kind === 'deck_gun_fire' && (
-                    <text
-                      className="map-plot-label"
-                      x={g.origin.x + 8}
-                      y={g.origin.y - 8}
-                      fill="#e8c07a"
-                      fontSize={8}
-                      fontFamily="IBM Plex Mono, monospace"
-                    >
-                      {g.label}
-                    </text>
                   )}
                 </g>
               ))}
