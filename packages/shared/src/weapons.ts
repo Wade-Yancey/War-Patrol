@@ -2752,6 +2752,13 @@ export function formatAircraftAttackModeLabel(mode: AircraftAttackMode): string 
   return 'intercept';
 }
 
+/** Compact GT / pending-order tag (BOMB / STR / INT). */
+export function formatAircraftAttackModeTag(mode: AircraftAttackMode): string {
+  if (mode === 'bombing_run') return 'BOMB';
+  if (mode === 'strafe') return 'STR';
+  return 'INT';
+}
+
 /**
  * HP actually removed by {@link applyHealthDamage} (0 when already sunk / no-op).
  * Combat-log `damage` and Controls staging must use this — not the rolled effect —

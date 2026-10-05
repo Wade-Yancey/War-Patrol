@@ -66,6 +66,8 @@ function formatDeckGunOrderSummary(
 function formatAircraftAttackOrderSummary(
   attack: NonNullable<UnitOrders['aircraftAttack']>,
 ): string {
+  // Local tag (avoid cycle: orders ← weapons). Keep in sync with
+  // formatAircraftAttackModeTag in weapons.ts.
   const mode =
     attack.mode === 'bombing_run' ? 'BOMB' : attack.mode === 'strafe' ? 'STR' : 'INT';
   return `AIR ${mode} → ${attack.targetUnitId}`;

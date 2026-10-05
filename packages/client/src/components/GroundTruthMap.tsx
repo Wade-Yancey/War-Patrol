@@ -16,6 +16,7 @@ import {
   TORPEDO_MAX_RUN_NM,
   clamp,
   findActiveSonarSensor,
+  formatAircraftAttackModeTag,
   formatTorpedoMissTrackLabel,
   isActiveSonarPinging,
   isFleetSubTorpedoHull,
@@ -45,8 +46,8 @@ interface Props {
   /** Full-truth depth-charge tracks (drop → sink/detonate). */
   depthCharges?: DepthChargeTrack[];
   /**
-   * Recent weapon detonations (deck-gun fire / hit / miss splash) for umpire
-   * GT aim lines — live resolve cues; pruned after a few turns.
+   * Recent weapon detonations (deck-gun fire / hit / miss + aircraft bomb
+   * splash) for umpire GT aim lines — live resolve cues; pruned after a few turns.
    */
   detonations?: WeaponDetonationEvent[];
   /**
@@ -325,7 +326,10 @@ function weaponsSignature(
   const g = (detonations ?? [])
     .filter(
       (e) =>
-        e.kind === 'deck_gun_fire' || e.kind === 'deck_gun_hit' || e.kind === 'deck_gun_miss',
+        e.kind === 'deck_gun_fire' ||
+        e.kind === 'deck_gun_hit' ||
+        e.kind === 'deck_gun_miss' ||
+        e.kind === 'aircraft_bomb',
     )
     .map(
       (e) =>
@@ -701,6 +705,7 @@ function GroundTruthMapInner({
   /**
    * Weapon GT overlays — launch origin pip, path polyline, tip/end marker.
    * Torpedoes: dashed amber run track. Depth charges: cyan drop + detonation burst.
+   * Deck gun + aircraft bomb: firer→splash aim line / burst markers.
    */
   const weaponOverlays = useMemo(() => {
     const toXy = (lat: number, lon: number) => {
@@ -841,8 +846,84 @@ function GroundTruthMapInner({
         };
       });
 
-    return { fish, charges, dropTrails, guns };
+    // Aircraft bomb splash — lasting mark from recentDetonations (pruned after a few turns).
+    const bombs = detonations
+      .filter((e) => e.kind === 'aircraft_bomb')
+      .map((e) => {
+        const color = unitAccentById.get(e.firerUnitId) ?? '#ff9a5a';
+        const firer = unitById.get(e.firerUnitId);
+        const originPos = firer?.position ?? e.position;
+        const origin = toXy(originPos.lat, originPos.lon);
+        const tip = toXy(e.position.lat, e.position.lon);
+        const targetName = e.targetUnitId ? nameById.get(e.targetUnitId) : undefined;
+        return {
+          id: e.id,
+          color,
+          origin,
+          tip,
+          lineParts: clipPolylineParts([origin, tip]),
+          label: `BOMB${targetName ? ` · ${targetName}` : ''}`,
+          onPlot: uvBBoxHitsPlot([origin, tip]),
+        };
+      });
+
+    return { fish, charges, dropTrails, guns, bombs };
   }, [torpedoes, depthCharges, detonations, view, unitAccentById, units]);
+
+  /**
+   * Standing aircraft attack intent — dashed aircraft→target line + BOMB/STR/INT
+   * tag. Persists for the life of orders.aircraftAttack (same span as loiter
+   * prediction visibility), not a one-frame flash on order click.
+   */
+  const attackIntentOverlays = useMemo(() => {
+    const byId = new Map(units.map((u) => [u.id, u]));
+    return units
+      .map((unit) => {
+        const attack = unit.orders?.aircraftAttack;
+        if (unit.type !== 'Aircraft' || !attack) return null;
+        const targetId = String(attack.targetUnitId ?? '').trim();
+        const target = targetId ? byId.get(targetId) : undefined;
+        if (!target) return null;
+        const color = unitAccent(unit);
+        const originUv = projectToUv(unit.position.lat, unit.position.lon, view);
+        const tipUv = projectToUv(target.position.lat, target.position.lon, view);
+        const origin = { x: originUv.u * W, y: originUv.v * H, u: originUv.u, v: originUv.v };
+        const tip = { x: tipUv.u * W, y: tipUv.v * H, u: tipUv.u, v: tipUv.v };
+        const pts = [origin, tip];
+        if (!uvBBoxHitsPlot(pts)) return null;
+        const lineParts = clipPolylineParts(pts);
+        if (!lineParts.length) return null;
+        const modeTag = formatAircraftAttackModeTag(attack.mode);
+        return {
+          id: unit.id,
+          color,
+          modeTag,
+          targetName: target.name.toUpperCase(),
+          origin,
+          tip,
+          lineParts,
+          labelX: (origin.x + tip.x) / 2,
+          labelY: (origin.y + tip.y) / 2 - 6,
+          onPlot: true as const,
+        };
+      })
+      .filter(
+        (
+          x,
+        ): x is {
+          id: string;
+          color: string;
+          modeTag: string;
+          targetName: string;
+          origin: { x: number; y: number; u: number; v: number };
+          tip: { x: number; y: number; u: number; v: number };
+          lineParts: string[];
+          labelX: number;
+          labelY: number;
+          onPlot: true;
+        } => Boolean(x),
+      );
+  }, [units, view]);
 
   /**
    * Entire intended move for this resolve — aircraft standing attack / loiter
@@ -959,7 +1040,13 @@ function GroundTruthMapInner({
             unit.type === 'Submarine' && unit.position.depth > 0
               ? ` · ${unit.position.depth.toFixed(0)} M`
               : unit.type === 'Aircraft'
-                ? ` · FL ${(unit.flightLevel ?? 'medium').toUpperCase()}`
+                ? ` · FL ${(unit.flightLevel ?? 'medium').toUpperCase()}${
+                    unit.orders?.aircraftAttack
+                      ? ` · ${formatAircraftAttackModeTag(unit.orders.aircraftAttack.mode)}`
+                      : unit.aircraftLoiter
+                        ? ' · LOITER'
+                        : ''
+                  }`
                 : ''
           }`,
           onPlot: uvHitsPlot(u, v),
@@ -1411,6 +1498,50 @@ function GroundTruthMapInner({
             ))}
           </g>
 
+          {/* Standing aircraft attack intent — aircraft → target until order clears */}
+          <g className="map-attack-intents" pointerEvents="none">
+            {attackIntentOverlays.map((a) => (
+              <g key={`atk-${a.id}`} opacity={0.85}>
+                {a.lineParts.map((points, partIdx) => (
+                  <polyline
+                    key={`atk-line-${a.id}-${partIdx}`}
+                    points={points}
+                    fill="none"
+                    stroke={a.color}
+                    strokeWidth={1.4}
+                    strokeOpacity={0.8}
+                    strokeDasharray="3 4 1 4"
+                    strokeLinecap="round"
+                  />
+                ))}
+                {uvHitsPlot(a.tip.u, a.tip.v) && (
+                  <circle
+                    cx={a.tip.x}
+                    cy={a.tip.y}
+                    r={4.5}
+                    fill="none"
+                    stroke={a.color}
+                    strokeWidth={1.25}
+                    strokeOpacity={0.9}
+                    strokeDasharray="2 2"
+                  />
+                )}
+                <text
+                  className="map-plot-label"
+                  x={a.labelX}
+                  y={a.labelY}
+                  textAnchor="middle"
+                  fill={a.color}
+                  fillOpacity={0.95}
+                  fontSize={9}
+                  fontFamily="IBM Plex Mono, monospace"
+                >
+                  {`${a.modeTag} → ${a.targetName}`}
+                </text>
+              </g>
+            ))}
+          </g>
+
           {/* Weapon tracks — launch origin → path → tip/detonation (umpire full truth) */}
           <g className="map-weapon-tracks" pointerEvents="none">
             {weaponOverlays.fish
@@ -1635,6 +1766,58 @@ function GroundTruthMapInner({
                         fontFamily="IBM Plex Mono, monospace"
                       >
                         {g.label}
+                      </text>
+                    </>
+                  )}
+                </g>
+              ))}
+
+            {weaponOverlays.bombs
+              .filter((b) => b.onPlot)
+              .map((b) => (
+                <g key={`abomb-${b.id}`} opacity={0.9}>
+                  {b.lineParts.map((points, partIdx) => (
+                    <polyline
+                      key={`abomb-line-${b.id}-${partIdx}`}
+                      points={points}
+                      fill="none"
+                      stroke="#ff9a5a"
+                      strokeWidth={1.35}
+                      strokeOpacity={0.7}
+                      strokeDasharray="3 3"
+                      strokeLinecap="round"
+                    />
+                  ))}
+                  {uvHitsPlot(b.origin.u, b.origin.v) && (
+                    <circle
+                      cx={b.origin.x}
+                      cy={b.origin.y}
+                      r={2.75}
+                      fill="none"
+                      stroke="#ff9a5a"
+                      strokeWidth={1.15}
+                    />
+                  )}
+                  {uvHitsPlot(b.tip.u, b.tip.v) && (
+                    <>
+                      <circle
+                        cx={b.tip.x}
+                        cy={b.tip.y}
+                        r={5.5}
+                        fill="#ff6a4a"
+                        fillOpacity={0.7}
+                        stroke="#061a0e"
+                        strokeWidth={1}
+                      />
+                      <text
+                        className="map-plot-label"
+                        x={b.tip.x + 8}
+                        y={b.tip.y - 6}
+                        fill="#ff9a5a"
+                        fontSize={8}
+                        fontFamily="IBM Plex Mono, monospace"
+                      >
+                        {b.label}
                       </text>
                     </>
                   )}
