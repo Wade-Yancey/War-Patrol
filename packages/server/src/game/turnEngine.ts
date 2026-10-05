@@ -81,7 +81,7 @@ export function resolveTurn(save: GameSave): GameSave {
   // Standing aircraft attack / loiter + vessel intercept / attack / evade inject
   // course (+ preferred EOT) before kinematics.
   const afterAircraft = applyAircraftStandingOrders(afterSinking);
-  const standingReady = applyVesselStandingOrders(afterAircraft);
+  const standingReady = applyVesselStandingOrders(afterAircraft, turnLength);
 
   // Kinematics first (orders still present for weapon launch snapshot).
   const movedUnits = standingReady.map((unit) => applyUnitOrders(unit, turnLength, false));

@@ -25,6 +25,8 @@ import {
   formatVesselStandingModeTag,
   isVesselStandingTarget,
   normalizeVesselStandingMode,
+  vesselAttackDepthChargePathCpaM,
+  vesselAttackWeaponOrder,
   vesselEvadeZigzagCourse,
   vesselInterceptOrderedCourse,
   VESSEL_ATTACK_DC_RANGE_M,
@@ -279,6 +281,104 @@ async function main() {
   check('vessel attack DC gate 600 m', VESSEL_ATTACK_DC_RANGE_M === 600);
   check('vessel attack gun gate 4 nm', VESSEL_ATTACK_GUN_RANGE_NM === 4);
   check('vessel attack torp gate ≤ 2.5 nm', VESSEL_ATTACK_TORP_RANGE_NM === 2.5);
+
+  // Attack DC path-CPA: flank pass starts outside 600 m but trail crosses the sub.
+  {
+    const subPos = { lat: 0, lon: 0, depth: PERISCOPE_DEPTH_M };
+    // ~2000 m north of sub — outside the old turn-start gate.
+    const ddStart = { lat: 0.018, lon: 0, depth: 0 };
+    const ddStub = {
+      id: 'dd-cpa',
+      name: 'CPA DD',
+      side: 'blue' as const,
+      faction: 'Blue' as const,
+      classId: 'fletcher-class',
+      type: 'Ship' as const,
+      class: 'Destroyer' as const,
+      condition: 'afloat' as const,
+      position: ddStart,
+      heading: 180,
+      orderedCourse: 180,
+      speed: 36,
+      maxSpeed: 36,
+      turnRate: 7,
+      eot: 'ahead_flank' as const,
+      depthChargeLoad: 24,
+      depthChargeAwaitingReload: false,
+      depthChargeReloadTurnsRemaining: 0,
+      orders: { vesselStanding: { mode: 'attack' as const, targetUnitId: 'ss-cpa' } },
+    };
+    const ssStub = {
+      id: 'ss-cpa',
+      name: 'CPA Sub',
+      side: 'red' as const,
+      faction: 'Red' as const,
+      classId: 'gato-class',
+      type: 'Submarine' as const,
+      class: 'Fleet Submarine' as const,
+      condition: 'afloat' as const,
+      position: subPos,
+      heading: 0,
+      orderedCourse: 0,
+      speed: 3,
+      maxSpeed: 21,
+      turnRate: 6,
+      eot: 'ahead_1_3' as const,
+      orders: {},
+    };
+    const startRangeM =
+      vesselAttackDepthChargePathCpaM(
+        { ...ddStub, speed: 0 },
+        ssStub,
+        180,
+        180,
+      );
+    const pathCpaM = vesselAttackDepthChargePathCpaM(ddStub, ssStub, 180, 180);
+    check(
+      'attack DC path CPA catches overhead pass outside start gate',
+      startRangeM > VESSEL_ATTACK_DC_RANGE_M && pathCpaM <= VESSEL_ATTACK_DC_RANGE_M,
+      `start=${startRangeM.toFixed(0)} cpa=${pathCpaM.toFixed(0)}`,
+    );
+    const atkWeapons = vesselAttackWeaponOrder(ddStub as UnitState, ssStub as UnitState, {
+      orderedCourse: 180,
+      turnLengthSeconds: 180,
+    });
+    check(
+      'attack auto-queues DC on path CPA (PD sub)',
+      Boolean(atkWeapons.dropDepthCharges),
+      `weapons=${JSON.stringify(atkWeapons)}`,
+    );
+    check(
+      'attack DC depth setting tracks PD keel',
+      atkWeapons.dropDepthCharges?.depthSettingM === PERISCOPE_DEPTH_M ||
+        atkWeapons.dropDepthCharges?.depthSettingM === 20,
+      `depthSetting=${atkWeapons.dropDepthCharges?.depthSettingM}`,
+    );
+    const interceptApplied = applyVesselStandingOrders(
+      [
+        {
+          ...ddStub,
+          orders: { vesselStanding: { mode: 'intercept', targetUnitId: 'ss-cpa' } },
+        } as UnitState,
+        ssStub as UnitState,
+      ],
+      180,
+    );
+    const intDd = interceptApplied.find((u) => u.id === 'dd-cpa');
+    check(
+      'intercept does not auto-queue DC on same overhead geometry',
+      !intDd?.orders.dropDepthCharges,
+    );
+    const attackApplied = applyVesselStandingOrders(
+      [ddStub as UnitState, ssStub as UnitState],
+      180,
+    );
+    const atkDd = attackApplied.find((u) => u.id === 'dd-cpa');
+    check(
+      'applyVesselStandingOrders attack queues DC via path CPA',
+      Boolean(atkDd?.orders.dropDepthCharges),
+    );
+  }
 
   {
     const closeHit = resolveAircraftAttackEffect({
@@ -7249,15 +7349,28 @@ async function main() {
       (orderAttack.json as { orders?: { eot?: string } }).orders?.eot === 'ahead_flank',
     );
 
-    // Close Porter onto Gato for ASW prosecute.
+    // Overhead ASW pass: start ~2000 m north (outside turn-start 600 m gate) at
+    // flank, heading south over Gato — path CPA must trigger DC auto-drop.
+    await api(
+      'PATCH',
+      `/api/games/${vesId}/units/ss-212`,
+      {
+        position: { lat: 34.4, lon: -120.0, depth: PERISCOPE_DEPTH_M },
+        heading: 0,
+        orderedCourse: 0,
+        speed: 3,
+        eot: 'ahead_1_3',
+      },
+      vesTok,
+    );
     await api(
       'PATCH',
       `/api/games/${vesId}/units/dd-101`,
       {
-        position: { lat: 34.4005, lon: -120.0, depth: 0 },
+        position: { lat: 34.418, lon: -120.0, depth: 0 },
         heading: 180,
         orderedCourse: 180,
-        speed: 20,
+        speed: 36,
         eot: 'ahead_flank',
       },
       vesTok,
@@ -7278,20 +7391,25 @@ async function main() {
         depthChargeLoad?: number;
         orders?: { vesselStanding?: { mode?: string } };
       }>;
-      combatLog?: Array<{ kind?: string }>;
+      combatLog?: Array<{ kind?: string; summary?: string }>;
       depthCharges?: unknown[];
     };
     const ddAtk = atkView.units?.find((u) => u.id === 'dd-101');
+    const dcDropLog = (atkView.combatLog ?? []).some((e) => e.kind === 'depth_charge_drop');
     check(
       'attack persists after weapon prosecute',
       ddAtk?.orders?.vesselStanding?.mode === 'attack',
     );
     check(
-      'attack auto-dropped depth charges when close',
+      'attack auto-dropped depth charges on path CPA overhead pass',
       (ddAtk?.depthChargeLoad ?? 24) < 24 ||
         (atkView.depthCharges?.length ?? 0) > 0 ||
-        (atkView.combatLog ?? []).some((e) => e.kind === 'depth_charge_drop'),
-      `load=${ddAtk?.depthChargeLoad} dcTracks=${atkView.depthCharges?.length}`,
+        dcDropLog,
+      `load=${ddAtk?.depthChargeLoad} dcTracks=${atkView.depthCharges?.length} dropLog=${dcDropLog}`,
+    );
+    check(
+      'umpire combat log shows depth_charge_drop for Attack',
+      dcDropLog,
     );
 
     // Evade zigzag — leg alternates across resolves.
