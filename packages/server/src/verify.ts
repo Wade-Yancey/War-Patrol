@@ -6368,11 +6368,11 @@ async function main() {
     check('combat log has aircraft attack outcome', hitOrMiss);
     const zekeAfter = airCombat.units?.find((u) => u.id === 'ac-zeke-cap');
     check(
-      'aircraft attack order cleared after resolve',
+      'aircraft attack order cleared after close engage',
       !zekeAfter?.orders?.aircraftAttack,
     );
 
-    // Far miss: park bomber far from Cavalla → out-of-reach miss.
+    // Far geometry: standing bombing order persists and auto-steers toward the sub.
     await api(
       'PATCH',
       `/api/games/${airId}/units/ac-zeke-cap`,
@@ -6404,43 +6404,102 @@ async function main() {
       airTok,
     );
     check('queue bombing run order', bombOrder.status === 200);
+
+    // GT prediction must reflect standing attack course (toward Cavalla), not the
+    // prior 045° helm alone.
+    {
+      const beforeFar = await api('GET', `/api/games/${airId}/view`, undefined, airTok);
+      const roster = (beforeFar.json.view as { units?: UnitState[] }).units ?? [];
+      const zekeLive = roster.find((u) => u.id === 'ac-zeke-cap');
+      const cavalla = roster.find((u) => u.id === 'ss-cavalla');
+      const turnLen =
+        Number(
+          (beforeFar.json.view as { turnLengthSeconds?: number }).turnLengthSeconds,
+        ) || 180;
+      if (zekeLive && cavalla) {
+        const withAttack = predictUnitMovePath(zekeLive, turnLen, roster);
+        // Naive path: no standing attack — restore pre-order helm (API also sets
+        // course on click, so strip orders and the old 045° set-point).
+        const withoutAttack: UnitState = {
+          ...zekeLive,
+          heading: 45,
+          orderedCourse: 45,
+          orders: {},
+        };
+        const rosterNaive = roster.map((u) =>
+          u.id === 'ac-zeke-cap' ? withoutAttack : u,
+        );
+        const naive = predictUnitMovePath(withoutAttack, turnLen, rosterNaive);
+        const tipDiff =
+          withAttack && naive
+            ? Math.hypot(
+                withAttack[1]!.lat - naive[1]!.lat,
+                withAttack[1]!.lon - naive[1]!.lon,
+              )
+            : 0;
+        check(
+          'standing bomb updates GT predicted path before resolve',
+          Boolean(withAttack && naive && tipDiff > 1e-5),
+          `tipDiff=${tipDiff}`,
+        );
+      } else {
+        check('standing bomb updates GT predicted path before resolve', false, 'missing units');
+      }
+    }
+
     await api('POST', `/api/games/${airId}/turn/lock`, {}, airTok);
     const bombResolve = await api('POST', `/api/games/${airId}/turn/resolve`, {}, airTok);
-    check('resolve bombing run turn', bombResolve.status === 200);
+    check('resolve far bombing pursuit turn', bombResolve.status === 200);
     const bombView = await api('GET', `/api/games/${airId}/view`, undefined, airTok);
-    const bombLog =
-      (bombView.json.view as { combatLog?: Array<{ kind?: string; summary?: string }> })
-        .combatLog ?? [];
+    const bombUv = bombView.json.view as {
+      combatLog?: Array<{ kind?: string; summary?: string }>;
+      units?: Array<{
+        id: string;
+        bombLoad?: number;
+        orderedCourse?: number;
+        position?: { lat: number; lon: number };
+        orders?: { aircraftAttack?: { mode?: string; targetUnitId?: string } };
+      }>;
+    };
+    const afterFar = bombUv.units?.find((u) => u.id === 'ac-zeke-cap');
+    const cavallaAfter = bombUv.units?.find((u) => u.id === 'ss-cavalla');
     check(
-      'combat log has bombing run line',
-      bombLog.some(
-        (e) => e.kind === 'aircraft_attack' && (e.summary ?? '').includes('bombing run'),
-      ),
+      'far bombing standing order survives resolve',
+      afterFar?.orders?.aircraftAttack?.mode === 'bombing_run' &&
+        afterFar?.orders?.aircraftAttack?.targetUnitId === 'ss-cavalla',
+      `orders=${JSON.stringify(afterFar?.orders)}`,
     );
     check(
-      'bombing far geometry yields miss outcome',
-      bombLog.some(
-        (e) =>
-          e.kind === 'aircraft_attack_miss' &&
-          ((e.summary ?? '').includes('out of reach') ||
-            (e.summary ?? '').includes('near miss') ||
-            (e.summary ?? '').includes('too deep')),
-      ),
-    );
-
-    // Far miss does not consume the bomb — still have load for a close drop next.
-    const afterFar = (
-      bombView.json.view as {
-        units?: Array<{ id: string; bombLoad?: number }>;
-      }
-    ).units?.find((u) => u.id === 'ac-zeke-cap');
-    check(
-      'far-miss bombing keeps bomb load',
+      'far pursuit does not consume bomb',
       (afterFar?.bombLoad ?? 0) === 1,
       `bombLoad=${afterFar?.bombLoad}`,
     );
+    // No weapon release combat lines while still inbound.
+    const bombLog = bombUv.combatLog ?? [];
+    check(
+      'far pursuit skips weapon-release combat lines',
+      !bombLog.some(
+        (e) =>
+          e.kind === 'aircraft_attack_damage' ||
+          (e.kind === 'aircraft_attack_miss' &&
+            (e.summary ?? '').includes('out of reach')),
+      ),
+    );
+    if (afterFar?.position && cavallaAfter?.position && afterFar.orderedCourse != null) {
+      const { bearing } = bearingRangeNm(afterFar.position, cavallaAfter.position);
+      const courseErr = Math.abs(
+        ((afterFar.orderedCourse - bearing + 540) % 360) - 180,
+      );
+      check(
+        'far bombing auto-courses toward sub',
+        courseErr < 25,
+        `ordered=${afterFar.orderedCourse} bearing=${bearing} err=${courseErr}`,
+      );
+    } else {
+      check('far bombing auto-courses toward sub', false, 'missing positions');
+    }
 
-    // Close bombing: consume ammo + emit aircraft_bomb detonation cue.
+    // Close bombing: consume ammo + emit aircraft_bomb detonation cue + clear order.
     await api(
       'PATCH',
       `/api/games/${airId}/units/ac-zeke-cap`,
@@ -6469,6 +6528,7 @@ async function main() {
       },
       airTok,
     );
+    // Standing order still points at Cavalla — retarget to Urakaze for the close drop.
     const closeBomb = await api(
       'POST',
       `/api/games/${airId}/units/ac-zeke-cap/orders`,
@@ -6482,7 +6542,11 @@ async function main() {
     const closeBombView = await api('GET', `/api/games/${airId}/view`, undefined, airTok);
     const closeBombUv = closeBombView.json.view as {
       recentDetonations?: Array<{ kind?: string; targetUnitId?: string }>;
-      units?: Array<{ id: string; bombLoad?: number }>;
+      units?: Array<{
+        id: string;
+        bombLoad?: number;
+        orders?: { aircraftAttack?: unknown };
+      }>;
       combatLog?: Array<{ kind?: string; summary?: string }>;
     };
     const zekeSpent = closeBombUv.units?.find((u) => u.id === 'ac-zeke-cap');
@@ -6497,6 +6561,16 @@ async function main() {
         (d) => d.kind === 'aircraft_bomb' && d.targetUnitId === 'dd-urakaze',
       ),
     );
+    check(
+      'bombing standing order clears after auto-drop',
+      !zekeSpent?.orders?.aircraftAttack,
+    );
+    check(
+      'combat log has bombing run line',
+      (closeBombUv.combatLog ?? []).some(
+        (e) => e.kind === 'aircraft_attack' && (e.summary ?? '').includes('bombing run'),
+      ),
+    );
 
     // Ammo gate: cannot queue another bombing run until rearm.
     const emptyBomb = await api(
@@ -6507,7 +6581,32 @@ async function main() {
     );
     check('empty bomb load rejects bombing order', emptyBomb.status === 400);
 
-    // Strafe still works with empty bomb rack (guns).
+    // Strafe still works with empty bomb rack (guns) — co-locate for in-range release.
+    await api(
+      'PATCH',
+      `/api/games/${airId}/units/ac-zeke-cap`,
+      {
+        position: { lat: 11.9, lon: 137.55, depth: 0 },
+        heading: 90,
+        orderedCourse: 90,
+        speed: 250,
+        eot: 'ahead_flank',
+      },
+      airTok,
+    );
+    await api(
+      'PATCH',
+      `/api/games/${airId}/units/dd-urakaze`,
+      {
+        position: { lat: 11.9, lon: 137.55, depth: 0 },
+        heading: 90,
+        orderedCourse: 90,
+        speed: 0,
+        eot: 'stop',
+        health: 100,
+      },
+      airTok,
+    );
     const strafeOrder = await api(
       'POST',
       `/api/games/${airId}/units/ac-zeke-cap/orders`,
@@ -6552,6 +6651,12 @@ async function main() {
     check('rearm restores bomb load', (rearmedZeke?.bombLoad ?? 0) === 1);
 
     // Loiter standing order persists across turns.
+    await api(
+      'POST',
+      `/api/games/${airId}/units/ac-zeke-cap/orders`,
+      { aircraftAttack: null },
+      airTok,
+    );
     const loiterStart = await api(
       'POST',
       `/api/games/${airId}/units/ac-zeke-cap/orders`,
@@ -6584,8 +6689,15 @@ async function main() {
         ) || 180;
       if (zekeLive) {
         const withLoiter = predictUnitMovePath(zekeLive, turnLen, roster);
-        const { aircraftLoiter: _drop, ...cleared } = zekeLive;
-        const naive = predictUnitMovePath(cleared, turnLen, roster);
+        const cleared: UnitState = {
+          ...zekeLive,
+          aircraftLoiter: undefined,
+          orders: {},
+        };
+        const rosterNoLoiter = roster.map((u) =>
+          u.id === 'ac-zeke-cap' ? cleared : u,
+        );
+        const naive = predictUnitMovePath(cleared, turnLen, rosterNoLoiter);
         const tipDiff =
           withLoiter && naive
             ? Math.hypot(

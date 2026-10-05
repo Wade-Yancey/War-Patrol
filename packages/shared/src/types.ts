@@ -325,8 +325,10 @@ export interface UnitOrders {
   /** Fire the deck gun this resolve (consumes one shell per shot in the salvo). */
   fireDeckGun?: DeckGunFireOrder;
   /**
-   * Umpire aircraft attack run — resolves after kinematics this turn
-   * (course toward target + full band usually set with the order).
+   * Standing umpire aircraft attack (intercept / strafe / bombing).
+   * Persists across resolves: auto-steers toward the target each turn and
+   * auto-releases when CPA ≤ {@link AIRCRAFT_ATTACK_FAR_M}. Cleared on weapon
+   * release, invalid/gone target, empty bomb rack (bombing), or umpire cancel.
    */
   aircraftAttack?: AircraftAttackOrder;
   updatedAt?: string;
