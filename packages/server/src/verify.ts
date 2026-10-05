@@ -82,6 +82,8 @@ import {
   stepDepthTowardOrdered,
   submarineDepthRisk,
   turnToward,
+  predictUnitMovePath,
+  type UnitState,
 } from '@war-patrol/shared';
 import { buildPeriscopeContacts } from './game/periscope.js';
 import { buildRadarContacts } from './game/radar.js';
@@ -6489,6 +6491,35 @@ async function main() {
       'loiter state on unit',
       loiterUnit?.aircraftLoiter?.centerUnitId === 'cv-shokaku',
     );
+    // GT move prediction must reflect loiter immediately (before resolve), not the
+    // prior straight-line ordered course at loiter band alone.
+    {
+      const roster = (loiterPending.json.view as { units?: UnitState[] }).units ?? [];
+      const zekeLive = roster.find((u) => u.id === 'ac-zeke-cap');
+      const turnLen =
+        Number(
+          (loiterPending.json.view as { turnLengthSeconds?: number }).turnLengthSeconds,
+        ) || 180;
+      if (zekeLive) {
+        const withLoiter = predictUnitMovePath(zekeLive, turnLen, roster);
+        const { aircraftLoiter: _drop, ...cleared } = zekeLive;
+        const naive = predictUnitMovePath(cleared, turnLen, roster);
+        const tipDiff =
+          withLoiter && naive
+            ? Math.hypot(
+                withLoiter[1]!.lat - naive[1]!.lat,
+                withLoiter[1]!.lon - naive[1]!.lon,
+              )
+            : 0;
+        check(
+          'loiter updates GT predicted path before resolve',
+          Boolean(withLoiter && naive && tipDiff > 1e-5),
+          `tipDiff=${tipDiff}`,
+        );
+      } else {
+        check('loiter updates GT predicted path before resolve', false, 'missing zeke');
+      }
+    }
     await api('POST', `/api/games/${airId}/turn/lock`, {}, airTok);
     await api('POST', `/api/games/${airId}/turn/resolve`, {}, airTok);
     await api('POST', `/api/games/${airId}/turn/lock`, {}, airTok);

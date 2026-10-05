@@ -23,6 +23,7 @@ import {
   normalizePositionForType,
   resolveOrderedDepth,
 } from './vessel.js';
+import { applyAircraftLoiterStandingOrders } from './aircraft.js';
 
 /** Shortest-arc heading step toward desired, capped by maxDelta degrees. */
 export function turnToward(current: number, desired: number, maxDelta: number): number {
@@ -174,16 +175,33 @@ export function applyUnitKinematics(
 
 /**
  * End-of-turn lat/lon track for umpire GT move prediction.
- * Matches resolve: turn + EOT speed step, then one move segment along final heading.
+ * Matches resolveTurn: standing aircraft loiter injects orbit course (+ loiter EOT)
+ * before helm/EOT kinematics, then one move segment along the final heading.
+ *
+ * Pass `allUnits` (the live GT roster) so parent-centered loiter tracks the center
+ * hull the same way resolve does. When omitted, only the single unit is prepared.
  * Returns null when the unit makes no way this resolve (sunk / dead propulsion / stop).
  */
 export function predictUnitMovePath(
   unit: UnitState,
   turnLengthSeconds: number,
+  allUnits?: readonly UnitState[],
 ): { lat: number; lon: number }[] | null {
   if (!canMakeWay(unit)) return null;
-  const start: LatLonDepth = { ...unit.position };
-  const end = applyUnitKinematics(unit, turnLengthSeconds, false).position;
+  // Same pre-kinematics standing-order injection as turnEngine.resolveTurn.
+  // Skip the roster walk when this unit has no standing loiter.
+  let prepared = unit;
+  if (unit.type === 'Aircraft' && unit.aircraftLoiter) {
+    const peers = allUnits
+      ? allUnits.some((u) => u.id === unit.id)
+        ? [...allUnits]
+        : [...allUnits, unit]
+      : [unit];
+    prepared =
+      applyAircraftLoiterStandingOrders(peers).find((u) => u.id === unit.id) ?? unit;
+  }
+  const start: LatLonDepth = { ...prepared.position };
+  const end = applyUnitKinematics(prepared, turnLengthSeconds, false).position;
   const dLat = end.lat - start.lat;
   const dLon = end.lon - start.lon;
   // Skip zero-length tracks (stopped / no distance this turn).
