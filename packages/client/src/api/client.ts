@@ -143,6 +143,7 @@ export const api = {
    * for convoy members — does not use the Navigation heading fiat path.
    * Optional aircraftAttack sets a standing intercept / strafe / bombing order.
    * Optional aircraftLoiter sets/clears a standing orbit.
+   * Optional vesselStanding sets intercept / attack / evade zigzag for ships/subs.
    */
   umpireUnitOrders: (
     gameId: string,
@@ -158,6 +159,10 @@ export const api = {
         targetUnitId: string;
       } | null;
       aircraftLoiter?: { centerUnitId?: string | null } | null;
+      vesselStanding?: {
+        mode: 'intercept' | 'attack' | 'evade';
+        targetUnitId?: string;
+      } | null;
     },
   ) =>
     request<{

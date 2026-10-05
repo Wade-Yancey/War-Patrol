@@ -20,6 +20,7 @@ import {
   conditionLabel,
   editMaxSpeedForClass,
   formatAircraftAttackModeLabel,
+  formatVesselStandingModeLabel,
   formatCourseDegrees,
   formatGameClock,
   formatWallDuration,
@@ -36,6 +37,7 @@ import {
   type SubsystemState,
   type UmpireView,
   type UnitCondition,
+  type VesselStandingMode,
   type VesselType,
 } from '@war-patrol/shared';
 import { api } from '../api/client';
@@ -94,6 +96,8 @@ export function UmpirePage() {
   const [breakFormationOnApply, setBreakFormationOnApply] = useState(true);
   /** Aircraft attack-run target (Unit edit). */
   const [attackTargetId, setAttackTargetId] = useState('');
+  /** Ship/sub standing-order target (Unit edit). */
+  const [vesselStandingTargetId, setVesselStandingTargetId] = useState('');
   /** Optional parent hull for aircraft loiter orbit. */
   const [loiterParentId, setLoiterParentId] = useState('');
   const [rollbackTarget, setRollbackTarget] = useState<number | null>(null);
@@ -231,6 +235,31 @@ export function UmpirePage() {
         : attackTargetOptions[0]?.id ?? '',
     );
   }, [selectedUnit?.id, selectedUnit?.type, selectedUnit?.orders?.aircraftAttack?.targetUnitId, attackTargetOptions]);
+
+  useEffect(() => {
+    if (
+      !selectedUnit ||
+      (selectedUnit.type !== 'Ship' && selectedUnit.type !== 'Submarine')
+    ) {
+      setVesselStandingTargetId('');
+      return;
+    }
+    const pending = selectedUnit.orders?.vesselStanding?.targetUnitId;
+    if (pending && attackTargetOptions.some((u) => u.id === pending)) {
+      setVesselStandingTargetId(pending);
+      return;
+    }
+    setVesselStandingTargetId((prev) =>
+      prev && attackTargetOptions.some((u) => u.id === prev)
+        ? prev
+        : attackTargetOptions[0]?.id ?? '',
+    );
+  }, [
+    selectedUnit?.id,
+    selectedUnit?.type,
+    selectedUnit?.orders?.vesselStanding?.targetUnitId,
+    attackTargetOptions,
+  ]);
 
   useEffect(() => {
     if (!selectedUnit || selectedUnit.type !== 'Aircraft') {
@@ -1495,6 +1524,111 @@ export function UmpirePage() {
                                 }
                               >
                                 Clear attack
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {(selectedUnit.type === 'Ship' || selectedUnit.type === 'Submarine') && (
+                        <div className="unit-edit-group">
+                          <h3>Standing orders</h3>
+                          <p className="muted" style={{ margin: '0 0 0.5rem', fontSize: '0.75rem' }}>
+                            Multi-turn auto-steer — like aircraft attack runs. Intercept closes at
+                            full; Attack prosecutes at flank and auto-queues weapons in range
+                            (destroyer ASW DC ≤ 600 m / deck gun ≤ 4 nm / sub torpedo ≤ 2.5 nm).
+                            Evade starts a zigzag (±30° from base course, alternating each turn).
+                            Optional evade target = base course away from that threat. Clears on
+                            Clear, or when intercept/attack target is gone.
+                          </p>
+                          <label className="unit-edit-select">
+                            Target
+                            <select
+                              value={vesselStandingTargetId}
+                              onChange={(e) => setVesselStandingTargetId(e.target.value)}
+                              disabled={busy || !isOpen || attackTargetOptions.length === 0}
+                            >
+                              {attackTargetOptions.length === 0 ? (
+                                <option value="">No valid targets</option>
+                              ) : (
+                                attackTargetOptions.map((u) => (
+                                  <option key={u.id} value={u.id}>
+                                    {u.name} ({u.class})
+                                  </option>
+                                ))
+                              )}
+                            </select>
+                          </label>
+                          {selectedUnit.orders?.vesselStanding && (
+                            <p className="readout" style={{ margin: '0.35rem 0', fontSize: '0.8rem' }}>
+                              Standing{' '}
+                              {formatVesselStandingModeLabel(
+                                selectedUnit.orders.vesselStanding.mode,
+                              )}
+                              {selectedUnit.orders.vesselStanding.targetUnitId
+                                ? ` → ${
+                                    umpire?.units.find(
+                                      (u) =>
+                                        u.id ===
+                                        selectedUnit.orders?.vesselStanding?.targetUnitId,
+                                    )?.name ?? selectedUnit.orders.vesselStanding.targetUnitId
+                                  }`
+                                : ' (no threat target)'}
+                              {' '}
+                              (auto-steer)
+                            </p>
+                          )}
+                          <div className="control-actions">
+                            {(
+                              [
+                                { mode: 'intercept' as VesselStandingMode, label: 'Intercept' },
+                                { mode: 'attack' as VesselStandingMode, label: 'Attack' },
+                                { mode: 'evade' as VesselStandingMode, label: 'Evade' },
+                              ] as const
+                            ).map(({ mode, label }) => (
+                              <button
+                                key={mode}
+                                className="primary"
+                                type="button"
+                                disabled={
+                                  busy ||
+                                  !isOpen ||
+                                  ((mode === 'intercept' || mode === 'attack') &&
+                                    !vesselStandingTargetId)
+                                }
+                                onClick={() =>
+                                  void run(
+                                    () =>
+                                      api.umpireUnitOrders(gameId, token, selectedUnit.id, {
+                                        vesselStanding: {
+                                          mode,
+                                          ...(vesselStandingTargetId
+                                            ? { targetUnitId: vesselStandingTargetId }
+                                            : {}),
+                                        },
+                                      }),
+                                    `${label} ordered`,
+                                  )
+                                }
+                              >
+                                {label}
+                              </button>
+                            ))}
+                            {selectedUnit.orders?.vesselStanding && (
+                              <button
+                                type="button"
+                                disabled={busy || !isOpen}
+                                onClick={() =>
+                                  void run(
+                                    () =>
+                                      api.umpireUnitOrders(gameId, token, selectedUnit.id, {
+                                        vesselStanding: null,
+                                      }),
+                                    'Standing order cleared',
+                                  )
+                                }
+                              >
+                                Clear
                               </button>
                             )}
                           </div>

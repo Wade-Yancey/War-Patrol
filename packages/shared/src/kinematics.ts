@@ -24,7 +24,7 @@ import {
   resolveOrderedDepth,
 } from './vessel.js';
 import { applyAircraftStandingOrders } from './aircraft.js';
-
+import { applyVesselStandingOrders } from './vesselStanding.js';
 /** Shortest-arc heading step toward desired, capped by maxDelta degrees. */
 export function turnToward(current: number, desired: number, maxDelta: number): number {
   const cur = normalizeHeading(current);
@@ -42,6 +42,7 @@ function preserveWeaponOrders(orders: UnitOrders): UnitOrders {
   if (orders.dropDepthCharges) next.dropDepthCharges = { ...orders.dropDepthCharges };
   if (orders.fireDeckGun) next.fireDeckGun = { ...orders.fireDeckGun };
   if (orders.aircraftAttack) next.aircraftAttack = { ...orders.aircraftAttack };
+  if (orders.vesselStanding) next.vesselStanding = { ...orders.vesselStanding };
   return next;
 }
 
@@ -175,13 +176,14 @@ export function applyUnitKinematics(
 
 /**
  * End-of-turn lat/lon track for umpire GT move prediction.
- * Matches resolveTurn: standing aircraft attack / loiter inject course (+ band EOT)
- * before helm/EOT kinematics, then one move segment along the final heading.
+ * Matches resolveTurn: standing aircraft attack / loiter and vessel standing
+ * orders inject course (+ band/preferred EOT) before helm/EOT kinematics, then
+ * one move segment along the final heading.
  *
- * Pass `allUnits` (the live GT roster) so parent-centered loiter and attack target
- * plots resolve the same way as turnEngine. When omitted, only the single unit
- * is prepared. Returns null when the unit makes no way this resolve
- * (sunk / dead propulsion / stop).
+ * Pass `allUnits` (the live GT roster) so parent-centered loiter, attack target
+ * plots, and vessel standing targets resolve the same way as turnEngine. When
+ * omitted, only the single unit is prepared. Returns null when the unit makes
+ * no way this resolve (sunk / dead propulsion / stop).
  */
 export function predictUnitMovePath(
   unit: UnitState,
@@ -190,19 +192,26 @@ export function predictUnitMovePath(
 ): { lat: number; lon: number }[] | null {
   if (!canMakeWay(unit)) return null;
   // Same pre-kinematics standing-order injection as turnEngine.resolveTurn.
-  // Skip the roster walk when this unit has no standing attack or loiter.
   let prepared = unit;
-  const hasStanding =
+  const hasAircraftStanding =
     unit.type === 'Aircraft' &&
     (Boolean(unit.aircraftLoiter) || Boolean(unit.orders.aircraftAttack));
-  if (hasStanding) {
+  const hasVesselStanding =
+    (unit.type === 'Ship' || unit.type === 'Submarine') &&
+    Boolean(unit.orders.vesselStanding);
+  if (hasAircraftStanding || hasVesselStanding) {
     const peers = allUnits
       ? allUnits.some((u) => u.id === unit.id)
         ? [...allUnits]
         : [...allUnits, unit]
       : [unit];
-    prepared =
-      applyAircraftStandingOrders(peers).find((u) => u.id === unit.id) ?? unit;
+    const afterAircraft = hasAircraftStanding
+      ? applyAircraftStandingOrders(peers)
+      : peers;
+    const afterVessel = hasVesselStanding
+      ? applyVesselStandingOrders(afterAircraft)
+      : afterAircraft;
+    prepared = afterVessel.find((u) => u.id === unit.id) ?? unit;
   }
   const start: LatLonDepth = { ...prepared.position };
   const end = applyUnitKinematics(prepared, turnLengthSeconds, false).position;

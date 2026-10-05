@@ -72,8 +72,18 @@ import {
   isAircraftAttackTarget,
   normalizeAircraftAttackMode,
   resolveBombMagazineState,
+  canOrderVesselStanding,
+  isVesselStandingTarget,
+  normalizeVesselStandingMode,
+  vesselEvadeBaseCourse,
+  vesselEvadeZigzagCourse,
+  vesselInterceptOrderedCourse,
+  VESSEL_ATTACK_EOT,
+  VESSEL_EVADE_EOT,
+  VESSEL_INTERCEPT_EOT,
   type AircraftAttackOrder,
   type AircraftLoiterState,
+  type VesselStandingOrder,
   type CombatLogEntry,
   type EotSetting,
   type GameSave,
@@ -952,6 +962,7 @@ export class GameRuntime {
    * auto-releases when CPA is in range. Unless course/eot are also provided,
    * steers toward the target at full band on the order click.
    * Optional aircraftLoiter sets/clears a standing orbit (persists across turns).
+   * Optional vesselStanding sets intercept / attack / evade zigzag for ships/subs.
    */
   async submitUmpireUnitOrders(
     gameId: string,
@@ -963,6 +974,7 @@ export class GameRuntime {
       rejoinFormation?: boolean;
       aircraftAttack?: AircraftAttackOrder | null;
       aircraftLoiter?: { centerUnitId?: string | null } | null;
+      vesselStanding?: VesselStandingOrder | null;
     },
   ): Promise<GameSave> {
     if (
@@ -970,12 +982,16 @@ export class GameRuntime {
       patch.eot === undefined &&
       patch.aircraftAttack === undefined &&
       patch.aircraftLoiter === undefined &&
+      patch.vesselStanding === undefined &&
       !patch.breakFormation &&
       !patch.rejoinFormation
     ) {
-      throw Object.assign(new Error('course, eot, aircraftAttack, aircraftLoiter, and/or formation flag required'), {
-        statusCode: 400,
-      });
+      throw Object.assign(
+        new Error(
+          'course, eot, aircraftAttack, aircraftLoiter, vesselStanding, and/or formation flag required',
+        ),
+        { statusCode: 400 },
+      );
     }
     return this.mutate(gameId, (save) => {
       if (save.turn.phase !== 'open') {
@@ -1091,6 +1107,79 @@ export class GameRuntime {
             { aircraftAttack: { mode, targetUnitId: targetId } },
             'umpire',
           );
+        }
+      }
+
+      if (patch.vesselStanding !== undefined) {
+        if (patch.vesselStanding === null) {
+          unit.orders = mergeOrders(unit.orders, { vesselStanding: null }, 'umpire');
+        } else {
+          if (!canOrderVesselStanding(unit)) {
+            throw Object.assign(
+              new Error('Only afloat ships / submarines can take vessel standing orders'),
+              { statusCode: 400 },
+            );
+          }
+          const mode = normalizeVesselStandingMode(patch.vesselStanding.mode);
+          const targetId = String(patch.vesselStanding.targetUnitId ?? '').trim();
+          if (mode === 'intercept' || mode === 'attack') {
+            if (!targetId) {
+              throw Object.assign(new Error('vesselStanding.targetUnitId required'), {
+                statusCode: 400,
+              });
+            }
+            if (targetId === unit.id) {
+              throw Object.assign(new Error('Cannot target self'), { statusCode: 400 });
+            }
+            const target = save.units.find((u) => u.id === targetId);
+            if (!target || !isVesselStandingTarget(target)) {
+              throw Object.assign(new Error('Invalid vessel standing target'), {
+                statusCode: 400,
+              });
+            }
+            if (course === undefined) {
+              course = vesselInterceptOrderedCourse(unit.position, target.position);
+            }
+            if (eot === undefined) {
+              eot = mode === 'attack' ? VESSEL_ATTACK_EOT : VESSEL_INTERCEPT_EOT;
+            }
+            unit.orders = mergeOrders(
+              unit.orders,
+              { vesselStanding: { mode, targetUnitId: targetId } },
+              'umpire',
+            );
+          } else {
+            // evade — optional threat target for base course away from threat
+            let threat: UnitState | undefined;
+            if (targetId) {
+              if (targetId === unit.id) {
+                throw Object.assign(new Error('Cannot target self'), { statusCode: 400 });
+              }
+              threat = save.units.find((u) => u.id === targetId);
+              if (!threat || !isVesselStandingTarget(threat)) {
+                throw Object.assign(new Error('Invalid evade threat target'), {
+                  statusCode: 400,
+                });
+              }
+            }
+            const base = vesselEvadeBaseCourse({
+              unit,
+              threat: threat ?? null,
+            });
+            const standing: VesselStandingOrder = {
+              mode: 'evade',
+              evadeBaseCourse: base,
+              evadeLeg: 0,
+              ...(threat ? { targetUnitId: targetId } : {}),
+            };
+            if (course === undefined) {
+              course = vesselEvadeZigzagCourse(base, 0);
+            }
+            if (eot === undefined) {
+              eot = VESSEL_EVADE_EOT;
+            }
+            unit.orders = mergeOrders(unit.orders, { vesselStanding: standing }, 'umpire');
+          }
         }
       }
 

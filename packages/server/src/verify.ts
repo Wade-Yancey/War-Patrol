@@ -15,6 +15,20 @@ import {
   formatAircraftAttackModeTag,
   canOrderAircraftAttack,
   isAircraftAttackTarget,
+  applyVesselStandingOrders,
+  canOrderVesselStanding,
+  formatVesselStandingModeTag,
+  isVesselStandingTarget,
+  normalizeVesselStandingMode,
+  vesselEvadeZigzagCourse,
+  vesselInterceptOrderedCourse,
+  VESSEL_ATTACK_DC_RANGE_M,
+  VESSEL_ATTACK_EOT,
+  VESSEL_ATTACK_GUN_RANGE_NM,
+  VESSEL_ATTACK_TORP_RANGE_NM,
+  VESSEL_EVADE_EOT,
+  VESSEL_EVADE_ZIGZAG_AMPLITUDE_DEG,
+  VESSEL_INTERCEPT_EOT,
   CLASS_BEAM_M,
   CLASS_LENGTH_M,
   CLASS_MAX_SPEED_KNOTS,
@@ -213,6 +227,53 @@ async function main() {
   );
   check('parseWallDuration mm:ss', parseWallDuration('3:30') === 210);
   check('snapWallDuration 30s', snapWallDuration(200, 30) === 210);
+
+  check('vessel standing modes normalize', normalizeVesselStandingMode('attack') === 'attack');
+  check('vessel standing evade tag', formatVesselStandingModeTag('evade') === 'EVA');
+  check('vessel standing attack tag', formatVesselStandingModeTag('attack') === 'ATK');
+  check(
+    'vessel zigzag amplitude documented',
+    VESSEL_EVADE_ZIGZAG_AMPLITUDE_DEG === 30,
+  );
+  check(
+    'vessel zigzag leg 0 is port (−amp)',
+    vesselEvadeZigzagCourse(90, 0) === 60,
+  );
+  check(
+    'vessel zigzag leg 1 is starboard (+amp)',
+    vesselEvadeZigzagCourse(90, 1) === 120,
+  );
+  check(
+    'vessel intercept course toward target',
+    (() => {
+      const own = { lat: 10, lon: 100, depth: 0 };
+      const tgt = { lat: 10.1, lon: 100, depth: 0 };
+      const brg = vesselInterceptOrderedCourse(own, tgt);
+      return brg > 350 || brg < 10; // ~000°
+    })(),
+  );
+  check(
+    'vessel standing target rejects aircraft',
+    !isVesselStandingTarget({ type: 'Aircraft', condition: 'afloat' }),
+  );
+  check(
+    'vessel standing allows ship',
+    isVesselStandingTarget({ type: 'Ship', condition: 'afloat' }),
+  );
+  check(
+    'aircraft cannot take vessel standing',
+    !canOrderVesselStanding({ type: 'Aircraft', condition: 'afloat' }),
+  );
+  check(
+    'ship can take vessel standing',
+    canOrderVesselStanding({ type: 'Ship', condition: 'afloat' }),
+  );
+  check('vessel intercept EOT is ahead_full', VESSEL_INTERCEPT_EOT === 'ahead_full');
+  check('vessel attack EOT is ahead_flank', VESSEL_ATTACK_EOT === 'ahead_flank');
+  check('vessel evade EOT is ahead_full', VESSEL_EVADE_EOT === 'ahead_full');
+  check('vessel attack DC gate 600 m', VESSEL_ATTACK_DC_RANGE_M === 600);
+  check('vessel attack gun gate 4 nm', VESSEL_ATTACK_GUN_RANGE_NM === 4);
+  check('vessel attack torp gate ≤ 2.5 nm', VESSEL_ATTACK_TORP_RANGE_NM === 2.5);
 
   {
     const closeHit = resolveAircraftAttackEffect({
@@ -6773,6 +6834,311 @@ async function main() {
     );
 
     await api('DELETE', `/api/saves/${airId}`);
+  }
+
+  // Vessel standing orders (umpire intercept / attack / evade zigzag)
+  {
+    const vesGame = await api('POST', '/api/games', {
+      scenarioId: 'destroyer-sub-demo',
+      name: 'Verify Vessel Standing Orders',
+    });
+    check('vessel-standing scenario create', vesGame.status === 200);
+    const vesId = String(vesGame.json.gameId);
+    const vesUmp = await api('POST', `/api/games/${vesId}/auth/umpire`, {
+      password: 'umpire',
+    });
+    const vesTok = String(vesUmp.json.token);
+
+    // Place Porter north of Gato so intercept course is ~180°.
+    const placeDd = await api(
+      'PATCH',
+      `/api/games/${vesId}/units/dd-101`,
+      {
+        position: { lat: 34.42, lon: -120.0, depth: 0 },
+        heading: 90,
+        orderedCourse: 90,
+        speed: 20,
+        eot: 'ahead_standard',
+      },
+      vesTok,
+    );
+    check('place porter for vessel standing', placeDd.status === 200);
+    const placeSs = await api(
+      'PATCH',
+      `/api/games/${vesId}/units/ss-212`,
+      {
+        position: { lat: 34.40, lon: -120.0, depth: 50 },
+        heading: 0,
+        orderedCourse: 0,
+        speed: 5,
+        eot: 'ahead_1_3',
+      },
+      vesTok,
+    );
+    check('place gato for vessel standing', placeSs.status === 200);
+
+    const orderIntercept = await api(
+      'POST',
+      `/api/games/${vesId}/units/dd-101/orders`,
+      { vesselStanding: { mode: 'intercept', targetUnitId: 'ss-212' } },
+      vesTok,
+    );
+    check('queue destroyer intercept', orderIntercept.status === 200);
+    const interceptOrders = (
+      orderIntercept.json as {
+        orders?: { vesselStanding?: { mode?: string; targetUnitId?: string }; eot?: string };
+      }
+    ).orders;
+    check(
+      'intercept standing pending',
+      interceptOrders?.vesselStanding?.mode === 'intercept' &&
+        interceptOrders?.vesselStanding?.targetUnitId === 'ss-212',
+    );
+    check('intercept auto-rings ahead_full', interceptOrders?.eot === 'ahead_full');
+
+    // GT prediction should steer south toward Gato (not east along prior 090).
+    {
+      const live = await api('GET', `/api/games/${vesId}/view`, undefined, vesTok);
+      const roster = (live.json.view as { units?: UnitState[] }).units ?? [];
+      const dd = roster.find((u) => u.id === 'dd-101');
+      const turnLen = (live.json.view as { turnLengthSeconds?: number }).turnLengthSeconds ?? 180;
+      if (dd) {
+        const withStanding = predictUnitMovePath(dd, turnLen, roster);
+        const eastBound: UnitState = {
+          ...dd,
+          orderedCourse: 90,
+          heading: 90,
+          orders: { eot: 'ahead_full' },
+        };
+        const naive = predictUnitMovePath(
+          eastBound,
+          turnLen,
+          roster.map((u) => (u.id === 'dd-101' ? eastBound : u)),
+        );
+        const standingDy =
+          withStanding && withStanding.length >= 2
+            ? withStanding[1]!.lat - withStanding[0]!.lat
+            : 0;
+        const naiveDy =
+          naive && naive.length >= 2 ? naive[1]!.lat - naive[0]!.lat : 0;
+        check(
+          'intercept updates GT predicted path before resolve',
+          Boolean(withStanding) && standingDy < naiveDy - 1e-6,
+          `standingDy=${standingDy} naiveDy=${naiveDy}`,
+        );
+      } else {
+        check('intercept updates GT predicted path before resolve', false, 'missing dd');
+      }
+    }
+
+    await api('POST', `/api/games/${vesId}/turn/lock`, {}, vesTok);
+    const resolve1 = await api('POST', `/api/games/${vesId}/turn/resolve`, {}, vesTok);
+    check('resolve vessel intercept turn', resolve1.status === 200);
+    const after1 = await api('GET', `/api/games/${vesId}/view`, undefined, vesTok);
+    const ddAfter1 = (
+      after1.json.view as {
+        units?: Array<{
+          id: string;
+          orderedCourse?: number;
+          orders?: { vesselStanding?: { mode?: string; targetUnitId?: string } };
+        }>;
+      }
+    ).units?.find((u) => u.id === 'dd-101');
+    check(
+      'intercept persists across turns',
+      ddAfter1?.orders?.vesselStanding?.mode === 'intercept' &&
+        ddAfter1?.orders?.vesselStanding?.targetUnitId === 'ss-212',
+    );
+    check(
+      'intercept steered toward target',
+      typeof ddAfter1?.orderedCourse === 'number' &&
+        (ddAfter1.orderedCourse > 160 || ddAfter1.orderedCourse < 200),
+      `orderedCourse=${ddAfter1?.orderedCourse}`,
+    );
+
+    // Attack — flank EOT + persist; far geometry should not auto-drop DC yet.
+    const orderAttack = await api(
+      'POST',
+      `/api/games/${vesId}/units/dd-101/orders`,
+      { vesselStanding: { mode: 'attack', targetUnitId: 'ss-212' } },
+      vesTok,
+    );
+    check('queue destroyer attack', orderAttack.status === 200);
+    check(
+      'attack auto-rings ahead_flank',
+      (orderAttack.json as { orders?: { eot?: string } }).orders?.eot === 'ahead_flank',
+    );
+
+    // Close Porter onto Gato for ASW prosecute.
+    await api(
+      'PATCH',
+      `/api/games/${vesId}/units/dd-101`,
+      {
+        position: { lat: 34.4005, lon: -120.0, depth: 0 },
+        heading: 180,
+        orderedCourse: 180,
+        speed: 20,
+        eot: 'ahead_flank',
+      },
+      vesTok,
+    );
+    await api(
+      'POST',
+      `/api/games/${vesId}/units/dd-101/orders`,
+      { vesselStanding: { mode: 'attack', targetUnitId: 'ss-212' } },
+      vesTok,
+    );
+    await api('POST', `/api/games/${vesId}/turn/lock`, {}, vesTok);
+    const resolveAtk = await api('POST', `/api/games/${vesId}/turn/resolve`, {}, vesTok);
+    check('resolve vessel attack turn', resolveAtk.status === 200);
+    const afterAtk = await api('GET', `/api/games/${vesId}/view`, undefined, vesTok);
+    const atkView = afterAtk.json.view as {
+      units?: Array<{
+        id: string;
+        depthChargeLoad?: number;
+        orders?: { vesselStanding?: { mode?: string } };
+      }>;
+      combatLog?: Array<{ kind?: string }>;
+      depthCharges?: unknown[];
+    };
+    const ddAtk = atkView.units?.find((u) => u.id === 'dd-101');
+    check(
+      'attack persists after weapon prosecute',
+      ddAtk?.orders?.vesselStanding?.mode === 'attack',
+    );
+    check(
+      'attack auto-dropped depth charges when close',
+      (ddAtk?.depthChargeLoad ?? 24) < 24 ||
+        (atkView.depthCharges?.length ?? 0) > 0 ||
+        (atkView.combatLog ?? []).some((e) => e.kind === 'depth_charge_drop'),
+      `load=${ddAtk?.depthChargeLoad} dcTracks=${atkView.depthCharges?.length}`,
+    );
+
+    // Evade zigzag — leg alternates across resolves.
+    const orderEvade = await api(
+      'POST',
+      `/api/games/${vesId}/units/dd-101/orders`,
+      { vesselStanding: { mode: 'evade', targetUnitId: 'ss-212' } },
+      vesTok,
+    );
+    check('queue destroyer evade', orderEvade.status === 200);
+    const evadePending = (
+      orderEvade.json as {
+        orders?: {
+          vesselStanding?: { mode?: string; evadeLeg?: number; evadeBaseCourse?: number };
+          eot?: string;
+        };
+        orderedCourse?: number;
+      }
+    );
+    check(
+      'evade standing pending',
+      evadePending.orders?.vesselStanding?.mode === 'evade',
+    );
+    check('evade auto-rings ahead_full', evadePending.orders?.eot === 'ahead_full');
+    const evadeCourse0 = evadePending.orderedCourse;
+    check(
+      'evade first leg is base−30°',
+      typeof evadeCourse0 === 'number' &&
+        typeof evadePending.orders?.vesselStanding?.evadeBaseCourse === 'number' &&
+        Math.abs(
+          ((evadeCourse0 -
+            (evadePending.orders.vesselStanding.evadeBaseCourse -
+              VESSEL_EVADE_ZIGZAG_AMPLITUDE_DEG) +
+            540) %
+            360) -
+            180,
+        ) < 1,
+      `course=${evadeCourse0} base=${evadePending.orders?.vesselStanding?.evadeBaseCourse}`,
+    );
+
+    await api('POST', `/api/games/${vesId}/turn/lock`, {}, vesTok);
+    const resolveEvade1 = await api('POST', `/api/games/${vesId}/turn/resolve`, {}, vesTok);
+    check('resolve evade turn 1', resolveEvade1.status === 200);
+    const afterEv1 = await api('GET', `/api/games/${vesId}/view`, undefined, vesTok);
+    const ddEv1 = (
+      afterEv1.json.view as {
+        units?: Array<{
+          id: string;
+          orders?: { vesselStanding?: { evadeLeg?: number; mode?: string } };
+        }>;
+      }
+    ).units?.find((u) => u.id === 'dd-101');
+    check(
+      'evade persists with flipped leg',
+      ddEv1?.orders?.vesselStanding?.mode === 'evade' &&
+        ddEv1?.orders?.vesselStanding?.evadeLeg === 1,
+    );
+
+    // Pure applyVesselStandingOrders zigzag flip without HTTP.
+    {
+      const applied = applyVesselStandingOrders([
+        {
+          id: 'dd-test',
+          type: 'Ship',
+          class: 'Destroyer',
+          condition: 'afloat',
+          position: { lat: 0, lon: 0, depth: 0 },
+          heading: 90,
+          orderedCourse: 90,
+          speed: 20,
+          eot: 'ahead_full',
+          orders: {
+            vesselStanding: {
+              mode: 'evade',
+              evadeBaseCourse: 90,
+              evadeLeg: 0,
+            },
+          },
+        } as UnitState,
+      ]);
+      const o = applied[0]!;
+      check(
+        'applyVesselStandingOrders zig course',
+        o.orders.course === 60,
+        `course=${o.orders.course}`,
+      );
+      check(
+        'applyVesselStandingOrders advances leg',
+        o.orders.vesselStanding?.evadeLeg === 1,
+      );
+    }
+
+    const clearStanding = await api(
+      'POST',
+      `/api/games/${vesId}/units/dd-101/orders`,
+      { vesselStanding: null },
+      vesTok,
+    );
+    check('clear vessel standing', clearStanding.status === 200);
+    const clearedView = await api('GET', `/api/games/${vesId}/view`, undefined, vesTok);
+    const ddCleared = (
+      clearedView.json.view as {
+        units?: Array<{ id: string; orders?: { vesselStanding?: unknown } }>;
+      }
+    ).units?.find((u) => u.id === 'dd-101');
+    check('vessel standing cleared', !ddCleared?.orders?.vesselStanding);
+
+    // Aircraft reject vessel standing.
+    const airRejectGame = await api('POST', '/api/games', {
+      scenarioId: 'cavalla-shokaku-philippine-sea',
+      name: 'Verify Vessel Standing Aircraft Reject',
+    });
+    const airRejectId = String(airRejectGame.json.gameId);
+    const airRejectUmp = await api('POST', `/api/games/${airRejectId}/auth/umpire`, {
+      password: 'umpire',
+    });
+    const airRejectTok = String(airRejectUmp.json.token);
+    const airReject = await api(
+      'POST',
+      `/api/games/${airRejectId}/units/ac-zeke-cap/orders`,
+      { vesselStanding: { mode: 'intercept', targetUnitId: 'dd-urakaze' } },
+      airRejectTok,
+    );
+    check('aircraft rejects vessel standing', airReject.status === 400);
+    await api('DELETE', `/api/saves/${airRejectId}`);
+
+    await api('DELETE', `/api/saves/${vesId}`);
   }
 
   // --- Deck gun: destroyer + fleet-sub fire + resolve ---

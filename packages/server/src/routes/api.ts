@@ -437,6 +437,12 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       rejoinFormation?: boolean;
       aircraftAttack?: { mode?: string; targetUnitId?: string } | null;
       aircraftLoiter?: { centerUnitId?: string | null } | null;
+      vesselStanding?: {
+        mode?: string;
+        targetUnitId?: string;
+        evadeBaseCourse?: number;
+        evadeLeg?: 0 | 1;
+      } | null;
     };
   }>('/api/games/:gameId/units/:unitId/orders', async (request, reply) => {
     try {
@@ -471,6 +477,29 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
                       : undefined,
               }
             : undefined;
+      const vesselRaw = body.vesselStanding;
+      const vesselStanding =
+        vesselRaw === null
+          ? null
+          : vesselRaw && typeof vesselRaw === 'object'
+            ? {
+                mode:
+                  vesselRaw.mode === 'attack'
+                    ? ('attack' as const)
+                    : vesselRaw.mode === 'evade'
+                      ? ('evade' as const)
+                      : ('intercept' as const),
+                ...(vesselRaw.targetUnitId != null
+                  ? { targetUnitId: String(vesselRaw.targetUnitId) }
+                  : {}),
+                ...(typeof vesselRaw.evadeBaseCourse === 'number'
+                  ? { evadeBaseCourse: vesselRaw.evadeBaseCourse }
+                  : {}),
+                ...(vesselRaw.evadeLeg === 0 || vesselRaw.evadeLeg === 1
+                  ? { evadeLeg: vesselRaw.evadeLeg }
+                  : {}),
+              }
+            : undefined;
       const save = await runtime.submitUmpireUnitOrders(request.params.gameId, request.params.unitId, {
         course: body.course,
         eot: body.eot,
@@ -478,6 +507,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         rejoinFormation: Boolean(body.rejoinFormation),
         ...(aircraftAttack !== undefined ? { aircraftAttack } : {}),
         ...(aircraftLoiter !== undefined ? { aircraftLoiter } : {}),
+        ...(vesselStanding !== undefined ? { vesselStanding } : {}),
       });
       const unit = save.units.find((u) => u.id === request.params.unitId);
       return {
