@@ -83,10 +83,14 @@ export function hydrophoneContactGain(
   rangeNm: number,
   listenBearingDeg: number,
   contactBearingDeg: number,
+  sourceLevel: number = 1,
 ): number {
-  return (
+  const level = Number.isFinite(sourceLevel) ? Math.max(0, sourceLevel) : 1;
+  return Math.min(
+    1,
     hydrophoneRangeGain(rangeNm) *
-    hydrophoneBeamGain(listenBearingDeg, contactBearingDeg)
+      hydrophoneBeamGain(listenBearingDeg, contactBearingDeg) *
+      level,
   );
 }
 
@@ -133,7 +137,7 @@ export function approximateRangeNmFromRangeGain(
  * otherwise approx/band are withheld so beam loss does not look like distance.
  */
 export function hydrophoneListenCue(
-  contacts: ReadonlyArray<{ rangeNm: number; bearing: number }>,
+  contacts: ReadonlyArray<{ rangeNm: number; bearing: number; sourceLevel?: number }>,
   listenBearingDeg: number,
 ): {
   intensity: number;
@@ -149,7 +153,8 @@ export function hydrophoneListenCue(
   let bestRange: number | null = null;
   for (const c of contacts) {
     const beam = hydrophoneBeamGain(listenBearingDeg, c.bearing);
-    const gain = hydrophoneRangeGain(c.rangeNm) * beam;
+    const level = Number.isFinite(c.sourceLevel) ? Math.max(0, c.sourceLevel ?? 1) : 1;
+    const gain = Math.min(1, hydrophoneRangeGain(c.rangeNm) * beam * level);
     if (gain > bestGain) {
       bestGain = gain;
       bestBeam = beam;

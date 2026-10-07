@@ -45,6 +45,9 @@ import {
   DEPTH_CHARGE_CONTROLS_AUDIBLE_NM,
   DEPTH_CHARGE_MAX_DEPTH_M,
   DESTROYER_DEPTH_CHARGE_LOAD,
+  NOISEMAKER_COOLDOWN_TURNS,
+  NOISEMAKER_LIFETIME_TURNS,
+  NOISEMAKER_SOURCE_LEVEL,
   clampDepthChargeSetting,
   depthChargeCountFromOrder,
   depthChargeLateralsForCount,
@@ -899,9 +902,10 @@ async function main() {
         !ddTabs.some((id) => String(id) === 'weapons'),
     );
     check(
-      'sub Controls tabs: Torpedoes + Guns (no Depth charges / Weapons lump)',
+      'sub Controls tabs: Torpedoes + Guns + Countermeasures (no Depth charges / Weapons lump)',
       subTabs.includes('torpedoes') &&
         subTabs.includes('guns') &&
+        subTabs.includes('countermeasures') &&
         !subTabs.includes('depth_charges') &&
         !subTabs.some((id) => String(id) === 'weapons'),
     );
@@ -913,7 +917,16 @@ async function main() {
         ) &&
         controlsInstrumentTabsForHull('Fleet Submarine').some(
           (t) => t.id === 'torpedoes' && t.label === 'Torpedoes',
+        ) &&
+        controlsInstrumentTabsForHull('Fleet Submarine').some(
+          (t) => t.id === 'countermeasures' && t.label === 'Countermeasures',
         ),
+    );
+    check(
+      'noisemaker pending summary shows deploy depth',
+      formatPendingOrdersSummary({
+        deployNoisemaker: { depthM: 50 },
+      }).includes('NMKR · SET 050 m'),
     );
     check(
       'DC pending summary uses count (legacy pattern → ×4)',
@@ -7891,6 +7904,176 @@ async function main() {
     }
     await api('DELETE', `/api/saves/${kagId}`);
     await api('DELETE', `/api/saves/${gunId}`);
+  }
+
+  // Fleet-sub noisemaker countermeasures — deploy, cooldown, stationary GT, hydro/sonar FoW.
+  {
+    const nmGame = await api('POST', '/api/games', {
+      scenarioId: 'destroyer-sub-demo',
+      name: 'Verify Noisemaker',
+    });
+    check('noisemaker scenario create', nmGame.status === 200);
+    const nmId = String(nmGame.json.gameId);
+    const nmUmp = await api('POST', `/api/games/${nmId}/auth/umpire`, { password: 'umpire' });
+    const nmUTok = String(nmUmp.json.token);
+    const nmSub = await api('POST', `/api/games/${nmId}/auth/vessel`, {
+      accessToken: 'gato-demo',
+      password: 'red',
+      stationId: 'controls',
+    });
+    check('noisemaker sub controls join', nmSub.status === 200);
+    const nmTok = String(nmSub.json.token);
+    const nmDd = await api('POST', `/api/games/${nmId}/auth/vessel`, {
+      accessToken: 'porter-demo',
+      password: 'blue',
+      stationId: 'sensors',
+    });
+    check('noisemaker DD sensors join', nmDd.status === 200);
+    const nmDdTok = String(nmDd.json.token);
+
+    // Dive the sub so hydrophone is live after resolve; set deploy depth.
+    await api(
+      'POST',
+      `/api/games/${nmId}/orders`,
+      { depth: 50, deployNoisemaker: { depthM: 80 } },
+      nmTok,
+    );
+    await api('POST', `/api/games/${nmId}/turn/lock`, {}, nmUTok);
+    await api('POST', `/api/games/${nmId}/turn/resolve`, {}, nmUTok);
+
+    const afterDeploy = runtime.requireGame(nmId);
+    const nmTracks = afterDeploy.noisemakers ?? [];
+    check('noisemaker deployed to GT', nmTracks.length === 1 && nmTracks[0]!.status === 'active');
+    check(
+      'noisemaker depth is player-chosen (not keel)',
+      nmTracks[0]!.position.depth === 80,
+      `depth=${nmTracks[0]?.position.depth}`,
+    );
+    const gatoAfter = afterDeploy.units.find((u) => u.id === 'ss-212');
+    check(
+      'noisemaker lat/lon frozen at deploy resolve position',
+      Boolean(gatoAfter) &&
+        nmTracks[0]!.position.lat === gatoAfter!.position.lat &&
+        nmTracks[0]!.position.lon === gatoAfter!.position.lon,
+    );
+    check(
+      'noisemaker cooldown armed',
+      gatoAfter?.noisemakerCooldownTurnsRemaining === NOISEMAKER_COOLDOWN_TURNS,
+      `cd=${gatoAfter?.noisemakerCooldownTurnsRemaining}`,
+    );
+    check(
+      'noisemaker lifetime expiresTurn set',
+      nmTracks[0]!.expiresTurn === nmTracks[0]!.deployedTurn + NOISEMAKER_LIFETIME_TURNS,
+    );
+    check(
+      'umpire combat log notes noisemaker deploy',
+      (afterDeploy.combatLog ?? []).some((e) => e.kind === 'noisemaker_deploy'),
+    );
+
+    const umpView = await api('GET', `/api/games/${nmId}/view`, undefined, nmUTok);
+    const umpNm = (umpView.json.view as { noisemakers?: Array<{ id: string; status: string }> })
+      .noisemakers;
+    check('umpire view includes noisemakers', Array.isArray(umpNm) && umpNm.length === 1);
+
+    // Move the sub away — decoy must stay put.
+    const decoyLat = nmTracks[0]!.position.lat;
+    const decoyLon = nmTracks[0]!.position.lon;
+    await api(
+      'POST',
+      `/api/games/${nmId}/orders`,
+      { course: 90, eot: 'ahead_full' },
+      nmTok,
+    );
+    // Cooldown still active — second deploy must fail.
+    const blocked = await api(
+      'POST',
+      `/api/games/${nmId}/orders`,
+      { deployNoisemaker: { depthM: 40 } },
+      nmTok,
+    );
+    check('noisemaker cooldown blocks re-deploy', blocked.status === 400);
+
+    await api('POST', `/api/games/${nmId}/turn/lock`, {}, nmUTok);
+    await api('POST', `/api/games/${nmId}/turn/resolve`, {}, nmUTok);
+    const afterMove = runtime.requireGame(nmId);
+    const decoy2 = (afterMove.noisemakers ?? [])[0];
+    const gatoMoved = afterMove.units.find((u) => u.id === 'ss-212');
+    check(
+      'noisemaker stays put after sub moves',
+      Boolean(decoy2) &&
+        decoy2!.position.lat === decoyLat &&
+        decoy2!.position.lon === decoyLon &&
+        Boolean(gatoMoved) &&
+        (gatoMoved!.position.lat !== decoyLat || gatoMoved!.position.lon !== decoyLon),
+    );
+    check(
+      'noisemaker cooldown ticks down',
+      (gatoMoved?.noisemakerCooldownTurnsRemaining ?? -1) === NOISEMAKER_COOLDOWN_TURNS - 1,
+      `cd=${gatoMoved?.noisemakerCooldownTurnsRemaining}`,
+    );
+
+    // Sub Sensors hydrophone should hear the decoy as a loud propeller contact
+    // (same lat/lon at deploy is skipped — after move, range > 0).
+    const nmSubSensors = await api('POST', `/api/games/${nmId}/auth/vessel`, {
+      accessToken: 'gato-demo',
+      password: 'red',
+      stationId: 'sensors',
+    });
+    const nmSenTok = String(nmSubSensors.json.token);
+    const hydroView = await api('GET', `/api/games/${nmId}/view`, undefined, nmSenTok);
+    const hydroContacts = (
+      hydroView.json.view as {
+        hydrophoneContacts?: Array<{ kind?: string; sourceLevel?: number; rangeNm?: number }>;
+      }
+    ).hydrophoneContacts;
+    const loudProps = (hydroContacts ?? []).filter(
+      (c) => c.kind === 'propeller' && (c.sourceLevel ?? 1) >= NOISEMAKER_SOURCE_LEVEL,
+    );
+    check(
+      'hydrophone hears noisemaker as loud propeller (no decoy identity)',
+      loudProps.length >= 1,
+      `props=${loudProps.length} contacts=${(hydroContacts ?? []).length}`,
+    );
+
+    // Place DD west of the decoy looking east so the echo is in the forward cone.
+    await api(
+      'PATCH',
+      `/api/games/${nmId}/units/dd-101`,
+      {
+        position: { lat: decoyLat, lon: decoyLon - 0.02, depth: 0 },
+        heading: 90,
+        orderedCourse: 90,
+      },
+      nmUTok,
+    );
+    await api('POST', `/api/games/${nmId}/active-sonar`, { enabled: true }, nmDdTok);
+    const sonarView = await api('GET', `/api/games/${nmId}/view`, undefined, nmDdTok);
+    const sonarContacts = (
+      sonarView.json.view as {
+        sonarContacts?: Array<{ estimatedDepthM?: number; signature?: string }>;
+        sonarOperational?: boolean;
+      }
+    ).sonarContacts;
+    const decoyEcho = (sonarContacts ?? []).find((c) => c.estimatedDepthM === 80);
+    check(
+      'active sonar paints noisemaker as anonymous depth echo',
+      Boolean(decoyEcho) && decoyEcho!.signature === 'small',
+      `contacts=${(sonarContacts ?? []).length} depth=${decoyEcho?.estimatedDepthM}`,
+    );
+
+    // Vessel FoW must not expose enemy/global noisemaker GT list.
+    const subCtrlView = await api('GET', `/api/games/${nmId}/view`, undefined, nmTok);
+    const subCtrl = subCtrlView.json.view as {
+      noisemakers?: unknown;
+      ownNoisemakers?: Array<{ id: string }>;
+    };
+    check('vessel view has no free GT noisemakers list', subCtrl.noisemakers === undefined);
+    check(
+      'vessel view exposes own noisemakers only',
+      Array.isArray(subCtrl.ownNoisemakers) && subCtrl.ownNoisemakers.length >= 1,
+    );
+
+    await api('DELETE', `/api/saves/${nmId}`);
   }
 
   // Ground-truth multi-turn stability (separate game; cleans up its save)

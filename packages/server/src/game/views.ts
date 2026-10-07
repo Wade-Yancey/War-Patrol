@@ -204,6 +204,7 @@ export function buildUmpireView(save: GameSave, sse: SseHub): UmpireView {
     trails: buildUnitTrails(save),
     torpedoes: save.torpedoes ?? [],
     depthCharges: save.depthCharges ?? [],
+    noisemakers: save.noisemakers ?? [],
     recentDetonations: save.recentDetonations ?? [],
     combatLog: save.combatLog ?? [],
     historyTurnNumbers: save.history.map((h) => h.turnNumber),
@@ -216,6 +217,7 @@ export function buildUmpireView(save: GameSave, sse: SseHub): UmpireView {
       gameTimeSeconds: h.gameTimeSeconds ?? h.turn.gameTimeSeconds,
       torpedoes: h.torpedoes ?? [],
       depthCharges: h.depthCharges ?? [],
+      noisemakers: h.noisemakers ?? [],
       ...(h.umpireNote ? { umpireNote: h.umpireNote } : {}),
     })),
     vesselLinks: save.units.map((u) => vesselLinkForUnit(save, u)),
@@ -284,6 +286,7 @@ export function buildVesselView(
       depthChargeLoad: unit.depthChargeLoad ?? 0,
       depthChargeAwaitingReload: Boolean(unit.depthChargeAwaitingReload),
       depthChargeReloadTurnsRemaining: unit.depthChargeReloadTurnsRemaining ?? 0,
+      noisemakerCooldownTurnsRemaining: unit.noisemakerCooldownTurnsRemaining ?? 0,
       deckGunLoad: unit.deckGunLoad ?? 0,
       deckGunAwaitingReload: Boolean(unit.deckGunAwaitingReload),
       deckGunReloadTurnsRemaining: unit.deckGunReloadTurnsRemaining ?? 0,
@@ -299,6 +302,7 @@ export function buildVesselView(
   // Own-side weapon tracks (crew knows what they launched).
   view.ownTorpedoes = (save.torpedoes ?? []).filter((t) => t.firerUnitId === unit.id);
   view.ownDepthCharges = (save.depthCharges ?? []).filter((c) => c.firerUnitId === unit.id);
+  view.ownNoisemakers = (save.noisemakers ?? []).filter((n) => n.deployerUnitId === unit.id);
 
   // Own-ship damage report (hits / casualties on this hull only).
   const ownDamage = buildOwnDamageLog(unit.id, save.combatLog);

@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEv
 import type {
   BoundingBox,
   DepthChargeTrack,
+  NoisemakerTrack,
   SensorDef,
   TorpedoTrack,
   UnitState,
@@ -46,6 +47,8 @@ interface Props {
   torpedoes?: TorpedoTrack[];
   /** Full-truth depth-charge tracks (drop → sink/detonate). */
   depthCharges?: DepthChargeTrack[];
+  /** Full-truth stationary noisemaker decoys. */
+  noisemakers?: NoisemakerTrack[];
   /**
    * Recent weapon detonations (deck-gun fire / hit / miss + aircraft bomb
    * splash) for umpire GT aim lines — live resolve cues; pruned after a few turns.
@@ -311,6 +314,7 @@ function weaponsSignature(
   torpedoes: TorpedoTrack[] | undefined,
   depthCharges: DepthChargeTrack[] | undefined,
   detonations?: WeaponDetonationEvent[] | undefined,
+  noisemakers?: NoisemakerTrack[] | undefined,
 ): string {
   const t = (torpedoes ?? [])
     .map(
@@ -322,6 +326,12 @@ function weaponsSignature(
     .map(
       (c) =>
         `${c.id}:${c.status}:${c.position.lat.toFixed(5)},${c.position.lon.toFixed(5)},${c.position.depth.toFixed(0)}`,
+    )
+    .join('|');
+  const n = (noisemakers ?? [])
+    .map(
+      (m) =>
+        `${m.id}:${m.status}:${m.position.lat.toFixed(5)},${m.position.lon.toFixed(5)},${m.position.depth.toFixed(0)}`,
     )
     .join('|');
   const g = (detonations ?? [])
@@ -337,7 +347,7 @@ function weaponsSignature(
         `${e.id}:${e.kind}:${e.position.lat.toFixed(5)},${e.position.lon.toFixed(5)}:${e.aimHeading ?? ''}:${e.firerUnitId}:${e.targetUnitId ?? ''}`,
     )
     .join('|');
-  return `${t}#${d}#${g}`;
+  return `${t}#${d}#${n}#${g}`;
 }
 
 function areaSignature(area: BoundingBox): string {
@@ -563,6 +573,7 @@ function GroundTruthMapInner({
   trails = [],
   torpedoes = [],
   depthCharges = [],
+  noisemakers = [],
   detonations = [],
   turnLengthSeconds = DEFAULT_TURN_LENGTH_SECONDS,
   showMovePrediction = true,
@@ -868,8 +879,26 @@ function GroundTruthMapInner({
         };
       });
 
-    return { fish, charges, dropTrails, guns, bombs };
-  }, [torpedoes, depthCharges, detonations, view, unitAccentById, units]);
+    // Stationary noisemaker decoys — fixed lat/lon pip + depth label.
+    const decoys = noisemakers.map((m) => {
+      const color = unitAccentById.get(m.deployerUnitId) ?? '#d4a8ff';
+      const tip = toXy(m.position.lat, m.position.lon);
+      const active = m.status === 'active';
+      const label = active
+        ? `NMKR · ${Math.round(m.position.depth)}M`
+        : `NMKR · SPENT · ${Math.round(m.position.depth)}M`;
+      return {
+        id: m.id,
+        color,
+        tip,
+        active,
+        label,
+        onPlot: uvBBoxHitsPlot([tip]),
+      };
+    });
+
+    return { fish, charges, dropTrails, guns, bombs, decoys };
+  }, [torpedoes, depthCharges, noisemakers, detonations, view, unitAccentById, units]);
 
   /**
    * Standing aircraft / vessel intent — dashed unit→target line + mode tag.
@@ -1724,6 +1753,44 @@ function GroundTruthMapInner({
                 </g>
               ))}
 
+            {weaponOverlays.decoys
+              .filter((d) => d.onPlot)
+              .map((d) => (
+                <g key={`nmkr-${d.id}`} opacity={d.active ? 1 : 0.45}>
+                  {uvHitsPlot(d.tip.u, d.tip.v) && (
+                    <>
+                      <circle
+                        cx={d.tip.x}
+                        cy={d.tip.y}
+                        r={d.active ? 7 : 5}
+                        fill="none"
+                        stroke={d.color}
+                        strokeWidth={1.25}
+                        strokeDasharray={d.active ? '3 2' : '2 3'}
+                      />
+                      <circle
+                        cx={d.tip.x}
+                        cy={d.tip.y}
+                        r={2.5}
+                        fill={d.color}
+                        stroke="#061a0e"
+                        strokeWidth={1}
+                      />
+                      <text
+                        className="map-plot-label"
+                        x={d.tip.x + 8}
+                        y={d.tip.y + 4}
+                        fill={d.color}
+                        fontSize={8}
+                        fontFamily="IBM Plex Mono, monospace"
+                      >
+                        {d.label}
+                      </text>
+                    </>
+                  )}
+                </g>
+              ))}
+
             {weaponOverlays.guns
               .filter((g) => g.onPlot)
               .map((g) => (
@@ -2038,8 +2105,8 @@ export const GroundTruthMap = memo(GroundTruthMapInner, (prev, next) => {
   if ((prev.showMovePrediction !== false) !== (next.showMovePrediction !== false)) return false;
   if (trailsSignature(prev.trails) !== trailsSignature(next.trails)) return false;
   if (
-    weaponsSignature(prev.torpedoes, prev.depthCharges, prev.detonations) !==
-    weaponsSignature(next.torpedoes, next.depthCharges, next.detonations)
+    weaponsSignature(prev.torpedoes, prev.depthCharges, prev.detonations, prev.noisemakers) !==
+    weaponsSignature(next.torpedoes, next.depthCharges, next.detonations, next.noisemakers)
   ) {
     return false;
   }

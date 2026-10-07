@@ -12,6 +12,7 @@ export function hasPendingOrders(orders: UnitOrders | undefined | null): boolean
     orders.fireTorpedo !== undefined ||
     orders.dropDepthCharges !== undefined ||
     orders.fireDeckGun !== undefined ||
+    orders.deployNoisemaker !== undefined ||
     orders.aircraftAttack !== undefined ||
     orders.vesselStanding !== undefined
   );
@@ -64,6 +65,12 @@ function formatDeckGunOrderSummary(
   return `GUN${salvo} aim ${formatCourseDegrees(fire.aimHeading)} · CRS ${formatCourseDegrees(fire.estimatedCourse)} · ${fire.estimatedSpeedKn.toFixed(1)}kn · ${fire.estimatedRangeNm.toFixed(2)}nm`;
 }
 
+function formatNoisemakerOrderSummary(
+  deploy: NonNullable<UnitOrders['deployNoisemaker']>,
+): string {
+  return `NMKR · SET ${formatDepthMeters(deploy.depthM)}`;
+}
+
 function formatAircraftAttackOrderSummary(
   attack: NonNullable<UnitOrders['aircraftAttack']>,
 ): string {
@@ -109,6 +116,9 @@ export function formatPendingOrdersSummary(orders: UnitOrders | undefined | null
   }
   if (orders!.fireDeckGun) {
     parts.push(formatDeckGunOrderSummary(orders!.fireDeckGun));
+  }
+  if (orders!.deployNoisemaker) {
+    parts.push(formatNoisemakerOrderSummary(orders!.deployNoisemaker));
   }
   if (orders!.aircraftAttack) {
     parts.push(formatAircraftAttackOrderSummary(orders!.aircraftAttack));

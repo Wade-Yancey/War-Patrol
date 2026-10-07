@@ -87,6 +87,7 @@ export type ControlsInstrumentTab =
   | 'torpedoes'
   | 'guns'
   | 'depth_charges'
+  | 'countermeasures'
   | 'damage';
 
 export type ControlsInstrumentTabDef = {
@@ -97,6 +98,7 @@ export type ControlsInstrumentTabDef = {
 /**
  * Ordered Controls CRT tabs for a hull class (museum demo: DD + fleet sub).
  * Mirrors Sensors’ per-instrument tabs (Radar / Sonar / …).
+ * Fleet sub includes Countermeasures (noisemaker deploy).
  */
 export function controlsInstrumentTabsForHull(
   hullClassOrType: HullClass | string | undefined,
@@ -115,6 +117,7 @@ export function controlsInstrumentTabsForHull(
     tabs.push({ id: 'dive', label: 'Dive Plane' });
     tabs.push({ id: 'torpedoes', label: 'Torpedoes' });
     tabs.push({ id: 'guns', label: 'Guns' });
+    tabs.push({ id: 'countermeasures', label: 'Countermeasures' });
   } else if (hullClass === 'Destroyer') {
     tabs.push({ id: 'guns', label: 'Guns' });
     tabs.push({ id: 'depth_charges', label: 'Depth charges' });

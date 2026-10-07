@@ -116,6 +116,9 @@ export const api = {
         estimatedSpeedKn: number;
         estimatedRangeNm: number;
       } | null;
+      deployNoisemaker?: {
+        depthM: number;
+      } | null;
     },
   ) =>
     request<{ ok: boolean; stateVersion: number }>(`/api/games/${gameId}/orders`, {
