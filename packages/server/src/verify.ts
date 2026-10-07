@@ -23,12 +23,14 @@ import {
   applyVesselStandingOrders,
   canOrderVesselStanding,
   formatVesselStandingModeTag,
+  isVesselStandingAttackMode,
   isVesselStandingTarget,
   normalizeVesselStandingMode,
   vesselAttackDepthChargePathCpaM,
   vesselAttackWeaponOrder,
   vesselEvadeZigzagCourse,
   vesselInterceptOrderedCourse,
+  vesselStandingAttackModesForClass,
   VESSEL_ATTACK_DC_RANGE_M,
   VESSEL_ATTACK_EOT,
   VESSEL_ATTACK_GUN_RANGE_NM,
@@ -235,9 +237,35 @@ async function main() {
   check('parseWallDuration mm:ss', parseWallDuration('3:30') === 210);
   check('snapWallDuration 30s', snapWallDuration(200, 30) === 210);
 
-  check('vessel standing modes normalize', normalizeVesselStandingMode('attack') === 'attack');
+  check(
+    'vessel standing legacy attack → guns',
+    normalizeVesselStandingMode('attack') === 'attack_guns',
+  );
+  check(
+    'vessel standing modes normalize dc',
+    normalizeVesselStandingMode('attack_dc') === 'attack_dc',
+  );
   check('vessel standing evade tag', formatVesselStandingModeTag('evade') === 'EVA');
-  check('vessel standing attack tag', formatVesselStandingModeTag('attack') === 'ATK');
+  check('vessel standing guns tag', formatVesselStandingModeTag('attack_guns') === 'GUN');
+  check('vessel standing dc tag', formatVesselStandingModeTag('attack_dc') === 'DC');
+  check(
+    'vessel standing torp tag',
+    formatVesselStandingModeTag('attack_torpedoes') === 'TORP',
+  );
+  check('vessel standing attack mode helper', isVesselStandingAttackMode('attack_dc'));
+  check(
+    'destroyer standing weapons are guns+dc',
+    vesselStandingAttackModesForClass('Destroyer').join(',') === 'attack_guns,attack_dc',
+  );
+  check(
+    'fleet sub standing weapons are guns+torp',
+    vesselStandingAttackModesForClass('Fleet Submarine', 'Submarine').join(',') ===
+      'attack_guns,attack_torpedoes',
+  );
+  check(
+    'merchant has no standing attack weapons',
+    vesselStandingAttackModesForClass('Merchant').length === 0,
+  );
   check(
     'vessel zigzag amplitude documented',
     VESSEL_EVADE_ZIGZAG_AMPLITUDE_DEG === 30,
@@ -306,7 +334,9 @@ async function main() {
       depthChargeLoad: 24,
       depthChargeAwaitingReload: false,
       depthChargeReloadTurnsRemaining: 0,
-      orders: { vesselStanding: { mode: 'attack' as const, targetUnitId: 'ss-cpa' } },
+      orders: {
+        vesselStanding: { mode: 'attack_dc' as const, targetUnitId: 'ss-cpa' },
+      },
     };
     const ssStub = {
       id: 'ss-cpa',
@@ -343,20 +373,36 @@ async function main() {
       ddStub as unknown as UnitState,
       ssStub as unknown as UnitState,
       {
+        weapon: 'dc',
         orderedCourse: 180,
         turnLengthSeconds: 180,
       },
     );
     check(
-      'attack auto-queues DC on path CPA (PD sub)',
+      'attack (DC) auto-queues DC on path CPA (PD sub)',
       Boolean(atkWeapons.dropDepthCharges),
       `weapons=${JSON.stringify(atkWeapons)}`,
     );
     check(
-      'attack DC depth setting tracks PD keel',
+      'attack (DC) depth setting tracks PD keel',
       atkWeapons.dropDepthCharges?.depthSettingM === PERISCOPE_DEPTH_M ||
         atkWeapons.dropDepthCharges?.depthSettingM === 20,
       `depthSetting=${atkWeapons.dropDepthCharges?.depthSettingM}`,
+    );
+    // Guns mode on same geometry must NOT fall back to DC.
+    const gunOnly = vesselAttackWeaponOrder(
+      ddStub as unknown as UnitState,
+      ssStub as unknown as UnitState,
+      {
+        weapon: 'guns',
+        orderedCourse: 180,
+        turnLengthSeconds: 180,
+      },
+    );
+    check(
+      'attack (guns) does not queue DC vs submerged sub',
+      !gunOnly.dropDepthCharges && !gunOnly.fireDeckGun,
+      `weapons=${JSON.stringify(gunOnly)}`,
     );
     const interceptApplied = applyVesselStandingOrders(
       [
@@ -379,7 +425,7 @@ async function main() {
     );
     const atkDd = attackApplied.find((u) => u.id === 'dd-cpa');
     check(
-      'applyVesselStandingOrders attack queues DC via path CPA',
+      'applyVesselStandingOrders attack_dc queues DC via path CPA',
       Boolean(atkDd?.orders.dropDepthCharges),
     );
   }
@@ -7340,21 +7386,89 @@ async function main() {
       `orderedCourse=${ddAfter1?.orderedCourse}`,
     );
 
-    // Attack — flank EOT + persist; far geometry should not auto-drop DC yet.
+    // Attack (DC) — flank EOT + persist; far geometry should not auto-drop DC yet.
     const orderAttack = await api(
       'POST',
       `/api/games/${vesId}/units/dd-101/orders`,
-      { vesselStanding: { mode: 'attack', targetUnitId: 'ss-212' } },
+      { vesselStanding: { mode: 'attack_dc', targetUnitId: 'ss-212' } },
       vesTok,
     );
-    check('queue destroyer attack', orderAttack.status === 200);
+    check('queue destroyer attack (DC)', orderAttack.status === 200);
     check(
-      'attack auto-rings ahead_flank',
+      'attack (DC) auto-rings ahead_flank',
       (orderAttack.json as { orders?: { eot?: string } }).orders?.eot === 'ahead_flank',
+    );
+    check(
+      'attack (DC) standing pending mode',
+      (orderAttack.json as { orders?: { vesselStanding?: { mode?: string } } }).orders
+        ?.vesselStanding?.mode === 'attack_dc',
+    );
+
+    // Guns-only order must not auto-drop DC on an ASW overhead pass.
+    await api(
+      'POST',
+      `/api/games/${vesId}/units/dd-101/orders`,
+      { vesselStanding: { mode: 'attack_guns', targetUnitId: 'ss-212' } },
+      vesTok,
     );
 
     // Overhead ASW pass: start ~2000 m north (outside turn-start 600 m gate) at
-    // flank, heading south over Gato — path CPA must trigger DC auto-drop.
+    // flank, heading south over Gato — path CPA must trigger DC only for attack_dc.
+    await api(
+      'PATCH',
+      `/api/games/${vesId}/units/ss-212`,
+      {
+        position: { lat: 34.4, lon: -120.0, depth: PERISCOPE_DEPTH_M },
+        heading: 0,
+        orderedCourse: 0,
+        speed: 3,
+        eot: 'ahead_1_3',
+      },
+      vesTok,
+    );
+    await api(
+      'PATCH',
+      `/api/games/${vesId}/units/dd-101`,
+      {
+        position: { lat: 34.418, lon: -120.0, depth: 0 },
+        heading: 180,
+        orderedCourse: 180,
+        speed: 36,
+        eot: 'ahead_flank',
+      },
+      vesTok,
+    );
+    // Confirm guns mode does not drop while overhead.
+    await api(
+      'POST',
+      `/api/games/${vesId}/units/dd-101/orders`,
+      { vesselStanding: { mode: 'attack_guns', targetUnitId: 'ss-212' } },
+      vesTok,
+    );
+    await api('POST', `/api/games/${vesId}/turn/lock`, {}, vesTok);
+    const resolveGuns = await api('POST', `/api/games/${vesId}/turn/resolve`, {}, vesTok);
+    check('resolve vessel attack (guns) turn', resolveGuns.status === 200);
+    const afterGuns = await api('GET', `/api/games/${vesId}/view`, undefined, vesTok);
+    const gunsView = afterGuns.json.view as {
+      units?: Array<{
+        id: string;
+        depthChargeLoad?: number;
+        orders?: { vesselStanding?: { mode?: string } };
+      }>;
+      combatLog?: Array<{ kind?: string }>;
+      depthCharges?: unknown[];
+    };
+    const ddGuns = gunsView.units?.find((u) => u.id === 'dd-101');
+    const gunsDcDrop = (gunsView.combatLog ?? []).some((e) => e.kind === 'depth_charge_drop');
+    check(
+      'attack (guns) does not drop DC on ASW overhead pass',
+      (ddGuns?.depthChargeLoad ?? 24) === 24 &&
+        (gunsView.depthCharges?.length ?? 0) === 0 &&
+        !gunsDcDrop,
+      `load=${ddGuns?.depthChargeLoad} dcTracks=${gunsView.depthCharges?.length} dropLog=${gunsDcDrop}`,
+    );
+
+    // Re-place for DC prosecute (guns resolve may have moved the hull).
     await api(
       'PATCH',
       `/api/games/${vesId}/units/ss-212`,
@@ -7382,12 +7496,12 @@ async function main() {
     await api(
       'POST',
       `/api/games/${vesId}/units/dd-101/orders`,
-      { vesselStanding: { mode: 'attack', targetUnitId: 'ss-212' } },
+      { vesselStanding: { mode: 'attack_dc', targetUnitId: 'ss-212' } },
       vesTok,
     );
     await api('POST', `/api/games/${vesId}/turn/lock`, {}, vesTok);
     const resolveAtk = await api('POST', `/api/games/${vesId}/turn/resolve`, {}, vesTok);
-    check('resolve vessel attack turn', resolveAtk.status === 200);
+    check('resolve vessel attack (DC) turn', resolveAtk.status === 200);
     const afterAtk = await api('GET', `/api/games/${vesId}/view`, undefined, vesTok);
     const atkView = afterAtk.json.view as {
       units?: Array<{
@@ -7401,20 +7515,41 @@ async function main() {
     const ddAtk = atkView.units?.find((u) => u.id === 'dd-101');
     const dcDropLog = (atkView.combatLog ?? []).some((e) => e.kind === 'depth_charge_drop');
     check(
-      'attack persists after weapon prosecute',
-      ddAtk?.orders?.vesselStanding?.mode === 'attack',
+      'attack (DC) persists after weapon prosecute',
+      ddAtk?.orders?.vesselStanding?.mode === 'attack_dc',
     );
     check(
-      'attack auto-dropped depth charges on path CPA overhead pass',
+      'attack (DC) auto-dropped depth charges on path CPA overhead pass',
       (ddAtk?.depthChargeLoad ?? 24) < 24 ||
         (atkView.depthCharges?.length ?? 0) > 0 ||
         dcDropLog,
       `load=${ddAtk?.depthChargeLoad} dcTracks=${atkView.depthCharges?.length} dropLog=${dcDropLog}`,
     );
     check(
-      'umpire combat log shows depth_charge_drop for Attack',
+      'umpire combat log shows depth_charge_drop for Attack (DC)',
       dcDropLog,
     );
+
+    // Sub torpedo mode available; merchant rejects DC.
+    const orderSubTorp = await api(
+      'POST',
+      `/api/games/${vesId}/units/ss-212/orders`,
+      { vesselStanding: { mode: 'attack_torpedoes', targetUnitId: 'dd-101' } },
+      vesTok,
+    );
+    check('queue sub attack (torpedoes)', orderSubTorp.status === 200);
+    check(
+      'sub attack (torpedoes) pending',
+      (orderSubTorp.json as { orders?: { vesselStanding?: { mode?: string } } }).orders
+        ?.vesselStanding?.mode === 'attack_torpedoes',
+    );
+    const subRejectDc = await api(
+      'POST',
+      `/api/games/${vesId}/units/ss-212/orders`,
+      { vesselStanding: { mode: 'attack_dc', targetUnitId: 'dd-101' } },
+      vesTok,
+    );
+    check('sub rejects attack (DC)', subRejectDc.status === 400);
 
     // Evade zigzag — leg alternates across resolves.
     const orderEvade = await api(

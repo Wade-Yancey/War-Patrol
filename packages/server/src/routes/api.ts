@@ -484,11 +484,22 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           : vesselRaw && typeof vesselRaw === 'object'
             ? {
                 mode:
+                  vesselRaw.mode === 'attack_guns' ||
+                  vesselRaw.mode === 'guns' ||
                   vesselRaw.mode === 'attack'
-                    ? ('attack' as const)
-                    : vesselRaw.mode === 'evade'
-                      ? ('evade' as const)
-                      : ('intercept' as const),
+                    ? ('attack_guns' as const)
+                    : vesselRaw.mode === 'attack_dc' ||
+                        vesselRaw.mode === 'dc' ||
+                        vesselRaw.mode === 'depth_charges'
+                      ? ('attack_dc' as const)
+                      : vesselRaw.mode === 'attack_torpedoes' ||
+                          vesselRaw.mode === 'torpedoes' ||
+                          vesselRaw.mode === 'torpedo' ||
+                          vesselRaw.mode === 'torp'
+                        ? ('attack_torpedoes' as const)
+                        : vesselRaw.mode === 'evade'
+                          ? ('evade' as const)
+                          : ('intercept' as const),
                 ...(vesselRaw.targetUnitId != null
                   ? { targetUnitId: String(vesselRaw.targetUnitId) }
                   : {}),

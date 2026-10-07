@@ -21,6 +21,8 @@ import {
   editMaxSpeedForClass,
   formatAircraftAttackModeLabel,
   formatVesselStandingModeLabel,
+  isVesselStandingAttackMode,
+  vesselStandingModesForUnit,
   formatCourseDegrees,
   formatGameClock,
   formatWallDuration,
@@ -37,7 +39,6 @@ import {
   type SubsystemState,
   type UmpireView,
   type UnitCondition,
-  type VesselStandingMode,
   type VesselType,
 } from '@war-patrol/shared';
 import { api } from '../api/client';
@@ -1534,10 +1535,11 @@ export function UmpirePage() {
                         <div className="unit-edit-group">
                           <h3>Standing orders</h3>
                           <p className="muted" style={{ margin: '0 0 0.5rem', fontSize: '0.75rem' }}>
-                            Multi-turn auto-steer — like aircraft attack runs. Intercept closes at
-                            full; Attack prosecutes at flank and auto-queues weapons in range
-                            (destroyer ASW DC ≤ 600 m / deck gun ≤ 4 nm / sub torpedo ≤ 2.5 nm).
-                            Evade starts a zigzag (±30° from base course, alternating each turn).
+                            Multi-turn auto-steer — like aircraft bomb vs strafe. Intercept closes
+                            at full; Attack (guns / DC / torpedoes) prosecutes at flank and
+                            auto-queues that weapon only when in range (guns ≤ 4 nm / DC ≤ 600 m
+                            path CPA / torpedo ≤ 2.5 nm). Only weapons the hull class has are
+                            shown. Evade zigzags (±30° from base course, alternating each turn).
                             Optional evade target = base course away from that threat. Clears on
                             Clear, or when intercept/attack target is gone.
                           </p>
@@ -1579,41 +1581,48 @@ export function UmpirePage() {
                             </p>
                           )}
                           <div className="control-actions">
-                            {(
-                              [
-                                { mode: 'intercept' as VesselStandingMode, label: 'Intercept' },
-                                { mode: 'attack' as VesselStandingMode, label: 'Attack' },
-                                { mode: 'evade' as VesselStandingMode, label: 'Evade' },
-                              ] as const
-                            ).map(({ mode, label }) => (
-                              <button
-                                key={mode}
-                                className="primary"
-                                type="button"
-                                disabled={
-                                  busy ||
-                                  !isOpen ||
-                                  ((mode === 'intercept' || mode === 'attack') &&
-                                    !vesselStandingTargetId)
-                                }
-                                onClick={() =>
-                                  void run(
-                                    () =>
-                                      api.umpireUnitOrders(gameId, token, selectedUnit.id, {
-                                        vesselStanding: {
-                                          mode,
-                                          ...(vesselStandingTargetId
-                                            ? { targetUnitId: vesselStandingTargetId }
-                                            : {}),
-                                        },
-                                      }),
-                                    `${label} ordered`,
-                                  )
-                                }
-                              >
-                                {label}
-                              </button>
-                            ))}
+                            {vesselStandingModesForUnit(selectedUnit).map((mode) => {
+                              const label =
+                                mode === 'intercept'
+                                  ? 'Intercept'
+                                  : mode === 'attack_guns'
+                                    ? 'Attack (guns)'
+                                    : mode === 'attack_dc'
+                                      ? 'Attack (DC)'
+                                      : mode === 'attack_torpedoes'
+                                        ? 'Attack (torpedoes)'
+                                        : 'Evade';
+                              const needsTarget =
+                                mode === 'intercept' || isVesselStandingAttackMode(mode);
+                              return (
+                                <button
+                                  key={mode}
+                                  className="primary"
+                                  type="button"
+                                  disabled={
+                                    busy ||
+                                    !isOpen ||
+                                    (needsTarget && !vesselStandingTargetId)
+                                  }
+                                  onClick={() =>
+                                    void run(
+                                      () =>
+                                        api.umpireUnitOrders(gameId, token, selectedUnit.id, {
+                                          vesselStanding: {
+                                            mode,
+                                            ...(vesselStandingTargetId
+                                              ? { targetUnitId: vesselStandingTargetId }
+                                              : {}),
+                                          },
+                                        }),
+                                      `${label} ordered`,
+                                    )
+                                  }
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })}
                             {selectedUnit.orders?.vesselStanding && (
                               <button
                                 type="button"

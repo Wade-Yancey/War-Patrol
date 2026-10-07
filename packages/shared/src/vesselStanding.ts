@@ -1,6 +1,7 @@
 /**
- * Umpire vessel standing orders — intercept / attack / evade (zigzag).
+ * Umpire vessel standing orders — intercept / weapon attack / evade (zigzag).
  * Ships & submarines only; aircraft keep their own attack / loiter path.
+ * Attack is weapon-specific (guns / DC / torpedoes) — umpire picks the weapon.
  */
 import {
   DEFAULT_TURN_LENGTH_SECONDS,
@@ -16,6 +17,7 @@ import {
   DECK_GUN_MAX_RANGE_NM,
   depthChargeCountFromOrder,
   depthChargePatternForCount,
+  isDeckGunHull,
   isDeckGunTarget,
   isDestroyerDcHull,
   isFleetSubTorpedoHull,
@@ -27,6 +29,7 @@ import {
 import type {
   DepthChargeDropOrder,
   DeckGunFireOrder,
+  HullClass,
   LatLonDepth,
   TorpedoFireOrder,
   TorpedoRoomId,
@@ -34,6 +37,7 @@ import type {
   UnitState,
   VesselStandingMode,
   VesselStandingOrder,
+  VesselType,
 } from './types.js';
 
 /** Preferred EOT while intercepting (standard ahead — close without flank). */
@@ -52,19 +56,22 @@ export const VESSEL_EVADE_EOT = 'ahead_full' as const;
 export const VESSEL_EVADE_ZIGZAG_AMPLITUDE_DEG = 30;
 
 /**
- * Destroyer ASW auto-drop gate (horizontal meters) for standing Attack.
+ * Destroyer ASW auto-drop gate (horizontal meters) for Attack (DC).
  * Measured as **CPA along this turn's firer move segment** (not only the
  * turn-start plot). Flank simple-pursuit often overshoots: start/end can sit
  * outside this radius while the along-track DC trail still passes over the
- * sub — gating on path CPA is what makes Attack actually drop.
+ * sub — gating on path CPA is what makes Attack (DC) actually drop.
  */
 export const VESSEL_ATTACK_DC_RANGE_M = 600;
 
-/** Deck-gun auto-fire gate (nm) for standing Attack — inside max gun range. */
+/** Deck-gun auto-fire gate (nm) for Attack (guns) — inside max gun range. */
 export const VESSEL_ATTACK_GUN_RANGE_NM = 4;
 
-/** Torpedo auto-fire gate (nm) for standing Attack — inside fish max run. */
+/** Torpedo auto-fire gate (nm) for Attack (torpedoes) — inside fish max run. */
 export const VESSEL_ATTACK_TORP_RANGE_NM = Math.min(2.5, TORPEDO_MAX_RUN_NM);
+
+/** Weapon keyed by standing attack mode (excludes intercept / evade). */
+export type VesselStandingWeapon = 'guns' | 'dc' | 'torpedoes';
 
 export function canOrderVesselStanding(
   unit: Pick<UnitState, 'type' | 'condition'>,
@@ -83,21 +90,94 @@ export function isVesselStandingTarget(
   return true;
 }
 
+/** True when mode is one of the weapon-specific Attack orders. */
+export function isVesselStandingAttackMode(mode: VesselStandingMode): boolean {
+  return (
+    mode === 'attack_guns' || mode === 'attack_dc' || mode === 'attack_torpedoes'
+  );
+}
+
+export function vesselStandingWeaponForMode(
+  mode: VesselStandingMode,
+): VesselStandingWeapon | null {
+  if (mode === 'attack_guns') return 'guns';
+  if (mode === 'attack_dc') return 'dc';
+  if (mode === 'attack_torpedoes') return 'torpedoes';
+  return null;
+}
+
+/**
+ * Class-appropriate Attack buttons (like aircraft bomb vs strafe).
+ * Destroyers: guns + DC. Fleet subs: guns + torpedoes. Others: none.
+ */
+export function vesselStandingAttackModesForClass(
+  hullClass: HullClass,
+  vesselType?: VesselType,
+): Extract<
+  VesselStandingMode,
+  'attack_guns' | 'attack_dc' | 'attack_torpedoes'
+>[] {
+  const stub = { class: hullClass, type: vesselType ?? 'Ship' } as const;
+  const modes: Extract<
+    VesselStandingMode,
+    'attack_guns' | 'attack_dc' | 'attack_torpedoes'
+  >[] = [];
+  if (isDeckGunHull(stub)) modes.push('attack_guns');
+  if (isDestroyerDcHull(stub)) modes.push('attack_dc');
+  if (isFleetSubTorpedoHull(stub)) modes.push('attack_torpedoes');
+  return modes;
+}
+
+/** Full standing-order button list for a hull (Intercept + weapons + Evade). */
+export function vesselStandingModesForUnit(
+  unit: Pick<UnitState, 'class' | 'type'>,
+): VesselStandingMode[] {
+  return [
+    'intercept',
+    ...vesselStandingAttackModesForClass(unit.class, unit.type),
+    'evade',
+  ];
+}
+
+export function isVesselStandingModeAvailable(
+  unit: Pick<UnitState, 'class' | 'type'>,
+  mode: VesselStandingMode,
+): boolean {
+  return vesselStandingModesForUnit(unit).includes(mode);
+}
+
 export function normalizeVesselStandingMode(raw: unknown): VesselStandingMode {
-  if (raw === 'attack') return 'attack';
+  if (raw === 'attack_guns' || raw === 'guns') return 'attack_guns';
+  if (raw === 'attack_dc' || raw === 'dc' || raw === 'depth_charges') {
+    return 'attack_dc';
+  }
+  if (
+    raw === 'attack_torpedoes' ||
+    raw === 'torpedoes' ||
+    raw === 'torpedo' ||
+    raw === 'torp'
+  ) {
+    return 'attack_torpedoes';
+  }
+  // Legacy generic Attack (#201) → guns (UI no longer offers it).
+  if (raw === 'attack') return 'attack_guns';
   if (raw === 'evade') return 'evade';
   return 'intercept';
 }
 
 export function formatVesselStandingModeLabel(mode: VesselStandingMode): string {
-  if (mode === 'attack') return 'attack';
+  if (mode === 'attack_guns') return 'attack (guns)';
+  if (mode === 'attack_dc') return 'attack (DC)';
+  if (mode === 'attack_torpedoes') return 'attack (torpedoes)';
   if (mode === 'evade') return 'evade';
   return 'intercept';
 }
 
-/** Compact GT / pending-order tag (ATK / EVA / INT). */
+/** Compact GT / pending-order tag (INT / GUN / DC / TORP / EVA). */
 export function formatVesselStandingModeTag(mode: VesselStandingMode): string {
-  if (mode === 'attack') return 'ATK';
+  if (mode === 'attack_guns') return 'GUN';
+  if (mode === 'attack_dc') return 'DC';
+  if (mode === 'attack_torpedoes') return 'TORP';
   if (mode === 'evade') return 'EVA';
   return 'INT';
 }
@@ -196,7 +276,7 @@ export function estimateVesselStandingMoveEnd(
 
 /**
  * Horizontal CPA (meters) of the firer's this-turn move segment to the target
- * plot. Used for standing Attack DC auto-queue.
+ * plot. Used for standing Attack (DC) auto-queue.
  */
 export function vesselAttackDepthChargePathCpaM(
   firer: Pick<UnitState, 'position' | 'heading' | 'speed' | 'turnRate'>,
@@ -297,40 +377,47 @@ function buildTruthTorpedoOrder(
 }
 
 /**
- * Auto-queue one weapon order for standing Attack when in engagement range.
- * Priority: destroyer ASW DC → deck gun (surface) → sub torpedo.
- * Uses ground-truth aim (umpire NPC prosecute — mirrors aircraft CPA truth).
+ * Auto-queue one weapon order for a standing Attack when in engagement range.
+ * Prosecutes **only** the requested weapon (guns / DC / torpedoes) — no
+ * priority fallback across weapons. Uses ground-truth aim (umpire NPC).
  * DC gate uses path CPA along this turn's move (see {@link VESSEL_ATTACK_DC_RANGE_M}).
  */
 export function vesselAttackWeaponOrder(
   firer: UnitState,
   target: UnitState,
-  opts?: { orderedCourse?: number; turnLengthSeconds?: number },
+  opts: {
+    weapon: VesselStandingWeapon;
+    orderedCourse?: number;
+    turnLengthSeconds?: number;
+  },
 ): Partial<Pick<UnitOrders, 'fireTorpedo' | 'dropDepthCharges' | 'fireDeckGun'>> {
   if (hasOneShotWeaponOrder(firer.orders)) return {};
 
   const course =
-    typeof opts?.orderedCourse === 'number'
+    typeof opts.orderedCourse === 'number'
       ? opts.orderedCourse
       : vesselInterceptOrderedCourse(firer.position, target.position);
-  const turnLengthSeconds = opts?.turnLengthSeconds ?? DEFAULT_TURN_LENGTH_SECONDS;
+  const turnLengthSeconds = opts.turnLengthSeconds ?? DEFAULT_TURN_LENGTH_SECONDS;
 
-  const dc = buildTruthDepthChargeOrder(firer, target, course, turnLengthSeconds);
-  if (dc) return { dropDepthCharges: dc };
-
-  const gun = buildTruthDeckGunOrder(firer, target);
-  if (gun) return { fireDeckGun: gun };
-
-  const torp = buildTruthTorpedoOrder(firer, target);
-  if (torp) return { fireTorpedo: torp };
-
+  if (opts.weapon === 'dc') {
+    const dc = buildTruthDepthChargeOrder(firer, target, course, turnLengthSeconds);
+    return dc ? { dropDepthCharges: dc } : {};
+  }
+  if (opts.weapon === 'guns') {
+    const gun = buildTruthDeckGunOrder(firer, target);
+    return gun ? { fireDeckGun: gun } : {};
+  }
+  if (opts.weapon === 'torpedoes') {
+    const torp = buildTruthTorpedoOrder(firer, target);
+    return torp ? { fireTorpedo: torp } : {};
+  }
   return {};
 }
 
 /**
  * Inject course (+ preferred EOT when unset) for ships/subs with vesselStanding.
  * Clears the order when the required target is gone / invalid.
- * Attack may also queue a one-shot weapon order when in engage range.
+ * Attack modes may also queue that weapon's one-shot order when in engage range.
  * Evade advances zigzag leg each call (period 2 turns).
  *
  * @param turnLengthSeconds In-game seconds for this resolve — used by Attack DC
@@ -357,9 +444,19 @@ export function applyVesselStandingOrders(
       return { ...unit, orders: rest };
     }
 
+    // Drop weapon modes the hull cannot employ (e.g. legacy Attack on a merchant).
+    if (
+      isVesselStandingAttackMode(standing.mode) &&
+      !isVesselStandingModeAvailable(unit, standing.mode)
+    ) {
+      const { vesselStanding: _v, ...rest } = unit.orders;
+      return { ...unit, orders: rest };
+    }
+
     const targetId = standing.targetUnitId?.trim() || '';
     const target = targetId ? byId.get(targetId) : undefined;
-    const needsTarget = standing.mode === 'intercept' || standing.mode === 'attack';
+    const needsTarget =
+      standing.mode === 'intercept' || isVesselStandingAttackMode(standing.mode);
 
     if (needsTarget && !isVesselStandingTarget(target)) {
       const { vesselStanding: _v, ...rest } = unit.orders;
@@ -391,13 +488,15 @@ export function applyVesselStandingOrders(
       return { ...unit, orders: nextOrders };
     }
 
-    // intercept / attack — target validated above
+    // intercept / attack_* — target validated above
     const course = vesselInterceptOrderedCourse(unit.position, target!.position);
-    const preferredEot =
-      standing.mode === 'attack' ? VESSEL_ATTACK_EOT : VESSEL_INTERCEPT_EOT;
+    const attacking = isVesselStandingAttackMode(standing.mode);
+    const preferredEot = attacking ? VESSEL_ATTACK_EOT : VESSEL_INTERCEPT_EOT;
+    const weapon = vesselStandingWeaponForMode(standing.mode);
     const weaponPatch =
-      standing.mode === 'attack'
+      weapon != null
         ? vesselAttackWeaponOrder(unit, target!, {
+            weapon,
             orderedCourse: course,
             turnLengthSeconds: turnLen,
           })
