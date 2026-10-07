@@ -186,3 +186,22 @@ export const VESSEL_SINKING_TURNS = 3;
  * Crude playable stub — same rate up and down (emergency blow is just ordered 0 m).
  */
 export const SUBMARINE_DEPTH_RATE_M_PER_MIN = 15;
+
+/**
+ * Fleet-sub noisemaker countermeasure — resolved turns between deploys.
+ * Default 3 → ~9 in-game minutes at the default 3-min turn length.
+ */
+export const NOISEMAKER_COOLDOWN_TURNS = 3;
+
+/**
+ * Turns a deployed noisemaker stays acoustically active before going silent.
+ * Default 8 → ~24 in-game minutes at the default 3-min turn length.
+ */
+export const NOISEMAKER_LIFETIME_TURNS = 8;
+
+/**
+ * Relative source loudness vs a typical underway propeller contact (1.0 = hull).
+ * Hydrophone mix multiplies range×beam gain by this (capped at 1.0).
+ * ~2.5× makes a stationary decoy compete with a nearby cruising hull.
+ */
+export const NOISEMAKER_SOURCE_LEVEL = 2.5;

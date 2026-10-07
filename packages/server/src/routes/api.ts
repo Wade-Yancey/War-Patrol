@@ -382,6 +382,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         estimatedRangeNm: number;
         shotCount?: number;
       } | null;
+      deployNoisemaker?: {
+        depthM: number;
+      } | null;
     };
   }>('/api/games/:gameId/orders', async (request, reply) => {
     try {

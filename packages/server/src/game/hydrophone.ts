@@ -1,4 +1,5 @@
 import {
+  activeNoisemakers,
   bearingRangeNm,
   canUseSensorStation,
   DEPTH_CHARGE_HYDROPHONE_RANGE_NM,
@@ -6,6 +7,7 @@ import {
   isActiveSonarPinging,
   isHydrophoneDepthOk,
   isHydrophoneEmitter,
+  noisemakerSourceLevel,
   resolveHydrophoneMaxRangeNm,
   type GameSave,
   type HydrophoneContact,
@@ -108,6 +110,22 @@ export function buildHydrophoneContacts(own: UnitState, save: GameSave): Hydroph
       bearing: Math.round(bearing * 10) / 10,
       rangeNm: Math.round(rangeNm * 100) / 100,
       kind: 'depth_charge',
+    });
+  }
+
+  // Stationary noisemaker decoys — loud continuous emitters. FoW paints them as
+  // propeller contacts (no decoy identity leak); sourceLevel makes them compete
+  // with underway hulls on the listen needle.
+  const nmLevel = noisemakerSourceLevel();
+  for (const nm of activeNoisemakers(save.noisemakers)) {
+    const { bearing, rangeNm } = bearingRangeNm(own.position, nm.position);
+    if (rangeNm > maxRangeNm || rangeNm <= 0) continue;
+    contacts.push({
+      id: `h-${opaqueTrackId([own.id, nm.id, 'hydro', 'nmkr'])}`,
+      bearing: Math.round(bearing * 10) / 10,
+      rangeNm: Math.round(rangeNm * 100) / 100,
+      kind: 'propeller',
+      sourceLevel: nmLevel,
     });
   }
 

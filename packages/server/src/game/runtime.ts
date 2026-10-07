@@ -418,6 +418,7 @@ function normalizeSnapshot(snap: GameSave['history'][number], fallbackClock: num
     units: snap.units.map((u) => normalizeUnit(structuredClone(u))),
     torpedoes: snap.torpedoes ?? [],
     depthCharges: snap.depthCharges ?? [],
+    noisemakers: snap.noisemakers ?? [],
   };
 }
 
@@ -441,6 +442,7 @@ function normalizeSave(save: GameSave): GameSave {
   const history = (save.history ?? []).map((h) => normalizeSnapshot(h, gameTimeSeconds));
   const torpedoes = save.torpedoes ?? [];
   const depthCharges = save.depthCharges ?? [];
+  const noisemakers = save.noisemakers ?? [];
   let openingSnapshot: TurnSnapshot | undefined = save.openingSnapshot
     ? normalizeSnapshot(save.openingSnapshot, gameTimeSeconds)
     : undefined;
@@ -452,6 +454,7 @@ function normalizeSave(save: GameSave): GameSave {
       units,
       torpedoes,
       depthCharges,
+      noisemakers,
       history,
     });
   }
@@ -463,6 +466,7 @@ function normalizeSave(save: GameSave): GameSave {
     units,
     torpedoes,
     depthCharges,
+    noisemakers,
     recentDetonations: save.recentDetonations ?? [],
     combatLog: save.combatLog ?? [],
     formations: reconcileFormations(save.formations, units),
@@ -573,6 +577,7 @@ export class GameRuntime {
       ),
       torpedoes: [],
       depthCharges: [],
+      noisemakers: [],
       recentDetonations: [],
       combatLog: [],
       history: [],
@@ -725,6 +730,7 @@ export class GameRuntime {
       fireTorpedo?: import('@war-patrol/shared').TorpedoFireOrder | null;
       dropDepthCharges?: import('@war-patrol/shared').DepthChargeDropOrder | null;
       fireDeckGun?: import('@war-patrol/shared').DeckGunFireOrder | null;
+      deployNoisemaker?: import('@war-patrol/shared').NoisemakerDeployOrder | null;
     },
   ): Promise<GameSave> {
     return this.mutate(gameId, (save) => {
@@ -883,6 +889,33 @@ export class GameRuntime {
         }
         // Fresh order supersedes any earlier blocked-shot notice.
         delete unit.deckGunFireBlock;
+      }
+      if (patch.deployNoisemaker !== undefined && patch.deployNoisemaker !== null) {
+        if (!station.capabilities.includes('weapons') && !station.capabilities.includes('torpedo')) {
+          throw Object.assign(new Error('Station cannot deploy countermeasures'), {
+            statusCode: 403,
+          });
+        }
+        if (unit.type !== 'Submarine') {
+          throw Object.assign(new Error('Only submarines can deploy noisemakers'), {
+            statusCode: 400,
+          });
+        }
+        if (unit.condition === 'sunk' || unit.condition === 'sinking') {
+          throw Object.assign(new Error('Hull lost — cannot deploy noisemaker'), {
+            statusCode: 400,
+          });
+        }
+        if ((unit.noisemakerCooldownTurnsRemaining ?? 0) > 0) {
+          throw Object.assign(
+            new Error(
+              `Noisemaker cooling down — ${unit.noisemakerCooldownTurnsRemaining} turn${
+                unit.noisemakerCooldownTurnsRemaining === 1 ? '' : 's'
+              } left`,
+            ),
+            { statusCode: 400 },
+          );
+        }
       }
 
       const normalizedPatch = {

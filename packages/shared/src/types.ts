@@ -226,6 +226,26 @@ export interface TorpedoArcBlock {
   ownHeadingDeg: number;
 }
 
+/** Pending noisemaker deploy for the current turn (fleet-sub Controls · Countermeasures). */
+export interface NoisemakerDeployOrder {
+  /** Ordered deploy depth meters (positive down) — stationary after resolve. */
+  depthM: number;
+}
+
+/** Stationary acoustic decoy ejected by a fleet submarine. */
+export type NoisemakerStatus = 'active' | 'spent';
+
+export interface NoisemakerTrack {
+  id: string;
+  deployerUnitId: string;
+  /** Fixed lat/lon/depth after deploy — does not follow the sub. */
+  position: LatLonDepth;
+  deployedTurn: number;
+  /** First turn number at which the decoy is silent (`status → spent`). */
+  expiresTurn: number;
+  status: NoisemakerStatus;
+}
+
 /** Pending depth-charge drop for the current turn (destroyer Controls). */
 export interface DepthChargeDropOrder {
   /**
@@ -346,6 +366,8 @@ export interface UnitOrders {
   dropDepthCharges?: DepthChargeDropOrder;
   /** Fire the deck gun this resolve (consumes one shell per shot in the salvo). */
   fireDeckGun?: DeckGunFireOrder;
+  /** Deploy a stationary noisemaker this resolve (fleet sub; subject to cooldown). */
+  deployNoisemaker?: NoisemakerDeployOrder;
   /**
    * Standing umpire aircraft attack (intercept / strafe / bombing).
    * Persists across resolves: auto-steers toward the target each turn and
@@ -658,6 +680,11 @@ export interface UnitState {
   /** Resolved turns left on an in-progress DC rack reload. */
   depthChargeReloadTurnsRemaining: number;
   /**
+   * Resolved turns left before the next noisemaker may be deployed (fleet subs).
+   * 0 = ready. Armed to {@link NOISEMAKER_COOLDOWN_TURNS} on a successful deploy.
+   */
+  noisemakerCooldownTurnsRemaining?: number;
+  /**
    * Ready bombs remaining (aircraft). Museum stub capacity 1; consumed on a
    * bombing-run resolve. Intercept / strafe use guns and do not consume.
    * 0 for non-aircraft. Umpire rearm restores a full load.
@@ -859,6 +886,8 @@ export interface TurnSnapshot {
    */
   torpedoes?: TorpedoTrack[];
   depthCharges?: DepthChargeTrack[];
+  /** Stationary noisemaker decoys as of end-of-resolve (umpire AAR scrubber). */
+  noisemakers?: NoisemakerTrack[];
   /**
    * Umpire-authored note for this turn, shown alongside the resolve in the
    * After-Action Report. One note per turn (edit overwrites); optional.
@@ -911,6 +940,8 @@ export interface GameSave {
   /** In-flight / sinking weapons (umpire ground truth + resolve tracking). */
   torpedoes: TorpedoTrack[];
   depthCharges: DepthChargeTrack[];
+  /** Stationary noisemaker decoys (fleet-sub countermeasures; umpire GT). */
+  noisemakers: NoisemakerTrack[];
   /** Recent depth-charge detonations for hydrophone / Controls audio FoW.
    * Pruned after a few turns.
    */
@@ -942,6 +973,7 @@ export type CombatLogKind =
   | 'deck_gun_fire'
   | 'deck_gun_hit'
   | 'deck_gun_miss'
+  | 'noisemaker_deploy'
   | 'unit_sunk'
   | 'hull_implosion'
   | 'subsystem_casualty'
@@ -1066,6 +1098,8 @@ export interface UmpireView {
   /** Full-truth weapon tracks (running fish + sinking/detonated charges). */
   torpedoes: TorpedoTrack[];
   depthCharges: DepthChargeTrack[];
+  /** Full-truth stationary noisemaker decoys. */
+  noisemakers: NoisemakerTrack[];
   recentDetonations: WeaponDetonationEvent[];
   /** Chronological action / damage log (umpire only). */
   combatLog: CombatLogEntry[];
@@ -1196,6 +1230,7 @@ export interface VesselView {
     | 'depthChargeLoad'
     | 'depthChargeAwaitingReload'
     | 'depthChargeReloadTurnsRemaining'
+    | 'noisemakerCooldownTurnsRemaining'
     | 'deckGunLoad'
     | 'deckGunAwaitingReload'
     | 'deckGunReloadTurnsRemaining'
@@ -1213,6 +1248,8 @@ export interface VesselView {
    */
   ownTorpedoes?: TorpedoTrack[];
   ownDepthCharges?: DepthChargeTrack[];
+  /** Own-side noisemaker decoys only (deployed by this hull) — never enemy GT. */
+  ownNoisemakers?: NoisemakerTrack[];
   /**
    * Lookout / periscope FoW — possible torpedo wake directions (not identity).
    * Only on stations with `lookout` capability.
@@ -1334,10 +1371,16 @@ export interface HydrophoneContact {
   /**
    * Emitter class for audio mixing:
    * - `propeller` — continuous underwater noise from an underway hull
+   *   (also used for noisemaker decoys — FoW does not reveal decoy identity)
    * - `active_sonar_ping` — intermittent ping from a destroyer with search sonar ON
    * - `depth_charge` — one-shot detonation cue (recent DC explosion in hearing range)
    */
   kind: 'propeller' | 'active_sonar_ping' | 'depth_charge';
+  /**
+   * Relative source loudness (default 1). Noisemakers use {@link NOISEMAKER_SOURCE_LEVEL}.
+   * FoW-safe — intensity only, not identity.
+   */
+  sourceLevel?: number;
 }
 
 /**

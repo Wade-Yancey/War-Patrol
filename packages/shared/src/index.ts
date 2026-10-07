@@ -8,6 +8,7 @@ export * from './dive.js';
 export * from './radar.js';
 export * from './scopeContactLabels.js';
 export * from './hydrophone.js';
+export * from './noisemaker.js';
 export * from './activeSonar.js';
 export * from './periscope.js';
 export * from './contactBook.js';

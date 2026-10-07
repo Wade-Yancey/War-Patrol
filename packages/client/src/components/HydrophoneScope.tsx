@@ -257,7 +257,12 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
         voice = { id: c.id, source, gain };
         voicesRef.current.set(c.id, voice);
       }
-      const target = hydrophoneContactGain(c.rangeNm, bearing, c.bearing);
+      const target = hydrophoneContactGain(
+        c.rangeNm,
+        bearing,
+        c.bearing,
+        c.sourceLevel ?? 1,
+      );
       const now = ctx.currentTime;
       voice.gain.gain.cancelScheduledValues(now);
       voice.gain.gain.setTargetAtTime(target, now, 0.04);

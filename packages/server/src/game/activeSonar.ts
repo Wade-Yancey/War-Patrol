@@ -1,6 +1,7 @@
 import {
   RADAR_SIGNATURE_RANGE_FACTOR,
   RADAR_SIGNATURE_STRENGTH,
+  activeNoisemakers,
   bearingRangeNm,
   canUseSensorStation,
   coarsenActiveSonarDepthM,
@@ -103,6 +104,32 @@ export function buildActiveSonarContacts(own: UnitState, save: GameSave): Active
       domain: radarContactDomain(other),
       courseDeg: coarsenPeriscopeCourseDeg(other.heading),
       estimatedDepthM: coarsenActiveSonarDepthM(other.position.depth),
+    });
+  }
+
+  // Stationary noisemaker decoys paint as anonymous small submerged echoes —
+  // attract/distract ASW without revealing decoy identity (Contact N only).
+  const decoySignature: RadarSignature = 'small';
+  const decoyDetect = maxRangeNm * RADAR_SIGNATURE_RANGE_FACTOR[decoySignature];
+  for (const nm of activeNoisemakers(save.noisemakers)) {
+    const { bearing, rangeNm } = bearingRangeNm(own.position, nm.position);
+    if (rangeNm > decoyDetect || rangeNm <= 0) continue;
+    if (!isInsideActiveSonarCone(own.heading, bearing, halfAngleDeg)) continue;
+    const rangeFactor = Math.max(0, 1 - rangeNm / decoyDetect);
+    const strength = Math.min(
+      1,
+      Math.max(0.12, rangeFactor * RADAR_SIGNATURE_STRENGTH[decoySignature]),
+    );
+    const trackKey = `nmkr:${nm.id}`;
+    contacts.push({
+      id: `s-${opaqueTrackId([own.id, nm.id, 'sonar', 'nmkr'])}`,
+      labelN: ensureContactLabel(own, trackKey),
+      bearing: Math.round(bearing * 10) / 10,
+      rangeNm: Math.round(rangeNm * 100) / 100,
+      strength: Math.round(strength * 100) / 100,
+      signature: decoySignature,
+      domain: 'surface',
+      estimatedDepthM: coarsenActiveSonarDepthM(nm.position.depth),
     });
   }
 

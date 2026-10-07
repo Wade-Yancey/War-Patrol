@@ -22,6 +22,7 @@ import {
   type DepthChargeDropOrder,
   type DeckGunFireOrder,
   type EotSetting,
+  type NoisemakerDeployOrder,
   type TorpedoFireOrder,
   type VesselView,
 } from '@war-patrol/shared';
@@ -42,6 +43,7 @@ import { ActiveSonarScope } from '../components/ActiveSonarScope';
 import { TorpedoCalculator } from '../components/TorpedoCalculator';
 import { DepthChargeControls } from '../components/DepthChargeControls';
 import { DeckGunControls } from '../components/DeckGunControls';
+import { CountermeasuresControls } from '../components/CountermeasuresControls';
 import { DamageReportPanel } from '../components/DamageReportPanel';
 import { useAudioSyncedDamageReport } from '../hooks/useAudioSyncedDamageReport';
 import { resolveSunkCause, SunkModal } from '../components/SunkModal';
@@ -184,6 +186,9 @@ export function StationPage() {
     (vessel?.unit.class === 'Destroyer' ||
       vessel?.unit.class === 'Fleet Submarine' ||
       vessel?.unit.type === 'Submarine');
+  const canCountermeasures =
+    canWeapons &&
+    (vessel?.unit.class === 'Fleet Submarine' || vessel?.unit.type === 'Submarine');
   const controlsTabs = useMemo(
     () => controlsInstrumentTabsForHull(vessel?.unit.class ?? vessel?.unit.type),
     [vessel?.unit.class, vessel?.unit.type],
@@ -961,6 +966,7 @@ export function StationPage() {
       fireTorpedo?: TorpedoFireOrder | null;
       dropDepthCharges?: DepthChargeDropOrder | null;
       fireDeckGun?: DeckGunFireOrder | null;
+      deployNoisemaker?: NoisemakerDeployOrder | null;
     },
   ) => {
     if (!token) return;
@@ -1574,6 +1580,7 @@ export function StationPage() {
                 if (tab.id === 'torpedoes' && !canTorpedo) return null;
                 if (tab.id === 'guns' && !canDeckGun) return null;
                 if (tab.id === 'depth_charges' && !canDepthCharges) return null;
+                if (tab.id === 'countermeasures' && !canCountermeasures) return null;
                 return (
                   <button
                     key={tab.id}
@@ -1737,6 +1744,18 @@ export function StationPage() {
                 onSubmit={(dropDepthCharges) => void submit({ dropDepthCharges })}
                 onClear={() => void submit({ dropDepthCharges: null })}
                 onReload={() => void reloadDepthCharges()}
+              />
+            )}
+
+            {controlsTab === 'countermeasures' && canCountermeasures && (
+              <CountermeasuresControls
+                keelDepthM={vessel.unit.position.depth}
+                cooldownTurnsRemaining={vessel.unit.noisemakerCooldownTurnsRemaining ?? 0}
+                pending={vessel.unit.orders.deployNoisemaker}
+                tracks={vessel.ownNoisemakers}
+                disabled={!vessel.canSubmitOrders}
+                onSubmit={(deployNoisemaker) => void submit({ deployNoisemaker })}
+                onClear={() => void submit({ deployNoisemaker: null })}
               />
             )}
 

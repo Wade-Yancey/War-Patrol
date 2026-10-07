@@ -183,6 +183,7 @@ export function UmpirePage() {
         trails: umpire.trails,
         torpedoes: umpire.torpedoes,
         depthCharges: umpire.depthCharges,
+        noisemakers: umpire.noisemakers,
         detonations: umpire.recentDetonations ?? [],
         combatLog: umpire.combatLog ?? [],
         reviewing: false as const,
@@ -197,6 +198,7 @@ export function UmpirePage() {
       })),
       torpedoes: reviewSnapshot.torpedoes ?? [],
       depthCharges: reviewSnapshot.depthCharges ?? [],
+      noisemakers: reviewSnapshot.noisemakers ?? [],
       // Detonations are live-window only; for AAR scrub show cues from that turn.
       detonations: (umpire.recentDetonations ?? []).filter((d) => d.turnNumber === turnN),
       combatLog: (umpire.combatLog ?? []).filter((e) => e.turnNumber <= turnN),
@@ -587,6 +589,7 @@ export function UmpirePage() {
                   trails={gtDisplay?.trails ?? umpire.trails}
                   torpedoes={gtDisplay?.torpedoes ?? umpire.torpedoes}
                   depthCharges={gtDisplay?.depthCharges ?? umpire.depthCharges}
+                  noisemakers={gtDisplay?.noisemakers ?? umpire.noisemakers}
                   detonations={gtDisplay?.detonations ?? umpire.recentDetonations}
                   turnLengthSeconds={umpire.turnLengthSeconds}
                   showMovePrediction={!gtDisplay?.reviewing}

@@ -23,11 +23,13 @@ import {
   type DepthChargeDropOrder,
   type EotSetting,
   type GameSave,
+  type NoisemakerDeployOrder,
   type TorpedoFireOrder,
   type TurnSnapshot,
   type UnitOrders,
   type UnitState,
 } from '@war-patrol/shared';
+import { resolveNoisemakersForTurn } from './noisemakersResolve.js';
 import { buildPeriscopeContacts } from './periscope.js';
 import { resolveWeaponsForTurn, appendCombatLog } from './weaponsResolve.js';
 
@@ -52,6 +54,7 @@ export function captureOpeningSnapshot(save: GameSave): TurnSnapshot {
     gameTimeSeconds,
     torpedoes: structuredClone(save.torpedoes ?? []),
     depthCharges: structuredClone(save.depthCharges ?? []),
+    noisemakers: structuredClone(save.noisemakers ?? []),
   };
 }
 
@@ -107,9 +110,16 @@ export function resolveTurn(save: GameSave): GameSave {
     startPositions,
   );
 
+  const noisemakers = resolveNoisemakersForTurn(
+    weapons.units,
+    save.noisemakers ?? [],
+    resolveTurnNumber,
+    gameTimeSeconds,
+  );
+
   // Clear helm/EOT/depth / one-shot weapon fields after resolve. Standing aircraft
   // attack and vessel standing orders persist until cancel / target gone (like loiter).
-  const resolvedUnits = weapons.units.map((u) => {
+  const resolvedUnits = noisemakers.units.map((u) => {
     const attack = u.orders.aircraftAttack;
     const vessel = u.orders.vesselStanding;
     const next: UnitOrders = {};
@@ -156,6 +166,7 @@ export function resolveTurn(save: GameSave): GameSave {
     gameTimeSeconds,
     torpedoes: structuredClone(weapons.torpedoes),
     depthCharges: structuredClone(weapons.depthCharges),
+    noisemakers: structuredClone(noisemakers.noisemakers),
   };
 
   const next: GameSave = {
@@ -167,10 +178,12 @@ export function resolveTurn(save: GameSave): GameSave {
     units: resolvedUnits,
     torpedoes: weapons.torpedoes,
     depthCharges: weapons.depthCharges,
+    noisemakers: noisemakers.noisemakers,
     recentDetonations: weapons.recentDetonations,
     combatLog: appendCombatLog(save.combatLog, [
       ...crush.combatLogEntries,
       ...weapons.combatLogEntries,
+      ...noisemakers.combatLogEntries,
     ]),
     turn: nextTurnState,
     history: [...save.history, snapshot],
@@ -232,6 +245,7 @@ export type OrdersPatch = {
   fireTorpedo?: TorpedoFireOrder | null;
   dropDepthCharges?: DepthChargeDropOrder | null;
   fireDeckGun?: DeckGunFireOrder | null;
+  deployNoisemaker?: NoisemakerDeployOrder | null;
   aircraftAttack?: AircraftAttackOrder | null;
   vesselStanding?: VesselStandingOrder | null;
 };
@@ -282,6 +296,13 @@ export function mergeOrders(
   } else if (patch.fireDeckGun) {
     next.fireDeckGun = normalizeDeckGunFireOrder(patch.fireDeckGun);
   }
+  if (patch.deployNoisemaker === null) {
+    delete next.deployNoisemaker;
+  } else if (patch.deployNoisemaker) {
+    next.deployNoisemaker = {
+      depthM: clampSubmarineDepth(patch.deployNoisemaker.depthM),
+    };
+  }
   if (patch.aircraftAttack === null) {
     delete next.aircraftAttack;
   } else if (patch.aircraftAttack) {
@@ -325,6 +346,7 @@ function restoreScenarioStart(save: GameSave, opening: TurnSnapshot): GameSave {
     units,
     torpedoes: structuredClone(opening.torpedoes ?? []),
     depthCharges: structuredClone(opening.depthCharges ?? []),
+    noisemakers: structuredClone(opening.noisemakers ?? []),
     recentDetonations: [],
     combatLog: [],
     turn: {
@@ -369,6 +391,7 @@ export function rollbackToTurn(save: GameSave, turnNumber: number): GameSave {
     // Prefer weapon tracks snapshotted with the turn (AAR / post-persist saves).
     torpedoes: structuredClone(snap.torpedoes ?? []),
     depthCharges: structuredClone(snap.depthCharges ?? []),
+    noisemakers: structuredClone(snap.noisemakers ?? []),
     recentDetonations,
     combatLog,
     turn: {
