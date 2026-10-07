@@ -41,6 +41,7 @@ function preserveWeaponOrders(orders: UnitOrders): UnitOrders {
   if (orders.fireTorpedo) next.fireTorpedo = { ...orders.fireTorpedo };
   if (orders.dropDepthCharges) next.dropDepthCharges = { ...orders.dropDepthCharges };
   if (orders.fireDeckGun) next.fireDeckGun = { ...orders.fireDeckGun };
+  if (orders.deployNoisemaker) next.deployNoisemaker = { ...orders.deployNoisemaker };
   if (orders.aircraftAttack) next.aircraftAttack = { ...orders.aircraftAttack };
   if (orders.vesselStanding) next.vesselStanding = { ...orders.vesselStanding };
   return next;
