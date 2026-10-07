@@ -309,13 +309,21 @@ export interface AircraftAttackOrder {
   targetUnitId: string;
 }
 
-/** Umpire-ordered vessel standing order (ship / sub — intercept / attack / evade). */
-export type VesselStandingMode = 'intercept' | 'attack' | 'evade';
+/**
+ * Umpire-ordered vessel standing order (ship / sub).
+ * Attack is weapon-specific (guns / DC / torpedoes) — no generic Attack.
+ */
+export type VesselStandingMode =
+  | 'intercept'
+  | 'attack_guns'
+  | 'attack_dc'
+  | 'attack_torpedoes'
+  | 'evade';
 
 export interface VesselStandingOrder {
   mode: VesselStandingMode;
   /**
-   * Target hull id. Required for intercept / attack.
+   * Target hull id. Required for intercept / attack_*.
    * Optional for evade: when set, base course runs away from that threat.
    */
   targetUnitId?: string;
@@ -376,10 +384,10 @@ export interface UnitOrders {
    */
   aircraftAttack?: AircraftAttackOrder;
   /**
-   * Standing umpire vessel order (intercept / attack / evade zigzag).
+   * Standing umpire vessel order (intercept / attack_guns|dc|torpedoes / evade).
    * Ships & subs only. Persists across resolves until umpire Clear, target
-   * gone (intercept/attack), or hull lost. Attack may auto-queue weapons
-   * when in engagement range (DC / deck gun / torpedo) without clearing.
+   * gone (intercept/attack_*), or hull lost. Weapon attack modes auto-queue
+   * that weapon only when in engagement range, without clearing.
    */
   vesselStanding?: VesselStandingOrder;
   updatedAt?: string;

@@ -74,6 +74,8 @@ import {
   normalizeAircraftAttackMode,
   resolveBombMagazineState,
   canOrderVesselStanding,
+  isVesselStandingAttackMode,
+  isVesselStandingModeAvailable,
   isVesselStandingTarget,
   normalizeVesselStandingMode,
   vesselEvadeBaseCourse,
@@ -1000,7 +1002,7 @@ export class GameRuntime {
    * Optional aircraftLoiter sets/clears a standing orbit (persists across turns).
    * Clearing loiter re-asserts a live attack helm; starting loiter does not
    * downgrade a live attack to orbit speed.
-   * Optional vesselStanding sets intercept / attack / evade zigzag for ships/subs.
+   * Optional vesselStanding sets intercept / weapon attack / evade for ships/subs.
    */
   async submitUmpireUnitOrders(
     gameId: string,
@@ -1183,8 +1185,14 @@ export class GameRuntime {
             );
           }
           const mode = normalizeVesselStandingMode(patch.vesselStanding.mode);
+          if (!isVesselStandingModeAvailable(unit, mode)) {
+            throw Object.assign(
+              new Error(`Vessel standing mode '${mode}' not available for this hull`),
+              { statusCode: 400 },
+            );
+          }
           const targetId = String(patch.vesselStanding.targetUnitId ?? '').trim();
-          if (mode === 'intercept' || mode === 'attack') {
+          if (mode === 'intercept' || isVesselStandingAttackMode(mode)) {
             if (!targetId) {
               throw Object.assign(new Error('vesselStanding.targetUnitId required'), {
                 statusCode: 400,
@@ -1203,7 +1211,9 @@ export class GameRuntime {
               course = vesselInterceptOrderedCourse(unit.position, target.position);
             }
             if (eot === undefined) {
-              eot = mode === 'attack' ? VESSEL_ATTACK_EOT : VESSEL_INTERCEPT_EOT;
+              eot = isVesselStandingAttackMode(mode)
+                ? VESSEL_ATTACK_EOT
+                : VESSEL_INTERCEPT_EOT;
             }
             unit.orders = mergeOrders(
               unit.orders,

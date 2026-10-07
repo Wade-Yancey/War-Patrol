@@ -87,7 +87,15 @@ function formatVesselStandingOrderSummary(
   // Local tag (avoid cycle: orders ← vesselStanding). Keep in sync with
   // formatVesselStandingModeTag.
   const mode =
-    standing.mode === 'attack' ? 'ATK' : standing.mode === 'evade' ? 'EVA' : 'INT';
+    standing.mode === 'attack_guns'
+      ? 'GUN'
+      : standing.mode === 'attack_dc'
+        ? 'DC'
+        : standing.mode === 'attack_torpedoes'
+          ? 'TORP'
+          : standing.mode === 'evade'
+            ? 'EVA'
+            : 'INT';
   const target = standing.targetUnitId ? ` → ${standing.targetUnitId}` : '';
   return `VES ${mode}${target}`;
 }

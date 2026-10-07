@@ -971,7 +971,7 @@ function GroundTruthMapInner({
 
   /**
    * Entire intended move for this resolve — aircraft standing attack / loiter
-   * and vessel standing intercept / attack / evade (when set) + helm turn + EOT
+   * and vessel standing intercept / weapon attack / evade (when set) + helm turn + EOT
    * over turn length, then one track to the predicted end (matches
    * turnEngine.resolveTurn). Recomputes immediately when umpire edits orders
    * live (course / EOT / loiter / attack / vessel standing), not only after resolve.
