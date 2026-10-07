@@ -50,6 +50,7 @@ import {
   NOISEMAKER_COOLDOWN_TURNS,
   NOISEMAKER_LIFETIME_TURNS,
   NOISEMAKER_SOURCE_LEVEL,
+  activeNoisemakers,
   clampDepthChargeSetting,
   depthChargeCountFromOrder,
   depthChargeLateralsForCount,
@@ -8200,12 +8201,63 @@ async function main() {
     const subCtrlView = await api('GET', `/api/games/${nmId}/view`, undefined, nmTok);
     const subCtrl = subCtrlView.json.view as {
       noisemakers?: unknown;
-      ownNoisemakers?: Array<{ id: string }>;
+      ownNoisemakers?: Array<{ id: string; status?: string; position?: { depth: number } }>;
     };
     check('vessel view has no free GT noisemakers list', subCtrl.noisemakers === undefined);
     check(
       'vessel view exposes own noisemakers only',
       Array.isArray(subCtrl.ownNoisemakers) && subCtrl.ownNoisemakers.length >= 1,
+    );
+
+    // Umpire GT payload carries position + depth for map markers (NMKR · xxxM).
+    const umpNmFull = (
+      umpView.json.view as {
+        noisemakers?: Array<{
+          id: string;
+          status: string;
+          position: { lat: number; lon: number; depth: number };
+        }>;
+      }
+    ).noisemakers;
+    check(
+      'umpire noisemaker GT has lat/lon/depth for map marker',
+      Boolean(umpNmFull?.[0]) &&
+        Number.isFinite(umpNmFull![0]!.position.lat) &&
+        Number.isFinite(umpNmFull![0]!.position.lon) &&
+        umpNmFull![0]!.position.depth === 80 &&
+        umpNmFull![0]!.status === 'active',
+    );
+
+    // Advance through lifetime — decoy goes spent (map drops active-only markers).
+    const expiresAt = nmTracks[0]!.expiresTurn;
+    let guard = 0;
+    while (runtime.requireGame(nmId).turn.number < expiresAt && guard < 20) {
+      await api('POST', `/api/games/${nmId}/turn/lock`, {}, nmUTok);
+      await api('POST', `/api/games/${nmId}/turn/resolve`, {}, nmUTok);
+      guard += 1;
+    }
+    const afterExpire = runtime.requireGame(nmId);
+    const expiredTrack = (afterExpire.noisemakers ?? [])[0];
+    check(
+      'noisemaker expires to spent after lifetime',
+      expiredTrack?.status === 'spent' && afterExpire.turn.number >= expiresAt,
+      `status=${expiredTrack?.status} turn=${afterExpire.turn.number} expires=${expiresAt}`,
+    );
+    check(
+      'activeNoisemakers filter empty after expiry (GT map omits spent)',
+      activeNoisemakers(afterExpire.noisemakers).length === 0,
+    );
+
+    // DD sensors must not receive sub decoy GT (ownNoisemakers empty / no global list).
+    const ddView = await api('GET', `/api/games/${nmId}/view`, undefined, nmDdTok);
+    const ddBody = ddView.json.view as {
+      noisemakers?: unknown;
+      ownNoisemakers?: Array<{ id: string }>;
+    };
+    check('DD vessel view has no free GT noisemakers list', ddBody.noisemakers === undefined);
+    check(
+      'DD ownNoisemakers does not include enemy sub decoys',
+      !Array.isArray(ddBody.ownNoisemakers) || ddBody.ownNoisemakers.length === 0,
     );
 
     await api('DELETE', `/api/saves/${nmId}`);

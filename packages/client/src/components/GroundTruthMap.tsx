@@ -15,6 +15,7 @@ import {
   METERS_PER_NM,
   RADAR_MAX_RANGE_NM,
   TORPEDO_MAX_RUN_NM,
+  activeNoisemakers,
   clamp,
   findActiveSonarSensor,
   formatAircraftAttackModeTag,
@@ -36,6 +37,9 @@ import {
   unprojectFromUv,
   type TorpedoRoomId,
 } from '@war-patrol/shared';
+
+/** Umpire GT accent for stationary noisemaker decoys (distinct from fish / DC / hulls). */
+const NOISEMAKER_MAP_COLOR = '#e8b86d';
 import { MapAircraftMarker } from './ContactGlyphs';
 
 interface Props {
@@ -47,7 +51,10 @@ interface Props {
   torpedoes?: TorpedoTrack[];
   /** Full-truth depth-charge tracks (drop → sink/detonate). */
   depthCharges?: DepthChargeTrack[];
-  /** Full-truth stationary noisemaker decoys. */
+  /**
+   * Full-truth stationary noisemaker decoys (umpire GT only).
+   * Active tracks render as `NMKR · xxxM`; spent/expired tracks are omitted.
+   */
   noisemakers?: NoisemakerTrack[];
   /**
    * Recent weapon detonations (deck-gun fire / hit / miss + aircraft bomb
@@ -879,20 +886,15 @@ function GroundTruthMapInner({
         };
       });
 
-    // Stationary noisemaker decoys — fixed lat/lon pip + depth label.
-    const decoys = noisemakers.map((m) => {
-      const color = unitAccentById.get(m.deployerUnitId) ?? '#d4a8ff';
+    // Stationary noisemaker decoys — active only (expire → drop from GT map).
+    // Distinct acoustic-ring glyph + fixed accent (not vessel/fish/DC shapes).
+    const decoys = activeNoisemakers(noisemakers).map((m) => {
       const tip = toXy(m.position.lat, m.position.lon);
-      const active = m.status === 'active';
-      const label = active
-        ? `NMKR · ${Math.round(m.position.depth)}M`
-        : `NMKR · SPENT · ${Math.round(m.position.depth)}M`;
       return {
         id: m.id,
-        color,
+        color: NOISEMAKER_MAP_COLOR,
         tip,
-        active,
-        label,
+        label: `NMKR · ${Math.round(m.position.depth)}M`,
         onPlot: uvBBoxHitsPlot([tip]),
       };
     });
@@ -1753,44 +1755,6 @@ function GroundTruthMapInner({
                 </g>
               ))}
 
-            {weaponOverlays.decoys
-              .filter((d) => d.onPlot)
-              .map((d) => (
-                <g key={`nmkr-${d.id}`} opacity={d.active ? 1 : 0.45}>
-                  {uvHitsPlot(d.tip.u, d.tip.v) && (
-                    <>
-                      <circle
-                        cx={d.tip.x}
-                        cy={d.tip.y}
-                        r={d.active ? 7 : 5}
-                        fill="none"
-                        stroke={d.color}
-                        strokeWidth={1.25}
-                        strokeDasharray={d.active ? '3 2' : '2 3'}
-                      />
-                      <circle
-                        cx={d.tip.x}
-                        cy={d.tip.y}
-                        r={2.5}
-                        fill={d.color}
-                        stroke="#061a0e"
-                        strokeWidth={1}
-                      />
-                      <text
-                        className="map-plot-label"
-                        x={d.tip.x + 8}
-                        y={d.tip.y + 4}
-                        fill={d.color}
-                        fontSize={8}
-                        fontFamily="IBM Plex Mono, monospace"
-                      >
-                        {d.label}
-                      </text>
-                    </>
-                  )}
-                </g>
-              ))}
-
             {weaponOverlays.guns
               .filter((g) => g.onPlot)
               .map((g) => (
@@ -2004,6 +1968,60 @@ function GroundTruthMapInner({
                 >
                   {m.label}
                 </text>
+              </g>
+            ))}
+
+          {/*
+            Active noisemakers above hull markers so a just-deployed decoy
+            (same lat/lon as the sub) stays readable — concentric acoustic rings,
+            not a vessel pip / fish tip / DC diamond.
+          */}
+          {weaponOverlays.decoys
+            .filter((d) => d.onPlot)
+            .map((d) => (
+              <g key={`nmkr-${d.id}`} opacity={0.95} pointerEvents="none">
+                {uvHitsPlot(d.tip.u, d.tip.v) && (
+                  <>
+                    <circle
+                      cx={d.tip.x}
+                      cy={d.tip.y}
+                      r={11}
+                      fill="none"
+                      stroke={d.color}
+                      strokeWidth={1}
+                      strokeOpacity={0.55}
+                      strokeDasharray="2 3"
+                    />
+                    <circle
+                      cx={d.tip.x}
+                      cy={d.tip.y}
+                      r={7}
+                      fill="none"
+                      stroke={d.color}
+                      strokeWidth={1.35}
+                      strokeDasharray="4 2"
+                    />
+                    <rect
+                      x={d.tip.x - 3}
+                      y={d.tip.y - 3}
+                      width={6}
+                      height={6}
+                      fill={d.color}
+                      stroke="#061a0e"
+                      strokeWidth={1}
+                    />
+                    <text
+                      className="map-plot-label"
+                      x={d.tip.x + 10}
+                      y={d.tip.y + 4}
+                      fill={d.color}
+                      fontSize={9}
+                      fontFamily="IBM Plex Mono, monospace"
+                    >
+                      {d.label}
+                    </text>
+                  </>
+                )}
               </g>
             ))}
 
