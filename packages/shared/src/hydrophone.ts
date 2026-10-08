@@ -201,17 +201,40 @@ export function hydrophoneContactGain(
 }
 
 /**
- * Coarse range band for operator CRT (secondary to approx nm).
+ * Coarse range band for operator CRT.
  * Thresholds relative to {@link HYDROPHONE_RANGE_REF_NM} (8 nm ≈ half-gain):
  * Near ≤ 5 nm, Medium ≤ 12 nm, else Far (still within hearing).
+ * Band is always derived from the same uncertain range estimate as RNG — never
+ * from true contact range (FoW).
  */
 export type HydrophoneRangeBand = 'near' | 'medium' | 'far' | 'none';
+
+/**
+ * Operator loudness prior for passive ranging.
+ * - `flank` — assume sourceLevel ≈ 1 (loud DD flanks)
+ * - `creep` — assume {@link HYDROPHONE_RADIATED_CREEP_LEVEL} (quiet screws)
+ * - `unknown` — prior span creep…flank → wide uncertainty band (default)
+ *
+ * Never divide out true FoW `sourceLevel` — that would become radar-grade range.
+ */
+export type HydrophoneAssumedSource = 'flank' | 'creep' | 'unknown';
 
 export const HYDROPHONE_RANGE_BAND_NEAR_NM = 5;
 export const HYDROPHONE_RANGE_BAND_MEDIUM_NM = 12;
 
 /** Minimum beam gain before range approx / band is shown (needle roughly on target). */
 export const HYDROPHONE_RANGE_BAND_BEAM_MIN = 0.2;
+
+/** Assumed radiated level for “flank” dial setting. */
+export const HYDROPHONE_ASSUMED_SOURCE_FLANK = 1;
+
+/** Contact kinds that feed screw-range invert (not one-shot events). */
+export function isHydrophoneScrewRangeKind(
+  kind: string | undefined,
+): boolean {
+  // Missing kind → legacy callers (treat as continuous propeller).
+  return kind == null || kind === 'propeller';
+}
 
 export function hydrophoneRangeBandFromRangeNm(rangeNm: number): HydrophoneRangeBand {
   if (!Number.isFinite(rangeNm) || rangeNm < 0) return 'none';
@@ -220,12 +243,29 @@ export function hydrophoneRangeBandFromRangeNm(rangeNm: number): HydrophoneRange
   return 'far';
 }
 
+/** Loudness prior [min, max] for the assumed-source dial (max = louder). */
+export function hydrophoneAssumedSourceLevels(
+  assumed: HydrophoneAssumedSource,
+): { min: number; max: number } {
+  switch (assumed) {
+    case 'flank':
+      return { min: HYDROPHONE_ASSUMED_SOURCE_FLANK, max: HYDROPHONE_ASSUMED_SOURCE_FLANK };
+    case 'creep':
+      return {
+        min: HYDROPHONE_RADIATED_CREEP_LEVEL,
+        max: HYDROPHONE_RADIATED_CREEP_LEVEL,
+      };
+    case 'unknown':
+    default:
+      return { min: HYDROPHONE_RADIATED_CREEP_LEVEL, max: HYDROPHONE_ASSUMED_SOURCE_FLANK };
+  }
+}
+
 /**
- * Invert range falloff to a FoW-friendly approximate range (nm).
+ * Raw invert of range falloff (no coarsening).
  * `rangeGain = 1 / (1 + (r/R0)²)` → `r = R0 × √(1/g − 1)`.
- * Coarsened: 1 nm steps below 10 nm, 2 nm steps at/above — never a precise float.
  */
-export function approximateRangeNmFromRangeGain(
+export function rangeNmFromRangeGainRaw(
   rangeGain: number,
   refNm: number = HYDROPHONE_RANGE_REF_NM,
 ): number | null {
@@ -233,55 +273,221 @@ export function approximateRangeNmFromRangeGain(
   if (rangeGain >= 0.999) return 0;
   const r = refNm * Math.sqrt(1 / rangeGain - 1);
   if (!Number.isFinite(r) || r < 0) return null;
+  return r;
+}
+
+/**
+ * Invert range falloff to a FoW-friendly approximate range (nm).
+ * Coarsened: 1 nm steps below 10 nm, 2 nm steps at/above — never a precise float.
+ */
+export function approximateRangeNmFromRangeGain(
+  rangeGain: number,
+  refNm: number = HYDROPHONE_RANGE_REF_NM,
+): number | null {
+  const r = rangeNmFromRangeGainRaw(rangeGain, refNm);
+  if (r == null) return null;
+  return coarsenHydrophoneRangeNm(r);
+}
+
+/** Snap a point estimate for FoW display. */
+export function coarsenHydrophoneRangeNm(r: number): number {
+  if (!Number.isFinite(r) || r < 0) return 0;
   if (r < 10) return Math.max(0, Math.round(r));
   return Math.round(r / 2) * 2;
 }
 
 /**
- * Peak contact on the listen bearing → intensity + approx nm + coarse band.
- * Approx nm inverts range falloff of the loudest contact when beam is aligned;
- * otherwise approx/band are withheld so beam loss does not look like distance.
+ * Floor/ceil band endpoints so the displayed span is an honest envelope
+ * (not a rounded-to-center lie).
+ */
+export function coarsenHydrophoneRangeBandEndpoints(
+  minNm: number,
+  maxNm: number,
+): { minNm: number; maxNm: number } {
+  const floorNm = (r: number): number => {
+    if (r < 10) return Math.max(0, Math.floor(r));
+    return Math.max(0, Math.floor(r / 2) * 2);
+  };
+  const ceilNm = (r: number): number => {
+    if (r < 10) return Math.max(0, Math.ceil(r));
+    return Math.max(0, Math.ceil(r / 2) * 2);
+  };
+  let min = floorNm(minNm);
+  let max = ceilNm(maxNm);
+  if (max < min) max = min;
+  return { minNm: min, maxNm: max };
+}
+
+/**
+ * Invert apparent intensity×source product under an assumed source level.
+ * Does **not** use true FoW sourceLevel — only the operator prior.
+ */
+export function rangeNmFromApparentGainAndAssumedSource(
+  apparentRangeGain: number,
+  assumedSourceLevel: number,
+  refNm: number = HYDROPHONE_RANGE_REF_NM,
+): number | null {
+  const s = Number.isFinite(assumedSourceLevel) ? Math.max(1e-6, assumedSourceLevel) : 1;
+  if (!Number.isFinite(apparentRangeGain) || apparentRangeGain <= 0) return null;
+  const g = Math.min(1, apparentRangeGain / s);
+  const r = rangeNmFromRangeGainRaw(g, refNm);
+  // Too weak under this assumption → clamp to hearing horizon (open band end).
+  if (r == null && g <= 0.02) return HYDROPHONE_MAX_RANGE_NM;
+  return r;
+}
+
+export type HydrophoneListenCueContact = {
+  rangeNm: number;
+  bearing: number;
+  sourceLevel?: number;
+  /** When omitted, treated as continuous propeller (legacy). */
+  kind?: string;
+};
+
+export type HydrophoneListenCueResult = {
+  intensity: number;
+  /** Band from the same uncertain range estimate as the nm span (never true range). */
+  rangeBand: HydrophoneRangeBand;
+  /** True range of intensity-peak contact (debug / tests only — not for CRT). */
+  peakRangeNm: number | null;
+  /**
+   * Midpoint of the uncertainty band (coarsened), or null.
+   * Prefer {@link approxRangeMinNm}/{@link approxRangeMaxNm} for display.
+   */
+  approxRangeNm: number | null;
+  /** Inclusive uncertainty band (nm), FoW-coarsened. */
+  approxRangeMinNm: number | null;
+  approxRangeMaxNm: number | null;
+  assumedSource: HydrophoneAssumedSource;
+  /** True when the range band came from a continuous propeller contact. */
+  rangeFromScrew: boolean;
+};
+
+/** CRT label helper: `~MED · 4–12 nm` / `~NEAR · ~3 nm` / `—`. */
+export function formatHydrophoneRangeCue(
+  cue: Pick<
+    HydrophoneListenCueResult,
+    'rangeBand' | 'approxRangeMinNm' | 'approxRangeMaxNm'
+  >,
+): string {
+  if (
+    cue.rangeBand === 'none' ||
+    cue.approxRangeMinNm == null ||
+    cue.approxRangeMaxNm == null
+  ) {
+    return '—';
+  }
+  const band =
+    cue.rangeBand === 'near' ? 'NEAR' : cue.rangeBand === 'medium' ? 'MED' : 'FAR';
+  if (cue.approxRangeMinNm === cue.approxRangeMaxNm) {
+    return `~${band} · ~${cue.approxRangeMinNm} nm`;
+  }
+  return `~${band} · ${cue.approxRangeMinNm}–${cue.approxRangeMaxNm} nm`;
+}
+
+/**
+ * Peak contact on the listen bearing → intensity + uncertain range band.
+ *
+ * Intensity uses the loudest contact of any kind (props, pings, bangs, reloads).
+ * Range invert uses only continuous **propeller** contacts (A5) under the
+ * operator’s assumed-source prior (A1/A2). BAND is derived from that same
+ * uncertain span — never true range (A3). Does not divide out true sourceLevel.
  */
 export function hydrophoneListenCue(
-  contacts: ReadonlyArray<{ rangeNm: number; bearing: number; sourceLevel?: number }>,
+  contacts: ReadonlyArray<HydrophoneListenCueContact>,
   listenBearingDeg: number,
   listenQuality: number = 1,
-): {
-  intensity: number;
-  rangeBand: HydrophoneRangeBand;
-  peakRangeNm: number | null;
-  approxRangeNm: number | null;
-} {
-  if (contacts.length === 0) {
-    return { intensity: 0, rangeBand: 'none', peakRangeNm: null, approxRangeNm: null };
-  }
+  assumedSource: HydrophoneAssumedSource = 'unknown',
+): HydrophoneListenCueResult {
+  const empty: HydrophoneListenCueResult = {
+    intensity: 0,
+    rangeBand: 'none',
+    peakRangeNm: null,
+    approxRangeNm: null,
+    approxRangeMinNm: null,
+    approxRangeMaxNm: null,
+    assumedSource,
+    rangeFromScrew: false,
+  };
+  if (contacts.length === 0) return empty;
+
   const quality = Number.isFinite(listenQuality) ? Math.max(0, Math.min(1, listenQuality)) : 1;
   let bestGain = 0;
-  let bestBeam = 0;
   let bestRange: number | null = null;
+
+  // Best screw (propeller) contact for ranging — independent of event spikes.
+  let screwGain = 0;
+  let screwBeam = 0;
+  let screwRange: number | null = null;
+
   for (const c of contacts) {
     const beam = hydrophoneBeamGain(listenBearingDeg, c.bearing);
     const level = Number.isFinite(c.sourceLevel) ? Math.max(0, c.sourceLevel ?? 1) : 1;
     const gain = Math.min(1, hydrophoneRangeGain(c.rangeNm) * beam * level * quality);
     if (gain > bestGain) {
       bestGain = gain;
-      bestBeam = beam;
       bestRange = c.rangeNm;
     }
+    if (isHydrophoneScrewRangeKind(c.kind) && gain > screwGain) {
+      screwGain = gain;
+      screwBeam = beam;
+      screwRange = c.rangeNm;
+    }
   }
-  const aligned = bestBeam >= HYDROPHONE_RANGE_BAND_BEAM_MIN && bestRange != null;
-  // Prefer rangeGain of peak contact (intensity/beam/quality) so beam attenuation
-  // is not double-counted as distance; coarsen for FoW.
-  const rangeGainOnly =
-    aligned && bestBeam > 0 && quality > 0
-      ? Math.min(1, bestGain / (bestBeam * quality))
-      : 0;
-  const approxRangeNm = aligned
-    ? approximateRangeNmFromRangeGain(rangeGainOnly)
-    : null;
-  const rangeBand =
-    aligned && bestRange != null ? hydrophoneRangeBandFromRangeNm(bestRange) : 'none';
-  return { intensity: bestGain, rangeBand, peakRangeNm: bestRange, approxRangeNm };
+
+  const screwAligned =
+    screwBeam >= HYDROPHONE_RANGE_BAND_BEAM_MIN && screwRange != null && screwBeam > 0 && quality > 0;
+
+  if (!screwAligned) {
+    return {
+      ...empty,
+      intensity: bestGain,
+      peakRangeNm: bestRange,
+    };
+  }
+
+  // Strip beam + quality so beam loss ≠ distance. Remaining product is
+  // rangeGain(r) × trueSourceLevel (capped) — invert with assumed prior only.
+  const apparentRangeGain = Math.min(1, screwGain / (screwBeam * quality));
+  const prior = hydrophoneAssumedSourceLevels(assumedSource);
+  const rLoud = rangeNmFromApparentGainAndAssumedSource(apparentRangeGain, prior.max);
+  const rQuiet = rangeNmFromApparentGainAndAssumedSource(apparentRangeGain, prior.min);
+  if (rLoud == null && rQuiet == null) {
+    return {
+      ...empty,
+      intensity: bestGain,
+      peakRangeNm: bestRange,
+    };
+  }
+
+  let minRaw = Math.min(rLoud ?? rQuiet!, rQuiet ?? rLoud!);
+  let maxRaw = Math.max(rLoud ?? rQuiet!, rQuiet ?? rLoud!);
+
+  // Widen when beam is only partially aligned or INT is weak (uncertain peak).
+  const beamSlack = Math.max(0, 1 - screwBeam); // 0 on-boresight … ~0.8 at threshold
+  const intSlack = screwGain < 0.3 ? (0.3 - screwGain) / 0.3 : 0;
+  const widenFrac = 0.12 * beamSlack + 0.2 * intSlack;
+  const widenAbsNm = 0.5 * beamSlack + 1.5 * intSlack;
+  const center = (minRaw + maxRaw) / 2;
+  const half = Math.max(0, (maxRaw - minRaw) / 2);
+  const half2 = half * (1 + widenFrac) + center * widenFrac * 0.5 + widenAbsNm;
+  minRaw = Math.max(0, center - half2);
+  maxRaw = center + half2;
+
+  const { minNm, maxNm } = coarsenHydrophoneRangeBandEndpoints(minRaw, maxRaw);
+  const mid = coarsenHydrophoneRangeNm((minNm + maxNm) / 2);
+  const rangeBand = hydrophoneRangeBandFromRangeNm(mid);
+
+  return {
+    intensity: bestGain,
+    rangeBand,
+    peakRangeNm: bestRange,
+    approxRangeNm: mid,
+    approxRangeMinNm: minNm,
+    approxRangeMaxNm: maxNm,
+    assumedSource,
+    rangeFromScrew: true,
+  };
 }
 
 /**
