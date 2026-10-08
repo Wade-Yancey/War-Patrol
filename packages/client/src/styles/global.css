@@ -2657,8 +2657,52 @@ label {
   }
 }
 
-.hydrophone-readout--band .hydrophone-val {
+.hydrophone-readout--band .hydrophone-val,
+.hydrophone-readout--rng .hydrophone-val {
   font-size: 0.85rem;
+}
+
+.hydrophone-assume {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  width: 100%;
+  margin: 0.15rem 0 0.2rem;
+}
+
+.hydrophone-assume-key {
+  letter-spacing: 0.08em;
+}
+
+.hydrophone-assume-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.25rem;
+  width: 100%;
+}
+
+.hydrophone-assume-btn {
+  min-height: 2rem;
+  padding: 0.25rem 0.35rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-family: 'Share Tech Mono', 'IBM Plex Mono', monospace;
+  color: var(--ink-muted);
+  background: #041208;
+  border: 1px solid color-mix(in srgb, var(--phosphor) 35%, transparent);
+  cursor: pointer;
+}
+
+.hydrophone-assume-btn--active {
+  color: var(--phosphor);
+  border-color: var(--phosphor);
+  background: color-mix(in srgb, var(--phosphor) 12%, #041208);
+}
+
+.hydrophone-assume-btn:focus-visible {
+  outline: 1px solid var(--phosphor);
+  outline-offset: 1px;
 }
 
 .hydrophone-meter {

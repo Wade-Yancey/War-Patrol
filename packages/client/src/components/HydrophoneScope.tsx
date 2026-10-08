@@ -1,12 +1,13 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import {
   ACTIVE_SONAR_PING_INTERVAL_SEC,
+  formatHydrophoneRangeCue,
   hydrophoneContactGain,
   hydrophoneContactVoiceOffset,
   hydrophoneListenCue,
   normalizeHeading,
+  type HydrophoneAssumedSource,
   type HydrophoneContact,
-  type HydrophoneRangeBand,
 } from '@war-patrol/shared';
 import {
   hydrophonePingPeakGain,
@@ -65,18 +66,18 @@ function bearingFromPointer(
   return normalizeHeading(deg);
 }
 
-function rangeBandLabel(band: HydrophoneRangeBand): string {
-  switch (band) {
-    case 'near':
-      return 'NEAR';
-    case 'medium':
-      return 'MED';
-    case 'far':
-      return 'FAR';
+function assumedSourceLabel(assumed: HydrophoneAssumedSource): string {
+  switch (assumed) {
+    case 'flank':
+      return 'FLANK';
+    case 'creep':
+      return 'CREEP';
     default:
-      return '—';
+      return 'UNK';
   }
 }
+
+const ASSUMED_SOURCE_OPTIONS: HydrophoneAssumedSource[] = ['flank', 'creep', 'unknown'];
 
 type ContactVoice = {
   id: string;
@@ -103,6 +104,8 @@ function HydrophoneScopeInner({
   const [audioReady, setAudioReady] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  /** Session-local loudness prior for passive range band (not persisted). */
+  const [assumedSource, setAssumedSource] = useState<HydrophoneAssumedSource>('unknown');
 
   const svgRef = useRef<SVGSVGElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -138,12 +141,11 @@ function HydrophoneScopeInner({
   const listenRotateDeg = useContinuousAngle(listen);
 
   const cue = useMemo(
-    () => hydrophoneListenCue(contacts, listen, listenQuality),
-    [contacts, listen, listenQuality],
+    () => hydrophoneListenCue(contacts, listen, listenQuality, assumedSource),
+    [contacts, listen, listenQuality, assumedSource],
   );
   const signalLevel = cue.intensity;
   const rangeBand = cue.rangeBand;
-  const approxRangeNm = cue.approxRangeNm;
 
   const ticks = useMemo(() => {
     const marks: Array<{
@@ -474,13 +476,13 @@ function HydrophoneScopeInner({
   const listenLabel = String(Math.round(listen)).padStart(3, '0');
   const hdgLabel = String(Math.round(hdg)).padStart(3, '0');
   const levelPct = Math.round(signalLevel * 100);
-  const bandLabel = rangeBandLabel(rangeBand);
-  const approxLabel =
-    approxRangeNm == null ? '—' : `~${approxRangeNm} nm`;
+  const approxLabel = formatHydrophoneRangeCue(cue);
   const ariaRange =
-    approxRangeNm == null
-      ? 'range indeterminate — train needle on the contact'
-      : `approximate range ${approxRangeNm} nautical miles`;
+    cue.approxRangeMinNm == null || cue.approxRangeMaxNm == null
+      ? 'range indeterminate — train needle on a propeller contact'
+      : cue.approxRangeMinNm === cue.approxRangeMaxNm
+        ? `approximate range about ${cue.approxRangeMinNm} nautical miles under ${assumedSourceLabel(assumedSource)} assumption`
+        : `approximate range ${cue.approxRangeMinNm} to ${cue.approxRangeMaxNm} nautical miles under ${assumedSourceLabel(assumedSource)} assumption`;
 
   return (
     <div className="radar-scope radar-console crt-console hydrophone-scope">
@@ -619,7 +621,7 @@ function HydrophoneScopeInner({
               {Math.round(listenQuality * 100)}%
             </span>
           </div>
-          <div className="crt-console-readout hydrophone-readout">
+          <div className="crt-console-readout hydrophone-readout hydrophone-readout--rng">
             <span className="crt-console-key hydrophone-key">RNG</span>
             <span
               className={`readout crt-console-val hydrophone-val hydrophone-band hydrophone-band--${rangeBand}`}
@@ -627,14 +629,31 @@ function HydrophoneScopeInner({
               {approxLabel}
             </span>
           </div>
-          {rangeBand !== 'none' && (
-            <div className="crt-console-readout hydrophone-readout hydrophone-readout--band">
-              <span className="crt-console-key hydrophone-key">BAND</span>
-              <span className="readout crt-console-val hydrophone-val hydrophone-band-label">
-                {bandLabel}
-              </span>
-            </div>
-          )}
+        </div>
+
+        <div
+          className="hydrophone-assume"
+          role="group"
+          aria-label="Assumed source loudness for range estimate"
+        >
+          <span className="crt-console-key hydrophone-key hydrophone-assume-key">ASSUME</span>
+          <div className="hydrophone-assume-options">
+            {ASSUMED_SOURCE_OPTIONS.map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                className={
+                  assumedSource === opt
+                    ? 'hydrophone-assume-btn hydrophone-assume-btn--active'
+                    : 'hydrophone-assume-btn'
+                }
+                aria-pressed={assumedSource === opt}
+                onClick={() => setAssumedSource(opt)}
+              >
+                {assumedSourceLabel(opt)}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div
@@ -671,6 +690,8 @@ function HydrophoneScopeInner({
         <p className="crt-console-caption hydrophone-caption muted mono">
           Eff ~{Math.round(effRange)} / {maxRangeNm} nm
           {selfNoise > 0.05 ? ` · self-noise ${Math.round(selfNoise * 100)}%` : ' · quiet hull'}
+          {' · '}
+          assume {assumedSourceLabel(assumedSource).toLowerCase()}
           {' · '}
           {contacts.length === 0
             ? 'no acoustic contacts in range'
