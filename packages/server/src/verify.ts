@@ -116,6 +116,7 @@ import {
 } from '@war-patrol/shared';
 import { buildPeriscopeContacts } from './game/periscope.js';
 import { buildRadarContacts } from './game/radar.js';
+import { buildTorpedoWakeCues } from './game/wakeCues.js';
 
 type Json = Record<string, unknown>;
 
@@ -1606,6 +1607,77 @@ async function main() {
     'scope down not spottable as periscope',
     !noFeather.some((c) => c.kind === 'periscope'),
   );
+
+  // Wake Sightings: relativeBearing = LOS (compass); travelRelativeBearing = fish run.
+  {
+    const {
+      coarsenWakeRelativeBearing,
+      moveAlongHeading,
+      relativeBearingDeg,
+      shortestBearingDelta,
+    } = await import('@war-patrol/shared');
+    const observer = {
+      id: 'dd-wake-obs',
+      heading: 90,
+      position: { lat: 34.4, lon: -120.0, depth: 0 },
+      type: 'Ship',
+      class: 'Destroyer',
+    } as UnitState;
+    // Fish ~0.4 nm north of observer, running east (same as observer HDG).
+    const fishPos = moveAlongHeading(observer.position, 0, 0.4 * 1852);
+    const fishHeading = 90;
+    const expectSighting = coarsenWakeRelativeBearing(
+      relativeBearingDeg(observer.heading, bearingRangeNm(observer.position, fishPos).bearing),
+    );
+    const expectTravel = coarsenWakeRelativeBearing(
+      shortestBearingDelta(observer.heading, fishHeading),
+    );
+    let wakeCue: { relativeBearing: number; travelRelativeBearing: number } | undefined;
+    for (let i = 0; i < 64 && !wakeCue; i++) {
+      const probeSave = {
+        id: 'wake-verify',
+        turn: { number: 1 },
+        torpedoes: [
+          {
+            id: `torp-wake-${i}`,
+            firerUnitId: 'ss-enemy',
+            status: 'running' as const,
+            heading: fishHeading,
+            position: fishPos,
+            launchPosition: fishPos,
+            speedKn: 46,
+            remainingRunNm: 2,
+            runDepthM: 3,
+            launchedTurn: 1,
+            estimatedCourse: 90,
+            estimatedSpeedKn: 14,
+            estimatedRangeNm: 1,
+            estimatedLengthM: 115,
+            path: [fishPos],
+          },
+        ],
+      };
+      const cues = buildTorpedoWakeCues(
+        observer,
+        probeSave as unknown as Parameters<typeof buildTorpedoWakeCues>[1],
+      );
+      if (cues[0]) wakeCue = cues[0];
+    }
+    check('wake sighting cue eventually detects close fish', Boolean(wakeCue));
+    if (wakeCue) {
+      check(
+        'wake relativeBearing is sighting LOS (compass), not travel',
+        wakeCue.relativeBearing === expectSighting &&
+          wakeCue.travelRelativeBearing === expectTravel &&
+          wakeCue.relativeBearing !== wakeCue.travelRelativeBearing,
+        `sight=${wakeCue.relativeBearing} wantSight=${expectSighting} travel=${wakeCue.travelRelativeBearing} wantTravel=${expectTravel}`,
+      );
+      check(
+        'wake travel ahead when fish runs with observer HDG',
+        expectTravel === 0 && wakeCue.travelRelativeBearing === 0,
+      );
+    }
+  }
 
   // Restore Porter near original for hydrophone checks
   await api(

@@ -7,6 +7,7 @@ import {
   type HullClass,
   type OpticsDamageLook,
   type PeriscopeContact,
+  type TorpedoWakeCue,
 } from '@war-patrol/shared';
 /** Vite-bundled PNGs (alpha) — guaranteed in the client graph (not fragile public-path strings). */
 import carrierSilhouettePng from '../assets/silhouettes/carrier.png';
@@ -23,6 +24,11 @@ import { PeriscopeFeatherSvg } from './PeriscopeFeatherSvg';
 
 interface Props {
   contacts: PeriscopeContact[];
+  /**
+   * Lookout FoW sightings (e.g. torpedo wakes) — selectable like contacts;
+   * {@link TorpedoWakeCue.relativeBearing} drives the same optics compass bug.
+   */
+  sightings?: TorpedoWakeCue[];
   maxRangeNm: number;
   /** Own-ship heading — solid HDG needle (bow facing) on the north-up rose. */
   ownHeading: number;
@@ -36,6 +42,11 @@ interface Props {
    */
   blind?: boolean;
 }
+
+/** Shared selection — contacts and sightings share the optics compass. */
+type OpticsSelection =
+  | { kind: 'contact'; id: string }
+  | { kind: 'sighting'; id: string };
 
 /** Intrinsic pixel size for the plate `<img>` (matches source PNG). */
 const SILHOUETTE_SIZE: Record<string, { width: number; height: number }> = {
@@ -116,12 +127,27 @@ function formatCourse(courseDeg: number): string {
   return `${String(Math.round(courseDeg) % 360).padStart(3, '0')}°`;
 }
 
+/** Wake travel secondary — distinct from sighting/contact REL (port/stbd look-at). */
+function formatWakeTravel(rel: number): string {
+  if (rel === 0) return 'running ahead';
+  if (Math.abs(rel) === 180) return 'running astern';
+  const abs = Math.abs(rel);
+  const side = rel > 0 ? 'stbd' : 'port';
+  return `running ${String(abs).padStart(3, '0')}° ${side}`;
+}
+
 function contactsKey(contacts: PeriscopeContact[]): string {
   return contacts
     .map(
       (c) =>
         `${c.id}:${c.kind ?? 'hull'}:${c.sinking ? 's' : ''}:${c.damageLook ?? ''}`,
     )
+    .join('|');
+}
+
+function sightingsKey(sightings: TorpedoWakeCue[]): string {
+  return sightings
+    .map((s) => `${s.id}:${s.relativeBearing}:${s.travelRelativeBearing}:${s.confidence}`)
     .join('|');
 }
 
@@ -142,6 +168,7 @@ function contactsKey(contacts: PeriscopeContact[]): string {
  */
 function PeriscopeScopeInner({
   contacts,
+  sightings = [],
   maxRangeNm,
   ownHeading,
   variant = 'periscope',
@@ -155,16 +182,41 @@ function PeriscopeScopeInner({
     );
   }, [blind, contacts]);
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const sortedSightings = useMemo(() => {
+    if (blind) return [];
+    return [...sightings].sort(
+      (a, b) => Math.abs(a.relativeBearing) - Math.abs(b.relativeBearing),
+    );
+  }, [blind, sightings]);
+
+  const [selection, setSelection] = useState<OpticsSelection | null>(null);
   const [imgFailed, setImgFailed] = useState(false);
 
-  // Synchronous selection — no useEffect gap where contacts exist but img never mounts.
-  const effectiveId =
-    !blind && selectedId != null && sorted.some((c) => c.id === selectedId)
-      ? selectedId
-      : (sorted[0]?.id ?? null);
+  // Synchronous selection — prefer retained pick; else first contact, else first sighting.
+  const effectiveSelection: OpticsSelection | null = (() => {
+    if (blind) return null;
+    if (selection?.kind === 'contact' && sorted.some((c) => c.id === selection.id)) {
+      return selection;
+    }
+    if (selection?.kind === 'sighting' && sortedSightings.some((s) => s.id === selection.id)) {
+      return selection;
+    }
+    if (sorted[0]) return { kind: 'contact', id: sorted[0].id };
+    if (sortedSightings[0]) return { kind: 'sighting', id: sortedSightings[0].id };
+    return null;
+  })();
 
-  const selected = effectiveId ? (sorted.find((c) => c.id === effectiveId) ?? null) : null;
+  const selected =
+    effectiveSelection?.kind === 'contact'
+      ? (sorted.find((c) => c.id === effectiveSelection.id) ?? null)
+      : null;
+  const selectedSighting =
+    effectiveSelection?.kind === 'sighting'
+      ? (sortedSightings.find((s) => s.id === effectiveSelection.id) ?? null)
+      : null;
+
+  const compassRel =
+    selectedSighting?.relativeBearing ?? selected?.relativeBearing ?? null;
 
   const viewportLabel =
     variant === 'lookout' ? 'Lookout visual contact' : 'Periscope visual contact';
@@ -191,13 +243,12 @@ function PeriscopeScopeInner({
     selected != null &&
     periscopeSilhouetteFlipX(ownHeading, selected.relativeBearing, selected.courseDeg);
 
+  const hasVisual = sorted.length > 0 || sortedSightings.length > 0;
+
   return (
     <div className="radar-scope radar-console periscope-scope">
       <div className="periscope-compass-col">
-        <OpticsBearingCompass
-          relativeBearing={selected ? selected.relativeBearing : null}
-          ownHeading={ownHeading}
-        />
+        <OpticsBearingCompass relativeBearing={compassRel} ownHeading={ownHeading} />
       </div>
 
       <div
@@ -213,8 +264,19 @@ function PeriscopeScopeInner({
 
         {blind ? (
           <p className="periscope-empty mono periscope-empty--blind">Scope down</p>
-        ) : sorted.length === 0 ? (
+        ) : !hasVisual ? (
           <p className="periscope-empty mono muted">No visual contacts within {maxRangeNm} nm</p>
+        ) : selectedSighting ? (
+          <div className="periscope-selected periscope-selected--sighting">
+            <div className="periscope-readouts mono">
+              <span className="readout">WAKE</span>
+              <div className="periscope-readouts-meta">
+                <span>{formatRelBearing(selectedSighting.relativeBearing)}</span>
+                <span className="muted">{formatWakeTravel(selectedSighting.travelRelativeBearing)}</span>
+                <span className="muted">{selectedSighting.confidence.toUpperCase()}</span>
+              </div>
+            </div>
+          </div>
         ) : selected ? (
           <div
             className="periscope-selected"
@@ -311,7 +373,8 @@ function PeriscopeScopeInner({
           ) : (
             <ul className="sensor-contact-scroll">
               {sorted.map((c) => {
-                const active = c.id === effectiveId;
+                const active =
+                  effectiveSelection?.kind === 'contact' && c.id === effectiveSelection.id;
                 return (
                   <li key={c.id}>
                     <button
@@ -320,7 +383,7 @@ function PeriscopeScopeInner({
                       aria-pressed={active}
                       onClick={() => {
                         setImgFailed(false);
-                        setSelectedId(c.id);
+                        setSelection({ kind: 'contact', id: c.id });
                       }}
                     >
                       <span className="readout">{contactDesignation(c)}</span>
@@ -360,6 +423,37 @@ function PeriscopeScopeInner({
             </ul>
           )}
         </div>
+        {!blind && sortedSightings.length > 0 && (
+          <div className="radar-contact-list periscope-sightings-list">
+            <h3 className="radar-contacts-heading">Sightings</h3>
+            <ul className="sensor-contact-scroll">
+              {sortedSightings.map((s) => {
+                const active =
+                  effectiveSelection?.kind === 'sighting' && s.id === effectiveSelection.id;
+                return (
+                  <li key={s.id}>
+                    <button
+                      type="button"
+                      className={`periscope-contact-btn mono${active ? ' primary' : ''}`}
+                      aria-pressed={active}
+                      onClick={() => {
+                        setImgFailed(false);
+                        setSelection({ kind: 'sighting', id: s.id });
+                      }}
+                    >
+                      <span className="readout">WAKE</span>
+                      <span className="radar-contact-meta">
+                        <span>{formatRelBearing(s.relativeBearing)}</span>
+                        <span>{formatWakeTravel(s.travelRelativeBearing)}</span>
+                        <span>{s.confidence.toUpperCase()}</span>
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
         {blind && <p className="periscope-caption muted">Mast lowered</p>}
       </aside>
     </div>
@@ -367,6 +461,8 @@ function PeriscopeScopeInner({
 }
 
 export const PeriscopeScope = memo(PeriscopeScopeInner, (prev, next) => {
+  const prevSightings = prev.sightings ?? [];
+  const nextSightings = next.sightings ?? [];
   return (
     prev.maxRangeNm === next.maxRangeNm &&
     prev.ownHeading === next.ownHeading &&
@@ -389,6 +485,8 @@ export const PeriscopeScope = memo(PeriscopeScopeInner, (prev, next) => {
         Boolean(c.sinking) === Boolean(o.sinking) &&
         (c.damageLook ?? '') === (o.damageLook ?? '')
       );
-    })
+    }) &&
+    sightingsKey(prevSightings) === sightingsKey(nextSightings) &&
+    prevSightings.length === nextSightings.length
   );
 });

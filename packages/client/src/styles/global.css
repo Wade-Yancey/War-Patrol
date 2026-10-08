@@ -2483,10 +2483,16 @@ label {
   opacity: 0.85;
 }
 
-.wake-cues {
-  margin-top: 0.75rem;
-  padding: 0.65rem 0.75rem;
-  border: 1px dashed var(--border, #1a4a28);
+/* Optics side-panel Sightings (wake cues, etc.) — under Contacts. */
+.periscope-sightings-list {
+  margin-top: 0.65rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--border, #1a4a28);
+}
+
+.periscope-selected--sighting {
+  /* No plate scale — text-only wake cue in the viewer. */
+  --peri-scale: 1;
 }
 
 /* Dive presets — large touch targets */
