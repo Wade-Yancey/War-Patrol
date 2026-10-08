@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "id": "cavalla-shokaku-philippine-sea",
-  "name": "Cavalla × Shōkaku — Philippine Sea",
-  "description": "Museum recreation of Cavalla's 19 Jun 1944 approach on Shōkaku (Battle of the Philippine Sea). NPC Shōkaku SE-bound (~135°) recovering aircraft at 18 kn with one NPC Mitsubishi A6M Zeke on CAP (~1.5 nm to port, medium FL, cruise); playable Kagerō escort Urakaze languidly to starboard; playable Gato-class USS Cavalla at periscope depth ~0.75 nm off the carrier's starboard for a historical-style approach/shot. Clock starts 11:00. Passwords: umpire / red (Urakaze) / blue (Cavalla); tokens urakaze-demo / cavalla-demo. Source: combinedfleet.com/shoksink.htm.",
+  "name": "Cavalla \u00d7 Sh\u014dkaku \u2014 Philippine Sea",
+  "description": "Museum recreation of Cavalla's 19 Jun 1944 approach on Sh\u014dkaku (Battle of the Philippine Sea). NPC Sh\u014dkaku SE-bound (~135\u00b0) recovering aircraft at 18 kn with one NPC Mitsubishi A6M Zeke on CAP (~1.5 nm to port, medium FL, cruise); playable Kager\u014d escort Urakaze languidly to starboard; playable Gato-class USS Cavalla at periscope depth ~0.75 nm off the carrier's starboard for a historical-style approach/shot. Clock starts 11:00. Passwords: umpire / red (Urakaze) / blue (Cavalla); tokens urakaze-demo / cavalla-demo. Source: combinedfleet.com/shoksink.htm.",
   "mode": "pvp",
   "operatingArea": {
     "minLat": 34.32,
@@ -17,7 +17,7 @@
   "units": [
     {
       "id": "cv-shokaku",
-      "name": "Shōkaku",
+      "name": "Sh\u014dkaku",
       "side": "red",
       "faction": "Red",
       "classId": "shokaku-class",
@@ -123,6 +123,10 @@
           "maxRangeNm": 8
         },
         {
+          "kind": "hydrophone",
+          "maxRangeNm": 30
+        },
+        {
           "kind": "lookout",
           "maxRangeNm": 6
         }
@@ -144,6 +148,7 @@
           "capabilities": [
             "radar",
             "active_sonar",
+            "hydrophone",
             "lookout"
           ]
         }

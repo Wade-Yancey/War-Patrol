@@ -50,6 +50,10 @@
           "maxRangeNm": 8
         },
         {
+          "kind": "hydrophone",
+          "maxRangeNm": 30
+        },
+        {
           "kind": "lookout",
           "maxRangeNm": 6
         }
@@ -71,6 +75,7 @@
           "capabilities": [
             "radar",
             "active_sonar",
+            "hydrophone",
             "lookout"
           ]
         }

@@ -349,6 +349,9 @@ export function buildVesselView(
     const hydro = buildHydrophoneContacts(unit, save);
     view.hydrophoneContacts = hydro.contacts;
     view.hydrophoneMaxRangeNm = hydro.maxRangeNm;
+    view.hydrophoneEffectiveRangeNm = hydro.effectiveRangeNm;
+    view.hydrophoneListenQuality = Math.round(hydro.listenQuality * 100) / 100;
+    view.hydrophoneSelfNoise = Math.round(hydro.selfNoise * 100) / 100;
     view.hydrophoneOperational = hydro.operational;
     if (hydro.unavailableReason) {
       view.hydrophoneUnavailableReason = hydro.unavailableReason;

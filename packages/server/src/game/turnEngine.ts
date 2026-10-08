@@ -120,6 +120,8 @@ export function resolveTurn(save: GameSave): GameSave {
 
   // Clear helm/EOT/depth / one-shot weapon fields after resolve. Standing aircraft
   // attack and vessel standing orders persist until cancel / target gone (like loiter).
+  const nextTurnNumber = save.turn.number + 1;
+
   const resolvedUnits = noisemakers.units.map((u) => {
     const attack = u.orders.aircraftAttack;
     const vessel = u.orders.vesselStanding;
@@ -139,14 +141,23 @@ export function resolveTurn(save: GameSave): GameSave {
           : {}),
       };
     }
+    // Drop aged torpedo-reload acoustic stamps (hearable on start turn + next).
+    const reloadCue = u.torpedoReloadAcousticTurn;
+    const keepReloadCue =
+      typeof reloadCue === 'number' &&
+      Number.isFinite(reloadCue) &&
+      (reloadCue === nextTurnNumber || reloadCue === nextTurnNumber - 1);
     return {
       ...u,
       orders: next,
+      ...(keepReloadCue
+        ? { torpedoReloadAcousticTurn: reloadCue }
+        : { torpedoReloadAcousticTurn: undefined }),
     };
   });
 
   const nextTurnState = {
-    number: save.turn.number + 1,
+    number: nextTurnNumber,
     phase: 'open' as const,
     timerDeadline: null,
     timerSeconds: save.turn.timerSeconds,

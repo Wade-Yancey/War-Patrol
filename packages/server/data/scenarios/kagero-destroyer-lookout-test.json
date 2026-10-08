@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "id": "kagero-destroyer-lookout-test",
-  "name": "Kagerō destroyer lookout / torpedo test",
-  "description": "Playable IJN destroyer drill: Gato at periscope depth south of an eastbound Kagerō-class destroyer (~1.5 nm, near-beam aspect). Kagerō is a v1 player Destroyer seat (Controls + Sensors join URLs) alongside Fletcher. Recognition plate OA ~119 m / beam ~11 m; Kagerō silhouette. Passwords: umpire / red / red (tokens kagero-demo / gato-demo).",
+  "name": "Kager\u014d destroyer lookout / torpedo test",
+  "description": "Playable IJN destroyer drill: Gato at periscope depth south of an eastbound Kager\u014d-class destroyer (~1.5 nm, near-beam aspect). Kager\u014d is a v1 player Destroyer seat (Controls + Sensors join URLs) alongside Fletcher. Recognition plate OA ~119 m / beam ~11 m; Kager\u014d silhouette. Passwords: umpire / red / red (tokens kagero-demo / gato-demo).",
   "mode": "pvp",
   "operatingArea": {
     "minLat": 34.32,
@@ -17,7 +17,7 @@
   "units": [
     {
       "id": "dd-kagero",
-      "name": "Kagerō",
+      "name": "Kager\u014d",
       "side": "red",
       "faction": "Red",
       "classId": "kagero-class",
@@ -50,6 +50,10 @@
           "maxRangeNm": 8
         },
         {
+          "kind": "hydrophone",
+          "maxRangeNm": 30
+        },
+        {
           "kind": "lookout",
           "maxRangeNm": 6
         }
@@ -71,6 +75,7 @@
           "capabilities": [
             "radar",
             "active_sonar",
+            "hydrophone",
             "lookout"
           ]
         }
