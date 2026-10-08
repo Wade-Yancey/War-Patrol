@@ -68,6 +68,7 @@ import {
 import {
   loadSonarPingBuffer,
   playSonarPingSample,
+  SONAR_PING_CONTROLS_OWN_GAIN,
 } from '../audio/sonarPing';
 import {
   TORPEDO_HIT_CONTROLS_PEAK_GAIN,
@@ -713,6 +714,20 @@ export function StationPage() {
     onSubCreakBridge &&
     depthM > RADAR_SURFACE_DEPTH_M &&
     (vessel?.bridgeActiveSonarPings?.length ?? 0) > 0;
+  /**
+   * Own-ship active-search ambience on destroyer Controls while sonar is ON.
+   * Sensors keeps the louder ActiveSonarScope path — this gate is Controls-only.
+   * VesselView omits `sensors`; station caps + toggle + subsystem mirror
+   * {@link isActiveSonarPinging} for the FoW unit pick.
+   */
+  const hearOwnControlsSonar =
+    onControlsBridge &&
+    canActiveSonar &&
+    Boolean(vessel?.unit.activeSonarEnabled) &&
+    vessel != null &&
+    vessel.unit.condition !== 'sunk' &&
+    vessel.unit.condition !== 'sinking' &&
+    vessel.unit.subsystems?.activeSonar !== 'disabled';
 
   // Submarine Controls: occasional hull creaks while submerged (shallow of crush).
   useEffect(() => {
@@ -964,6 +979,42 @@ export function StationPage() {
       if (timer != null) window.clearInterval(timer);
     };
   }, [hearBridgeSonar]);
+
+  // Destroyer Controls: faint own-ship ping while search sonar is ON (same sample
+  // + 6 s cadence as Sensors). Stops on toggle OFF, sonar disabled, or leave Controls.
+  // Cadence-only — no gesture unlock re-fire (see hearBridgeSonar above).
+  useEffect(() => {
+    if (!hearOwnControlsSonar) return;
+    let cancelled = false;
+    let timer: number | null = null;
+
+    const playOwnControlsPing = async () => {
+      if (cancelled) return;
+      try {
+        const ctx = await ensureBridgeAudioCtx();
+        if (cancelled || ctx.state !== 'running') return;
+        if (!bridgeAudioRef.current.sonarPingBuffer) {
+          bridgeAudioRef.current.sonarPingBuffer = await loadSonarPingBuffer(ctx);
+        }
+        const buffer = bridgeAudioRef.current.sonarPingBuffer;
+        if (!buffer || cancelled) return;
+        playSonarPingSample(ctx, buffer, ctx.destination, SONAR_PING_CONTROLS_OWN_GAIN);
+      } catch {
+        /* autoplay / sample — ignore */
+      }
+    };
+
+    void playOwnControlsPing();
+    timer = window.setInterval(
+      () => void playOwnControlsPing(),
+      ACTIVE_SONAR_PING_INTERVAL_SEC * 1000,
+    );
+
+    return () => {
+      cancelled = true;
+      if (timer != null) window.clearInterval(timer);
+    };
+  }, [hearOwnControlsSonar]);
 
   // Sub Controls: underwater depth-change cue when keel moves on resolve toward
   // a *new* ordered depth. Silent on UI submit; silent when holding depth; silent
