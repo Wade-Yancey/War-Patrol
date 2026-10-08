@@ -2,6 +2,7 @@ import { memo, useMemo, useState } from 'react';
 import {
   formatContactDesignation,
   formatPeriscopeDesignation,
+  normalizeHeading,
   opticsSightingLabel,
   periscopeSilhouetteFlipX,
   periscopeSilhouetteScale,
@@ -19,6 +20,7 @@ import submarineSilhouettePng from '../assets/silhouettes/submarine.png';
 import zekeSilhouettePng from '../assets/silhouettes/zeke.png';
 import {
   formatRelBearing,
+  formatTrueBearing,
   OpticsBearingCompass,
 } from './OpticsBearingCompass';
 import { PeriscopeFeatherSvg } from './PeriscopeFeatherSvg';
@@ -126,6 +128,11 @@ function silhouetteDamageClass(
 /** Precise true course readout — padded like own HDG readout. */
 function formatCourse(courseDeg: number): string {
   return `${String(Math.round(courseDeg) % 360).padStart(3, '0')}°`;
+}
+
+/** Selected-contact / sighting true bearing from own HDG + relative LOS. */
+function contactTrueBearing(ownHeading: number, relativeBearing: number): string {
+  return formatTrueBearing(normalizeHeading(ownHeading + relativeBearing));
 }
 
 /** Wake travel secondary — distinct from sighting/contact REL (port/stbd look-at). */
@@ -275,7 +282,14 @@ function PeriscopeScopeInner({
             <div className="periscope-readouts mono">
               <span className="readout">{opticsSightingLabel(selectedSighting.kind)}</span>
               <div className="periscope-readouts-meta">
-                <span>{formatRelBearing(selectedSighting.relativeBearing)}</span>
+                <span className="periscope-meta-bearing">
+                  <span className="periscope-meta-bearing-key">rel</span>{' '}
+                  {formatRelBearing(selectedSighting.relativeBearing)}
+                </span>
+                <span className="periscope-meta-bearing">
+                  <span className="periscope-meta-bearing-key">true</span>{' '}
+                  {contactTrueBearing(ownHeading, selectedSighting.relativeBearing)}
+                </span>
                 {selectedSighting.kind === 'wake' &&
                   selectedSighting.travelRelativeBearing != null && (
                     <span className="muted">
@@ -326,7 +340,14 @@ function PeriscopeScopeInner({
                 inside the flex-centered `.periscope-selected` stack.
               */}
               <div className="periscope-readouts-meta">
-                <span>{formatRelBearing(selected.relativeBearing)}</span>
+                <span className="periscope-meta-bearing">
+                  <span className="periscope-meta-bearing-key">rel</span>{' '}
+                  {formatRelBearing(selected.relativeBearing)}
+                </span>
+                <span className="periscope-meta-bearing">
+                  <span className="periscope-meta-bearing-key">true</span>{' '}
+                  {contactTrueBearing(ownHeading, selected.relativeBearing)}
+                </span>
                 <span className="muted">{selected.rangeNm.toFixed(2)} nm</span>
                 {!isFeather && (
                   <span className="muted">{selected.speedKn.toFixed(1)} kn</span>
