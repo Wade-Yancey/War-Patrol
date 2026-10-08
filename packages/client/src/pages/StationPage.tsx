@@ -752,6 +752,8 @@ export function StationPage() {
 
   // Sub Controls: hull-coupled nearby enemy active-sonar pings (same 6 s cadence).
   // Volume from proximity only — silent beyond ACTIVE_SONAR_CONTROLS_AUDIBLE_NM.
+  // Cadence-only: do NOT re-fire on pointer/key unlock (that replayed the ping on
+  // every Controls click). Ambient unlock already resumes the shared AudioContext.
   useEffect(() => {
     if (!hearBridgeSonar) return;
     let cancelled = false;
@@ -782,17 +784,9 @@ export function StationPage() {
     void playBridgePings();
     timer = window.setInterval(() => void playBridgePings(), ACTIVE_SONAR_PING_INTERVAL_SEC * 1000);
 
-    const unlock = () => {
-      void playBridgePings();
-    };
-    window.addEventListener('pointerdown', unlock);
-    window.addEventListener('keydown', unlock);
-
     return () => {
       cancelled = true;
       if (timer != null) window.clearInterval(timer);
-      window.removeEventListener('pointerdown', unlock);
-      window.removeEventListener('keydown', unlock);
     };
   }, [hearBridgeSonar]);
 
