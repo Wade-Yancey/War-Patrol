@@ -1544,11 +1544,9 @@ export function UmpirePage() {
                             auto-queues that weapon only when in range (guns ≤ 4 nm / DC ≤ 600 m
                             path CPA / torpedo ≤ fish max run 4.5 nm). Attack (guns) expires after
                             the salvo is away; Attack (DC) / torpedoes keep prosecuting until Clear.
-                            Only
-                            weapons the hull class has are shown. Evade zigzags (±30° from base
-                            course, alternating each turn). Optional evade target = base course
-                            away from that threat. Clears on Clear, or when intercept/attack
-                            target is gone.
+                            Only weapons the hull class has are shown. Evade zigzags (±30° from
+                            the helm course when ordered, alternating each turn) — general posture,
+                            no target. Clears on Clear, or when intercept/attack target is gone.
                           </p>
                           <label className="unit-edit-select">
                             Target
@@ -1574,15 +1572,18 @@ export function UmpirePage() {
                               {formatVesselStandingModeLabel(
                                 selectedUnit.orders.vesselStanding.mode,
                               )}
-                              {selectedUnit.orders.vesselStanding.targetUnitId
-                                ? ` → ${
-                                    umpire?.units.find(
-                                      (u) =>
-                                        u.id ===
-                                        selectedUnit.orders?.vesselStanding?.targetUnitId,
-                                    )?.name ?? selectedUnit.orders.vesselStanding.targetUnitId
-                                  }`
-                                : ' (no threat target)'}
+                              {selectedUnit.orders.vesselStanding.mode === 'evade'
+                                ? ''
+                                : selectedUnit.orders.vesselStanding.targetUnitId
+                                  ? ` → ${
+                                      umpire?.units.find(
+                                        (u) =>
+                                          u.id ===
+                                          selectedUnit.orders?.vesselStanding?.targetUnitId,
+                                      )?.name ??
+                                      selectedUnit.orders.vesselStanding.targetUnitId
+                                    }`
+                                  : ' (no target)'}
                               {' '}
                               (auto-steer)
                             </p>
@@ -1617,7 +1618,7 @@ export function UmpirePage() {
                                         api.umpireUnitOrders(gameId, token, selectedUnit.id, {
                                           vesselStanding: {
                                             mode,
-                                            ...(vesselStandingTargetId
+                                            ...(needsTarget && vesselStandingTargetId
                                               ? { targetUnitId: vesselStandingTargetId }
                                               : {}),
                                           },

@@ -1229,28 +1229,12 @@ export class GameRuntime {
               'umpire',
             );
           } else {
-            // evade — optional threat target for base course away from threat
-            let threat: UnitState | undefined;
-            if (targetId) {
-              if (targetId === unit.id) {
-                throw Object.assign(new Error('Cannot target self'), { statusCode: 400 });
-              }
-              threat = save.units.find((u) => u.id === targetId);
-              if (!threat || !isVesselStandingTarget(threat)) {
-                throw Object.assign(new Error('Invalid evade threat target'), {
-                  statusCode: 400,
-                });
-              }
-            }
-            const base = vesselEvadeBaseCourse({
-              unit,
-              threat: threat ?? null,
-            });
+            // evade — general zigzag posture; ignore any sticky targetUnitId
+            const base = vesselEvadeBaseCourse({ unit });
             const standing: VesselStandingOrder = {
               mode: 'evade',
               evadeBaseCourse: base,
               evadeLeg: 0,
-              ...(threat ? { targetUnitId: targetId } : {}),
             };
             if (course === undefined) {
               course = vesselEvadeZigzagCourse(base, 0);

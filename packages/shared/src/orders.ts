@@ -96,7 +96,10 @@ function formatVesselStandingOrderSummary(
           : standing.mode === 'evade'
             ? 'EVA'
             : 'INT';
-  const target = standing.targetUnitId ? ` → ${standing.targetUnitId}` : '';
+  const target =
+    standing.mode !== 'evade' && standing.targetUnitId
+      ? ` → ${standing.targetUnitId}`
+      : '';
   return `VES ${mode}${target}`;
 }
 

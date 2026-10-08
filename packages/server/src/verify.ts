@@ -8400,7 +8400,7 @@ async function main() {
     );
     check('sub rejects attack (DC)', subRejectDc.status === 400);
 
-    // Evade zigzag — leg alternates across resolves.
+    // Evade zigzag — leg alternates; sticky targetUnitId must be stripped.
     const orderEvade = await api(
       'POST',
       `/api/games/${vesId}/units/dd-101/orders`,
@@ -8411,7 +8411,12 @@ async function main() {
     const evadePending = (
       orderEvade.json as {
         orders?: {
-          vesselStanding?: { mode?: string; evadeLeg?: number; evadeBaseCourse?: number };
+          vesselStanding?: {
+            mode?: string;
+            evadeLeg?: number;
+            evadeBaseCourse?: number;
+            targetUnitId?: string;
+          };
           eot?: string;
         };
         orderedCourse?: number;
@@ -8421,21 +8426,23 @@ async function main() {
       'evade standing pending',
       evadePending.orders?.vesselStanding?.mode === 'evade',
     );
+    check(
+      'evade strips sticky targetUnitId',
+      !evadePending.orders?.vesselStanding?.targetUnitId,
+      `target=${evadePending.orders?.vesselStanding?.targetUnitId}`,
+    );
     check('evade auto-rings ahead_full', evadePending.orders?.eot === 'ahead_full');
     const evadeCourse0 = evadePending.orderedCourse;
+    const evadeBase0 = evadePending.orders?.vesselStanding?.evadeBaseCourse;
     check(
       'evade first leg is base−30°',
       typeof evadeCourse0 === 'number' &&
-        typeof evadePending.orders?.vesselStanding?.evadeBaseCourse === 'number' &&
+        typeof evadeBase0 === 'number' &&
         Math.abs(
-          ((evadeCourse0 -
-            (evadePending.orders.vesselStanding.evadeBaseCourse -
-              VESSEL_EVADE_ZIGZAG_AMPLITUDE_DEG) +
-            540) %
-            360) -
+          ((evadeCourse0 - (evadeBase0 - VESSEL_EVADE_ZIGZAG_AMPLITUDE_DEG) + 540) % 360) -
             180,
         ) < 1,
-      `course=${evadeCourse0} base=${evadePending.orders?.vesselStanding?.evadeBaseCourse}`,
+      `course=${evadeCourse0} base=${evadeBase0}`,
     );
 
     await api('POST', `/api/games/${vesId}/turn/lock`, {}, vesTok);
@@ -8446,7 +8453,14 @@ async function main() {
       afterEv1.json.view as {
         units?: Array<{
           id: string;
-          orders?: { vesselStanding?: { evadeLeg?: number; mode?: string } };
+          orders?: {
+            vesselStanding?: {
+              evadeLeg?: number;
+              mode?: string;
+              evadeBaseCourse?: number;
+              targetUnitId?: string;
+            };
+          };
         }>;
       }
     ).units?.find((u) => u.id === 'dd-101');
@@ -8454,6 +8468,16 @@ async function main() {
       'evade persists with flipped leg',
       ddEv1?.orders?.vesselStanding?.mode === 'evade' &&
         ddEv1?.orders?.vesselStanding?.evadeLeg === 1,
+    );
+    check(
+      'evade base stays frozen (no threat re-home)',
+      typeof evadeBase0 === 'number' &&
+        ddEv1?.orders?.vesselStanding?.evadeBaseCourse === evadeBase0,
+      `base0=${evadeBase0} after=${ddEv1?.orders?.vesselStanding?.evadeBaseCourse}`,
+    );
+    check(
+      'evade still has no target after resolve',
+      !ddEv1?.orders?.vesselStanding?.targetUnitId,
     );
 
     // Pure applyVesselStandingOrders zigzag flip without HTTP.
@@ -8472,6 +8496,8 @@ async function main() {
           orders: {
             vesselStanding: {
               mode: 'evade',
+              // Legacy sticky target must be ignored / stripped.
+              targetUnitId: 'bogus-threat',
               evadeBaseCourse: 90,
               evadeLeg: 0,
             },
@@ -8487,6 +8513,14 @@ async function main() {
       check(
         'applyVesselStandingOrders advances leg',
         o.orders.vesselStanding?.evadeLeg === 1,
+      );
+      check(
+        'applyVesselStandingOrders strips evade target',
+        !o.orders.vesselStanding?.targetUnitId,
+      );
+      check(
+        'applyVesselStandingOrders keeps frozen base',
+        o.orders.vesselStanding?.evadeBaseCourse === 90,
       );
     }
 

@@ -193,14 +193,16 @@ export function normalizeVesselStandingOrder(
 ): VesselStandingOrder | null {
   if (!raw || typeof raw !== 'object') return null;
   const mode = normalizeVesselStandingMode(raw.mode);
-  const targetUnitId = String(raw.targetUnitId ?? '').trim() || undefined;
   const next: VesselStandingOrder = { mode };
-  if (targetUnitId) next.targetUnitId = targetUnitId;
   if (mode === 'evade') {
+    // Evade is a general zigzag posture — never bind / track a target.
     if (typeof raw.evadeBaseCourse === 'number' && Number.isFinite(raw.evadeBaseCourse)) {
       next.evadeBaseCourse = normalizeHeading(raw.evadeBaseCourse);
     }
     next.evadeLeg = raw.evadeLeg === 1 ? 1 : 0;
+  } else {
+    const targetUnitId = String(raw.targetUnitId ?? '').trim() || undefined;
+    if (targetUnitId) next.targetUnitId = targetUnitId;
   }
   return next;
 }
@@ -214,17 +216,13 @@ export function vesselInterceptOrderedCourse(
 }
 
 /**
- * Evade base course: away from threat when a target is set; else current helm.
+ * Evade zigzag base course: frozen existing base, else current helm.
+ * Does not take a threat — EVA is a general posture, not target-relative.
  */
 export function vesselEvadeBaseCourse(opts: {
-  unit: Pick<UnitState, 'heading' | 'orderedCourse' | 'position'>;
-  threat?: Pick<UnitState, 'position'> | null;
+  unit: Pick<UnitState, 'heading' | 'orderedCourse'>;
   existingBase?: number;
 }): number {
-  if (opts.threat) {
-    const towardThreat = bearingRangeNm(opts.unit.position, opts.threat.position).bearing;
-    return normalizeHeading(towardThreat + 180);
-  }
   if (typeof opts.existingBase === 'number' && Number.isFinite(opts.existingBase)) {
     return normalizeHeading(opts.existingBase);
   }
@@ -470,7 +468,8 @@ export function vesselAttackWeaponOrder(
  * one-shot like aircraft bombing. Attack (DC) / Attack (torpedoes) keep
  * prosecuting until Clear / target gone. Attack (torpedoes) steers onto the
  * fire heading in range and accepts tube arc at start or end-of-turn heading.
- * Evade advances zigzag leg each call (period 2 turns).
+ * Evade zigzags on a frozen base course (no target binding) and advances the
+ * zigzag leg each call (period 2 turns).
  *
  * @param turnLengthSeconds In-game seconds for this resolve — used by Attack DC
  *   path-CPA gating (defaults to {@link DEFAULT_TURN_LENGTH_SECONDS}).
@@ -505,22 +504,9 @@ export function applyVesselStandingOrders(
       return { ...unit, orders: rest };
     }
 
-    const targetId = standing.targetUnitId?.trim() || '';
-    const target = targetId ? byId.get(targetId) : undefined;
-    const needsTarget =
-      standing.mode === 'intercept' || isVesselStandingAttackMode(standing.mode);
-
-    if (needsTarget && !isVesselStandingTarget(target)) {
-      const { vesselStanding: _v, ...rest } = unit.orders;
-      return { ...unit, orders: rest };
-    }
-
     if (standing.mode === 'evade') {
-      const threatOk = targetId ? isVesselStandingTarget(target) : false;
-      const threat = threatOk ? target : null;
       const base = vesselEvadeBaseCourse({
         unit,
-        threat,
         existingBase: standing.evadeBaseCourse,
       });
       const leg: 0 | 1 = standing.evadeLeg === 1 ? 1 : 0;
@@ -529,7 +515,6 @@ export function applyVesselStandingOrders(
         mode: 'evade',
         evadeBaseCourse: base,
         evadeLeg: leg === 0 ? 1 : 0,
-        ...(threatOk && targetId ? { targetUnitId: targetId } : {}),
       };
       const nextOrders: UnitOrders = {
         ...unit.orders,
@@ -538,6 +523,13 @@ export function applyVesselStandingOrders(
         ...(unit.orders.eot === undefined ? { eot: VESSEL_EVADE_EOT } : {}),
       };
       return { ...unit, orders: nextOrders };
+    }
+
+    const targetId = standing.targetUnitId?.trim() || '';
+    const target = targetId ? byId.get(targetId) : undefined;
+    if (!isVesselStandingTarget(target)) {
+      const { vesselStanding: _v, ...rest } = unit.orders;
+      return { ...unit, orders: rest };
     }
 
     // intercept / attack_* — target validated above

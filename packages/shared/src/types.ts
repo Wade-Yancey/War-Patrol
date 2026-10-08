@@ -324,12 +324,12 @@ export interface VesselStandingOrder {
   mode: VesselStandingMode;
   /**
    * Target hull id. Required for intercept / attack_*.
-   * Optional for evade: when set, base course runs away from that threat.
+   * Ignored for evade (general zigzag posture — no target binding).
    */
   targetUnitId?: string;
   /**
-   * Evade zigzag base course (° true). Refreshed from threat when
-   * `targetUnitId` is set; otherwise frozen at order start.
+   * Evade zigzag base course (° true). Frozen at order start (helm / ordered
+   * course); not refreshed from any contact.
    */
   evadeBaseCourse?: number;
   /**
