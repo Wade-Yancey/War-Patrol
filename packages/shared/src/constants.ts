@@ -168,8 +168,9 @@ export const ACTIVE_SONAR_MAX_RANGE_NM = 8;
 export const ACTIVE_SONAR_HALF_ANGLE_DEG = 30;
 
 /**
- * Wall-clock seconds between active-sonar pings (own set + hydrophone hear +
- * close-aboard sub Controls hull hear).
+ * Wall-clock seconds between active-sonar pings (own Sensors set + faint DD
+ * Controls own-ship ambience + hydrophone hear + close-aboard sub Controls
+ * hull hear).
  * Stub cadence ~ASDIC search (was 2 s — too rapid for a believable ping cycle).
  */
 export const ACTIVE_SONAR_PING_INTERVAL_SEC = 6;

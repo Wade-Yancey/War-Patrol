@@ -1,8 +1,15 @@
-/** Shared active-search sonar ping sample (destroyer Sensors + hydrophone + close sub Controls). */
+/** Shared active-search sonar ping sample (destroyer Sensors + hydrophone + Controls). */
 export const SONAR_PING_SAMPLE_URL = '/audio/sonar-ping.wav';
 
 /** Own-set peak gain when search sonar is ON (Sensors screen). */
 export const SONAR_PING_OWN_GAIN = 0.32;
+
+/**
+ * Faint own-ship ping on destroyer Controls while search is ON.
+ * Matches facility-hum ballpark so speakers hear the set is pinging without
+ * competing with Sensors own ping (0.32) or combat one-shots.
+ */
+export const SONAR_PING_CONTROLS_OWN_GAIN = 0.1;
 
 /** Re-export: point-blank peak / proximity curve for hull-coupled enemy pings on sub Controls. */
 export {
