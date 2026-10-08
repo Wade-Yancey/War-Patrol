@@ -2,7 +2,7 @@
 export const CONTROLS_AMBIENT_SAMPLE_URL = '/audio/controls-ambient-hum.wav';
 
 /** Master gain for the ambient bed — keep below one-shot bridge cues. */
-export const CONTROLS_AMBIENT_GAIN = 0.08;
+export const CONTROLS_AMBIENT_GAIN = 0.22;
 
 export async function loadControlsAmbientBuffer(ctx: AudioContext): Promise<AudioBuffer> {
   const res = await fetch(CONTROLS_AMBIENT_SAMPLE_URL);

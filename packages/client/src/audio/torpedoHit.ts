@@ -3,10 +3,9 @@ export const TORPEDO_HIT_SAMPLE_URL = '/audio/explosion.wav';
 
 /**
  * Peak gain on Controls at zero range (before distance attenuation).
- * Dialed back from 0.82 — the blast was dominating the bridge mix; still a
- * clear, audible hit cue, just no longer overpowering.
+ * Raised for venue speakers; still under deck-gun / close DC peaks.
  */
-export const TORPEDO_HIT_CONTROLS_PEAK_GAIN = 0.55;
+export const TORPEDO_HIT_CONTROLS_PEAK_GAIN = 0.72;
 
 /**
  * Wall-clock gap (seconds) between explosion onsets when several torpedoes

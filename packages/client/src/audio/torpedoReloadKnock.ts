@@ -14,7 +14,7 @@ export const TORPEDO_RELOAD_KNOCK_COUNT = 3;
 export const TORPEDO_RELOAD_KNOCK_GAP_SEC = 1.35;
 
 /** Peak gain on submarine Controls (own crew). */
-export const TORPEDO_RELOAD_KNOCK_CONTROLS_PEAK_GAIN = 0.28;
+export const TORPEDO_RELOAD_KNOCK_CONTROLS_PEAK_GAIN = 0.42;
 
 /** Peak gain for a hydro-heard reload knock (scaled by contact gain). */
 export function hydrophoneReloadKnockPeakGain(contactGain: number): number {

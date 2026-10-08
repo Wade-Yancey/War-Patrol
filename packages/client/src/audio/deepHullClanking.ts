@@ -16,7 +16,7 @@ export const DEEP_HULL_CLANKING_DEPTH_M = FLEET_SUB_CRUSH_DEPTH_M;
  * Loop bed gain on Controls — suspenseful but under DC/torpedo peaks
  * and comparable to ambient creak presence when sustained.
  */
-export const DEEP_HULL_CLANKING_GAIN = 0.11;
+export const DEEP_HULL_CLANKING_GAIN = 0.26;
 
 export function isDeepHullClankingDepth(depthM: number): boolean {
   return depthM >= DEEP_HULL_CLANKING_DEPTH_M;
