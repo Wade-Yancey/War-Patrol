@@ -5,11 +5,11 @@ export const SONAR_PING_SAMPLE_URL = '/audio/sonar-ping.wav';
 export const SONAR_PING_OWN_GAIN = 0.32;
 
 /**
- * Faint own-ship ping on destroyer Controls while search is ON.
- * Matches facility-hum ballpark so speakers hear the set is pinging without
- * competing with Sensors own ping (0.32) or combat one-shots.
+ * Own-ship ping on destroyer Controls while search is ON.
+ * Matches Sensors own (`SONAR_PING_OWN_GAIN`) so Controls is not the quiet
+ * bottleneck — venue speakers can ride system volume down from full gain.
  */
-export const SONAR_PING_CONTROLS_OWN_GAIN = 0.1;
+export const SONAR_PING_CONTROLS_OWN_GAIN = 0.32;
 
 /** Re-export: point-blank peak / proximity curve for hull-coupled enemy pings on sub Controls. */
 export {
