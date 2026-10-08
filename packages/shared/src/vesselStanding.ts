@@ -418,6 +418,9 @@ export function vesselAttackWeaponOrder(
  * Inject course (+ preferred EOT when unset) for ships/subs with vesselStanding.
  * Clears the order when the required target is gone / invalid.
  * Attack modes may also queue that weapon's one-shot order when in engage range.
+ * Attack (guns) expires once a deck-gun salvo is queued (or already pending) —
+ * one-shot like aircraft bombing. Attack (DC) / Attack (torpedoes) keep
+ * prosecuting until Clear / target gone.
  * Evade advances zigzag leg each call (period 2 turns).
  *
  * @param turnLengthSeconds In-game seconds for this resolve — used by Attack DC
@@ -511,6 +514,14 @@ export function applyVesselStandingOrders(
       ...(unit.orders.eot === undefined ? { eot: preferredEot } : {}),
       ...weaponPatch,
     };
+    // Guns: expire after the salvo is away this resolve (queued now or already
+    // pending). Leaves DC / torpedo standing orders prosecuting.
+    if (
+      standing.mode === 'attack_guns' &&
+      (nextOrders.fireDeckGun || unit.orders.fireDeckGun)
+    ) {
+      delete nextOrders.vesselStanding;
+    }
     return { ...unit, orders: nextOrders };
   });
 }

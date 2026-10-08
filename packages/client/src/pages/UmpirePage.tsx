@@ -1542,10 +1542,12 @@ export function UmpirePage() {
                             Multi-turn auto-steer — like aircraft bomb vs strafe. Intercept closes
                             at full; Attack (guns / DC / torpedoes) prosecutes at flank and
                             auto-queues that weapon only when in range (guns ≤ 4 nm / DC ≤ 600 m
-                            path CPA / torpedo ≤ 2.5 nm). Only weapons the hull class has are
-                            shown. Evade zigzags (±30° from base course, alternating each turn).
-                            Optional evade target = base course away from that threat. Clears on
-                            Clear, or when intercept/attack target is gone.
+                            path CPA / torpedo ≤ 2.5 nm). Attack (guns) expires after the salvo
+                            is away; Attack (DC) / torpedoes keep prosecuting until Clear. Only
+                            weapons the hull class has are shown. Evade zigzags (±30° from base
+                            course, alternating each turn). Optional evade target = base course
+                            away from that threat. Clears on Clear, or when intercept/attack
+                            target is gone.
                           </p>
                           <label className="unit-edit-select">
                             Target
