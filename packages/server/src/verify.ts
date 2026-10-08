@@ -38,6 +38,7 @@ import {
   VESSEL_EVADE_EOT,
   VESSEL_EVADE_ZIGZAG_AMPLITUDE_DEG,
   VESSEL_INTERCEPT_EOT,
+  TORPEDO_MAX_RUN_NM,
   CLASS_BEAM_M,
   CLASS_LENGTH_M,
   CLASS_MAX_SPEED_KNOTS,
@@ -323,7 +324,10 @@ async function main() {
   check('vessel evade EOT is ahead_full', VESSEL_EVADE_EOT === 'ahead_full');
   check('vessel attack DC gate 600 m', VESSEL_ATTACK_DC_RANGE_M === 600);
   check('vessel attack gun gate 4 nm', VESSEL_ATTACK_GUN_RANGE_NM === 4);
-  check('vessel attack torp gate ≤ 2.5 nm', VESSEL_ATTACK_TORP_RANGE_NM === 2.5);
+  check(
+    'vessel attack torp gate equals fish max run',
+    VESSEL_ATTACK_TORP_RANGE_NM === TORPEDO_MAX_RUN_NM,
+  );
 
   // Attack DC path-CPA: flank pass starts outside 600 m but trail crosses the sub.
   {
@@ -524,6 +528,111 @@ async function main() {
       'applyVesselStandingOrders attack_guns keeps standing when out of range',
       farGunDd?.orders.vesselStanding?.mode === 'attack_guns' &&
         !farGunDd?.orders.fireDeckGun,
+    );
+  }
+
+  // Attack (torpedoes): demo-like ~3 nm geometry must queue (gate = max run).
+  {
+    const ddPos = { lat: 34.38464, lon: -119.99286, depth: 0 };
+    const ssPos = { lat: 34.42, lon: -119.95, depth: 0 };
+    const brDemo = bearingRangeNm(ssPos, ddPos);
+    check(
+      'destroyer-sub-demo start range is inside torpedo max run',
+      brDemo.rangeNm > 2.5 && brDemo.rangeNm <= TORPEDO_MAX_RUN_NM,
+      `range=${brDemo.rangeNm.toFixed(2)}`,
+    );
+    const ddTorp = {
+      id: 'dd-torp',
+      name: 'Porter',
+      side: 'blue' as const,
+      faction: 'Blue' as const,
+      classId: 'fletcher-class',
+      type: 'Ship' as const,
+      class: 'Destroyer' as const,
+      condition: 'afloat' as const,
+      position: ddPos,
+      heading: 90,
+      orderedCourse: 90,
+      speed: 12,
+      maxSpeed: 36,
+      turnRate: 7,
+      eot: 'ahead_standard' as const,
+      orders: {},
+    };
+    const ssTorp = {
+      id: 'ss-torp',
+      name: 'Gato',
+      side: 'red' as const,
+      faction: 'Red' as const,
+      classId: 'gato-class',
+      type: 'Submarine' as const,
+      class: 'Fleet Submarine' as const,
+      condition: 'afloat' as const,
+      position: ssPos,
+      heading: 225,
+      orderedCourse: 225,
+      speed: 6,
+      maxSpeed: 21,
+      turnRate: 6,
+      eot: 'ahead_2' as const,
+      torpedoForward: 6,
+      torpedoAft: 4,
+      torpedoForwardAwaitingReload: false,
+      torpedoAftAwaitingReload: false,
+      torpedoForwardReloadTurnsRemaining: 0,
+      torpedoAftReloadTurnsRemaining: 0,
+      orders: {
+        vesselStanding: { mode: 'attack_torpedoes' as const, targetUnitId: 'dd-torp' },
+      },
+    };
+    const torpApplied = applyVesselStandingOrders(
+      [ssTorp as unknown as UnitState, ddTorp as unknown as UnitState],
+      180,
+    );
+    const torpSs = torpApplied.find((u) => u.id === 'ss-torp');
+    check(
+      'applyVesselStandingOrders attack_torpedoes queues fish at demo range',
+      Boolean(torpSs?.orders.fireTorpedo),
+      `orders=${JSON.stringify(torpSs?.orders)} range=${brDemo.rangeNm.toFixed(2)}`,
+    );
+    check(
+      'applyVesselStandingOrders attack_torpedoes keeps standing after queue',
+      torpSs?.orders.vesselStanding?.mode === 'attack_torpedoes',
+    );
+    // Start heading just outside forward arc; this-turn yaw onto fire heading enables.
+    const lagSs = {
+      ...ssTorp,
+      position: { lat: 34.39, lon: -120.0, depth: 20 },
+      heading: 70,
+      orderedCourse: 70,
+      speed: 8,
+    };
+    const lagDd = {
+      ...ddTorp,
+      position: { lat: 34.4, lon: -120.0, depth: 0 },
+      heading: 90,
+      orderedCourse: 90,
+      speed: 15,
+    };
+    const lagStart = vesselAttackWeaponOrder(
+      { ...lagSs, orders: {} } as unknown as UnitState,
+      lagDd as unknown as UnitState,
+      { weapon: 'torpedoes', orderedCourse: 70, turnLengthSeconds: 0 },
+    );
+    const lagApplied = applyVesselStandingOrders(
+      [lagSs as unknown as UnitState, lagDd as unknown as UnitState],
+      180,
+    );
+    const lagOut = lagApplied.find((u) => u.id === 'ss-torp');
+    check(
+      'attack_torpedoes start heading alone can miss arc',
+      !lagStart.fireTorpedo,
+      `startOrder=${JSON.stringify(lagStart)}`,
+    );
+    check(
+      'applyVesselStandingOrders attack_torpedoes queues via end-of-turn arc',
+      Boolean(lagOut?.orders.fireTorpedo),
+      `orders=${JSON.stringify(lagOut?.orders)}`,
     );
   }
 
@@ -8209,7 +8318,29 @@ async function main() {
       dcDropLog,
     );
 
-    // Sub torpedo mode available; merchant rejects DC.
+    // Sub Attack (torpedoes): demo start geometry must actually launch a fish.
+    await api(
+      'PATCH',
+      `/api/games/${vesId}/units/dd-101`,
+      {
+        position: { lat: 34.38464, lon: -119.99286, depth: 0 },
+        heading: 90,
+        orderedCourse: 90,
+        speed: 12,
+      },
+      vesTok,
+    );
+    await api(
+      'PATCH',
+      `/api/games/${vesId}/units/ss-212`,
+      {
+        position: { lat: 34.42, lon: -119.95, depth: 0 },
+        heading: 225,
+        orderedCourse: 225,
+        speed: 6,
+      },
+      vesTok,
+    );
     const orderSubTorp = await api(
       'POST',
       `/api/games/${vesId}/units/ss-212/orders`,
@@ -8222,6 +8353,45 @@ async function main() {
       (orderSubTorp.json as { orders?: { vesselStanding?: { mode?: string } } }).orders
         ?.vesselStanding?.mode === 'attack_torpedoes',
     );
+    await api('POST', `/api/games/${vesId}/turn/lock`, {}, vesTok);
+    const resolveTorpAtk = await api(
+      'POST',
+      `/api/games/${vesId}/turn/resolve`,
+      {},
+      vesTok,
+    );
+    check('resolve vessel attack (torpedoes) turn', resolveTorpAtk.status === 200);
+    const afterTorpAtk = await api('GET', `/api/games/${vesId}/view`, undefined, vesTok);
+    const torpAtkView = afterTorpAtk.json.view as {
+      units?: Array<{
+        id: string;
+        torpedoForward?: number;
+        torpedoAft?: number;
+        orders?: { vesselStanding?: { mode?: string } };
+      }>;
+      torpedoes?: Array<{ status?: string; firerUnitId?: string }>;
+      combatLog?: Array<{ kind?: string; summary?: string }>;
+    };
+    const ssTorpAtk = torpAtkView.units?.find((u) => u.id === 'ss-212');
+    const torpLaunchLog = (torpAtkView.combatLog ?? []).some(
+      (e) => e.kind === 'torpedo_launch' && e.summary?.includes('fired'),
+    );
+    const runningFish = (torpAtkView.torpedoes ?? []).filter(
+      (f) => f.status === 'running' && f.firerUnitId === 'ss-212',
+    );
+    check(
+      'attack (torpedoes) launches fish from demo start geometry',
+      torpLaunchLog ||
+        runningFish.length > 0 ||
+        (ssTorpAtk?.torpedoForward ?? 6) < 6 ||
+        (ssTorpAtk?.torpedoAft ?? 4) < 4,
+      `fwd=${ssTorpAtk?.torpedoForward} aft=${ssTorpAtk?.torpedoAft} fish=${runningFish.length} log=${torpLaunchLog}`,
+    );
+    check(
+      'attack (torpedoes) standing persists after launch',
+      ssTorpAtk?.orders?.vesselStanding?.mode === 'attack_torpedoes',
+    );
+
     const subRejectDc = await api(
       'POST',
       `/api/games/${vesId}/units/ss-212/orders`,
