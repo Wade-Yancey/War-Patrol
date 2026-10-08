@@ -2180,15 +2180,7 @@ label {
   opacity: 0.85;
 }
 
-.helm-compass-needle {
-  transition: transform 0.45s ease-out;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .helm-compass-needle {
-    transition: none;
-  }
-}
+/* HDG uses JS tween (CONTACT_TWEEN_MS); no short CSS ease fighting the crawl. */
 
 .helm-compass-ok {
   font-family: var(--font-mono);
@@ -3364,15 +3356,7 @@ label {
   }
 }
 
-.optics-bearing-compass-needle {
-  transition: transform 0.45s ease-out;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .optics-bearing-compass-needle {
-    transition: none;
-  }
-}
+/* HDG uses JS tween (CONTACT_TWEEN_MS); no short CSS ease fighting the crawl. */
 
 .optics-bearing-compass-readouts {
   display: flex;

@@ -1,6 +1,7 @@
 import { memo, useRef, useState, type PointerEvent, type ReactNode } from 'react';
 import { normalizeHeading, shortestBearingDelta } from '@war-patrol/shared';
 import { useContinuousAngle } from '../hooks/useContinuousAngle';
+import { useTweenedHeading } from '../hooks/useTweenedHeading';
 import {
   COMPASS_CX,
   COMPASS_CY,
@@ -46,6 +47,8 @@ function bearingFromPointer(
 /**
  * CRT gyro-style compass for the helmsman: north-up rose with distinct
  * heading needle and ordered-course bug. Live unit state only — no fake data.
+ * HDG needle + readout tween over the same post-resolve window as sensor
+ * contact blips ({@link useTweenedHeading}); CRS / SET stay live for orders.
  * Click or drag the rose to set the draft (SET) course, same pattern as the
  * hydrophone listen dial. Layout matches Sensors CRT console (large dial + aux).
  */
@@ -62,7 +65,7 @@ function HelmCompassInner({
   const [dragging, setDragging] = useState(false);
   const interactive = Boolean(onDraftCourseChange) && !disabled;
 
-  const hdg = normalizeHeading(heading);
+  const hdg = useTweenedHeading(heading);
   const crs = normalizeHeading(orderedCourse);
   const draft =
     draftCourse === undefined ? undefined : normalizeHeading(draftCourse);

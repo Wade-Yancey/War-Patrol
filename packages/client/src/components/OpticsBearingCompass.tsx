@@ -1,5 +1,6 @@
 import { memo } from 'react';
 import { normalizeHeading } from '@war-patrol/shared';
+import { useTweenedHeading } from '../hooks/useTweenedHeading';
 import {
   COMPASS_SIZE,
   CrtCompassDashedBug,
@@ -30,12 +31,13 @@ export function formatRelBearing(rel: number): string {
  * CRT optics bearing dial for lookout / periscope.
  *
  * Same rose + needles as HelmCompass (shared CrtCompassRose): north-up N/E/S/W,
- * solid HDG needle for bow facing, dashed rim-chevron bug for selected contact
+ * solid HDG needle for bow facing (tweens with {@link useTweenedHeading}, same
+ * window as helm / sensor contacts), dashed rim-chevron bug for selected contact
  * at true bearing (HDG + REL). Digital REL keeps contact-list port/stbd wording.
  */
 function OpticsBearingCompassInner({ relativeBearing, ownHeading }: Props) {
   const hasContact = relativeBearing !== null && Number.isFinite(relativeBearing);
-  const hdg = normalizeHeading(ownHeading);
+  const hdg = useTweenedHeading(ownHeading);
   const rel = hasContact ? relativeBearing : 0;
   const contactTrue = hasContact ? normalizeHeading(hdg + rel) : null;
   const intensity = hasContact ? 'full' : 'dim';
