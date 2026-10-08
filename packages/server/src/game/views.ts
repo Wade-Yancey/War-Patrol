@@ -283,6 +283,9 @@ export function buildVesselView(
       torpedoAftAwaitingReload: Boolean(unit.torpedoAftAwaitingReload),
       torpedoForwardReloadTurnsRemaining: unit.torpedoForwardReloadTurnsRemaining ?? 0,
       torpedoAftReloadTurnsRemaining: unit.torpedoAftReloadTurnsRemaining ?? 0,
+      ...(typeof unit.torpedoReloadAcousticTurn === 'number'
+        ? { torpedoReloadAcousticTurn: unit.torpedoReloadAcousticTurn }
+        : {}),
       ...(unit.torpedoArcBlock ? { torpedoArcBlock: unit.torpedoArcBlock } : {}),
       depthChargeLoad: unit.depthChargeLoad ?? 0,
       depthChargeAwaitingReload: Boolean(unit.depthChargeAwaitingReload),
