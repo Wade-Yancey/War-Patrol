@@ -67,10 +67,10 @@ export function isActiveSonarPinging(
 
 /**
  * Peak Web Audio gain for a nearby enemy active-sonar ping on sub Controls
- * speakers at point-blank. Kept above facility hum (0.08) but well below own
+ * speakers at point-blank. Kept above facility hum (0.22) but just under own
  * Sensors ping (0.32) and combat one-shots — unnerving, not deafening.
  */
-export const ACTIVE_SONAR_CONTROLS_PEAK_GAIN = 0.16;
+export const ACTIVE_SONAR_CONTROLS_PEAK_GAIN = 0.3;
 
 /**
  * Controls bridge peak gain for a nearby active-sonar ping from range (nm).

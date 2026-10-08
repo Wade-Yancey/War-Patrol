@@ -4,15 +4,15 @@ export const EMERGENCY_BLOW_VENTING_SAMPLE_URL = '/audio/emergency-blow-venting.
 /**
  * Peak gain for the venting cue on submarine Controls.
  * Sits above the ducked depth-change bed during Emergency Blow so the hiss
- * stays clear on speakers (depth bed alone is 0.6 and easily masks 0.5).
+ * stays clear on speakers.
  */
-export const EMERGENCY_BLOW_VENTING_PEAK_GAIN = 0.85;
+export const EMERGENCY_BLOW_VENTING_PEAK_GAIN = 0.92;
 
 /**
  * Depth-change bed gain while an Emergency Blow ascent resolves.
  * Duck under venting so the 28 s underwater clip does not bury the hiss.
  */
-export const SUB_DEPTH_CHANGE_EMERGENCY_BLOW_GAIN = 0.22;
+export const SUB_DEPTH_CHANGE_EMERGENCY_BLOW_GAIN = 0.32;
 
 export async function loadEmergencyBlowVentingBuffer(ctx: AudioContext): Promise<AudioBuffer> {
   const res = await fetch(EMERGENCY_BLOW_VENTING_SAMPLE_URL);

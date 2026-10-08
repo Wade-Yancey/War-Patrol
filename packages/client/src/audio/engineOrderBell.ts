@@ -2,7 +2,7 @@
 export const ENGINE_ORDER_BELL_SAMPLE_URL = '/audio/engine-order-bell.wav';
 
 /** Peak gain for the telegraph ding on station / umpire EOT UI. */
-export const ENGINE_ORDER_BELL_PEAK_GAIN = 0.45;
+export const ENGINE_ORDER_BELL_PEAK_GAIN = 0.62;
 
 let sharedCtx: AudioContext | null = null;
 let sharedBuffer: AudioBuffer | null = null;

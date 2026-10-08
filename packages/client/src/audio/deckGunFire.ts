@@ -2,7 +2,7 @@
 export const DECK_GUN_FIRE_SAMPLE_URL = '/audio/deck-gun-fire.wav';
 
 /** Peak gain on Controls for the cannon fire cue. */
-export const DECK_GUN_FIRE_CONTROLS_PEAK_GAIN = 0.7;
+export const DECK_GUN_FIRE_CONTROLS_PEAK_GAIN = 0.85;
 
 /**
  * Wall-clock gap (seconds) between cannon onsets in a multi-shot salvo.

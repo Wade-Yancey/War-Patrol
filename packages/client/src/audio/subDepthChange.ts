@@ -3,10 +3,10 @@ export const SUB_DEPTH_CHANGE_SAMPLE_URL = '/audio/sub-depth-change.wav';
 
 /**
  * Peak gain for own-ship depth-change SFX on the submarine Controls station.
- * Loud enough for BT speakers after a resolve dive/ascent; below tube-door /
- * deck-gun peaks (0.7) so stacked bridge cues do not clip.
+ * Loud enough for venue speakers after a resolve dive/ascent; below deck-gun
+ * peak so stacked bridge cues do not clip.
  */
-export const SUB_DEPTH_CHANGE_PEAK_GAIN = 0.6;
+export const SUB_DEPTH_CHANGE_PEAK_GAIN = 0.78;
 
 /**
  * Minimum keel delta (m) to count as a meaningful depth change on resolve.

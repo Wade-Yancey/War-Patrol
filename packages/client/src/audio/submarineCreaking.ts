@@ -7,11 +7,11 @@ import {
 /** Hull-pressure creak for submerged submarine Controls (BT speakers). */
 export const SUBMARINE_CREAKING_SAMPLE_URL = '/audio/submarine-creaking.wav';
 
-/** Quiet ambient one-shot — sits under the facility hum, below DC/torpedo peaks. */
-export const SUBMARINE_CREAK_AMBIENT_GAIN = 0.1;
+/** Quiet ambient one-shot — sits near the facility hum, below DC/torpedo peaks. */
+export const SUBMARINE_CREAK_AMBIENT_GAIN = 0.24;
 
 /** Stress burst when a nearby depth charge hits while submerged (still under DC peak). */
-export const SUBMARINE_CREAK_DC_GAIN = 0.2;
+export const SUBMARINE_CREAK_DC_GAIN = 0.34;
 
 /** Mean seconds between ambient creaks just below the surface band. */
 export const SUBMARINE_CREAK_INTERVAL_SHALLOW_SEC = 48;
