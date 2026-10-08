@@ -281,6 +281,10 @@ function PeriscopeScopeInner({
           <div className="periscope-selected periscope-selected--sighting">
             <div className="periscope-readouts mono">
               <span className="readout">{opticsSightingLabel(selectedSighting.kind)}</span>
+              {/*
+                Fire-control order (matches torpedo / deck-gun calculators):
+                bearing (rel + true) → then wake extras. No range/crs/kn on sightings.
+              */}
               <div className="periscope-readouts-meta">
                 <span className="periscope-meta-bearing">
                   <span className="periscope-meta-bearing-key">rel</span>{' '}
@@ -335,9 +339,9 @@ function PeriscopeScopeInner({
                   : formatContactDesignation(selected.labelN)}
               </span>
               {/*
-                Fixed-height meta row (nowrap + overflow) so scar/smoke/sinking
-                chips never wrap onto a second line and shove the plate upward
-                inside the flex-centered `.periscope-selected` stack.
+                Fire-control order (matches torpedo / deck-gun calculators):
+                bearing (rel + true) → range → course → speed → status chips.
+                Fixed-height slot (CSS) so wrap/chips cannot shove the plate.
               */}
               <div className="periscope-readouts-meta">
                 <span className="periscope-meta-bearing">
@@ -349,14 +353,14 @@ function PeriscopeScopeInner({
                   {contactTrueBearing(ownHeading, selected.relativeBearing)}
                 </span>
                 <span className="muted">{selected.rangeNm.toFixed(2)} nm</span>
-                {!isFeather && (
-                  <span className="muted">{selected.speedKn.toFixed(1)} kn</span>
-                )}
                 {!isFeather &&
                   selected.courseDeg != null &&
                   Number.isFinite(selected.courseDeg) && (
                     <span className="muted">crs {formatCourse(selected.courseDeg)}</span>
                   )}
+                {!isFeather && (
+                  <span className="muted">{selected.speedKn.toFixed(1)} kn</span>
+                )}
                 {!isFeather && selected.sinking && (
                   <span className="periscope-status-chip periscope-status-chip--sinking">
                     sinking
@@ -422,12 +426,12 @@ function PeriscopeScopeInner({
                       <span className="radar-contact-meta">
                         <span>{formatRelBearing(c.relativeBearing)}</span>
                         <span>{c.rangeNm.toFixed(2)} nm</span>
-                        {c.kind !== 'periscope' && <span>{c.speedKn.toFixed(1)} kn</span>}
                         {c.kind !== 'periscope' &&
                           c.courseDeg != null &&
                           Number.isFinite(c.courseDeg) && (
                             <span>crs {formatCourse(c.courseDeg)}</span>
                           )}
+                        {c.kind !== 'periscope' && <span>{c.speedKn.toFixed(1)} kn</span>}
                         {c.kind !== 'periscope' && c.sinking && (
                           <span className="periscope-status-chip periscope-status-chip--sinking">
                             sinking
