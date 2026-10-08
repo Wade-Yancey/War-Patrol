@@ -40,6 +40,7 @@ Original: https://freesound.org/people/Ubehag/sounds/232021/
 Local copy: submarine-creaking.wav
 Notes: Submarine Controls only — occasional hull-pressure creaks while submerged
 (depth > radar surface band); more frequent with depth; also on nearby DC hits.
+Stereo 48 kHz PCM (front L/R only; former 6-channel silent-surround file downmixed).
 
 Source: Large Cannon Fire by raphavpires (Freesound #867030)
 License: as provided for War Patrol (user sample)

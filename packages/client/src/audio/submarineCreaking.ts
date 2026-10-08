@@ -13,6 +13,12 @@ export const SUBMARINE_CREAK_AMBIENT_GAIN = 0.1;
 /** Stress burst when a nearby depth charge hits while submerged (still under DC peak). */
 export const SUBMARINE_CREAK_DC_GAIN = 0.2;
 
+/**
+ * Fade in/out on each creak window so random offsets into the long sample
+ * do not hard-cut mid-waveform (audible as faint static/crackle on speakers).
+ */
+export const SUBMARINE_CREAK_FADE_SEC = 0.03;
+
 /** Mean seconds between ambient creaks just below the surface band. */
 export const SUBMARINE_CREAK_INTERVAL_SHALLOW_SEC = 48;
 
@@ -75,11 +81,31 @@ export function jitterCreakIntervalMs(meanMs: number): number {
   return meanMs * factor;
 }
 
+/**
+ * Keep at most stereo for playback. Older builds shipped a 6-channel WAV with
+ * silent surrounds; browser downmix of that layout was inconsistent and could
+ * contribute odd speaker artifacts next to hard window cuts.
+ */
+export function downmixCreakBufferToStereo(
+  ctx: AudioContext,
+  buffer: AudioBuffer,
+): AudioBuffer {
+  if (buffer.numberOfChannels <= 2) return buffer;
+  const out = ctx.createBuffer(2, buffer.length, buffer.sampleRate);
+  out.copyToChannel(buffer.getChannelData(0), 0);
+  out.copyToChannel(
+    buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : buffer.getChannelData(0),
+    1,
+  );
+  return out;
+}
+
 export async function loadSubmarineCreakingBuffer(ctx: AudioContext): Promise<AudioBuffer> {
   const res = await fetch(SUBMARINE_CREAKING_SAMPLE_URL);
   if (!res.ok) throw new Error(`Submarine creaking sample fetch ${res.status}`);
   const raw = await res.arrayBuffer();
-  return ctx.decodeAudioData(raw.slice(0));
+  const decoded = await ctx.decodeAudioData(raw.slice(0));
+  return downmixCreakBufferToStereo(ctx, decoded);
 }
 
 export type PlayCreakOptions = {
@@ -93,7 +119,8 @@ export type PlayCreakOptions = {
 
 /**
  * One-shot creak into `destination`. Picks a random window in a long sample
- * so repeated plays do not sound identical.
+ * so repeated plays do not sound identical. Applies a short fade envelope so
+ * mid-sample starts/stops do not click.
  */
 export function playSubmarineCreakSample(
   ctx: AudioContext,
@@ -115,13 +142,32 @@ export function playSubmarineCreakSample(
         ? Math.random() * maxOffset
         : 0;
   const whenSec = Math.max(0, options.whenSec ?? 0);
+  const t0 = ctx.currentTime + whenSec;
+  const fadeSec = Math.min(SUBMARINE_CREAK_FADE_SEC, durationSec / 3);
 
   const source = ctx.createBufferSource();
   const gain = ctx.createGain();
   source.buffer = buffer;
-  gain.gain.value = peakGain;
+  gain.gain.setValueAtTime(0, t0);
+  gain.gain.linearRampToValueAtTime(peakGain, t0 + fadeSec);
+  const fadeOutStart = Math.max(t0 + fadeSec, t0 + durationSec - fadeSec);
+  gain.gain.setValueAtTime(peakGain, fadeOutStart);
+  gain.gain.linearRampToValueAtTime(0, t0 + durationSec);
   source.connect(gain);
   gain.connect(destination);
-  source.start(ctx.currentTime + whenSec, offsetSec, durationSec);
+  source.start(t0, offsetSec, durationSec);
+  // addEventListener so callers can still assign source.onended (busy flags).
+  source.addEventListener('ended', () => {
+    try {
+      source.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    try {
+      gain.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+  });
   return source;
 }
