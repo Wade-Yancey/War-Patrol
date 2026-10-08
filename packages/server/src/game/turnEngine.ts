@@ -132,13 +132,16 @@ export function resolveTurn(save: GameSave): GameSave {
       next.aircraftAttack = { mode: attack.mode, targetUnitId: attack.targetUnitId };
     }
     if (vessel) {
+      const mode = normalizeVesselStandingMode(vessel.mode);
       next.vesselStanding = {
-        mode: vessel.mode,
-        ...(vessel.targetUnitId ? { targetUnitId: vessel.targetUnitId } : {}),
-        ...(typeof vessel.evadeBaseCourse === 'number'
+        mode,
+        ...(mode !== 'evade' && vessel.targetUnitId
+          ? { targetUnitId: vessel.targetUnitId }
+          : {}),
+        ...(mode === 'evade' && typeof vessel.evadeBaseCourse === 'number'
           ? { evadeBaseCourse: vessel.evadeBaseCourse }
           : {}),
-        ...(vessel.evadeLeg === 0 || vessel.evadeLeg === 1
+        ...(mode === 'evade' && (vessel.evadeLeg === 0 || vessel.evadeLeg === 1)
           ? { evadeLeg: vessel.evadeLeg }
           : {}),
       };
@@ -340,10 +343,9 @@ export function mergeOrders(
     delete next.vesselStanding;
   } else if (patch.vesselStanding) {
     const mode = normalizeVesselStandingMode(patch.vesselStanding.mode);
-    const targetUnitId = String(patch.vesselStanding.targetUnitId ?? '').trim() || undefined;
     const standing: VesselStandingOrder = { mode };
-    if (targetUnitId) standing.targetUnitId = targetUnitId;
     if (mode === 'evade') {
+      // Evade never carries a target — strip sticky INT/ATK binding.
       if (
         typeof patch.vesselStanding.evadeBaseCourse === 'number' &&
         Number.isFinite(patch.vesselStanding.evadeBaseCourse)
@@ -351,6 +353,10 @@ export function mergeOrders(
         standing.evadeBaseCourse = normalizeHeading(patch.vesselStanding.evadeBaseCourse);
       }
       standing.evadeLeg = patch.vesselStanding.evadeLeg === 1 ? 1 : 0;
+    } else {
+      const targetUnitId =
+        String(patch.vesselStanding.targetUnitId ?? '').trim() || undefined;
+      if (targetUnitId) standing.targetUnitId = targetUnitId;
     }
     next.vesselStanding = standing;
   }

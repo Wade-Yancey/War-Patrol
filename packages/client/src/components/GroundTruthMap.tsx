@@ -914,7 +914,7 @@ function GroundTruthMapInner({
    * Standing aircraft / vessel intent — dashed unit→target line + mode tag.
    * Persists for the life of orders.aircraftAttack / orders.vesselStanding
    * (same span as loiter prediction visibility), not a one-frame flash on order click.
-   * Evade without a threat target draws no line (zigzag is on the move prediction).
+   * Evade never binds a target — no intent line (zigzag is on the move prediction).
    */
   const attackIntentOverlays = useMemo(() => {
     const byId = new Map(units.map((u) => [u.id, u]));
@@ -932,6 +932,7 @@ function GroundTruthMapInner({
           vessel
         ) {
           modeTag = formatVesselStandingModeTag(vessel.mode);
+          if (vessel.mode === 'evade') return null;
           targetId = String(vessel.targetUnitId ?? '').trim();
           if (!targetId) return null;
         } else {

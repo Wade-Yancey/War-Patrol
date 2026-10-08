@@ -485,8 +485,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         vesselRaw === null
           ? null
           : vesselRaw && typeof vesselRaw === 'object'
-            ? {
-                mode:
+            ? (() => {
+                const mode =
                   vesselRaw.mode === 'attack_guns' ||
                   vesselRaw.mode === 'guns' ||
                   vesselRaw.mode === 'attack'
@@ -502,17 +502,22 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
                         ? ('attack_torpedoes' as const)
                         : vesselRaw.mode === 'evade'
                           ? ('evade' as const)
-                          : ('intercept' as const),
-                ...(vesselRaw.targetUnitId != null
-                  ? { targetUnitId: String(vesselRaw.targetUnitId) }
-                  : {}),
-                ...(typeof vesselRaw.evadeBaseCourse === 'number'
-                  ? { evadeBaseCourse: vesselRaw.evadeBaseCourse }
-                  : {}),
-                ...(vesselRaw.evadeLeg === 0 || vesselRaw.evadeLeg === 1
-                  ? { evadeLeg: vesselRaw.evadeLeg }
-                  : {}),
-              }
+                          : ('intercept' as const);
+                return {
+                  mode,
+                  // Evade is targetless — strip sticky INT/ATK targetUnitId.
+                  ...(mode !== 'evade' && vesselRaw.targetUnitId != null
+                    ? { targetUnitId: String(vesselRaw.targetUnitId) }
+                    : {}),
+                  ...(mode === 'evade' && typeof vesselRaw.evadeBaseCourse === 'number'
+                    ? { evadeBaseCourse: vesselRaw.evadeBaseCourse }
+                    : {}),
+                  ...(mode === 'evade' &&
+                  (vesselRaw.evadeLeg === 0 || vesselRaw.evadeLeg === 1)
+                    ? { evadeLeg: vesselRaw.evadeLeg }
+                    : {}),
+                };
+              })()
             : undefined;
       const save = await runtime.submitUmpireUnitOrders(request.params.gameId, request.params.unitId, {
         course: body.course,
