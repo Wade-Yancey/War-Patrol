@@ -579,7 +579,8 @@ export type TorpedoWakeCue = OpticsSighting & {
 
 /**
  * GT sea-surface marker from a sunk / sinking hull or downed aircraft.
- * Lookout / peri FoW may notice these as Sightings while markers remain.
+ * Permanent for the scenario; lookout / peri FoW may notice these as
+ * Sightings when in range (out of range hides the Sighting, not the marker).
  * Not identity — no name / side / class on the vessel view.
  */
 export type SeaSurfaceMarkerKind = Exclude<OpticsSightingKind, 'wake'>;
@@ -1009,8 +1010,10 @@ export interface GameSave {
   recentDetonations: WeaponDetonationEvent[];
   /**
    * Sink-aftermath sea-surface markers (debris / oil / life rafts / downed pilot).
-   * Lookout + periscope FoW may notice them as Sightings while retained.
-   * Pruned after {@link SINK_AFTERMATH_RETENTION_TURNS}; never leaks identity.
+   * Permanent world state for the scenario (until rollback / scenario end).
+   * Lookout + periscope FoW may notice them as Sightings when in range;
+   * leaving range hides the Sighting without deleting the marker.
+   * Never leaks identity.
    */
   seaSurfaceMarkers?: SeaSurfaceMarker[];
   /**

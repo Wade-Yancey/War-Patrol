@@ -182,7 +182,8 @@ export function resolveTurn(save: GameSave): GameSave {
   };
 
   // Sink aftermath Sightings: spawn debris/oil/(life rafts|pilot) when a hull
-  // first becomes lost this resolve; prune markers past retention.
+  // first becomes lost this resolve. Markers persist for the scenario;
+  // FoW shows/hides Sightings by range only (wakes stay ephemeral).
   const seaSurfaceMarkers = advanceSeaSurfaceMarkers({
     priorUnits: save.units,
     nextUnits: resolvedUnits,
