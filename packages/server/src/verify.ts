@@ -1694,12 +1694,12 @@ async function main() {
     }
 
     // Sink aftermath Sightings: ship → debris + oil + life rafts; aircraft → pilot.
+    // Markers persist for the scenario (no turn-age prune); FoW gates Sightings.
     const {
       advanceSeaSurfaceMarkers,
       createSinkAftermathMarkers,
       opticsSightingLabel,
       pruneSeaSurfaceMarkers,
-      SINK_AFTERMATH_RETENTION_TURNS,
       sinkAftermathKindsForUnit,
     } = await import('@war-patrol/shared');
     check(
@@ -1771,23 +1771,39 @@ async function main() {
       pilotMarkers.length === 1 && pilotMarkers[0]!.kind === 'downed_pilot',
     );
 
-    const retained = pruneSeaSurfaceMarkers(
-      [
-        { id: 'old', kind: 'oil', position: sinkingShip.position, createdTurn: 1, sourceUnitId: 'x' },
-        {
-          id: 'fresh',
-          kind: 'debris',
-          position: sinkingShip.position,
-          createdTurn: 10,
-          sourceUnitId: 'y',
-        },
-      ],
-      10 + SINK_AFTERMATH_RETENTION_TURNS,
-    );
+    const oldAndFresh = [
+      { id: 'old', kind: 'oil' as const, position: sinkingShip.position, createdTurn: 1, sourceUnitId: 'x' },
+      {
+        id: 'fresh',
+        kind: 'debris' as const,
+        position: sinkingShip.position,
+        createdTurn: 10,
+        sourceUnitId: 'y',
+      },
+    ];
+    const retained = pruneSeaSurfaceMarkers(oldAndFresh, 99);
     check(
-      'aftermath markers prune after retention',
-      retained.length === 1 && retained[0]!.id === 'fresh',
+      'aftermath markers persist past former retention window',
+      retained.length === 2 &&
+        retained.some((m) => m.id === 'old') &&
+        retained.some((m) => m.id === 'fresh'),
       `kept=${retained.map((m) => m.id).join(',')}`,
+    );
+    // Multi-resolve: old debris/oil/rafts/pilot still present many turns later.
+    const manyTurnsLater = advanceSeaSurfaceMarkers({
+      priorUnits: [sunkShip, planeDown],
+      nextUnits: [sunkShip, planeDown],
+      resolveTurnNumber: 40,
+      priorMarkers: [...shipMarkers, ...pilotMarkers],
+    });
+    check(
+      'aftermath markers survive many resolves without re-spawn',
+      manyTurnsLater.length === shipMarkers.length + pilotMarkers.length &&
+        manyTurnsLater.some((m) => m.kind === 'debris') &&
+        manyTurnsLater.some((m) => m.kind === 'oil') &&
+        manyTurnsLater.some((m) => m.kind === 'life_rafts') &&
+        manyTurnsLater.some((m) => m.kind === 'downed_pilot'),
+      `n=${manyTurnsLater.length} kinds=${manyTurnsLater.map((m) => m.kind).join(',')}`,
     );
 
     // FoW: close observer eventually sees debris/oil/rafts; compass REL set.

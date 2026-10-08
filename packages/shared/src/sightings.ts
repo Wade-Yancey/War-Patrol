@@ -1,7 +1,11 @@
 /**
  * Optics Sightings — wake FoW helpers + sink-aftermath sea-surface markers.
+ *
+ * Aftermath markers (debris / oil / life rafts / downed pilot) are permanent
+ * world state for the scenario: they stay on the save until rollback / scenario
+ * end. Vessel Sightings appear/disappear from FoW range only — not a turn timer.
+ * Wakes remain ephemeral (recomputed from running fish; no save markers).
  */
-import { SINK_AFTERMATH_RETENTION_TURNS } from './constants.js';
 import { clamp } from './geo.js';
 import type {
   LatLonDepth,
@@ -93,21 +97,27 @@ export function createSinkAftermathMarkers(opts: {
   return created;
 }
 
-/** Drop markers older than the retention window relative to `turnNumber`. */
+/**
+ * Identity copy for call-site compatibility.
+ * Aftermath markers are permanent world state (scenario lifetime); age-based
+ * turn pruning was removed so debris / oil / rafts / pilots stay while the
+ * observer can leave and re-enter FoW range. Rollback still drops markers
+ * created after the restored turn via `createdTurn` filtering in turnEngine.
+ *
+ * `turnNumber` / `retentionTurns` are ignored (kept optional for callers).
+ */
 export function pruneSeaSurfaceMarkers(
   markers: readonly SeaSurfaceMarker[],
-  turnNumber: number,
-  retentionTurns: number = SINK_AFTERMATH_RETENTION_TURNS,
+  _turnNumber?: number,
+  _retentionTurns?: number,
 ): SeaSurfaceMarker[] {
-  const oldest = turnNumber - retentionTurns;
-  return markers.filter((m) => m.createdTurn >= oldest);
+  return [...markers];
 }
 
 /**
- * Merge prior markers with newly spawned ones, then prune by retention.
+ * Merge prior markers with newly spawned ones.
+ * Markers persist for the scenario (no turn-age prune).
  * `resolveTurnNumber` is the turn being resolved (markers stamp with that number).
- * Prune uses the post-resolve open turn (`resolveTurnNumber + 1`) so a marker
- * created this resolve remains for the full retention window of openings.
  */
 export function advanceSeaSurfaceMarkers(opts: {
   priorUnits: readonly UnitState[];
@@ -121,9 +131,7 @@ export function advanceSeaSurfaceMarkers(opts: {
     turnNumber: opts.resolveTurnNumber,
     existing: opts.priorMarkers,
   });
-  const merged = [...opts.priorMarkers, ...spawned];
-  // Retain relative to the new open turn number after resolve.
-  return pruneSeaSurfaceMarkers(merged, opts.resolveTurnNumber + 1);
+  return [...opts.priorMarkers, ...spawned];
 }
 
 /**
@@ -145,5 +153,5 @@ export function appendSinkAftermathForUnit(opts: {
     turnNumber: opts.turnNumber,
     existing: opts.existing,
   });
-  return pruneSeaSurfaceMarkers([...opts.existing, ...spawned], opts.turnNumber);
+  return [...opts.existing, ...spawned];
 }
