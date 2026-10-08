@@ -8228,10 +8228,14 @@ async function main() {
         umpNmFull![0]!.status === 'active',
     );
 
-    // Advance through lifetime — decoy goes spent (map drops active-only markers).
+    // Advance through lifetime — decoy goes spent on the resolve whose
+    // turnNumber >= expiresTurn (map drops active-only markers afterward).
     const expiresAt = nmTracks[0]!.expiresTurn;
     let guard = 0;
-    while (runtime.requireGame(nmId).turn.number < expiresAt && guard < 20) {
+    while (
+      (runtime.requireGame(nmId).noisemakers ?? [])[0]?.status === 'active' &&
+      guard < 24
+    ) {
       await api('POST', `/api/games/${nmId}/turn/lock`, {}, nmUTok);
       await api('POST', `/api/games/${nmId}/turn/resolve`, {}, nmUTok);
       guard += 1;
@@ -8240,8 +8244,8 @@ async function main() {
     const expiredTrack = (afterExpire.noisemakers ?? [])[0];
     check(
       'noisemaker expires to spent after lifetime',
-      expiredTrack?.status === 'spent' && afterExpire.turn.number >= expiresAt,
-      `status=${expiredTrack?.status} turn=${afterExpire.turn.number} expires=${expiresAt}`,
+      expiredTrack?.status === 'spent' && afterExpire.turn.number > expiresAt,
+      `status=${expiredTrack?.status} turn=${afterExpire.turn.number} expires=${expiresAt} steps=${guard}`,
     );
     check(
       'activeNoisemakers filter empty after expiry (GT map omits spent)',
