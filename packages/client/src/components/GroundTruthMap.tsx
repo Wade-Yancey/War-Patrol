@@ -608,6 +608,8 @@ function GroundTruthMapInner({
   const [panLon, setPanLon] = useState(0);
   const [cursor, setCursor] = useState<{ lat: number; lon: number } | null>(null);
   const [showSensorRanges, setShowSensorRanges] = useState(() => readShowSensorRanges());
+  /** Session-only — hide air history/prediction trails for cleaner AAR scrubbing. */
+  const [showAirTrails, setShowAirTrails] = useState(true);
   const dragRef = useRef<{
     pointerId: number;
     lastX: number;
@@ -621,6 +623,10 @@ function GroundTruthMapInner({
       writeShowSensorRanges(next);
       return next;
     });
+  }, []);
+
+  const toggleAirTrails = useCallback(() => {
+    setShowAirTrails((prev) => !prev);
   }, []);
 
   // Reset camera when the unit set or operating area changes (not on every move).
@@ -669,6 +675,9 @@ function GroundTruthMapInner({
   const trailPolylines = useMemo(() => {
     return units
       .map((unit) => {
+        const isAircraft = unit.type === 'Aircraft';
+        // Air history trails clutter AAR scrubbing — vessels keep solid wakes.
+        if (isAircraft && !showAirTrails) return null;
         const trail = trailByUnit.get(unit.id);
         if (!trail || trail.points.length < 2) return null;
         const color = unitAccent(unit);
@@ -682,7 +691,6 @@ function GroundTruthMapInner({
         if (!pointParts.length) return null;
         const last = pts[pts.length - 1]!;
         const prev = pts[pts.length - 2]!;
-        const isAircraft = unit.type === 'Aircraft';
         return {
           id: unit.id,
           color,
@@ -713,7 +721,7 @@ function GroundTruthMapInner({
           isAircraft: boolean;
         } => Boolean(x),
       );
-  }, [units, trailByUnit, view]);
+  }, [units, trailByUnit, view, showAirTrails]);
 
   const trailInboundDx = useMemo(() => {
     const map = new Map<string, number>();
@@ -982,6 +990,9 @@ function GroundTruthMapInner({
     if (!showMovePrediction) return [];
     return units
       .map((unit) => {
+        const isAircraft = unit.type === 'Aircraft';
+        // Same toggle as history trails — air prediction dashes also clutter AAR.
+        if (isAircraft && !showAirTrails) return null;
         const path = predictUnitMovePath(unit, turnLen, units);
         if (!path || path.length < 2) return null;
         const color = unitAccent(unit);
@@ -1003,7 +1014,7 @@ function GroundTruthMapInner({
           showTip: uvHitsPlot(end.u, end.v),
           /** Screen delta of the move — keep labels off the predicted track tip. */
           outboundDx: end.x - start.x,
-          isAircraft: unit.type === 'Aircraft',
+          isAircraft,
         };
       })
       .filter(
@@ -1020,7 +1031,7 @@ function GroundTruthMapInner({
           isAircraft: boolean;
         } => Boolean(x),
       );
-  }, [units, view, turnLen, showMovePrediction]);
+  }, [units, view, turnLen, showMovePrediction, showAirTrails]);
 
   const moveOutboundDx = useMemo(() => {
     const map = new Map<string, number>();
@@ -1350,6 +1361,24 @@ function GroundTruthMapInner({
           onPointerDown={(e) => e.stopPropagation()}
         >
           Ranges
+        </button>
+        <button
+          type="button"
+          className={showAirTrails ? 'map-toggle-on' : undefined}
+          aria-pressed={showAirTrails}
+          aria-label="Toggle aircraft history and prediction trails"
+          title={
+            showAirTrails
+              ? 'Hide aircraft trails (ship wakes stay)'
+              : 'Show aircraft history and prediction trails'
+          }
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleAirTrails();
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          Air trails
         </button>
         <span className="mono muted map-cursor-readout" aria-live="polite">
           {cursor ? formatCursor(cursor.lat, cursor.lon) : 'LAT/LON · HOVER PLOT'}
