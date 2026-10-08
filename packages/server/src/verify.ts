@@ -116,7 +116,7 @@ import {
 } from '@war-patrol/shared';
 import { buildPeriscopeContacts } from './game/periscope.js';
 import { buildRadarContacts } from './game/radar.js';
-import { buildTorpedoWakeCues } from './game/wakeCues.js';
+import { buildOpticsSightings, buildTorpedoWakeCues } from './game/wakeCues.js';
 
 type Json = Record<string, unknown>;
 
@@ -1677,6 +1677,186 @@ async function main() {
         expectTravel === 0 && wakeCue.travelRelativeBearing === 0,
       );
     }
+
+    // Sink aftermath Sightings: ship → debris + oil + life rafts; aircraft → pilot.
+    const {
+      advanceSeaSurfaceMarkers,
+      createSinkAftermathMarkers,
+      opticsSightingLabel,
+      pruneSeaSurfaceMarkers,
+      SINK_AFTERMATH_RETENTION_TURNS,
+      sinkAftermathKindsForUnit,
+    } = await import('@war-patrol/shared');
+    check(
+      'surface ship sink kinds include life rafts',
+      sinkAftermathKindsForUnit({ type: 'Ship' }).join(',') === 'debris,oil,life_rafts',
+    );
+    check(
+      'sub sink kinds are debris+oil only',
+      sinkAftermathKindsForUnit({ type: 'Submarine' }).join(',') === 'debris,oil',
+    );
+    check(
+      'aircraft down yields downed pilot',
+      sinkAftermathKindsForUnit({ type: 'Aircraft' }).join(',') === 'downed_pilot',
+    );
+    check('sighting label life rafts', opticsSightingLabel('life_rafts') === 'LIFE RAFTS');
+    check('sighting label pilot', opticsSightingLabel('downed_pilot') === 'PILOT');
+
+    const sinkingShip = {
+      id: 'ao-sink-1',
+      type: 'Ship' as const,
+      class: 'Oiler',
+      condition: 'afloat' as const,
+      position: { lat: 34.4, lon: -120.0, depth: 0 },
+      heading: 90,
+    } as UnitState;
+    const sunkShip = { ...sinkingShip, condition: 'sinking' as const };
+    const shipMarkers = createSinkAftermathMarkers({
+      priorUnits: [sinkingShip],
+      nextUnits: [sunkShip],
+      turnNumber: 5,
+      existing: [],
+    });
+    check(
+      'ship kill spawns debris+oil+life_rafts',
+      shipMarkers.length === 3 &&
+        shipMarkers.every((m) => m.sourceUnitId === 'ao-sink-1') &&
+        shipMarkers.some((m) => m.kind === 'debris') &&
+        shipMarkers.some((m) => m.kind === 'oil') &&
+        shipMarkers.some((m) => m.kind === 'life_rafts'),
+      `kinds=${shipMarkers.map((m) => m.kind).join(',')}`,
+    );
+    check(
+      'ship markers idempotent if already lost',
+      createSinkAftermathMarkers({
+        priorUnits: [sunkShip],
+        nextUnits: [sunkShip],
+        turnNumber: 6,
+        existing: shipMarkers,
+      }).length === 0,
+    );
+
+    const plane = {
+      id: 'ac-zeke-1',
+      type: 'Aircraft' as const,
+      class: 'Fighter',
+      condition: 'afloat' as const,
+      position: { lat: 34.401, lon: -120.0, depth: 0 },
+      heading: 180,
+    } as UnitState;
+    const planeDown = { ...plane, condition: 'sunk' as const };
+    const pilotMarkers = createSinkAftermathMarkers({
+      priorUnits: [plane],
+      nextUnits: [planeDown],
+      turnNumber: 5,
+      existing: [],
+    });
+    check(
+      'aircraft kill spawns downed_pilot only',
+      pilotMarkers.length === 1 && pilotMarkers[0]!.kind === 'downed_pilot',
+    );
+
+    const retained = pruneSeaSurfaceMarkers(
+      [
+        { id: 'old', kind: 'oil', position: sinkingShip.position, createdTurn: 1, sourceUnitId: 'x' },
+        {
+          id: 'fresh',
+          kind: 'debris',
+          position: sinkingShip.position,
+          createdTurn: 10,
+          sourceUnitId: 'y',
+        },
+      ],
+      10 + SINK_AFTERMATH_RETENTION_TURNS,
+    );
+    check(
+      'aftermath markers prune after retention',
+      retained.length === 1 && retained[0]!.id === 'fresh',
+      `kept=${retained.map((m) => m.id).join(',')}`,
+    );
+
+    // FoW: close observer eventually sees debris/oil/rafts; compass REL set.
+    const aftermathObs = {
+      id: 'dd-aft-obs',
+      heading: 0,
+      position: { lat: 34.4, lon: -120.0, depth: 0 },
+      type: 'Ship',
+      class: 'Destroyer',
+    } as UnitState;
+    const wreckPos = moveAlongHeading(aftermathObs.position, 90, 0.5 * 1852);
+    let aftKinds: string[] = [];
+    for (let i = 0; i < 48 && aftKinds.length < 3; i++) {
+      const probeSave = {
+        id: `aft-verify-${i}`,
+        turn: { number: 1 },
+        seaSurfaceMarkers: [
+          {
+            id: `debris-x-${i}`,
+            kind: 'debris' as const,
+            position: wreckPos,
+            createdTurn: 1,
+            sourceUnitId: 'ao-1',
+          },
+          {
+            id: `oil-x-${i}`,
+            kind: 'oil' as const,
+            position: wreckPos,
+            createdTurn: 1,
+            sourceUnitId: 'ao-1',
+          },
+          {
+            id: `rafts-x-${i}`,
+            kind: 'life_rafts' as const,
+            position: wreckPos,
+            createdTurn: 1,
+            sourceUnitId: 'ao-1',
+          },
+        ],
+        torpedoes: [],
+      };
+      const cues = buildOpticsSightings(
+        aftermathObs,
+        probeSave as unknown as Parameters<typeof buildOpticsSightings>[1],
+      );
+      aftKinds = [...new Set(cues.map((c) => c.kind))];
+      if (aftKinds.includes('debris') && aftKinds.includes('oil') && aftKinds.includes('life_rafts')) {
+        const debris = cues.find((c) => c.kind === 'debris')!;
+        const expectRel = coarsenWakeRelativeBearing(
+          relativeBearingDeg(
+            aftermathObs.heading,
+            bearingRangeNm(aftermathObs.position, wreckPos).bearing,
+          ),
+        );
+        check(
+          'aftermath debris relativeBearing is LOS',
+          debris.relativeBearing === expectRel,
+          `got=${debris.relativeBearing} want=${expectRel}`,
+        );
+        break;
+      }
+    }
+    check(
+      'aftermath Sightings eventually detect close wreckage',
+      aftKinds.includes('debris') &&
+        aftKinds.includes('oil') &&
+        aftKinds.includes('life_rafts'),
+      `kinds=${aftKinds.join(',')}`,
+    );
+
+    // Resolve path: umpire fiat sink on Porter neighbor should stamp markers.
+    const advanced = advanceSeaSurfaceMarkers({
+      priorUnits: [sinkingShip, plane],
+      nextUnits: [sunkShip, planeDown],
+      resolveTurnNumber: 7,
+      priorMarkers: [],
+    });
+    check(
+      'advanceSeaSurfaceMarkers spawns ship+aircraft set',
+      advanced.some((m) => m.kind === 'life_rafts') &&
+        advanced.some((m) => m.kind === 'downed_pilot') &&
+        advanced.every((m) => m.createdTurn === 7),
+      `n=${advanced.length} kinds=${advanced.map((m) => m.kind).join(',')}`,
+    );
   }
 
   // Restore Porter near original for hydrophone checks

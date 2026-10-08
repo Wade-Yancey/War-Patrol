@@ -1363,7 +1363,7 @@ export function StationPage() {
                     sightings={
                       vessel.periscopeUnavailableReason === 'scope_down'
                         ? []
-                        : (vessel.torpedoWakeCues ?? [])
+                        : (vessel.opticsSightings ?? vessel.torpedoWakeCues ?? [])
                     }
                     maxRangeNm={vessel.periscopeMaxRangeNm ?? 6}
                     ownHeading={vessel.unit.heading}

@@ -181,6 +181,14 @@ export const SUBMARINE_IMPLOSION_CHANCE_PER_TURN = 0.25;
 export const VESSEL_SINKING_TURNS = 3;
 
 /**
+ * Turns sink-aftermath sea-surface markers (debris / oil / life rafts /
+ * downed pilot) remain on the save for lookout / periscope Sightings.
+ * Default 8 → ~24 in-game minutes at the default 3-min turn — long enough
+ * to notice after the hull drops from optics, not permanent AAR clutter.
+ */
+export const SINK_AFTERMATH_RETENTION_TURNS = 8;
+
+/**
  * Fleet-boat dive / ascent rate (meters per in-game minute), positive-down change.
  * Default 3-min turn → {@link SUBMARINE_DEPTH_RATE_M_PER_MIN} × 3 ≈ 45 m toward ordered depth.
  * Crude playable stub — same rate up and down (emergency blow is just ordered 0 m).
