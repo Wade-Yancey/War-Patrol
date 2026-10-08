@@ -8,6 +8,43 @@ export const SUB_DEPTH_CHANGE_SAMPLE_URL = '/audio/sub-depth-change.wav';
  */
 export const SUB_DEPTH_CHANGE_PEAK_GAIN = 0.6;
 
+/**
+ * Minimum keel delta (m) to count as a meaningful depth change on resolve.
+ * Ignores float noise; well below one dive-rate step.
+ */
+export const SUB_DEPTH_CHANGE_MIN_DELTA_M = 0.5;
+
+/** Snapshot used by Controls to decide whether to fire the depth-change bed. */
+export type SubDepthChangeSfxSnapshot = {
+  unitId: string;
+  depth: number;
+  orderedDepth: number;
+  turn: number;
+  /**
+   * Ordered depth we last played the rush cue for. Suppresses re-triggers on
+   * later resolves that are still chasing the same set-point.
+   */
+  playedForOrderedDepth: number | null;
+};
+
+/**
+ * True when the water-rushing bed should play on this observation.
+ *
+ * Requires a turn advance and a meaningful keel delta, and only once per
+ * ordered-depth set-point (not every submerged transit resolve). Being
+ * submerged alone never qualifies.
+ */
+export function shouldPlaySubDepthChangeSfx(
+  prev: SubDepthChangeSfxSnapshot,
+  next: Pick<SubDepthChangeSfxSnapshot, 'unitId' | 'depth' | 'orderedDepth' | 'turn'>,
+): boolean {
+  if (next.unitId !== prev.unitId) return false;
+  if (!(next.turn > prev.turn)) return false;
+  if (!(Math.abs(next.depth - prev.depth) >= SUB_DEPTH_CHANGE_MIN_DELTA_M)) return false;
+  if (prev.playedForOrderedDepth === null) return true;
+  return Math.abs(next.orderedDepth - prev.playedForOrderedDepth) >= SUB_DEPTH_CHANGE_MIN_DELTA_M;
+}
+
 let sharedCtx: AudioContext | null = null;
 let sharedBuffer: AudioBuffer | null = null;
 let loadPromise: Promise<AudioBuffer> | null = null;
@@ -46,8 +83,8 @@ export type PlaySubDepthChangeOptions = {
 };
 
 /**
- * One-shot underwater cue when the sub's keel depth changes on turn resolve.
- * Stops any prior play so successive dive turns do not stack the long clip.
+ * One-shot underwater cue when the sub applies a new ordered depth on resolve.
+ * Stops any prior play so a fresh order can replace an in-flight clip.
  * Failures (autoplay block, missing sample) are swallowed — UI must stay usable.
  */
 export async function playSubDepthChange(options: PlaySubDepthChangeOptions = {}): Promise<void> {

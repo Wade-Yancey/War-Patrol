@@ -92,7 +92,11 @@ import {
   loadSubmarineCreakingBuffer,
   playSubmarineCreakSample,
 } from '../audio/submarineCreaking';
-import { playSubDepthChange } from '../audio/subDepthChange';
+import {
+  playSubDepthChange,
+  shouldPlaySubDepthChangeSfx,
+  type SubDepthChangeSfxSnapshot,
+} from '../audio/subDepthChange';
 import {
   EMERGENCY_BLOW_VENTING_PEAK_GAIN,
   SUB_DEPTH_CHANGE_EMERGENCY_BLOW_GAIN,
@@ -268,14 +272,11 @@ export function StationPage() {
   /** Latest sub keel depth for ambient creak scheduling + DC stress burst. */
   const subDepthRef = useRef(0);
   /**
-   * Seed for depth-change SFX: play once when turn advances and own keel moved.
+   * Seed for depth-change SFX: play when turn advances, keel moved, and the
+   * ordered depth set-point is new (not every submerged transit resolve).
    * Null until first sub-Controls observation (initial load stays silent).
    */
-  const depthChangeSfxRef = useRef<{
-    unitId: string;
-    depth: number;
-    turn: number;
-  } | null>(null);
+  const depthChangeSfxRef = useRef<SubDepthChangeSfxSnapshot | null>(null);
   /**
    * Armed when Dive Controls applies the Emergency Blow preset (ordered 0 m).
    * Cleared on any other depth submit, when ordered depth leaves 0 *after*
@@ -790,9 +791,11 @@ export function StationPage() {
     };
   }, [hearBridgeSonar]);
 
-  // Sub Controls: underwater depth-change cue when keel actually moves on resolve.
-  // Silent on UI depth submit / re-order; silent when turn advances but depth holds.
-  // Emergency Blow (Dive preset): also venting + hull creak while ascending.
+  // Sub Controls: underwater depth-change cue when keel moves on resolve toward
+  // a *new* ordered depth. Silent on UI submit; silent when holding depth; silent
+  // on later transit resolves that are still chasing the same set-point.
+  // Emergency Blow (Dive preset): venting + hull creak each ascent resolve;
+  // depth bed still once per ordered set-point (ducked under venting).
   useEffect(() => {
     if (!onSubCreakBridge || !vessel) {
       depthChangeSfxRef.current = null;
@@ -804,47 +807,55 @@ export function StationPage() {
     const turn = vessel.turn.number;
     const prev = depthChangeSfxRef.current;
     if (!prev || prev.unitId !== unitId) {
-      depthChangeSfxRef.current = { unitId, depth: keel, turn };
+      depthChangeSfxRef.current = {
+        unitId,
+        depth: keel,
+        orderedDepth: ordered,
+        turn,
+        playedForOrderedDepth: null,
+      };
       return;
     }
-    if (turn !== prev.turn && Math.abs(keel - prev.depth) > 1e-3) {
-      const ascending = keel < prev.depth - 1e-3;
-      const blowAscending = pendingEmergencyBlowRef.current && ascending;
+    const nextSnap = { unitId, depth: keel, orderedDepth: ordered, turn };
+    const playDepthBed = shouldPlaySubDepthChangeSfx(prev, nextSnap);
+    const ascending = turn > prev.turn && keel < prev.depth - 1e-3;
+    const blowAscending = pendingEmergencyBlowRef.current && ascending;
+    if (playDepthBed) {
       // Duck the long depth bed under venting so the hiss stays audible.
       void playSubDepthChange(
         blowAscending ? { peakGain: SUB_DEPTH_CHANGE_EMERGENCY_BLOW_GAIN } : undefined,
       );
-      if (blowAscending) {
-        void (async () => {
-          try {
-            const ctx = await ensureBridgeAudioCtx();
-            if (ctx.state !== 'running') return;
-            if (!bridgeAudioRef.current.ventingBuffer) {
-              bridgeAudioRef.current.ventingBuffer = await loadEmergencyBlowVentingBuffer(ctx);
-            }
-            const venting = bridgeAudioRef.current.ventingBuffer;
-            if (venting) {
-              playEmergencyBlowVentingSample(
-                ctx,
-                venting,
-                ctx.destination,
-                EMERGENCY_BLOW_VENTING_PEAK_GAIN,
-              );
-            }
-            const creak = await ensureCreakBuffer(ctx);
-            if (!creak) return;
-            playSubmarineCreakSample(
-              ctx,
-              creak,
-              ctx.destination,
-              SUBMARINE_CREAK_DC_GAIN,
-              { durationSec: SUBMARINE_CREAK_DC_DURATION_SEC },
-            );
-          } catch {
-            // Optional bridge SFX — never block Controls.
+    }
+    if (blowAscending) {
+      void (async () => {
+        try {
+          const ctx = await ensureBridgeAudioCtx();
+          if (ctx.state !== 'running') return;
+          if (!bridgeAudioRef.current.ventingBuffer) {
+            bridgeAudioRef.current.ventingBuffer = await loadEmergencyBlowVentingBuffer(ctx);
           }
-        })();
-      }
+          const venting = bridgeAudioRef.current.ventingBuffer;
+          if (venting) {
+            playEmergencyBlowVentingSample(
+              ctx,
+              venting,
+              ctx.destination,
+              EMERGENCY_BLOW_VENTING_PEAK_GAIN,
+            );
+          }
+          const creak = await ensureCreakBuffer(ctx);
+          if (!creak) return;
+          playSubmarineCreakSample(
+            ctx,
+            creak,
+            ctx.destination,
+            SUBMARINE_CREAK_DC_GAIN,
+            { durationSec: SUBMARINE_CREAK_DC_DURATION_SEC },
+          );
+        } catch {
+          // Optional bridge SFX — never block Controls.
+        }
+      })();
     }
     // Arming lifecycle: latch when ordered 0 is observed; clear at surface or
     // only cancel on ordered>0 *after* that latch (avoids stream-race disarm).
@@ -860,7 +871,13 @@ export function StationPage() {
         emergencyBlowOrderSeenRef.current = false;
       }
     }
-    depthChangeSfxRef.current = { unitId, depth: keel, turn };
+    depthChangeSfxRef.current = {
+      unitId,
+      depth: keel,
+      orderedDepth: ordered,
+      turn,
+      playedForOrderedDepth: playDepthBed ? ordered : prev.playedForOrderedDepth,
+    };
   }, [
     onSubCreakBridge,
     vessel,
