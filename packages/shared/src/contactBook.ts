@@ -5,6 +5,9 @@
  * sensor and never renumbered when display order changes (range/bearing sorts).
  * The book keys by target unit id on the server only — clients receive
  * {@link labelN} on each contact, never the target id map.
+ *
+ * Active-sonar noisemaker echoes reuse the deploying unit id as the book key
+ * so FoW Contact-N matches the deployer (no separate decoy designation).
  */
 
 export type ContactBook = {

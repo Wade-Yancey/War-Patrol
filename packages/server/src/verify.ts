@@ -121,6 +121,7 @@ import {
   predictUnitMovePath,
   type UnitState,
 } from '@war-patrol/shared';
+import { buildActiveSonarContacts } from './game/activeSonar.js';
 import { buildPeriscopeContacts } from './game/periscope.js';
 import { buildRadarContacts } from './game/radar.js';
 import { buildOpticsSightings, buildTorpedoWakeCues } from './game/wakeCues.js';
@@ -8660,7 +8661,12 @@ async function main() {
     const sonarView = await api('GET', `/api/games/${nmId}/view`, undefined, nmDdTok);
     const sonarContacts = (
       sonarView.json.view as {
-        sonarContacts?: Array<{ estimatedDepthM?: number; signature?: string }>;
+        sonarContacts?: Array<{
+          estimatedDepthM?: number;
+          signature?: string;
+          labelN?: number;
+          id?: string;
+        }>;
         sonarOperational?: boolean;
       }
     ).sonarContacts;
@@ -8670,6 +8676,58 @@ async function main() {
       Boolean(decoyEcho) && decoyEcho!.signature === 'small',
       `contacts=${(sonarContacts ?? []).length} depth=${decoyEcho?.estimatedDepthM}`,
     );
+    check(
+      'noisemaker sonar echo has Contact-N',
+      typeof decoyEcho?.labelN === 'number' && (decoyEcho!.labelN as number) >= 1,
+      `labelN=${String(decoyEcho?.labelN)}`,
+    );
+
+    // FoW Contact-N must bind to the deploying hull — never a separate nmkr: book key
+    // that telegraphs "new contact = decoy." Decoy-first paint still keys deployer id.
+    {
+      const saveAfterSonar = runtime.requireGame(nmId);
+      const porter = saveAfterSonar.units.find((u) => u.id === 'dd-101')!;
+      const book = porter.contactBook?.byTargetId ?? {};
+      const deployerLabel = book['ss-212'];
+      check(
+        'noisemaker Contact-N keys deployer unit id (not nmkr:…)',
+        typeof deployerLabel === 'number' &&
+          deployerLabel === decoyEcho!.labelN &&
+          !Object.keys(book).some((k) => k.startsWith('nmkr:')),
+        `deployerLabel=${String(deployerLabel)} echo=${String(decoyEcho?.labelN)} keys=${JSON.stringify(Object.keys(book))}`,
+      );
+
+      // Place the sub in the same cone — hull echo must reuse the same Cn.
+      await api(
+        'PATCH',
+        `/api/games/${nmId}/units/ss-212`,
+        {
+          position: { lat: decoyLat, lon: decoyLon + 0.01, depth: 50 },
+          heading: 270,
+          orderedCourse: 270,
+          speed: 0,
+        },
+        nmUTok,
+      );
+      const shareSave = runtime.requireGame(nmId);
+      const shareDd = shareSave.units.find((u) => u.id === 'dd-101')!;
+      shareDd.activeSonarEnabled = true;
+      const sharedPic = buildActiveSonarContacts(shareDd, shareSave);
+      const nmEcho = sharedPic.contacts.find((c) => c.estimatedDepthM === 80);
+      const subEcho = sharedPic.contacts.find((c) => c.estimatedDepthM === 50);
+      check(
+        'noisemaker and deployer share Contact-N on active sonar',
+        Boolean(nmEcho) &&
+          Boolean(subEcho) &&
+          nmEcho!.labelN === subEcho!.labelN &&
+          nmEcho!.labelN === deployerLabel,
+        `nm=${String(nmEcho?.labelN)} sub=${String(subEcho?.labelN)} deployer=${String(deployerLabel)} n=${sharedPic.contacts.length}`,
+      );
+      check(
+        'noisemaker sonar track id stays distinct from hull',
+        Boolean(nmEcho) && Boolean(subEcho) && nmEcho!.id !== subEcho!.id,
+      );
+    }
 
     // Vessel FoW must not expose enemy/global noisemaker GT list.
     const subCtrlView = await api('GET', `/api/games/${nmId}/view`, undefined, nmTok);
