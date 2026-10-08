@@ -62,8 +62,9 @@ License: CC0 / public domain
 Original: https://freesound.org/people/csaszi/sounds/336367/
 Local copy: sub-depth-change.wav
 Original filename: 336367__csaszi__underwater_and-going-lower_csg.wav
-Notes: Submarine Controls dive panel — one-shot when ordered depth changes
-(presets / Submit depth); re-selecting the standing order is silent.
+Notes: Submarine Controls — one-shot on turn resolve when keel moves toward a
+*new* ordered depth (once per set-point; not every submerged transit resolve).
+UI depth submit is silent; holding depth is silent.
 
 Source: Industrial Sliding Door by mikiko850 (Freesound #847442)
 License: as provided for War Patrol (user sample)
