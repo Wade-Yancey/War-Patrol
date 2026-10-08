@@ -1354,36 +1354,22 @@ export function StationPage() {
                     </p>
                   </div>
                 ) : (
-                  <>
-                    <PeriscopeScope
-                      contacts={
-                        vessel.periscopeUnavailableReason === 'scope_down'
-                          ? []
-                          : (vessel.periscopeContacts ?? [])
-                      }
-                      maxRangeNm={vessel.periscopeMaxRangeNm ?? 6}
-                      ownHeading={vessel.unit.heading}
-                      variant={opticsVariant}
-                      blind={vessel.periscopeUnavailableReason === 'scope_down'}
-                    />
-                    {(vessel.torpedoWakeCues?.length ?? 0) > 0 && (
-                      <div className="wake-cues panel" role="status">
-                        <h3 className="mono" style={{ margin: '0 0 0.35rem', fontSize: '0.9rem' }}>
-                          Wake sighting
-                        </h3>
-                        <ul className="mono" style={{ margin: 0, paddingLeft: '1.2rem' }}>
-                          {vessel.torpedoWakeCues!.map((w) => (
-                            <li key={w.id}>
-                              {w.confidence.toUpperCase()} · wake travel{' '}
-                              {w.relativeBearing === 0
-                                ? 'dead ahead'
-                                : `${Math.abs(w.relativeBearing)}° ${w.relativeBearing > 0 ? 'stbd' : 'port'}`}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </>
+                  <PeriscopeScope
+                    contacts={
+                      vessel.periscopeUnavailableReason === 'scope_down'
+                        ? []
+                        : (vessel.periscopeContacts ?? [])
+                    }
+                    sightings={
+                      vessel.periscopeUnavailableReason === 'scope_down'
+                        ? []
+                        : (vessel.torpedoWakeCues ?? [])
+                    }
+                    maxRangeNm={vessel.periscopeMaxRangeNm ?? 6}
+                    ownHeading={vessel.unit.heading}
+                    variant={opticsVariant}
+                    blind={vessel.periscopeUnavailableReason === 'scope_down'}
+                  />
                 )}
               </section>
             )}

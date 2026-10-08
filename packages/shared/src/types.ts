@@ -534,16 +534,23 @@ export interface WeaponDetonationEvent {
 }
 
 /**
- * Lookout / periscope FoW cue — torpedo wake direction only (not identity).
- * Relative bearing of apparent wake travel vs own heading.
+ * Lookout / periscope FoW cue — torpedo wake sighting (not identity).
+ * Selectable on the optics CRT like a contact: {@link relativeBearing} drives
+ * the same compass bug (where the wake is sighted). Travel is secondary text.
  */
 export interface TorpedoWakeCue {
   id: string;
   /**
-   * Relative bearing of wake travel direction (−180, 180], coarsened.
-   * Bow = 0; starboard positive.
+   * Where the wake is sighted — LOS relative bearing vs own bow (−180, 180],
+   * coarsened. Same semantic as {@link PeriscopeContact.relativeBearing}
+   * (bow = 0, starboard positive) so optics compass wiring can be reused.
    */
   relativeBearing: number;
+  /**
+   * Direction the wake / fish is traveling, relative to own bow (−180, 180],
+   * coarsened. Not a look-at bearing — list secondary only.
+   */
+  travelRelativeBearing: number;
   /** Operator confidence — never a sure ID. */
   confidence: 'possible' | 'likely';
 }
@@ -1259,8 +1266,8 @@ export interface VesselView {
   /** Own-side noisemaker decoys only (deployed by this hull) — never enemy GT. */
   ownNoisemakers?: NoisemakerTrack[];
   /**
-   * Lookout / periscope FoW — possible torpedo wake directions (not identity).
-   * Only on stations with `lookout` capability.
+   * Lookout / periscope FoW — selectable wake Sightings (not identity).
+   * Only on stations with `lookout` capability; drives optics compass via REL.
    */
   torpedoWakeCues?: TorpedoWakeCue[];
   /**
