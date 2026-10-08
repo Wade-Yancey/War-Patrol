@@ -57,7 +57,7 @@ function parseRelAim(raw: string): number | null {
 
 /**
  * Deck-gun firing panel — destroyer + fleet-sub surface engagement.
- * Same calculator language as torpedoes (relative aim + course/speed/range
+ * Same calculator language as torpedoes (relative aim → range → course → speed
  * solution). Never auto-fills from sim truth. Sub fire requires surfaced/awash.
  * Shot count (1…class max) fires a multi-round salvo — 1 shell each.
  */
@@ -195,6 +195,17 @@ export function DeckGunControls({
           : ' · no intercept (aim)'}
       </p>
 
+      {/* Same fire-control order as optics viewer meta + torpedo: bearing → range → course → speed. */}
+      <TouchNumber
+        label="Est. range"
+        value={estimatedRangeNm}
+        onChange={setEstimatedRangeNm}
+        min={0}
+        max={DECK_GUN_MAX_RANGE_NM}
+        step={0.01}
+        unit="nm"
+        disabled={inputsDisabled}
+      />
       <TouchNumber
         label="Est. target course (true °)"
         value={estimatedCourse}
@@ -214,16 +225,6 @@ export function DeckGunControls({
         max={50}
         step={0.1}
         unit="kn"
-        disabled={inputsDisabled}
-      />
-      <TouchNumber
-        label="Est. range"
-        value={estimatedRangeNm}
-        onChange={setEstimatedRangeNm}
-        min={0}
-        max={DECK_GUN_MAX_RANGE_NM}
-        step={0.01}
-        unit="nm"
         disabled={inputsDisabled}
       />
       <TouchNumber

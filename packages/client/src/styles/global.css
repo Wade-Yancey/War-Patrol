@@ -3029,7 +3029,7 @@ label {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-width: 12rem;
+  min-width: 14rem;
   min-height: min(52vw, 22rem);
   border: 1px solid color-mix(in srgb, var(--phosphor-dim) 55%, var(--line));
   background: linear-gradient(
@@ -3155,7 +3155,8 @@ label {
   align-items: center;
   justify-content: center;
   gap: 0.55rem;
-  width: min(100%, 24rem);
+  /* Wide enough for labeled rel/true + range/crs/kn without ellipsis truncation. */
+  width: min(100%, 32rem);
   padding: 1.25rem 0.75rem 1rem;
   transform: scale(var(--peri-scale, 1));
   transform-origin: center center;
@@ -3272,7 +3273,8 @@ label {
 
 .periscope-readouts {
   /* Fixed slot under the plate — height must not grow when status chips appear,
-     or flex-centered `.periscope-selected` shoves the PNG upward. */
+     or flex-centered `.periscope-selected` shoves the PNG upward.
+     Tall enough for two meta rows (bearing + range/crs/kn) after #216 labels. */
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
@@ -3281,8 +3283,8 @@ label {
   flex: 0 0 auto;
   box-sizing: border-box;
   width: 100%;
-  height: 3.35rem;
-  padding: 0.3rem 0.55rem;
+  height: 4.85rem;
+  padding: 0.3rem 0.65rem;
   overflow: hidden;
   font-size: 0.82rem;
   color: var(--phosphor);
@@ -3300,27 +3302,25 @@ label {
   text-overflow: ellipsis;
 }
 
-/* Bearing / range / speed / course / status — one locked row. */
+/* Bearing → range → course → speed → status. Prefer wrap over ellipsis. */
 .periscope-readouts-meta {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   justify-content: center;
   align-items: center;
-  gap: 0.3rem 0.55rem;
+  align-content: center;
+  gap: 0.2rem 0.65rem;
   flex: 0 0 auto;
   width: 100%;
-  height: 1.35rem;
-  min-height: 1.35rem;
-  max-height: 1.35rem;
+  height: 2.9rem;
+  min-height: 2.9rem;
+  max-height: 2.9rem;
   overflow: hidden;
-  white-space: nowrap;
 }
 
 .periscope-readouts-meta > span {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .periscope-readouts-meta > .periscope-status-chip {

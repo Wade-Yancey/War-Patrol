@@ -97,9 +97,11 @@ function roomStatus(room: RoomState, capacity: number): string {
 /**
  * Torpedo firing calculator — all solution inputs are operator-entered.
  * Never auto-fills true course/speed/range/length from the sim (optics +
- * recognition manual + judgment). Aim = relative LOS; course/speed/range
- * compute the fire heading; length scales the geometric hit gate vs truth.
- * Run depth is fixed in sim (shallow anti-surface default) — not operator-set.
+ * recognition manual + judgment). Input order matches optics viewer meta:
+ * Aim / LOS (relative) → range → course → speed → length (OA).
+ * Aim = relative LOS; range/course/speed compute the fire heading; length
+ * scales the geometric hit gate vs truth. Run depth is fixed in sim
+ * (shallow anti-surface default) — not operator-set.
  * Supports single shot or angular fan spreads (multiple tracked fish).
  * Fire is allowed with the periscope down.
  */
@@ -315,6 +317,17 @@ export function TorpedoCalculator({
         )}
       </p>
 
+      {/* Same fire-control order as optics viewer meta + deck gun: bearing → range → course → speed. */}
+      <TouchNumber
+        label="Est. range"
+        value={estimatedRangeNm}
+        onChange={setEstimatedRangeNm}
+        min={0}
+        max={8}
+        step={0.01}
+        unit="nm"
+        disabled={disabled || loadBlocked}
+      />
       <TouchNumber
         label="Est. target course (true ° — not AOB)"
         value={estimatedCourse}
@@ -335,16 +348,6 @@ export function TorpedoCalculator({
         max={50}
         step={0.1}
         unit="kn"
-        disabled={disabled || loadBlocked}
-      />
-      <TouchNumber
-        label="Est. range"
-        value={estimatedRangeNm}
-        onChange={setEstimatedRangeNm}
-        min={0}
-        max={8}
-        step={0.01}
-        unit="nm"
         disabled={disabled || loadBlocked}
       />
       <TouchNumber
