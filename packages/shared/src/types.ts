@@ -387,7 +387,9 @@ export interface UnitOrders {
    * Standing umpire vessel order (intercept / attack_guns|dc|torpedoes / evade).
    * Ships & subs only. Persists across resolves until umpire Clear, target
    * gone (intercept/attack_*), or hull lost. Weapon attack modes auto-queue
-   * that weapon only when in engagement range, without clearing.
+   * that weapon only when in engagement range. Attack (guns) clears once a
+   * deck-gun salvo is queued / pending this resolve; Attack (DC) / Attack
+   * (torpedoes) keep prosecuting until Clear.
    */
   vesselStanding?: VesselStandingOrder;
   updatedAt?: string;

@@ -119,7 +119,9 @@ export function resolveTurn(save: GameSave): GameSave {
   );
 
   // Clear helm/EOT/depth / one-shot weapon fields after resolve. Standing aircraft
-  // attack and vessel standing orders persist until cancel / target gone (like loiter).
+  // attack and vessel standing orders persist until cancel / target gone (like
+  // loiter) — except Attack (guns), which applyVesselStandingOrders already
+  // cleared when the salvo was queued this resolve.
   const nextTurnNumber = save.turn.number + 1;
 
   const resolvedUnits = noisemakers.units.map((u) => {

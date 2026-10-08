@@ -443,6 +443,88 @@ async function main() {
       'applyVesselStandingOrders attack_dc queues DC via path CPA',
       Boolean(atkDd?.orders.dropDepthCharges),
     );
+    check(
+      'applyVesselStandingOrders attack_dc keeps standing after queue',
+      atkDd?.orders.vesselStanding?.mode === 'attack_dc',
+    );
+  }
+
+  // Attack (guns): queue salvo vs surfaced target, then expire standing order.
+  {
+    const surfPos = { lat: 0, lon: 0, depth: 0 };
+    // ~1 nm north — inside VESSEL_ATTACK_GUN_RANGE_NM (4 nm).
+    const ddGunStart = { lat: 0.015, lon: 0, depth: 0 };
+    const ddGunStub = {
+      id: 'dd-gun',
+      name: 'Gun DD',
+      side: 'blue' as const,
+      faction: 'Blue' as const,
+      classId: 'fletcher-class',
+      type: 'Ship' as const,
+      class: 'Destroyer' as const,
+      condition: 'afloat' as const,
+      position: ddGunStart,
+      heading: 180,
+      orderedCourse: 180,
+      speed: 20,
+      maxSpeed: 36,
+      turnRate: 7,
+      eot: 'ahead_flank' as const,
+      deckGunLoad: 40,
+      deckGunAwaitingReload: false,
+      deckGunReloadTurnsRemaining: 0,
+      orders: {
+        vesselStanding: { mode: 'attack_guns' as const, targetUnitId: 'ss-surf' },
+      },
+    };
+    const ssSurfStub = {
+      id: 'ss-surf',
+      name: 'Surf Sub',
+      side: 'red' as const,
+      faction: 'Red' as const,
+      classId: 'gato-class',
+      type: 'Submarine' as const,
+      class: 'Fleet Submarine' as const,
+      condition: 'afloat' as const,
+      position: surfPos,
+      heading: 0,
+      orderedCourse: 0,
+      speed: 8,
+      maxSpeed: 21,
+      turnRate: 6,
+      eot: 'ahead_1_3' as const,
+      orders: {},
+    };
+    const gunsApplied = applyVesselStandingOrders(
+      [ddGunStub as unknown as UnitState, ssSurfStub as unknown as UnitState],
+      180,
+    );
+    const gunDd = gunsApplied.find((u) => u.id === 'dd-gun');
+    check(
+      'applyVesselStandingOrders attack_guns queues deck gun vs surface target',
+      Boolean(gunDd?.orders.fireDeckGun),
+      `orders=${JSON.stringify(gunDd?.orders)}`,
+    );
+    check(
+      'applyVesselStandingOrders attack_guns clears standing after salvo queued',
+      !gunDd?.orders.vesselStanding,
+      `standing=${JSON.stringify(gunDd?.orders.vesselStanding)}`,
+    );
+    // Out of gun range: standing persists (close first).
+    const farDd = {
+      ...ddGunStub,
+      position: { lat: 0.1, lon: 0, depth: 0 }, // ~6 nm
+    };
+    const farApplied = applyVesselStandingOrders(
+      [farDd as unknown as UnitState, ssSurfStub as unknown as UnitState],
+      180,
+    );
+    const farGunDd = farApplied.find((u) => u.id === 'dd-gun');
+    check(
+      'applyVesselStandingOrders attack_guns keeps standing when out of range',
+      farGunDd?.orders.vesselStanding?.mode === 'attack_guns' &&
+        !farGunDd?.orders.fireDeckGun,
+    );
   }
 
   {
@@ -7976,6 +8058,93 @@ async function main() {
         (gunsView.depthCharges?.length ?? 0) === 0 &&
         !gunsDcDrop,
       `load=${ddGuns?.depthChargeLoad} dcTracks=${gunsView.depthCharges?.length} dropLog=${gunsDcDrop}`,
+    );
+    // Submerged target: guns never queued, so standing may still be present
+    // (expire-after-salvo only when fireDeckGun is away).
+
+    // Surface target in gun range: salvo queues, standing expires, re-issue works.
+    await api(
+      'PATCH',
+      `/api/games/${vesId}/units/ss-212`,
+      {
+        position: { lat: 34.4, lon: -120.0, depth: 0 },
+        heading: 90,
+        orderedCourse: 90,
+        speed: 8,
+        eot: 'ahead_standard',
+      },
+      vesTok,
+    );
+    await api(
+      'PATCH',
+      `/api/games/${vesId}/units/dd-101`,
+      {
+        position: { lat: 34.41, lon: -120.0, depth: 0 },
+        heading: 180,
+        orderedCourse: 180,
+        speed: 20,
+        eot: 'ahead_full',
+      },
+      vesTok,
+    );
+    const orderGunsSurf = await api(
+      'POST',
+      `/api/games/${vesId}/units/dd-101/orders`,
+      { vesselStanding: { mode: 'attack_guns', targetUnitId: 'ss-212' } },
+      vesTok,
+    );
+    check('queue destroyer attack (guns) vs surface', orderGunsSurf.status === 200);
+    check(
+      'attack (guns) standing pending before resolve',
+      (orderGunsSurf.json as { orders?: { vesselStanding?: { mode?: string } } }).orders
+        ?.vesselStanding?.mode === 'attack_guns',
+    );
+    await api('POST', `/api/games/${vesId}/turn/lock`, {}, vesTok);
+    const resolveGunsSurf = await api(
+      'POST',
+      `/api/games/${vesId}/turn/resolve`,
+      {},
+      vesTok,
+    );
+    check('resolve vessel attack (guns) surface salvo', resolveGunsSurf.status === 200);
+    const afterGunsSurf = await api('GET', `/api/games/${vesId}/view`, undefined, vesTok);
+    const gunsSurfView = afterGunsSurf.json.view as {
+      units?: Array<{
+        id: string;
+        deckGunLoad?: number;
+        orders?: { vesselStanding?: { mode?: string } };
+      }>;
+      combatLog?: Array<{ kind?: string }>;
+    };
+    const ddGunsSurf = gunsSurfView.units?.find((u) => u.id === 'dd-101');
+    check(
+      'attack (guns) standing expires after salvo away',
+      !ddGunsSurf?.orders?.vesselStanding,
+      `standing=${JSON.stringify(ddGunsSurf?.orders?.vesselStanding)} load=${ddGunsSurf?.deckGunLoad}`,
+    );
+    check(
+      'attack (guns) consumed deck-gun ammo on surface salvo',
+      (ddGunsSurf?.deckGunLoad ?? 40) < 40,
+      `load=${ddGunsSurf?.deckGunLoad}`,
+    );
+    // Re-issue must succeed after expiry (umpire "worked once" regression).
+    const reissueGuns = await api(
+      'POST',
+      `/api/games/${vesId}/units/dd-101/orders`,
+      { vesselStanding: { mode: 'attack_guns', targetUnitId: 'ss-212' } },
+      vesTok,
+    );
+    check('re-issue attack (guns) after expiry', reissueGuns.status === 200);
+    check(
+      're-issued attack (guns) standing pending',
+      (reissueGuns.json as { orders?: { vesselStanding?: { mode?: string } } }).orders
+        ?.vesselStanding?.mode === 'attack_guns',
+    );
+    await api(
+      'POST',
+      `/api/games/${vesId}/units/dd-101/orders`,
+      { vesselStanding: null },
+      vesTok,
     );
 
     // Re-place for DC prosecute (guns resolve may have moved the hull).
