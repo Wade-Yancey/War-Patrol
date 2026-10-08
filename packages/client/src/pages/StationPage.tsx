@@ -16,6 +16,7 @@ import {
   formatCoarseDepthMeters,
   formatPendingOrdersSummary,
   hasPendingOrders,
+  isHydrophoneReloadCueLive,
   isRadarSurfaced,
   normalizeHeading,
   torpedoHitControlsGain,
@@ -92,6 +93,17 @@ import {
   loadSubmarineCreakingBuffer,
   playSubmarineCreakSample,
 } from '../audio/submarineCreaking';
+import {
+  DEEP_HULL_CLANKING_GAIN,
+  isDeepHullClankingDepth,
+  loadDeepHullClankingBuffer,
+  startDeepHullClankingLoop,
+} from '../audio/deepHullClanking';
+import {
+  TORPEDO_RELOAD_KNOCK_CONTROLS_PEAK_GAIN,
+  loadTorpedoReloadKnockBuffer,
+  playTorpedoReloadKnockCouplet,
+} from '../audio/torpedoReloadKnock';
 import {
   playSubDepthChange,
   shouldPlaySubDepthChangeSfx,
@@ -290,30 +302,40 @@ export function StationPage() {
    */
   const emergencyBlowOrderSeenRef = useRef(false);
   const ambientCreakBusyRef = useRef(false);
+  /** Own-ship reload knock couplet: once per acoustic turn while cue is live. */
+  const playedOwnReloadKnockTurnRef = useRef<number | null>(null);
   const bridgeAudioRef = useRef<{
     ctx: AudioContext | null;
     buffer: AudioBuffer | null;
     torpedoHitBuffer: AudioBuffer | null;
     deckGunFireBuffer: AudioBuffer | null;
     torpedoFireBuffer: AudioBuffer | null;
+    reloadKnockBuffer: AudioBuffer | null;
     creakBuffer: AudioBuffer | null;
+    deepClankBuffer: AudioBuffer | null;
     ventingBuffer: AudioBuffer | null;
     ambientBuffer: AudioBuffer | null;
     sonarPingBuffer: AudioBuffer | null;
     ambientSource: AudioBufferSourceNode | null;
     ambientGain: GainNode | null;
+    deepClankSource: AudioBufferSourceNode | null;
+    deepClankGain: GainNode | null;
   }>({
     ctx: null,
     buffer: null,
     torpedoHitBuffer: null,
     deckGunFireBuffer: null,
     torpedoFireBuffer: null,
+    reloadKnockBuffer: null,
     creakBuffer: null,
+    deepClankBuffer: null,
     ventingBuffer: null,
     ambientBuffer: null,
     sonarPingBuffer: null,
     ambientSource: null,
     ambientGain: null,
+    deepClankSource: null,
+    deepClankGain: null,
   });
   /** Latest close-aboard enemy ping cues for the Controls hull-hear interval. */
   const bridgeSonarPingsRef = useRef<NonNullable<VesselView['bridgeActiveSonarPings']>>([]);
@@ -328,7 +350,9 @@ export function StationPage() {
       bridgeAudioRef.current.torpedoHitBuffer = null;
       bridgeAudioRef.current.deckGunFireBuffer = null;
       bridgeAudioRef.current.torpedoFireBuffer = null;
+      bridgeAudioRef.current.reloadKnockBuffer = null;
       bridgeAudioRef.current.creakBuffer = null;
+      bridgeAudioRef.current.deepClankBuffer = null;
       bridgeAudioRef.current.ventingBuffer = null;
       bridgeAudioRef.current.ambientBuffer = null;
       bridgeAudioRef.current.sonarPingBuffer = null;
@@ -346,6 +370,52 @@ export function StationPage() {
     } catch {
       return null;
     }
+  };
+
+  const ensureReloadKnockBuffer = async (ctx: AudioContext): Promise<AudioBuffer | null> => {
+    if (bridgeAudioRef.current.reloadKnockBuffer) return bridgeAudioRef.current.reloadKnockBuffer;
+    try {
+      bridgeAudioRef.current.reloadKnockBuffer = await loadTorpedoReloadKnockBuffer(ctx);
+      return bridgeAudioRef.current.reloadKnockBuffer;
+    } catch {
+      return null;
+    }
+  };
+
+  const ensureDeepClankBuffer = async (ctx: AudioContext): Promise<AudioBuffer | null> => {
+    if (bridgeAudioRef.current.deepClankBuffer) return bridgeAudioRef.current.deepClankBuffer;
+    try {
+      bridgeAudioRef.current.deepClankBuffer = await loadDeepHullClankingBuffer(ctx);
+      return bridgeAudioRef.current.deepClankBuffer;
+    } catch {
+      return null;
+    }
+  };
+
+  const stopDeepClankLoop = () => {
+    const src = bridgeAudioRef.current.deepClankSource;
+    if (src) {
+      try {
+        src.stop();
+      } catch {
+        /* already stopped */
+      }
+      try {
+        src.disconnect();
+      } catch {
+        /* ignore */
+      }
+    }
+    bridgeAudioRef.current.deepClankSource = null;
+    const g = bridgeAudioRef.current.deepClankGain;
+    if (g) {
+      try {
+        g.disconnect();
+      } catch {
+        /* ignore */
+      }
+    }
+    bridgeAudioRef.current.deepClankGain = null;
   };
 
   /**
@@ -602,17 +672,22 @@ export function StationPage() {
       window.removeEventListener('pointerdown', unlock);
       window.removeEventListener('keydown', unlock);
       stopAmbient();
+      stopDeepClankLoop();
       const ctx = bridgeAudioRef.current.ctx;
       bridgeAudioRef.current.ctx = null;
       bridgeAudioRef.current.buffer = null;
       bridgeAudioRef.current.torpedoHitBuffer = null;
       bridgeAudioRef.current.deckGunFireBuffer = null;
+      bridgeAudioRef.current.torpedoFireBuffer = null;
+      bridgeAudioRef.current.reloadKnockBuffer = null;
       bridgeAudioRef.current.creakBuffer = null;
+      bridgeAudioRef.current.deepClankBuffer = null;
       bridgeAudioRef.current.ventingBuffer = null;
       bridgeAudioRef.current.ambientBuffer = null;
       bridgeAudioRef.current.sonarPingBuffer = null;
       // Closed ctx → allow replay after remount (React Strict Mode / leave+rejoin).
       playedBridgeBlastRef.current.clear();
+      playedOwnReloadKnockTurnRef.current = null;
       if (ctx && ctx.state !== 'closed') void ctx.close();
     };
   }, [onControlsBridge]);
@@ -621,8 +696,13 @@ export function StationPage() {
   const depthM = vessel?.unit.position.depth ?? 0;
   subDepthRef.current = depthM;
   const atPeriscopeDepth = depthM <= PERISCOPE_DEPTH_M;
-  /** Ambient creak loop only while keel is below the radar surface band. */
-  const submergedForCreak = onSubCreakBridge && depthM > RADAR_SURFACE_DEPTH_M;
+  const deepForClank = onSubCreakBridge && isDeepHullClankingDepth(depthM);
+  /**
+   * Ambient creak one-shots while submerged but shallower than crush depth.
+   * At ≥150 m the dramatic deep-clank loop takes over instead.
+   */
+  const submergedForCreak =
+    onSubCreakBridge && depthM > RADAR_SURFACE_DEPTH_M && !isDeepHullClankingDepth(depthM);
   bridgeSonarPingsRef.current = vessel?.bridgeActiveSonarPings ?? [];
   /** Hull-coupled enemy pings: submerged sub Controls with at least one close emitter. */
   const hearBridgeSonar =
@@ -630,7 +710,7 @@ export function StationPage() {
     depthM > RADAR_SURFACE_DEPTH_M &&
     (vessel?.bridgeActiveSonarPings?.length ?? 0) > 0;
 
-  // Submarine Controls: occasional hull creaks while submerged; denser with depth.
+  // Submarine Controls: occasional hull creaks while submerged (shallow of crush).
   useEffect(() => {
     if (!submergedForCreak) return;
     let cancelled = false;
@@ -652,8 +732,11 @@ export function StationPage() {
       timer = setTimeout(() => {
         void (async () => {
           if (cancelled) return;
-          // Skip if still surfaced or a prior ambient creak is ringing.
-          if (subDepthRef.current <= RADAR_SURFACE_DEPTH_M) {
+          // Skip if surfaced, deep (clank loop owns the bed), or a prior creak is ringing.
+          if (
+            subDepthRef.current <= RADAR_SURFACE_DEPTH_M ||
+            isDeepHullClankingDepth(subDepthRef.current)
+          ) {
             return;
           }
           if (ambientCreakBusyRef.current) {
@@ -723,6 +806,93 @@ export function StationPage() {
       window.removeEventListener('keydown', unlock);
     };
   }, [submergedForCreak]);
+
+  // Submarine Controls: dramatic deep-hull clank loop at crush depth and below.
+  useEffect(() => {
+    if (!deepForClank) {
+      stopDeepClankLoop();
+      return;
+    }
+    let cancelled = false;
+
+    const startLoop = async () => {
+      if (cancelled || bridgeAudioRef.current.deepClankSource) return;
+      try {
+        const ctx = await ensureBridgeAudioCtx();
+        if (cancelled || bridgeAudioRef.current.deepClankSource) return;
+        const buffer = await ensureDeepClankBuffer(ctx);
+        if (!buffer || cancelled || bridgeAudioRef.current.deepClankSource) return;
+        if (ctx.state !== 'running') return;
+        const { source, gain } = startDeepHullClankingLoop(
+          ctx,
+          buffer,
+          ctx.destination,
+          DEEP_HULL_CLANKING_GAIN,
+        );
+        bridgeAudioRef.current.deepClankSource = source;
+        bridgeAudioRef.current.deepClankGain = gain;
+      } catch {
+        /* autoplay / sample — ignore; unlock may retry */
+      }
+    };
+
+    const unlock = () => {
+      void startLoop();
+    };
+
+    void startLoop();
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+      stopDeepClankLoop();
+    };
+  }, [deepForClank]);
+
+  // Submarine Controls: own-ship reload knock couplet (start turn + linger).
+  useEffect(() => {
+    if (!onSubCreakBridge || !vessel) {
+      playedOwnReloadKnockTurnRef.current = null;
+      return;
+    }
+    const cueTurn = vessel.unit.torpedoReloadAcousticTurn;
+    const turn = vessel.turn.number;
+    if (!isHydrophoneReloadCueLive(cueTurn, turn)) {
+      playedOwnReloadKnockTurnRef.current = null;
+      return;
+    }
+    if (playedOwnReloadKnockTurnRef.current === turn) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const ctx = await ensureBridgeAudioCtx();
+        if (cancelled || ctx.state !== 'running') return;
+        const buffer = await ensureReloadKnockBuffer(ctx);
+        if (!buffer || cancelled) return;
+        if (playedOwnReloadKnockTurnRef.current === turn) return;
+        playTorpedoReloadKnockCouplet(
+          ctx,
+          buffer,
+          ctx.destination,
+          TORPEDO_RELOAD_KNOCK_CONTROLS_PEAK_GAIN,
+        );
+        playedOwnReloadKnockTurnRef.current = turn;
+      } catch {
+        /* autoplay / sample — ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    onSubCreakBridge,
+    vessel?.unit.torpedoReloadAcousticTurn,
+    vessel?.turn.number,
+    vessel?.stateVersion,
+  ]);
 
   // Controls bridge: queue + play DC / torpedo-hit blasts (attenuated by range).
   useEffect(() => {
@@ -1444,6 +1614,7 @@ export function StationPage() {
                     listenQuality={vessel.hydrophoneListenQuality}
                     selfNoise={vessel.hydrophoneSelfNoise}
                     ownHeading={vessel.unit.heading}
+                    turnNumber={vessel.turn.number}
                   />
                 )}
               </section>

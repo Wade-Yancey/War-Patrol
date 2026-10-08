@@ -1298,6 +1298,7 @@ export interface VesselView {
     | 'torpedoAftAwaitingReload'
     | 'torpedoForwardReloadTurnsRemaining'
     | 'torpedoAftReloadTurnsRemaining'
+    | 'torpedoReloadAcousticTurn'
     | 'torpedoArcBlock'
     | 'depthChargeLoad'
     | 'depthChargeAwaitingReload'

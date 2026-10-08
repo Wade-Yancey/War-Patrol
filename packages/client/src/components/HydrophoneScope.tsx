@@ -20,17 +20,17 @@ import {
   loadDepthChargeBuffer,
   playDepthChargeSample,
 } from '../audio/depthCharge';
-import { loadTorpedoFireBuffer, playTorpedoFireSample } from '../audio/torpedoFire';
+import {
+  hydrophoneReloadKnockPeakGain,
+  loadTorpedoReloadKnockBuffer,
+  playTorpedoReloadKnockCouplet,
+} from '../audio/torpedoReloadKnock';
 import { useContinuousAngle } from '../hooks/useContinuousAngle';
 import { CrtTrainControl } from './CrtTrainControl';
 
 const PROP_SAMPLE_URL = '/audio/echo-propeller.wav';
 /** Bearing nudge step for ◀ / ▶ train buttons (degrees). */
 const BEARING_NUDGE_DEG = 1;
-/** Peak gain for a hydro-heard torpedo reload clank. */
-function hydrophoneReloadPeakGain(contactGain: number): number {
-  return Math.min(0.45, 0.12 + contactGain * 0.4);
-}
 
 interface Props {
   contacts: HydrophoneContact[];
@@ -43,6 +43,11 @@ interface Props {
   selfNoise?: number;
   /** Own-ship heading — lubber mark only (no contact blips). */
   ownHeading: number;
+  /**
+   * Current game turn — reload knocks re-fire once per acoustic turn
+   * while the contact remains live (start turn + linger).
+   */
+  turnNumber: number;
 }
 
 const SIZE = 320;
@@ -98,6 +103,7 @@ function HydrophoneScopeInner({
   listenQuality = 1,
   selfNoise = 0,
   ownHeading,
+  turnNumber,
 }: Props) {
   const [listenBearing, setListenBearing] = useState(0);
   const [listening, setListening] = useState(false);
@@ -114,12 +120,14 @@ function HydrophoneScopeInner({
   const dcBufferRef = useRef<AudioBuffer | null>(null);
   const reloadBufferRef = useRef<AudioBuffer | null>(null);
   const playedDcIdsRef = useRef<Set<string>>(new Set());
-  const playedReloadIdsRef = useRef<Set<string>>(new Set());
+  /** Keys: `${contactId}@${turnNumber}` — couplet once per acoustic turn. */
+  const playedReloadKeysRef = useRef<Set<string>>(new Set());
   const masterGainRef = useRef<GainNode | null>(null);
   const voicesRef = useRef<Map<string, ContactVoice>>(new Map());
   const listenRef = useRef(listenBearing);
   const contactsRef = useRef(contacts);
   const listenQualityRef = useRef(listenQuality);
+  const turnNumberRef = useRef(turnNumber);
   const pingTimerRef = useRef<number | null>(null);
   const effRange = effectiveRangeNm ?? maxRangeNm;
 
@@ -134,6 +142,10 @@ function HydrophoneScopeInner({
   useEffect(() => {
     listenQualityRef.current = listenQuality;
   }, [listenQuality]);
+
+  useEffect(() => {
+    turnNumberRef.current = turnNumber;
+  }, [turnNumber]);
 
   const hdg = normalizeHeading(ownHeading);
   const listen = normalizeHeading(listenBearing);
@@ -209,7 +221,7 @@ function HydrophoneScopeInner({
         dcBufferRef.current = await loadDepthChargeBuffer(audioCtxRef.current);
       }
       if (!reloadBufferRef.current) {
-        reloadBufferRef.current = await loadTorpedoFireBuffer(audioCtxRef.current);
+        reloadBufferRef.current = await loadTorpedoReloadKnockBuffer(audioCtxRef.current);
       }
       setAudioReady(true);
       setAudioError(null);
@@ -348,7 +360,10 @@ function HydrophoneScopeInner({
     }
   }, []);
 
-  /** One-shot tube/reload clank when a sub starts a room reload (FoW spike). */
+  /**
+   * Knock couplet when a sub room-reload acoustic cue is live (FoW spike).
+   * Once per contact × turn — start turn + linger, not the full 5-turn countdown.
+   */
   const playReloadSamples = useCallback(() => {
     const ctx = audioCtxRef.current;
     const master = masterGainRef.current;
@@ -356,12 +371,19 @@ function HydrophoneScopeInner({
     if (!ctx || !master || !reloadBuffer || ctx.state !== 'running') return;
     const bearing = listenRef.current;
     const quality = listenQualityRef.current;
+    const turn = turnNumberRef.current;
     const reloads = contactsRef.current.filter((c) => c.kind === 'torpedo_reload');
+    const liveIds = new Set(reloads.map((c) => c.id));
+    for (const key of [...playedReloadKeysRef.current]) {
+      const contactId = key.slice(0, key.lastIndexOf('@'));
+      if (!liveIds.has(contactId)) playedReloadKeysRef.current.delete(key);
+    }
     const fresh = reloads
-      .filter((c) => !playedReloadIdsRef.current.has(c.id))
+      .filter((c) => !playedReloadKeysRef.current.has(`${c.id}@${turn}`))
       .slice()
       .sort((a, b) => a.id.localeCompare(b.id));
     for (const c of fresh) {
+      const key = `${c.id}@${turn}`;
       const gainAmt = hydrophoneContactGain(
         c.rangeNm,
         bearing,
@@ -370,11 +392,16 @@ function HydrophoneScopeInner({
         quality,
       );
       if (gainAmt < 0.03) {
-        playedReloadIdsRef.current.add(c.id);
+        playedReloadKeysRef.current.add(key);
         continue;
       }
-      playTorpedoFireSample(ctx, reloadBuffer, master, hydrophoneReloadPeakGain(gainAmt));
-      playedReloadIdsRef.current.add(c.id);
+      playTorpedoReloadKnockCouplet(
+        ctx,
+        reloadBuffer,
+        master,
+        hydrophoneReloadKnockPeakGain(gainAmt),
+      );
+      playedReloadKeysRef.current.add(key);
     }
   }, []);
 
@@ -392,6 +419,7 @@ function HydrophoneScopeInner({
     contacts,
     listenBearing,
     listenQuality,
+    turnNumber,
     syncVoices,
     stopAllVoices,
     playDepthChargeSamples,
