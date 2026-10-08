@@ -78,6 +78,7 @@ import {
   isVesselStandingModeAvailable,
   isVesselStandingTarget,
   normalizeVesselStandingMode,
+  vesselAttackTorpedoOrderedCourse,
   vesselEvadeBaseCourse,
   vesselEvadeZigzagCourse,
   vesselInterceptOrderedCourse,
@@ -1212,7 +1213,10 @@ export class GameRuntime {
               });
             }
             if (course === undefined) {
-              course = vesselInterceptOrderedCourse(unit.position, target.position);
+              course =
+                mode === 'attack_torpedoes'
+                  ? vesselAttackTorpedoOrderedCourse(unit, target)
+                  : vesselInterceptOrderedCourse(unit.position, target.position);
             }
             if (eot === undefined) {
               eot = isVesselStandingAttackMode(mode)

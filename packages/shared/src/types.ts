@@ -389,7 +389,8 @@ export interface UnitOrders {
    * gone (intercept/attack_*), or hull lost. Weapon attack modes auto-queue
    * that weapon only when in engagement range. Attack (guns) clears once a
    * deck-gun salvo is queued / pending this resolve; Attack (DC) / Attack
-   * (torpedoes) keep prosecuting until Clear.
+   * (torpedoes) keep prosecuting until Clear (torpedoes gate = fish max run;
+   * steer onto fire heading and accept start or end-of-turn tube arc).
    */
   vesselStanding?: VesselStandingOrder;
   updatedAt?: string;

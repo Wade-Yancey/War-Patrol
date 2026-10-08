@@ -24,6 +24,7 @@ import {
   maxDeckGunShotsPerTurn,
   segmentClosestPoint,
   TORPEDO_MAX_RUN_NM,
+  torpedoFireHeadingFromSolution,
   unitLengthBeam,
 } from './weapons.js';
 import type {
@@ -67,8 +68,13 @@ export const VESSEL_ATTACK_DC_RANGE_M = 600;
 /** Deck-gun auto-fire gate (nm) for Attack (guns) — inside max gun range. */
 export const VESSEL_ATTACK_GUN_RANGE_NM = 4;
 
-/** Torpedo auto-fire gate (nm) for Attack (torpedoes) — inside fish max run. */
-export const VESSEL_ATTACK_TORP_RANGE_NM = Math.min(2.5, TORPEDO_MAX_RUN_NM);
+/**
+ * Torpedo auto-fire gate (nm) for Attack (torpedoes).
+ * Matches fish max run so a hull already inside a reachable shot (e.g. demo
+ * Gato ~3 nm from Porter) can queue — the old 2.5 nm cap left a gap where
+ * arc was fine but standing never fired, then flank pursuit overshot.
+ */
+export const VESSEL_ATTACK_TORP_RANGE_NM = TORPEDO_MAX_RUN_NM;
 
 /** Weapon keyed by standing attack mode (excludes intercept / evade). */
 export type VesselStandingWeapon = 'guns' | 'dc' | 'torpedoes';
@@ -337,9 +343,30 @@ function buildTruthDepthChargeOrder(
   };
 }
 
+/**
+ * Ordered course for Attack (torpedoes): when inside the auto-fire gate, steer
+ * tubes onto the collision-course fire heading; otherwise close by pursuit.
+ */
+export function vesselAttackTorpedoOrderedCourse(
+  firer: Pick<UnitState, 'position'>,
+  target: Pick<UnitState, 'position' | 'heading' | 'speed'>,
+): number {
+  const { bearing, rangeNm } = bearingRangeNm(firer.position, target.position);
+  if (rangeNm <= 0 || rangeNm > VESSEL_ATTACK_TORP_RANGE_NM) {
+    return bearing;
+  }
+  return torpedoFireHeadingFromSolution({
+    aimHeading: bearing,
+    estimatedCourse: normalizeHeading(target.heading),
+    estimatedSpeedKn: Math.abs(target.speed),
+    estimatedRangeNm: rangeNm,
+  }).fireHeading;
+}
+
 function buildTruthTorpedoOrder(
   firer: UnitState,
   target: UnitState,
+  opts?: { orderedCourse?: number; turnLengthSeconds?: number },
 ): TorpedoFireOrder | null {
   if (!isFleetSubTorpedoHull(firer)) return null;
   const { bearing, rangeNm } = bearingRangeNm(firer.position, target.position);
@@ -348,30 +375,48 @@ function buildTruthTorpedoOrder(
   // very deep? Fish run shallow; still allow vs surface ships / PD boats.
   if (target.type === 'Aircraft') return null;
   const { lengthM } = unitLengthBeam(target);
+  const estCourse = normalizeHeading(target.heading);
+  const estSpd = Math.abs(target.speed);
+  const turnLen = opts?.turnLengthSeconds ?? DEFAULT_TURN_LENGTH_SECONDS;
+  const steer =
+    typeof opts?.orderedCourse === 'number'
+      ? opts.orderedCourse
+      : vesselAttackTorpedoOrderedCourse(firer, target);
+  // Arc vs start heading OR end-of-turn heading after this resolve's yaw —
+  // standing injects course before kinematics, so a turn onto the solution
+  // this resolve should still release fish (like DC path-CPA gating).
+  const endHeading = turnTowardHeading(
+    firer.heading,
+    steer,
+    firer.turnRate * (Math.max(0, turnLen) / 60),
+  );
+  const headingsToTry = [firer.heading, endHeading];
   const rooms: TorpedoRoomId[] = ['forward', 'aft'];
   for (const room of rooms) {
     if (!canFireTorpedoFromRoom(firer, room)) continue;
-    const check = checkTorpedoOrderArc({
-      ownHeadingDeg: firer.heading,
-      room,
-      aimHeading: bearing,
-      estimatedCourse: normalizeHeading(target.heading),
-      estimatedSpeedKn: Math.abs(target.speed),
-      estimatedRangeNm: rangeNm,
-      spreadCount: 1,
-      spreadDeg: 0,
-    });
-    if (!check.ok) continue;
-    return {
-      room,
-      aimHeading: bearing,
-      estimatedCourse: normalizeHeading(target.heading),
-      estimatedSpeedKn: Math.abs(target.speed),
-      estimatedRangeNm: rangeNm,
-      estimatedLengthM: lengthM,
-      spreadCount: 1,
-      spreadDeg: 0,
-    };
+    for (const ownHeadingDeg of headingsToTry) {
+      const check = checkTorpedoOrderArc({
+        ownHeadingDeg,
+        room,
+        aimHeading: bearing,
+        estimatedCourse: estCourse,
+        estimatedSpeedKn: estSpd,
+        estimatedRangeNm: rangeNm,
+        spreadCount: 1,
+        spreadDeg: 0,
+      });
+      if (!check.ok) continue;
+      return {
+        room,
+        aimHeading: bearing,
+        estimatedCourse: estCourse,
+        estimatedSpeedKn: estSpd,
+        estimatedRangeNm: rangeNm,
+        estimatedLengthM: lengthM,
+        spreadCount: 1,
+        spreadDeg: 0,
+      };
+    }
   }
   return null;
 }
@@ -408,7 +453,10 @@ export function vesselAttackWeaponOrder(
     return gun ? { fireDeckGun: gun } : {};
   }
   if (opts.weapon === 'torpedoes') {
-    const torp = buildTruthTorpedoOrder(firer, target);
+    const torp = buildTruthTorpedoOrder(firer, target, {
+      orderedCourse: course,
+      turnLengthSeconds,
+    });
     return torp ? { fireTorpedo: torp } : {};
   }
   return {};
@@ -420,7 +468,8 @@ export function vesselAttackWeaponOrder(
  * Attack modes may also queue that weapon's one-shot order when in engage range.
  * Attack (guns) expires once a deck-gun salvo is queued (or already pending) —
  * one-shot like aircraft bombing. Attack (DC) / Attack (torpedoes) keep
- * prosecuting until Clear / target gone.
+ * prosecuting until Clear / target gone. Attack (torpedoes) steers onto the
+ * fire heading in range and accepts tube arc at start or end-of-turn heading.
  * Evade advances zigzag leg each call (period 2 turns).
  *
  * @param turnLengthSeconds In-game seconds for this resolve — used by Attack DC
@@ -492,7 +541,12 @@ export function applyVesselStandingOrders(
     }
 
     // intercept / attack_* — target validated above
-    const course = vesselInterceptOrderedCourse(unit.position, target!.position);
+    // Torpedoes: steer onto the collision-course fire heading when in range so
+    // tubes yaw onto the shot this resolve (pursuit LOS alone overshoots).
+    const course =
+      standing.mode === 'attack_torpedoes'
+        ? vesselAttackTorpedoOrderedCourse(unit, target!)
+        : vesselInterceptOrderedCourse(unit.position, target!.position);
     const attacking = isVesselStandingAttackMode(standing.mode);
     const preferredEot = attacking ? VESSEL_ATTACK_EOT : VESSEL_INTERCEPT_EOT;
     const weapon = vesselStandingWeaponForMode(standing.mode);
