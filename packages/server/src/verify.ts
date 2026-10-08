@@ -122,6 +122,7 @@ import {
   type UnitState,
 } from '@war-patrol/shared';
 import { buildActiveSonarContacts } from './game/activeSonar.js';
+import { buildHydrophoneContacts } from './game/hydrophone.js';
 import { buildPeriscopeContacts } from './game/periscope.js';
 import { buildRadarContacts } from './game/radar.js';
 import { buildOpticsSightings, buildTorpedoWakeCues } from './game/wakeCues.js';
@@ -6008,6 +6009,26 @@ async function main() {
               !('unitId' in c),
           ),
         );
+        // EOT STOP silences screws only — reload FoW spike must remain.
+        {
+          const save = runtime.requireGame(torpId);
+          const dd = save.units.find((u) => u.id === 'dd-101')!;
+          const sub = save.units.find((u) => u.id === 'ss-212')!;
+          const stoppedSub = { ...sub, speed: 0, eot: 'stop' as const };
+          const pic = buildHydrophoneContacts(dd, {
+            ...save,
+            units: save.units.map((u) => (u.id === 'ss-212' ? stoppedSub : u)),
+          });
+          const stopReload = pic.contacts.filter((c) => c.kind === 'torpedo_reload');
+          const stopProp = pic.contacts.filter((c) => c.kind === 'propeller');
+          check(
+            'STOP sub still emits reload hydro cue (no propeller)',
+            stopReload.length >= 1 && stopProp.length === 0,
+            `reload=${stopReload.length} prop=${stopProp.length} kinds=${pic.contacts
+              .map((c) => c.kind)
+              .join(',')}`,
+          );
+        }
       }
       const midReloadFire = await api(
         'POST',

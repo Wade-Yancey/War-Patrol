@@ -38,10 +38,12 @@ export type HydrophonePicture = {
 /**
  * Server-authoritative hydrophone cues (audio only).
  *
- * Propeller contacts: underway waterborne hulls with speed/depth radiated level.
+ * Propeller contacts: underway waterborne hulls with speed/depth radiated level
+ *   (EOT STOP → no propeller contact, even with residual way-on).
  * Active-sonar pings: destroyers with search sonar toggled ON.
  * Depth-charge detonations: recent explosions within hearing range (one-shot WAV).
- * Torpedo reload: mechanical spike when a sub starts tube reload (FoW intensity).
+ * Torpedo reload: mechanical spike when a sub starts tube reload (FoW intensity) —
+ *   not gated by {@link isHydrophoneEmitter}; STOP boats still clank.
  *
  * Own-ship self-noise from speed shrinks effective range and listen quality.
  * Fleet-sub hydrophone is submerged-only (depth > 5 m); DD hydro is always depth-ok.
@@ -130,9 +132,13 @@ export function buildHydrophoneContacts(own: UnitState, save: GameSave): Hydroph
     }
 
     // Torpedo-room reload mechanical spike (no GT identity).
+    // Independent of screw emission — EOT STOP silences propellers only; reload
+    // clanks remain hearable while the acoustic stamp is live. Loud spike cuts
+    // through listener self-noise like active-sonar pings (configured max, not
+    // effectiveRange), still capped at HYDROPHONE_RELOAD_RANGE_NM.
     if (
       isHydrophoneReloadCueLive(other.torpedoReloadAcousticTurn, turnNumber) &&
-      rangeNm <= Math.min(effectiveRangeNm, HYDROPHONE_RELOAD_RANGE_NM)
+      rangeNm <= Math.min(maxRangeNm, HYDROPHONE_RELOAD_RANGE_NM)
     ) {
       contacts.push({
         id: `h-${opaqueTrackId([own.id, other.id, 'hydro', 'reload', String(other.torpedoReloadAcousticTurn)])}`,

@@ -384,6 +384,9 @@ function HydrophoneScopeInner({
   /**
    * Knock burst when a sub room-reload acoustic cue is live (FoW spike).
    * Once per contact × turn — start turn + linger, not the full 5-turn countdown.
+   * Independent of propeller loops: EOT STOP clears screws but reload knocks
+   * must still fire while the FoW contact remains. Do not consume the play
+   * token when audio is not ready — retry on the next sync.
    */
   const playReloadSamples = useCallback(() => {
     const ctx = audioCtxRef.current;
@@ -412,16 +415,11 @@ function HydrophoneScopeInner({
         c.sourceLevel ?? 1,
         quality,
       );
-      if (gainAmt < 0.03) {
-        playedReloadKeysRef.current.add(key);
-        continue;
-      }
-      playTorpedoReloadKnockCouplet(
-        ctx,
-        reloadBuffer,
-        master,
-        hydrophoneReloadKnockPeakGain(gainAmt),
-      );
+      // Loud mechanical spike — play even off-beam at reduced gain (same idea as DC).
+      // Never mark played without scheduling audio, or STOP/beam sweeps can silence
+      // the only remaining cue for the rest of the acoustic turn.
+      const peak = Math.max(0.05, hydrophoneReloadKnockPeakGain(Math.max(gainAmt, 0.12)));
+      playTorpedoReloadKnockCouplet(ctx, reloadBuffer, master, peak);
       playedReloadKeysRef.current.add(key);
     }
   }, []);
