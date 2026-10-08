@@ -531,7 +531,8 @@ export function UmpirePage() {
                     )}
                     {mapFullscreen && (
                       <p className="muted" style={{ margin: 0, fontSize: '0.75rem' }}>
-                        Fullscreen map — pan/zoom, Ranges, turn scrubber. Esc or Exit to leave.
+                        Fullscreen map — pan/zoom, Ranges, Air trails, turn scrubber. Esc or Exit
+                        to leave.
                       </p>
                     )}
                   </div>
