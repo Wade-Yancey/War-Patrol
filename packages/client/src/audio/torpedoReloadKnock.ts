@@ -4,14 +4,14 @@
  */
 export const TORPEDO_RELOAD_KNOCK_SAMPLE_URL = '/audio/torpedo-reload-knock.mp3';
 
-/** How many knocks per acoustic reload turn (keep sparse — not spam). */
-export const TORPEDO_RELOAD_KNOCK_COUNT = 2;
+/** How many knocks per acoustic reload turn (busy room, still not spam). */
+export const TORPEDO_RELOAD_KNOCK_COUNT = 3;
 
 /**
- * Wall-clock gap between knocks in a couplet.
+ * Wall-clock gap between knocks in a burst.
  * Sample is ~4.6 s; short overlap keeps the room busy without a long monologue.
  */
-export const TORPEDO_RELOAD_KNOCK_GAP_SEC = 1.8;
+export const TORPEDO_RELOAD_KNOCK_GAP_SEC = 1.35;
 
 /** Peak gain on submarine Controls (own crew). */
 export const TORPEDO_RELOAD_KNOCK_CONTROLS_PEAK_GAIN = 0.28;
@@ -53,8 +53,8 @@ export function playTorpedoReloadKnockSample(
 }
 
 /**
- * Schedule a short couplet of knocks (default {@link TORPEDO_RELOAD_KNOCK_COUNT}).
- * Returns onset times relative to now for callers that need bookkeeping.
+ * Schedule a short burst of knocks (default {@link TORPEDO_RELOAD_KNOCK_COUNT}).
+ * Used on Controls + hydro paths during reload acoustic/resolve turns.
  */
 export function playTorpedoReloadKnockCouplet(
   ctx: AudioContext,

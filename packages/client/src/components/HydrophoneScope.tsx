@@ -31,6 +31,13 @@ import { CrtTrainControl } from './CrtTrainControl';
 const PROP_SAMPLE_URL = '/audio/echo-propeller.wav';
 /** Bearing nudge step for ◀ / ▶ train buttons (degrees). */
 const BEARING_NUDGE_DEG = 1;
+/** Default hydro master gain (submarine Sensors). */
+export const HYDROPHONE_MASTER_GAIN_DEFAULT = 0.55;
+/**
+ * Destroyer Sensors hydro master — modest bump over sub default.
+ * Speaker-friendly: ~+25%, not crushing.
+ */
+export const HYDROPHONE_MASTER_GAIN_DESTROYER = 0.7;
 
 interface Props {
   contacts: HydrophoneContact[];
@@ -48,6 +55,11 @@ interface Props {
    * while the contact remains live (start turn + linger).
    */
   turnNumber: number;
+  /**
+   * Web Audio master gain for Listening playback (prop / ping / DC / reload).
+   * Destroyers pass a slightly higher value; subs keep the default.
+   */
+  masterGain?: number;
 }
 
 const SIZE = 320;
@@ -104,6 +116,7 @@ function HydrophoneScopeInner({
   selfNoise = 0,
   ownHeading,
   turnNumber,
+  masterGain = HYDROPHONE_MASTER_GAIN_DEFAULT,
 }: Props) {
   const [listenBearing, setListenBearing] = useState(0);
   const [listening, setListening] = useState(false);
@@ -120,9 +133,10 @@ function HydrophoneScopeInner({
   const dcBufferRef = useRef<AudioBuffer | null>(null);
   const reloadBufferRef = useRef<AudioBuffer | null>(null);
   const playedDcIdsRef = useRef<Set<string>>(new Set());
-  /** Keys: `${contactId}@${turnNumber}` — couplet once per acoustic turn. */
+  /** Keys: `${contactId}@${turnNumber}` — knock burst once per acoustic turn. */
   const playedReloadKeysRef = useRef<Set<string>>(new Set());
   const masterGainRef = useRef<GainNode | null>(null);
+  const masterGainLevelRef = useRef(masterGain);
   const voicesRef = useRef<Map<string, ContactVoice>>(new Map());
   const listenRef = useRef(listenBearing);
   const contactsRef = useRef(contacts);
@@ -146,6 +160,13 @@ function HydrophoneScopeInner({
   useEffect(() => {
     turnNumberRef.current = turnNumber;
   }, [turnNumber]);
+
+  useEffect(() => {
+    masterGainLevelRef.current = masterGain;
+    if (masterGainRef.current) {
+      masterGainRef.current.gain.value = masterGain;
+    }
+  }, [masterGain]);
 
   const hdg = normalizeHeading(ownHeading);
   const listen = normalizeHeading(listenBearing);
@@ -201,7 +222,7 @@ function HydrophoneScopeInner({
           (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
         audioCtxRef.current = new Ctx();
         const master = audioCtxRef.current.createGain();
-        master.gain.value = 0.55;
+        master.gain.value = masterGainLevelRef.current;
         master.connect(audioCtxRef.current.destination);
         masterGainRef.current = master;
       }
@@ -361,7 +382,7 @@ function HydrophoneScopeInner({
   }, []);
 
   /**
-   * Knock couplet when a sub room-reload acoustic cue is live (FoW spike).
+   * Knock burst when a sub room-reload acoustic cue is live (FoW spike).
    * Once per contact × turn — start turn + linger, not the full 5-turn countdown.
    */
   const playReloadSamples = useCallback(() => {

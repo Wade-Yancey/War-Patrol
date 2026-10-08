@@ -38,7 +38,11 @@ import { EotTelegraph } from '../components/EotTelegraph';
 import { HelmCompass } from '../components/HelmCompass';
 import { CrtTrainControl } from '../components/CrtTrainControl';
 import { DiveControls } from '../components/DiveControls';
-import { HydrophoneScope } from '../components/HydrophoneScope';
+import {
+  HydrophoneScope,
+  HYDROPHONE_MASTER_GAIN_DEFAULT,
+  HYDROPHONE_MASTER_GAIN_DESTROYER,
+} from '../components/HydrophoneScope';
 import { PeriscopeScope } from '../components/PeriscopeScope';
 import { RadarScope } from '../components/RadarScope';
 import { ActiveSonarScope } from '../components/ActiveSonarScope';
@@ -302,7 +306,7 @@ export function StationPage() {
    */
   const emergencyBlowOrderSeenRef = useRef(false);
   const ambientCreakBusyRef = useRef(false);
-  /** Own-ship reload knock couplet: once per acoustic turn while cue is live. */
+  /** Own-ship reload knock burst: once per acoustic turn while cue is live. */
   const playedOwnReloadKnockTurnRef = useRef<number | null>(null);
   const bridgeAudioRef = useRef<{
     ctx: AudioContext | null;
@@ -852,7 +856,7 @@ export function StationPage() {
     };
   }, [deepForClank]);
 
-  // Submarine Controls: own-ship reload knock couplet (start turn + linger).
+  // Submarine Controls: own-ship reload knock burst (start turn + linger).
   useEffect(() => {
     if (!onSubCreakBridge || !vessel) {
       playedOwnReloadKnockTurnRef.current = null;
@@ -1615,6 +1619,11 @@ export function StationPage() {
                     selfNoise={vessel.hydrophoneSelfNoise}
                     ownHeading={vessel.unit.heading}
                     turnNumber={vessel.turn.number}
+                    masterGain={
+                      vessel.unit.class === 'Destroyer'
+                        ? HYDROPHONE_MASTER_GAIN_DESTROYER
+                        : HYDROPHONE_MASTER_GAIN_DEFAULT
+                    }
                   />
                 )}
               </section>
