@@ -1,5 +1,6 @@
 import {
   PERISCOPE_DEPTH_M,
+  advanceSeaSurfaceMarkers,
   advanceSinkingUnits,
   applyAircraftStandingOrders,
   applyVesselStandingOrders,
@@ -169,6 +170,15 @@ export function resolveTurn(save: GameSave): GameSave {
     noisemakers: structuredClone(noisemakers.noisemakers),
   };
 
+  // Sink aftermath Sightings: spawn debris/oil/(life rafts|pilot) when a hull
+  // first becomes lost this resolve; prune markers past retention.
+  const seaSurfaceMarkers = advanceSeaSurfaceMarkers({
+    priorUnits: save.units,
+    nextUnits: resolvedUnits,
+    resolveTurnNumber,
+    priorMarkers: save.seaSurfaceMarkers ?? [],
+  });
+
   const next: GameSave = {
     ...save,
     openingSnapshot,
@@ -180,6 +190,7 @@ export function resolveTurn(save: GameSave): GameSave {
     depthCharges: weapons.depthCharges,
     noisemakers: noisemakers.noisemakers,
     recentDetonations: weapons.recentDetonations,
+    seaSurfaceMarkers,
     combatLog: appendCombatLog(save.combatLog, [
       ...crush.combatLogEntries,
       ...weapons.combatLogEntries,
@@ -348,6 +359,7 @@ function restoreScenarioStart(save: GameSave, opening: TurnSnapshot): GameSave {
     depthCharges: structuredClone(opening.depthCharges ?? []),
     noisemakers: structuredClone(opening.noisemakers ?? []),
     recentDetonations: [],
+    seaSurfaceMarkers: [],
     combatLog: [],
     turn: {
       number: 1,
@@ -382,6 +394,9 @@ export function rollbackToTurn(save: GameSave, turnNumber: number): GameSave {
   const recentDetonations = (save.recentDetonations ?? []).filter(
     (d) => d.turnNumber <= turnNumber,
   );
+  const seaSurfaceMarkers = (save.seaSurfaceMarkers ?? []).filter(
+    (m) => m.createdTurn <= turnNumber,
+  );
   const combatLog = (save.combatLog ?? []).filter((e) => e.turnNumber <= turnNumber);
   return {
     ...save,
@@ -393,6 +408,7 @@ export function rollbackToTurn(save: GameSave, turnNumber: number): GameSave {
     depthCharges: structuredClone(snap.depthCharges ?? []),
     noisemakers: structuredClone(snap.noisemakers ?? []),
     recentDetonations,
+    seaSurfaceMarkers,
     combatLog,
     turn: {
       number: turnNumber + 1,

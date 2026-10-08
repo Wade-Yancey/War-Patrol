@@ -591,11 +591,16 @@ export function lerpLatLon(
   return { ...along, depth: 0 };
 }
 
-// --- Lookout wake FoW ---
+// --- Lookout / periscope Sightings FoW (wake + sink aftermath) ---
 
 export const TORPEDO_WAKE_DETECT_MAX_NM = 2.5;
 export const TORPEDO_WAKE_BASE_P = 0.55;
 export const TORPEDO_WAKE_BEARING_STEP_DEG = 15;
+
+/** Max range (nm) to notice debris / oil / life rafts / downed pilot. */
+export const SINK_AFTERMATH_DETECT_MAX_NM = 3.5;
+/** Base detect probability for sink-aftermath Sightings (higher than wake). */
+export const SINK_AFTERMATH_BASE_P = 0.7;
 
 // --- Acoustic range for depth-charge WAV ---
 

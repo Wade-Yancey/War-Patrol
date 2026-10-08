@@ -534,25 +534,65 @@ export interface WeaponDetonationEvent {
 }
 
 /**
- * Lookout / periscope FoW cue — torpedo wake sighting (not identity).
- * Selectable on the optics CRT like a contact: {@link relativeBearing} drives
- * the same compass bug (where the wake is sighted). Travel is secondary text.
+ * Optics Sight kind — wake (running fish) or sink-aftermath sea clutter.
+ * Identity never leaks; labels are coarse operator callouts only.
  */
-export interface TorpedoWakeCue {
+export type OpticsSightingKind =
+  | 'wake'
+  | 'debris'
+  | 'oil'
+  | 'life_rafts'
+  | 'downed_pilot';
+
+/**
+ * Lookout / periscope FoW Sighting — selectable on the optics CRT like a contact.
+ * {@link relativeBearing} drives the same compass bug (where to look).
+ * Wake cues also carry travel + confidence; sink aftermath is LOS-only.
+ */
+export interface OpticsSighting {
   id: string;
+  kind: OpticsSightingKind;
   /**
-   * Where the wake is sighted — LOS relative bearing vs own bow (−180, 180],
+   * Where the sighting is — LOS relative bearing vs own bow (−180, 180],
    * coarsened. Same semantic as {@link PeriscopeContact.relativeBearing}
    * (bow = 0, starboard positive) so optics compass wiring can be reused.
    */
   relativeBearing: number;
   /**
-   * Direction the wake / fish is traveling, relative to own bow (−180, 180],
-   * coarsened. Not a look-at bearing — list secondary only.
+   * Wake only: direction the wake / fish is traveling, relative to own bow
+   * (−180, 180], coarsened. Not a look-at bearing — list secondary only.
    */
+  travelRelativeBearing?: number;
+  /** Wake only: operator confidence — never a sure ID. */
+  confidence?: 'possible' | 'likely';
+}
+
+/**
+ * Torpedo wake Sighting — OpticsSighting with required travel + confidence.
+ * Kept as a named alias for wake-specific call sites / verify.
+ */
+export type TorpedoWakeCue = OpticsSighting & {
+  kind: 'wake';
   travelRelativeBearing: number;
-  /** Operator confidence — never a sure ID. */
   confidence: 'possible' | 'likely';
+};
+
+/**
+ * GT sea-surface marker from a sunk / sinking hull or downed aircraft.
+ * Lookout / peri FoW may notice these as Sightings while markers remain.
+ * Not identity — no name / side / class on the vessel view.
+ */
+export type SeaSurfaceMarkerKind = Exclude<OpticsSightingKind, 'wake'>;
+
+export interface SeaSurfaceMarker {
+  id: string;
+  kind: SeaSurfaceMarkerKind;
+  /** Surface position of the wreckage / rafts / pilot (depth ignored; treat as 0). */
+  position: LatLonDepth;
+  /** Resolve turn number when the marker was created. */
+  createdTurn: number;
+  /** Source unit that went down (umpire GT only — never on vessel FoW). */
+  sourceUnitId: string;
 }
 
 export interface UnitState {
@@ -962,6 +1002,12 @@ export interface GameSave {
    */
   recentDetonations: WeaponDetonationEvent[];
   /**
+   * Sink-aftermath sea-surface markers (debris / oil / life rafts / downed pilot).
+   * Lookout + periscope FoW may notice them as Sightings while retained.
+   * Pruned after {@link SINK_AFTERMATH_RETENTION_TURNS}; never leaks identity.
+   */
+  seaSurfaceMarkers?: SeaSurfaceMarker[];
+  /**
    * Chronological umpire-only action / damage log (weapon launches, hits, DCs, …).
    * Appended on resolve; not included in vessel FoW views.
    */
@@ -1116,6 +1162,8 @@ export interface UmpireView {
   /** Full-truth stationary noisemaker decoys. */
   noisemakers: NoisemakerTrack[];
   recentDetonations: WeaponDetonationEvent[];
+  /** Sink-aftermath markers (umpire GT; vessel FoW via optics Sightings only). */
+  seaSurfaceMarkers?: SeaSurfaceMarker[];
   /** Chronological action / damage log (umpire only). */
   combatLog: CombatLogEntry[];
   historyTurnNumbers: number[];
@@ -1266,10 +1314,16 @@ export interface VesselView {
   /** Own-side noisemaker decoys only (deployed by this hull) — never enemy GT. */
   ownNoisemakers?: NoisemakerTrack[];
   /**
-   * Lookout / periscope FoW — selectable wake Sightings (not identity).
-   * Only on stations with `lookout` capability; drives optics compass via REL.
+   * Lookout / periscope FoW — selectable Sightings (wake + sink aftermath).
+   * Only on stations with `lookout` capability while optics operational;
+   * drives optics compass via REL. Legacy alias: torpedoWakeCues.
    */
-  torpedoWakeCues?: TorpedoWakeCue[];
+  opticsSightings?: OpticsSighting[];
+  /**
+   * @deprecated Prefer {@link opticsSightings}. Same array when present
+   * (wake + aftermath); kept so older clients still see wake rows.
+   */
+  torpedoWakeCues?: OpticsSighting[];
   /**
    * Weapon blasts audible on Controls (close DC, or torpedo hit for firer/target).
    * Also attached on Sensors (timing only — no SFX) so sunk popup / staged damage

@@ -2,12 +2,13 @@ import { memo, useMemo, useState } from 'react';
 import {
   formatContactDesignation,
   formatPeriscopeDesignation,
+  opticsSightingLabel,
   periscopeSilhouetteFlipX,
   periscopeSilhouetteScale,
   type HullClass,
   type OpticsDamageLook,
+  type OpticsSighting,
   type PeriscopeContact,
-  type TorpedoWakeCue,
 } from '@war-patrol/shared';
 /** Vite-bundled PNGs (alpha) — guaranteed in the client graph (not fragile public-path strings). */
 import carrierSilhouettePng from '../assets/silhouettes/carrier.png';
@@ -25,10 +26,10 @@ import { PeriscopeFeatherSvg } from './PeriscopeFeatherSvg';
 interface Props {
   contacts: PeriscopeContact[];
   /**
-   * Lookout FoW sightings (e.g. torpedo wakes) — selectable like contacts;
-   * {@link TorpedoWakeCue.relativeBearing} drives the same optics compass bug.
+   * Lookout / periscope FoW Sightings (wake + sink aftermath) — selectable
+   * like contacts; {@link OpticsSighting.relativeBearing} drives the compass.
    */
-  sightings?: TorpedoWakeCue[];
+  sightings?: OpticsSighting[];
   maxRangeNm: number;
   /** Own-ship heading — solid HDG needle (bow facing) on the north-up rose. */
   ownHeading: number;
@@ -145,9 +146,12 @@ function contactsKey(contacts: PeriscopeContact[]): string {
     .join('|');
 }
 
-function sightingsKey(sightings: TorpedoWakeCue[]): string {
+function sightingsKey(sightings: OpticsSighting[]): string {
   return sightings
-    .map((s) => `${s.id}:${s.relativeBearing}:${s.travelRelativeBearing}:${s.confidence}`)
+    .map(
+      (s) =>
+        `${s.id}:${s.kind}:${s.relativeBearing}:${s.travelRelativeBearing ?? ''}:${s.confidence ?? ''}`,
+    )
     .join('|');
 }
 
@@ -269,11 +273,18 @@ function PeriscopeScopeInner({
         ) : selectedSighting ? (
           <div className="periscope-selected periscope-selected--sighting">
             <div className="periscope-readouts mono">
-              <span className="readout">WAKE</span>
+              <span className="readout">{opticsSightingLabel(selectedSighting.kind)}</span>
               <div className="periscope-readouts-meta">
                 <span>{formatRelBearing(selectedSighting.relativeBearing)}</span>
-                <span className="muted">{formatWakeTravel(selectedSighting.travelRelativeBearing)}</span>
-                <span className="muted">{selectedSighting.confidence.toUpperCase()}</span>
+                {selectedSighting.kind === 'wake' &&
+                  selectedSighting.travelRelativeBearing != null && (
+                    <span className="muted">
+                      {formatWakeTravel(selectedSighting.travelRelativeBearing)}
+                    </span>
+                  )}
+                {selectedSighting.kind === 'wake' && selectedSighting.confidence && (
+                  <span className="muted">{selectedSighting.confidence.toUpperCase()}</span>
+                )}
               </div>
             </div>
           </div>
@@ -441,11 +452,15 @@ function PeriscopeScopeInner({
                         setSelection({ kind: 'sighting', id: s.id });
                       }}
                     >
-                      <span className="readout">WAKE</span>
+                      <span className="readout">{opticsSightingLabel(s.kind)}</span>
                       <span className="radar-contact-meta">
                         <span>{formatRelBearing(s.relativeBearing)}</span>
-                        <span>{formatWakeTravel(s.travelRelativeBearing)}</span>
-                        <span>{s.confidence.toUpperCase()}</span>
+                        {s.kind === 'wake' && s.travelRelativeBearing != null && (
+                          <span>{formatWakeTravel(s.travelRelativeBearing)}</span>
+                        )}
+                        {s.kind === 'wake' && s.confidence && (
+                          <span>{s.confidence.toUpperCase()}</span>
+                        )}
                       </span>
                     </button>
                   </li>

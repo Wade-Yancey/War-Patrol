@@ -23,7 +23,7 @@ import { buildHydrophoneContacts } from './hydrophone.js';
 import { opaqueTrackId } from './opaqueTrackId.js';
 import { buildPeriscopeContacts } from './periscope.js';
 import { buildRadarContacts } from './radar.js';
-import { buildTorpedoWakeCues } from './wakeCues.js';
+import { buildOpticsSightings } from './wakeCues.js';
 
 /**
  * Close-aboard / involved weapon blast cues for Controls speakers.
@@ -206,6 +206,7 @@ export function buildUmpireView(save: GameSave, sse: SseHub): UmpireView {
     depthCharges: save.depthCharges ?? [],
     noisemakers: save.noisemakers ?? [],
     recentDetonations: save.recentDetonations ?? [],
+    seaSurfaceMarkers: save.seaSurfaceMarkers ?? [],
     combatLog: save.combatLog ?? [],
     historyTurnNumbers: save.history.map((h) => h.turnNumber),
     historySnapshots: (save.history ?? []).map((h) => ({
@@ -373,10 +374,15 @@ export function buildVesselView(
     if (peri.unavailableReason) {
       view.periscopeUnavailableReason = peri.unavailableReason;
     }
-    // Scope down → no visual FoW at all (including wake cues).
+    // Scope down / optics offline → no visual FoW (including Sightings).
+    // Shared by fleet-sub periscope and surface lookout.
     if (peri.operational) {
-      const wakes = buildTorpedoWakeCues(unit, save);
-      if (wakes.length) view.torpedoWakeCues = wakes;
+      const sightings = buildOpticsSightings(unit, save);
+      if (sightings.length) {
+        view.opticsSightings = sightings;
+        // Legacy alias for older clients that still read wake-only field name.
+        view.torpedoWakeCues = sightings;
+      }
     }
   }
 

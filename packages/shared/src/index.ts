@@ -22,5 +22,6 @@ export * from './performance.js';
 export * from './dimensions.js';
 export * from './magazine.js';
 export * from './weapons.js';
+export * from './sightings.js';
 export * from './aircraft.js';
 export * from './vesselStanding.js';

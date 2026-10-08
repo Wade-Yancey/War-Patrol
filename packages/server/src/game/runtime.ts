@@ -84,6 +84,7 @@ import {
   VESSEL_ATTACK_EOT,
   VESSEL_EVADE_EOT,
   VESSEL_INTERCEPT_EOT,
+  appendSinkAftermathForUnit,
   type AircraftAttackOrder,
   type AircraftLoiterState,
   type VesselStandingOrder,
@@ -470,6 +471,7 @@ function normalizeSave(save: GameSave): GameSave {
     depthCharges,
     noisemakers,
     recentDetonations: save.recentDetonations ?? [],
+    seaSurfaceMarkers: save.seaSurfaceMarkers ?? [],
     combatLog: save.combatLog ?? [],
     formations: reconcileFormations(save.formations, units),
     openingSnapshot,
@@ -581,6 +583,7 @@ export class GameRuntime {
       depthCharges: [],
       noisemakers: [],
       recentDetonations: [],
+      seaSurfaceMarkers: [],
       combatLog: [],
       history: [],
     };
@@ -1788,6 +1791,7 @@ export class GameRuntime {
         unit.flightLevel = patch.flightLevel;
       }
       if (patch.condition !== undefined) {
+        const priorCondition = unit.condition;
         unit.condition = resolveCondition(patch.condition);
         if (unit.condition === 'sinking') {
           if (unit.sinkingTurnsRemaining == null || unit.sinkingTurnsRemaining <= 0) {
@@ -1796,6 +1800,13 @@ export class GameRuntime {
         } else {
           unit.sinkingTurnsRemaining = undefined;
         }
+        // Umpire fiat sink → same aftermath markers as combat resolve.
+        save.seaSurfaceMarkers = appendSinkAftermathForUnit({
+          prior: { ...unit, condition: priorCondition },
+          next: unit,
+          turnNumber: save.turn.number,
+          existing: save.seaSurfaceMarkers ?? [],
+        });
       }
       if (patch.subsystems) {
         const merged = {
