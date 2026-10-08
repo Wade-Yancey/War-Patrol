@@ -33,7 +33,8 @@ export function defaultTwoScreenStations(
           id: STATION_ID_SENSORS,
           name: 'Sensors',
           // lookout = bridge lookout (same visual FoW as sub periscope; always available)
-          capabilities: ['radar', 'active_sonar', 'lookout'],
+          // hydrophone = passive listen (active sonar remains a separate prosecute set)
+          capabilities: ['radar', 'active_sonar', 'hydrophone', 'lookout'],
         },
       ];
     case 'Fleet Submarine':

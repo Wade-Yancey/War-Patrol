@@ -107,8 +107,53 @@ export const HYDROPHONE_RANGE_REF_NM = 8;
  */
 export const HYDROPHONE_BEAM_POWER = 4;
 
-/** Absolute speed (kn) at/above which a hull is treated as underway (emits propeller noise). */
+/**
+ * Absolute speed (kn) at/above which a hull with engines answering is treated
+ * as underway for screw noise. Combined with EOT `stop` (screws silent even
+ * while coasting) in {@link isHydrophoneEmitter}.
+ */
 export const HYDROPHONE_UNDERWAY_SPEED_KN = 0.1;
+
+/**
+ * Radiated propeller source level at creep (~15% of effective max speed).
+ * Flank approaches 1.0; stop / not-underway → 0 (no contact).
+ */
+export const HYDROPHONE_RADIATED_CREEP_LEVEL = 0.35;
+
+/**
+ * Depth (m) reference for submarine radiated-noise attenuation:
+ * `depthGain = 1 / (1 + depthM / HYDROPHONE_DEPTH_ATTEN_REF_M)`.
+ * At 60 m ≈ 0.5 vs a shallow emitter; surface ships (depth 0) → 1.
+ * Layer-free stub — not a full thermocline model.
+ */
+export const HYDROPHONE_DEPTH_ATTEN_REF_M = 60;
+
+/**
+ * Own-ship self-noise at flank (speed fraction 1.0). Listen quality =
+ * `1 − HYDROPHONE_SELF_NOISE_FLANK × speedFrac^power` (creep near-silent self-noise).
+ */
+export const HYDROPHONE_SELF_NOISE_FLANK = 0.75;
+
+/** Exponent on own speed fraction for self-noise (higher → creep stays quieter longer). */
+export const HYDROPHONE_SELF_NOISE_POWER = 1.35;
+
+/**
+ * Floor on listen quality after self-noise (never fully deaf at flank —
+ * very close loud contacts can still spike through).
+ */
+export const HYDROPHONE_LISTEN_QUALITY_FLOOR = 0.22;
+
+/**
+ * Relative source loudness of a torpedo-room reload clank (one-shot hydro cue).
+ * FoW-safe intensity only — no room / GT identity.
+ */
+export const HYDROPHONE_RELOAD_SOURCE_LEVEL = 1.4;
+
+/**
+ * Max range (nm) at which a torpedo reload acoustic cue is hearable
+ * (shorter than continuous propeller max — mechanical spike, not screws).
+ */
+export const HYDROPHONE_RELOAD_RANGE_NM = 8;
 
 /**
  * Destroyer active search sonar stub max range (nm).

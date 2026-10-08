@@ -721,6 +721,12 @@ export interface UnitState {
   /** Resolved turns left on an in-progress aft reload (0 = not counting). */
   torpedoAftReloadTurnsRemaining: number;
   /**
+   * Turn number when a torpedo-room reload was started (acoustic cue stamp).
+   * Hydrophones hear a FoW-safe mechanical spike on this turn and the next;
+   * no room / identity leak. Cleared when aged out of the hear window.
+   */
+  torpedoReloadAcousticTurn?: number;
+  /**
    * Last fire order dropped at resolve for being outside the room's arc.
    * Player-facing on Controls; absent when the last order launched normally.
    */
@@ -1377,8 +1383,20 @@ export interface VesselView {
    * Omitted for non-hydrophone stations.
    */
   hydrophoneContacts?: HydrophoneContact[];
-  /** Configured max hydrophone hearing range (nm). */
+  /** Configured max hydrophone hearing range (nm) before self-noise. */
   hydrophoneMaxRangeNm?: number;
+  /**
+   * Effective hearing range (nm) after own-ship self-noise / listen quality.
+   * Equals configured max when stopped; shrinks toward flank.
+   */
+  hydrophoneEffectiveRangeNm?: number;
+  /**
+   * Own-ship listen quality 0–1 (1 = quiet platform / best passive).
+   * Multiplies contact gains on the client mix.
+   */
+  hydrophoneListenQuality?: number;
+  /** Own-ship self-noise 0–1 (0 = silent screws; high at flank). */
+  hydrophoneSelfNoise?: number;
   /** False when hydrophone cannot listen (sunk / sensors disabled / no set / surfaced sub). */
   hydrophoneOperational?: boolean;
   /** Operator-facing reason when hydrophoneOperational is false. */
@@ -1443,11 +1461,14 @@ export interface HydrophoneContact {
    *   (also used for noisemaker decoys — FoW does not reveal decoy identity)
    * - `active_sonar_ping` — intermittent ping from a destroyer with search sonar ON
    * - `depth_charge` — one-shot detonation cue (recent DC explosion in hearing range)
+   * - `torpedo_reload` — one-shot mechanical spike when a sub starts tube reload
+   *   (FoW intensity only — no room / GT identity)
    */
-  kind: 'propeller' | 'active_sonar_ping' | 'depth_charge';
+  kind: 'propeller' | 'active_sonar_ping' | 'depth_charge' | 'torpedo_reload';
   /**
-   * Relative source loudness (default 1). Noisemakers use {@link NOISEMAKER_SOURCE_LEVEL}.
-   * FoW-safe — intensity only, not identity.
+   * Relative source loudness (default 1). Noisemakers use {@link NOISEMAKER_SOURCE_LEVEL};
+   * underway hulls use speed/depth radiated level; reload cues use
+   * {@link HYDROPHONE_RELOAD_SOURCE_LEVEL}. FoW-safe — intensity only, not identity.
    */
   sourceLevel?: number;
 }

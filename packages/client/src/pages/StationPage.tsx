@@ -910,6 +910,22 @@ export function StationPage() {
   const hasVessel = Boolean(vessel);
   useEffect(() => {
     if (!hasVessel || !isSensors) return;
+    // Destroyer Sensors: radar + active sonar + hydrophone + lookout — keep operator choice.
+    if (canActiveSonar && canRadar) {
+      setSensorTab((prev) => {
+        if (
+          prev === 'radar' ||
+          prev === 'sonar' ||
+          prev === 'hydrophone' ||
+          prev === 'periscope'
+        ) {
+          return prev;
+        }
+        return 'radar';
+      });
+      return;
+    }
+    // Fleet-sub Sensors: depth-gated radar / peri / hydro switching.
     if (canHydrophone && canRadar) {
       const preferred: SensorTab = surfaced
         ? 'radar'
@@ -934,10 +950,6 @@ export function StationPage() {
         }
         return preferred;
       });
-      return;
-    }
-    if (canActiveSonar && canRadar) {
-      setSensorTab((prev) => prev ?? 'radar');
       return;
     }
     if (canRadar) setSensorTab('radar');
@@ -1187,6 +1199,7 @@ export function StationPage() {
             (canRadar && canActiveSonar) ||
             (canRadar && canPeriscope) ||
             (canActiveSonar && canPeriscope) ||
+            (canActiveSonar && canHydrophone) ||
             (canHydrophone && canPeriscope) ? (
               <div className="sensor-tabs" role="tablist" aria-label="Sensor instruments">
                 {canRadar && (
@@ -1380,7 +1393,7 @@ export function StationPage() {
                   <h2>Hydrophone · Bearing listen</h2>
                   <p className="muted station-instrument-blurb">
                     {vessel.hydrophoneOperational
-                      ? `Passive · ${vessel.hydrophoneMaxRangeNm ?? 30} nm`
+                      ? `Passive · eff ~${Math.round(vessel.hydrophoneEffectiveRangeNm ?? vessel.hydrophoneMaxRangeNm ?? 30)} / ${vessel.hydrophoneMaxRangeNm ?? 30} nm`
                       : vessel.hydrophoneUnavailableReason === 'surfaced'
                         ? 'Submerged only (depth > 5 m)'
                         : vessel.hydrophoneUnavailableReason === 'no_sensor'
@@ -1410,6 +1423,9 @@ export function StationPage() {
                   <HydrophoneScope
                     contacts={vessel.hydrophoneContacts ?? []}
                     maxRangeNm={vessel.hydrophoneMaxRangeNm ?? 30}
+                    effectiveRangeNm={vessel.hydrophoneEffectiveRangeNm}
+                    listenQuality={vessel.hydrophoneListenQuality}
+                    selfNoise={vessel.hydrophoneSelfNoise}
                     ownHeading={vessel.unit.heading}
                   />
                 )}

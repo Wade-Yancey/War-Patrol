@@ -12,10 +12,11 @@
   "sensors": [
     { "kind": "radar", "maxRangeNm": 25 },
     { "kind": "active_sonar", "maxRangeNm": 8 },
+    { "kind": "hydrophone", "maxRangeNm": 30 },
     { "kind": "lookout", "maxRangeNm": 6 }
   ],
   "defaultStations": [
     { "id": "controls", "name": "Controls", "capabilities": ["helm", "engineering", "plot", "weapons"] },
-    { "id": "sensors", "name": "Sensors", "capabilities": ["radar", "active_sonar", "lookout"] }
+    { "id": "sensors", "name": "Sensors", "capabilities": ["radar", "active_sonar", "hydrophone", "lookout"] }
   ]
 }

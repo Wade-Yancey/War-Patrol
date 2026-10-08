@@ -45,7 +45,7 @@ export function defaultRadarSignature(
 
 /**
  * Default installed sensors by hull class.
- * - Destroyer: radar + active search sonar + lookout (no hydrophone)
+ * - Destroyer: radar + active search sonar + passive hydrophone + lookout
  * - Fleet Submarine: radar + hydrophone + lookout (periscope)
  * - Other warships: radar only
  */
@@ -59,6 +59,8 @@ export function defaultSensors(hullClassOrType: HullClass | string | undefined):
       const sensors: SensorDef[] = [{ kind: 'radar', maxRangeNm: RADAR_MAX_RANGE_NM }];
       const sonar = defaultActiveSonarSensor(hullClass);
       if (sonar) sensors.push(sonar);
+      const hydro = defaultHydrophoneSensor(hullClass);
+      if (hydro) sensors.push(hydro);
       const lookout = defaultLookoutSensor(hullClass);
       if (lookout) sensors.push(lookout);
       return sensors;

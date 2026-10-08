@@ -103,6 +103,13 @@ import {
   isV1PlayerHullClass,
   isV1PlayerUnit,
   isHydrophoneEmitter,
+  hydrophoneRadiatedSourceLevel,
+  hydrophoneSelfNoise,
+  hydrophoneListenQuality,
+  hydrophoneDepthRadiatedGain,
+  isHydrophoneReloadCueLive,
+  HYDROPHONE_LISTEN_QUALITY_FLOOR,
+  HYDROPHONE_SELF_NOISE_FLANK,
   isPeriscopeTargetable,
   activeSonarControlsPeakGain,
   controlsInstrumentTabsForHull,
@@ -995,6 +1002,7 @@ async function main() {
           Array.isArray(s.capabilities) &&
           (s.capabilities as string[]).includes('radar') &&
           (s.capabilities as string[]).includes('active_sonar') &&
+          (s.capabilities as string[]).includes('hydrophone') &&
           (s.capabilities as string[]).includes('lookout'),
       ),
   );
@@ -1061,9 +1069,9 @@ async function main() {
       (porter.sensors as Json[]).some((s) => s.kind === 'lookout'),
   );
   check(
-    'destroyer has no hydrophone sensor',
+    'destroyer has hydrophone sensor',
     Array.isArray(porter.sensors) &&
-      !(porter.sensors as Json[]).some((s) => s.kind === 'hydrophone'),
+      (porter.sensors as Json[]).some((s) => s.kind === 'hydrophone'),
   );
   check(
     'sub two-screen stations only',
@@ -1111,7 +1119,7 @@ async function main() {
   });
   check('legacy bridge station rejected', legacyBridge.status === 404);
 
-  // 3c. Destroyer Sensors: active sonar toggle + forward cone + lookout (no hydrophone)
+  // 3c. Destroyer Sensors: active sonar + passive hydrophone + lookout
   check('destroyer sensors has sonar fields', typeof rv.sonarOperational === 'boolean');
   check('sonar off by default', rv.sonarOperational === false);
   check('sonar off reason', rv.sonarUnavailableReason === 'sonar_off');
@@ -1120,7 +1128,14 @@ async function main() {
     'sonar max range stub',
     typeof rv.sonarMaxRangeNm === 'number' && (rv.sonarMaxRangeNm as number) === 8,
   );
-  check('destroyer sensors has no hydrophone picture', !('hydrophoneContacts' in rv));
+  check('destroyer sensors has hydrophone picture', Array.isArray(rv.hydrophoneContacts));
+  check('destroyer hydrophone operational', rv.hydrophoneOperational === true);
+  check(
+    'destroyer hydrophone listen quality exposed',
+    typeof rv.hydrophoneListenQuality === 'number' &&
+      (rv.hydrophoneListenQuality as number) > 0 &&
+      (rv.hydrophoneListenQuality as number) <= 1,
+  );
   check('destroyer lookout live', rv.periscopeOperational === true);
   check('destroyer lookout has contacts array', Array.isArray(rv.periscopeContacts));
   check(
@@ -3104,7 +3119,12 @@ async function main() {
   );
   check(
     'bomber is not a hydrophone emitter',
-    isHydrophoneEmitter({ type: 'Aircraft', condition: 'afloat', speed: 250 }) === false,
+    isHydrophoneEmitter({
+      type: 'Aircraft',
+      condition: 'afloat',
+      speed: 250,
+      eot: 'ahead_flank',
+    }) === false,
   );
   check(
     'fighter is optically targetable (lookout/peri)',
@@ -3128,8 +3148,86 @@ async function main() {
   );
   check(
     'underway destroyer is a hydrophone emitter',
-    isHydrophoneEmitter({ type: 'Ship', condition: 'afloat', speed: 12 }) === true,
+    isHydrophoneEmitter({
+      type: 'Ship',
+      condition: 'afloat',
+      speed: 12,
+      eot: 'ahead_standard',
+    }) === true,
   );
+  check(
+    'EOT stop muffles screws even while coasting',
+    isHydrophoneEmitter({
+      type: 'Ship',
+      condition: 'afloat',
+      speed: 8,
+      eot: 'stop',
+    }) === false,
+  );
+  {
+    const creepSub = {
+      type: 'Submarine' as const,
+      condition: 'afloat' as const,
+      speed: 1.5,
+      eot: 'ahead_1' as const,
+      position: { lat: 0, lon: 0, depth: 40 },
+      maxSpeed: 21,
+    };
+    const flankSub = { ...creepSub, speed: 9, eot: 'ahead_flank' as const };
+    const deepFlank = {
+      ...flankSub,
+      position: { lat: 0, lon: 0, depth: 120 },
+    };
+    const creepLvl = hydrophoneRadiatedSourceLevel(creepSub);
+    const flankLvl = hydrophoneRadiatedSourceLevel(flankSub);
+    const deepLvl = hydrophoneRadiatedSourceLevel(deepFlank);
+    check('creep radiated quieter than flank', creepLvl > 0 && creepLvl < flankLvl);
+    check(
+      'depth attenuates radiated noise',
+      deepLvl < flankLvl &&
+        Math.abs(hydrophoneDepthRadiatedGain(120) - 1 / (1 + 120 / 60)) < 1e-9,
+    );
+    const stopSelf = hydrophoneSelfNoise({
+      type: 'Ship',
+      condition: 'afloat',
+      speed: 0,
+      eot: 'stop',
+      position: { lat: 0, lon: 0, depth: 0 },
+      maxSpeed: 36,
+    });
+    const flankSelf = hydrophoneSelfNoise({
+      type: 'Ship',
+      condition: 'afloat',
+      speed: 36,
+      eot: 'ahead_flank',
+      position: { lat: 0, lon: 0, depth: 0 },
+      maxSpeed: 36,
+    });
+    const flankQ = hydrophoneListenQuality({
+      type: 'Ship',
+      condition: 'afloat',
+      speed: 36,
+      eot: 'ahead_flank',
+      position: { lat: 0, lon: 0, depth: 0 },
+      maxSpeed: 36,
+    });
+    check('stop → zero self-noise', stopSelf === 0);
+    check(
+      'flank self-noise near cap',
+      Math.abs(flankSelf - HYDROPHONE_SELF_NOISE_FLANK) < 1e-9,
+    );
+    check(
+      'flank listen quality is 1 − self-noise (above floor)',
+      Math.abs(flankQ - (1 - HYDROPHONE_SELF_NOISE_FLANK)) < 1e-9 &&
+        flankQ > HYDROPHONE_LISTEN_QUALITY_FLOOR,
+    );
+    check(
+      'reload cue live on start turn and next',
+      isHydrophoneReloadCueLive(5, 5) &&
+        isHydrophoneReloadCueLive(5, 6) &&
+        !isHydrophoneReloadCueLive(5, 7),
+    );
+  }
   const fighterLinks = (
     (await api('GET', `/api/games/${gameId}/view`, undefined, umpireToken)).json.view as Json
   ).vesselLinks as Array<{ unitId: string; playerVessel?: boolean; stations: unknown[] }>;
@@ -5845,6 +5943,55 @@ async function main() {
         (reloadStart.json as { torpedoForwardReloadTurnsRemaining?: number })
           .torpedoForwardReloadTurnsRemaining === 5,
       );
+      {
+        // DD passive hydro hears FoW reload spike (no room / GT identity).
+        const ddSensorsJoin = await api('POST', `/api/games/${torpId}/auth/vessel`, {
+          accessToken: 'porter-demo',
+          password: 'blue',
+          stationId: 'sensors',
+        });
+        const ddSensorsTok = String(ddSensorsJoin.json.token);
+        // Park DD near submerged Gato; stop DD so self-noise does not mask the spike.
+        await api(
+          'PATCH',
+          `/api/games/${torpId}/units/dd-101`,
+          {
+            position: { lat: 34.4, lon: -119.95, depth: 0 },
+            speed: 0,
+            eot: 'stop',
+          },
+          torpUTok,
+        );
+        await api(
+          'PATCH',
+          `/api/games/${torpId}/units/ss-212`,
+          { position: { lat: 34.41, lon: -119.95, depth: 40 } },
+          torpUTok,
+        );
+        const ddHydro = await api('GET', `/api/games/${torpId}/view`, undefined, ddSensorsTok);
+        const reloadContacts = (
+          (ddHydro.json.view as {
+            hydrophoneContacts?: Array<{ kind?: string; sourceLevel?: number }>;
+            hydrophoneOperational?: boolean;
+          }).hydrophoneContacts ?? []
+        ).filter((c) => c.kind === 'torpedo_reload');
+        check(
+          'DD hydrophone hears torpedo reload acoustic cue',
+          (ddHydro.json.view as { hydrophoneOperational?: boolean }).hydrophoneOperational ===
+            true && reloadContacts.length >= 1,
+          `reloadContacts=${JSON.stringify(reloadContacts)}`,
+        );
+        check(
+          'reload cue has sourceLevel, no identity',
+          reloadContacts.every(
+            (c) =>
+              typeof c.sourceLevel === 'number' &&
+              !('room' in c) &&
+              !('name' in c) &&
+              !('unitId' in c),
+          ),
+        );
+      }
       const midReloadFire = await api(
         'POST',
         `/api/games/${torpId}/orders`,

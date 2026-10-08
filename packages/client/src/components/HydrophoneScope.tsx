@@ -19,16 +19,27 @@ import {
   loadDepthChargeBuffer,
   playDepthChargeSample,
 } from '../audio/depthCharge';
+import { loadTorpedoFireBuffer, playTorpedoFireSample } from '../audio/torpedoFire';
 import { useContinuousAngle } from '../hooks/useContinuousAngle';
 import { CrtTrainControl } from './CrtTrainControl';
 
 const PROP_SAMPLE_URL = '/audio/echo-propeller.wav';
 /** Bearing nudge step for ◀ / ▶ train buttons (degrees). */
 const BEARING_NUDGE_DEG = 1;
+/** Peak gain for a hydro-heard torpedo reload clank. */
+function hydrophoneReloadPeakGain(contactGain: number): number {
+  return Math.min(0.45, 0.12 + contactGain * 0.4);
+}
 
 interface Props {
   contacts: HydrophoneContact[];
   maxRangeNm: number;
+  /** Effective hearing range after own self-noise (nm). */
+  effectiveRangeNm?: number;
+  /** Own-ship listen quality 0–1 (1 = quiet platform). */
+  listenQuality?: number;
+  /** Own-ship self-noise 0–1 (display). */
+  selfNoise?: number;
   /** Own-ship heading — lubber mark only (no contact blips). */
   ownHeading: number;
 }
@@ -76,10 +87,17 @@ type ContactVoice = {
 /**
  * CRT hydrophone bearing dial — audio-first (passive listen ≠ own active sonar PPI).
  * Operator trains a listen needle; Web Audio mixes looping propeller samples
- * with per-contact gain from range × beam alignment. Active-sonar ping contacts
- * play the shared ping WAV attenuated by the same range×beam model. No visual contacts.
+ * with per-contact gain from range × beam × sourceLevel × listenQuality.
+ * Active-sonar ping / DC / reload contacts use one-shot samples. No visual contacts.
  */
-function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
+function HydrophoneScopeInner({
+  contacts,
+  maxRangeNm,
+  effectiveRangeNm,
+  listenQuality = 1,
+  selfNoise = 0,
+  ownHeading,
+}: Props) {
   const [listenBearing, setListenBearing] = useState(0);
   const [listening, setListening] = useState(false);
   const [audioReady, setAudioReady] = useState(false);
@@ -91,12 +109,16 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
   const bufferRef = useRef<AudioBuffer | null>(null);
   const pingBufferRef = useRef<AudioBuffer | null>(null);
   const dcBufferRef = useRef<AudioBuffer | null>(null);
+  const reloadBufferRef = useRef<AudioBuffer | null>(null);
   const playedDcIdsRef = useRef<Set<string>>(new Set());
+  const playedReloadIdsRef = useRef<Set<string>>(new Set());
   const masterGainRef = useRef<GainNode | null>(null);
   const voicesRef = useRef<Map<string, ContactVoice>>(new Map());
   const listenRef = useRef(listenBearing);
   const contactsRef = useRef(contacts);
+  const listenQualityRef = useRef(listenQuality);
   const pingTimerRef = useRef<number | null>(null);
+  const effRange = effectiveRangeNm ?? maxRangeNm;
 
   useEffect(() => {
     listenRef.current = listenBearing;
@@ -106,14 +128,18 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
     contactsRef.current = contacts;
   }, [contacts]);
 
+  useEffect(() => {
+    listenQualityRef.current = listenQuality;
+  }, [listenQuality]);
+
   const hdg = normalizeHeading(ownHeading);
   const listen = normalizeHeading(listenBearing);
   const hdgRotateDeg = useContinuousAngle(hdg);
   const listenRotateDeg = useContinuousAngle(listen);
 
   const cue = useMemo(
-    () => hydrophoneListenCue(contacts, listen),
-    [contacts, listen],
+    () => hydrophoneListenCue(contacts, listen, listenQuality),
+    [contacts, listen, listenQuality],
   );
   const signalLevel = cue.intensity;
   const rangeBand = cue.rangeBand;
@@ -180,6 +206,9 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
       if (!dcBufferRef.current) {
         dcBufferRef.current = await loadDepthChargeBuffer(audioCtxRef.current);
       }
+      if (!reloadBufferRef.current) {
+        reloadBufferRef.current = await loadTorpedoFireBuffer(audioCtxRef.current);
+      }
       setAudioReady(true);
       setAudioError(null);
       return true;
@@ -213,11 +242,10 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
     const master = masterGainRef.current;
     if (!ctx || !buffer || !master || ctx.state !== 'running') return;
 
-    // Propeller loops only — active-sonar pings + depth charges use one-shot samples.
-    const list = contactsRef.current.filter(
-      (c) => c.kind !== 'active_sonar_ping' && c.kind !== 'depth_charge',
-    );
+    // Propeller loops only — pings / depth charges / reload use one-shot samples.
+    const list = contactsRef.current.filter((c) => c.kind === 'propeller');
     const bearing = listenRef.current;
+    const quality = listenQualityRef.current;
     const keep = new Set(list.map((c) => c.id));
 
     for (const [id, voice] of [...voicesRef.current.entries()]) {
@@ -262,6 +290,7 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
         bearing,
         c.bearing,
         c.sourceLevel ?? 1,
+        quality,
       );
       const now = ctx.currentTime;
       voice.gain.gain.cancelScheduledValues(now);
@@ -275,9 +304,10 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
     const pingBuffer = pingBufferRef.current;
     if (!ctx || !master || !pingBuffer || ctx.state !== 'running') return;
     const bearing = listenRef.current;
+    const quality = listenQualityRef.current;
     const pings = contactsRef.current.filter((c) => c.kind === 'active_sonar_ping');
     for (const c of pings) {
-      const gainAmt = hydrophoneContactGain(c.rangeNm, bearing, c.bearing);
+      const gainAmt = hydrophoneContactGain(c.rangeNm, bearing, c.bearing, 1, quality);
       if (gainAmt < 0.02) continue;
       playSonarPingSample(ctx, pingBuffer, master, hydrophonePingPeakGain(gainAmt));
     }
@@ -295,6 +325,7 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
     const dcBuffer = dcBufferRef.current;
     if (!ctx || !master || !dcBuffer || ctx.state !== 'running') return;
     const bearing = listenRef.current;
+    const quality = listenQualityRef.current;
     const charges = contactsRef.current.filter((c) => c.kind === 'depth_charge');
     // New contacts in this hear-batch: one sample per charge, staggered so N
     // detonations stay countable (same spread helper as Controls bridge).
@@ -305,13 +336,43 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
     const n = fresh.length;
     for (let i = 0; i < n; i++) {
       const c = fresh[i]!;
-      const gainAmt = hydrophoneContactGain(c.rangeNm, bearing, c.bearing);
+      const gainAmt = hydrophoneContactGain(c.rangeNm, bearing, c.bearing, 1, quality);
       // Detonations are loud — play even off-beam at reduced gain.
       const peak = Math.max(0.04, hydrophoneDepthChargePeakGain(Math.max(gainAmt, 0.15)));
       playDepthChargeSample(ctx, dcBuffer, master, peak, {
         whenSec: depthChargeStaggerDelaySec(i, n),
       });
       playedDcIdsRef.current.add(c.id);
+    }
+  }, []);
+
+  /** One-shot tube/reload clank when a sub starts a room reload (FoW spike). */
+  const playReloadSamples = useCallback(() => {
+    const ctx = audioCtxRef.current;
+    const master = masterGainRef.current;
+    const reloadBuffer = reloadBufferRef.current;
+    if (!ctx || !master || !reloadBuffer || ctx.state !== 'running') return;
+    const bearing = listenRef.current;
+    const quality = listenQualityRef.current;
+    const reloads = contactsRef.current.filter((c) => c.kind === 'torpedo_reload');
+    const fresh = reloads
+      .filter((c) => !playedReloadIdsRef.current.has(c.id))
+      .slice()
+      .sort((a, b) => a.id.localeCompare(b.id));
+    for (const c of fresh) {
+      const gainAmt = hydrophoneContactGain(
+        c.rangeNm,
+        bearing,
+        c.bearing,
+        c.sourceLevel ?? 1,
+        quality,
+      );
+      if (gainAmt < 0.03) {
+        playedReloadIdsRef.current.add(c.id);
+        continue;
+      }
+      playTorpedoFireSample(ctx, reloadBuffer, master, hydrophoneReloadPeakGain(gainAmt));
+      playedReloadIdsRef.current.add(c.id);
     }
   }, []);
 
@@ -323,7 +384,17 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
     }
     syncVoices();
     playDepthChargeSamples();
-  }, [listening, contacts, listenBearing, syncVoices, stopAllVoices, playDepthChargeSamples]);
+    playReloadSamples();
+  }, [
+    listening,
+    contacts,
+    listenBearing,
+    listenQuality,
+    syncVoices,
+    stopAllVoices,
+    playDepthChargeSamples,
+    playReloadSamples,
+  ]);
 
   // Active-sonar hear path: one emit cadence from the destroyer stub interval.
   // Listen bearing / gain only modulate volume inside playPingSamples (via refs) —
@@ -543,6 +614,12 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
             <span className="readout crt-console-val hydrophone-val">{levelPct}%</span>
           </div>
           <div className="crt-console-readout hydrophone-readout">
+            <span className="crt-console-key hydrophone-key">QTY</span>
+            <span className="readout crt-console-val hydrophone-val">
+              {Math.round(listenQuality * 100)}%
+            </span>
+          </div>
+          <div className="crt-console-readout hydrophone-readout">
             <span className="crt-console-key hydrophone-key">RNG</span>
             <span
               className={`readout crt-console-val hydrophone-val hydrophone-band hydrophone-band--${rangeBand}`}
@@ -592,10 +669,12 @@ function HydrophoneScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
         </div>
 
         <p className="crt-console-caption hydrophone-caption muted mono">
-          Max {maxRangeNm} nm ·{' '}
+          Eff ~{Math.round(effRange)} / {maxRangeNm} nm
+          {selfNoise > 0.05 ? ` · self-noise ${Math.round(selfNoise * 100)}%` : ' · quiet hull'}
+          {' · '}
           {contacts.length === 0
             ? 'no acoustic contacts in range'
-            : `${contacts.filter((c) => c.kind !== 'active_sonar_ping').length} prop · ${contacts.filter((c) => c.kind === 'active_sonar_ping').length} ping (audio only)`}
+            : `${contacts.filter((c) => c.kind === 'propeller').length} prop · ${contacts.filter((c) => c.kind === 'active_sonar_ping').length} ping · ${contacts.filter((c) => c.kind === 'torpedo_reload').length} reload (audio only)`}
           {listening && audioReady ? ' · LIVE' : ''}
         </p>
         {audioError && <p className="error">{audioError}</p>}

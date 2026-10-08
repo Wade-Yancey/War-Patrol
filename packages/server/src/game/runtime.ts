@@ -261,15 +261,16 @@ function normalizeUnit(unit: UnitState): UnitState {
     }
   }
 
-  // Reconcile installed sensors to class defaults for player hulls (DD: no hydrophone;
-  // sub: no active sonar; ensure required sets exist).
+  // Reconcile installed sensors to class defaults for player hulls (DD: radar +
+  // active sonar + hydrophone + lookout; sub: radar + hydrophone + lookout —
+  // no active sonar; ensure required sets exist).
   const classDefaults = defaultSensors(identity.class);
   if (classDefaults.length > 0) {
     const byKind = new Map(sensors.map((s) => [s.kind, s]));
     for (const d of classDefaults) {
       if (!byKind.has(d.kind)) byKind.set(d.kind, { ...d });
     }
-    // Drop sensors that are no longer on this class (e.g. destroyer hydrophone).
+    // Drop sensors that are no longer on this class.
     const allowed = new Set(classDefaults.map((s) => s.kind));
     sensors = [...byKind.values()].filter((s) => allowed.has(s.kind));
   }
@@ -1387,7 +1388,11 @@ export class GameRuntime {
       if (!result.ok) {
         throw Object.assign(new Error(result.error), { statusCode: 400 });
       }
-      save.units[idx] = result.unit;
+      // Acoustic cue for hydrophones — FoW intensity spike, no room identity.
+      save.units[idx] = {
+        ...result.unit,
+        torpedoReloadAcousticTurn: save.turn.number,
+      };
       return save;
     });
   }
