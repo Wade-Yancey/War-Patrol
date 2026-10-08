@@ -78,6 +78,7 @@ import {
   coarsenRelativeBearingDeg,
   editMaxSpeedForClass,
   effectiveMaxSpeed,
+  expectedMoveThisTurn,
   ensureContactLabel,
   formatContactDesignation,
   formatPeriscopeDesignation,
@@ -731,6 +732,64 @@ async function main() {
     'ships ignore depth for speed',
     effectiveMaxSpeed({ type: 'Ship', maxSpeed: 36, depth: 40 }) === 36,
   );
+  {
+    // Already at EOT target: nm/turn = kn × (180/3600) = kn × 0.05
+    const cruise = expectedMoveThisTurn({
+      type: 'Ship',
+      class: 'Destroyer',
+      maxSpeed: 36,
+      speed: 21.6,
+      depth: 0,
+      eot: 'ahead_standard',
+      turnLengthSeconds: 180,
+    });
+    check(
+      'MOVE readout DD cruise ≈ 1.08 nm / 21.6 kn',
+      Math.abs(cruise.speedKn - 21.6) < 1e-9 && Math.abs(cruise.distanceNm - 1.08) < 1e-9,
+    );
+    const fromStop = expectedMoveThisTurn({
+      type: 'Ship',
+      class: 'Destroyer',
+      maxSpeed: 36,
+      speed: 0,
+      depth: 0,
+      eot: 'ahead_flank',
+      turnLengthSeconds: 180,
+    });
+    // Destroyer step 0.4 × 36 = 14.4 kn first resolve from stop → 0.72 nm
+    check(
+      'MOVE readout DD accel from stop toward flank',
+      Math.abs(fromStop.speedKn - 14.4) < 1e-9 && Math.abs(fromStop.distanceNm - 0.72) < 1e-9,
+    );
+    const submerged = expectedMoveThisTurn({
+      type: 'Submarine',
+      class: 'Fleet Submarine',
+      maxSpeed: 21,
+      speed: 9,
+      depth: 40,
+      orderedDepth: 40,
+      eot: 'ahead_flank',
+      turnLengthSeconds: 180,
+    });
+    check(
+      'MOVE readout sub submerged flank caps 9 kn → 0.45 nm',
+      Math.abs(submerged.speedKn - 9) < 1e-9 && Math.abs(submerged.distanceNm - 0.45) < 1e-9,
+    );
+    const orderedEot = expectedMoveThisTurn({
+      type: 'Ship',
+      class: 'Destroyer',
+      maxSpeed: 36,
+      speed: 21.6,
+      depth: 0,
+      eot: 'stop',
+      turnLengthSeconds: 180,
+    });
+    // Step down 14.4 kn toward 0 → 7.2 kn remaining → 0.36 nm
+    check(
+      'MOVE readout prefers ordered EOT (stop from cruise)',
+      Math.abs(orderedEot.speedKn - 7.2) < 1e-9 && Math.abs(orderedEot.distanceNm - 0.36) < 1e-9,
+    );
+  }
 
   const api = async (
     method: string,
