@@ -12,6 +12,7 @@ import {
   conditionLabel,
   controlsInstrumentTabsForHull,
   effectiveMaxSpeed,
+  expectedMoveThisTurn,
   formatCoarseDepthMeters,
   formatPendingOrdersSummary,
   hasPendingOrders,
@@ -45,6 +46,7 @@ import { DepthChargeControls } from '../components/DepthChargeControls';
 import { DeckGunControls } from '../components/DeckGunControls';
 import { CountermeasuresControls } from '../components/CountermeasuresControls';
 import { DamageReportPanel } from '../components/DamageReportPanel';
+import { MoveDistanceReadout } from '../components/MoveDistanceReadout';
 import { useAudioSyncedDamageReport } from '../hooks/useAudioSyncedDamageReport';
 import { resolveSunkCause, SunkModal } from '../components/SunkModal';
 import {
@@ -171,6 +173,35 @@ export function StationPage() {
     caps.has('hydrophone') ||
     caps.has('active_sonar') ||
     caps.has('lookout');
+  /**
+   * MOVE readout EOT: Controls uses local telegraph (live while planning);
+   * Sensors uses standing/pending order that will apply on next resolve.
+   */
+  const moveEot: EotSetting = isControls
+    ? eot
+    : (vessel?.unit.orders.eot ?? vessel?.unit.eot ?? 'stop');
+  const moveOrderedDepth =
+    isControls && vessel?.unit.type === 'Submarine'
+      ? depth
+      : (vessel?.unit.orders.depth ??
+        vessel?.unit.orderedDepth ??
+        vessel?.unit.position.depth ??
+        0);
+  const expectedMove = useMemo(() => {
+    if (!vessel) return null;
+    return expectedMoveThisTurn({
+      type: vessel.unit.type,
+      class: vessel.unit.class,
+      maxSpeed: vessel.unit.maxSpeed,
+      speed: vessel.unit.speed,
+      depth: vessel.unit.position.depth,
+      orderedDepth: moveOrderedDepth,
+      eot: moveEot,
+      turnLengthSeconds: vessel.turnLengthSeconds,
+      propulsion: vessel.unit.subsystems?.propulsion,
+      condition: vessel.unit.condition,
+    });
+  }, [vessel, moveEot, moveOrderedDepth]);
   const canHelm = caps.has('helm');
   const canEot = caps.has('engineering') || caps.has('helm');
   const canRadar = caps.has('radar');
@@ -1144,6 +1175,20 @@ export function StationPage() {
 
         {vessel && isSensors && (
           <>
+            {expectedMove && (
+              <section
+                className="panel controls-status-strip sensors-move-strip"
+                aria-label="Expected move this turn"
+              >
+                <div className="controls-status-grid controls-status-grid--move-only">
+                  <MoveDistanceReadout
+                    distanceNm={expectedMove.distanceNm}
+                    speedKn={expectedMove.speedKn}
+                    turnLengthSeconds={vessel.turnLengthSeconds}
+                  />
+                </div>
+              </section>
+            )}
             {(canRadar && canHydrophone) ||
             (canRadar && canActiveSonar) ||
             (canRadar && canPeriscope) ||
@@ -1546,6 +1591,13 @@ export function StationPage() {
                     </span>
                   </span>
                 </div>
+                {expectedMove && (
+                  <MoveDistanceReadout
+                    distanceNm={expectedMove.distanceNm}
+                    speedKn={expectedMove.speedKn}
+                    turnLengthSeconds={vessel.turnLengthSeconds}
+                  />
+                )}
                 <div className="controls-status-item">
                   <span className="controls-status-key">Engine orders</span>
                   <span className="readout">{EOT_LABELS[vessel.unit.eot]}</span>

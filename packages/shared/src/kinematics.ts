@@ -1,4 +1,4 @@
-import { KNOTS_TO_MPS } from './constants.js';
+import { DEFAULT_TURN_LENGTH_SECONDS, KNOTS_TO_MPS } from './constants.js';
 import {
   clampSubmarineDepth,
   stepDepthTowardOrdered,
@@ -11,7 +11,15 @@ import {
   resolveSpeedStepFraction,
   stepSpeedTowardTarget,
 } from './performance.js';
-import type { LatLonDepth, UnitOrders, UnitState } from './types.js';
+import type {
+  EotSetting,
+  LatLonDepth,
+  PropulsionState,
+  UnitCondition,
+  UnitOrders,
+  UnitState,
+  VesselType,
+} from './types.js';
 import {
   divePlanesBlockDepthOrders,
   ensureSubsystemLocks,
@@ -20,6 +28,7 @@ import {
 } from './damage.js';
 import {
   canMakeWay,
+  isHullLost,
   normalizePositionForType,
   resolveOrderedDepth,
 } from './vessel.js';
@@ -224,4 +233,64 @@ export function predictUnitMovePath(
     { lat: start.lat, lon: start.lon },
     { lat: end.lat, lon: end.lon },
   ];
+}
+
+/**
+ * Expected hull speed and distance for the upcoming resolve (player MOVE readout).
+ *
+ * Mirrors {@link applyUnitKinematics} accel / submerged ceiling: ordered EOT
+ * target (prefer pending order over acknowledged), class speed-step toward that
+ * target, post-dive depth for sub submerged cap, propulsion damage factor.
+ * Distance: `|speedKn| × (turnLengthSeconds / 3600)` (1 kn = 1 nm/h).
+ */
+export function expectedMoveThisTurn(opts: {
+  type: VesselType | string | undefined;
+  class?: string;
+  maxSpeed: number;
+  speed: number;
+  depth: number;
+  /** Standing / ordered depth — post-dive keel used for submerged ceiling. */
+  orderedDepth?: number;
+  eot: EotSetting;
+  turnLengthSeconds: number;
+  propulsion?: PropulsionState;
+  condition?: UnitCondition;
+}): { speedKn: number; distanceNm: number } {
+  const turnLen =
+    typeof opts.turnLengthSeconds === 'number' &&
+    Number.isFinite(opts.turnLengthSeconds) &&
+    opts.turnLengthSeconds > 0
+      ? opts.turnLengthSeconds
+      : DEFAULT_TURN_LENGTH_SECONDS;
+
+  if (isHullLost(opts.condition) || opts.propulsion === 'disabled') {
+    return { speedKn: 0, distanceNm: 0 };
+  }
+
+  let depth = opts.depth;
+  if (opts.type === 'Submarine') {
+    const ordered =
+      typeof opts.orderedDepth === 'number' && Number.isFinite(opts.orderedDepth)
+        ? opts.orderedDepth
+        : depth;
+    depth = stepDepthTowardOrdered(depth, ordered, turnLen);
+  }
+
+  const speedCeiling =
+    effectiveMaxSpeed({
+      type: opts.type,
+      maxSpeed: opts.maxSpeed,
+      depth,
+    }) * propulsionSpeedFactor(opts.propulsion);
+  const target = targetSpeedForUnit(opts.type, opts.eot, speedCeiling);
+  const step =
+    speedCeiling * resolveSpeedStepFraction({ class: opts.class, type: opts.type });
+  let speed = stepSpeedTowardTarget(opts.speed, target, step);
+  if (opts.type === 'Aircraft') {
+    speed = Math.max(0, speed);
+  }
+  speed = clampSpeedToMax(speed, speedCeiling);
+
+  const distanceNm = Math.abs(speed) * (turnLen / 3600);
+  return { speedKn: speed, distanceNm };
 }
