@@ -27,13 +27,19 @@ export function formatRelBearing(rel: number): string {
   return `${String(abs).padStart(3, '0')}° ${side}`;
 }
 
+/** Padded true bearing (0–360) for optics contact / sighting readouts. */
+export function formatTrueBearing(trueDeg: number): string {
+  return `${String(Math.round(normalizeHeading(trueDeg))).padStart(3, '0')}°`;
+}
+
 /**
  * CRT optics bearing dial for lookout / periscope.
  *
  * Same rose + needles as HelmCompass (shared CrtCompassRose): north-up N/E/S/W,
  * solid HDG needle for bow facing (tweens with {@link useTweenedHeading}, same
  * window as helm / sensor contacts), dashed rim-chevron bug for selected contact
- * at true bearing (HDG + REL). Digital REL keeps contact-list port/stbd wording.
+ * at true bearing (HDG + REL). Digital REL / TRUE sit in a dedicated contact
+ * block under the rose so the selected bearing is not buried in the legend.
  */
 function OpticsBearingCompassInner({ relativeBearing, ownHeading }: Props) {
   const hasContact = relativeBearing !== null && Number.isFinite(relativeBearing);
@@ -45,10 +51,10 @@ function OpticsBearingCompassInner({ relativeBearing, ownHeading }: Props) {
   const hdgLabel = String(Math.round(hdg)).padStart(3, '0');
   const relLabel = hasContact ? formatRelBearing(rel) : '——';
   const contactTrueLabel =
-    contactTrue !== null ? String(Math.round(contactTrue)).padStart(3, '0') : null;
+    contactTrue !== null ? formatTrueBearing(contactTrue) : '——';
 
   const aria = hasContact
-    ? `Heading ${hdgLabel} degrees; contact relative bearing ${relLabel}`
+    ? `Heading ${hdgLabel} degrees; contact relative bearing ${relLabel}; true bearing ${contactTrueLabel}`
     : `Heading ${hdgLabel} degrees; no contact selected`;
 
   return (
@@ -83,11 +89,29 @@ function OpticsBearingCompassInner({ relativeBearing, ownHeading }: Props) {
           <span className="optics-bearing-compass-key">HDG</span>
           <span className="readout optics-bearing-compass-val">{hdgLabel}°</span>
         </div>
-        <div className="optics-bearing-compass-readout">
-          <span className="optics-bearing-compass-key">REL</span>
-          <span className={`readout optics-bearing-compass-val${hasContact ? '' : ' muted'}`}>
-            {relLabel}
-          </span>
+      </div>
+
+      <div
+        className={`optics-bearing-compass-contact${hasContact ? '' : ' optics-bearing-compass-contact--empty'}`}
+      >
+        <span className="optics-bearing-compass-contact-label">Contact brg</span>
+        <div className="optics-bearing-compass-contact-readouts">
+          <div className="optics-bearing-compass-readout optics-bearing-compass-readout--contact">
+            <span className="optics-bearing-compass-key">REL</span>
+            <span
+              className={`readout optics-bearing-compass-val optics-bearing-compass-val--contact${hasContact ? '' : ' muted'}`}
+            >
+              {relLabel}
+            </span>
+          </div>
+          <div className="optics-bearing-compass-readout optics-bearing-compass-readout--contact">
+            <span className="optics-bearing-compass-key">TRUE</span>
+            <span
+              className={`readout optics-bearing-compass-val optics-bearing-compass-val--contact${hasContact ? '' : ' muted'}`}
+            >
+              {contactTrueLabel}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -99,7 +123,6 @@ function OpticsBearingCompassInner({ relativeBearing, ownHeading }: Props) {
         <span>
           <i className="optics-bearing-compass-swatch optics-bearing-compass-swatch--contact" />{' '}
           Contact
-          {contactTrueLabel ? ` ${contactTrueLabel}°` : ''}
         </span>
       </div>
     </div>
