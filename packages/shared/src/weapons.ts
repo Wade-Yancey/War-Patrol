@@ -81,14 +81,16 @@ export const FLEET_SUB_TORPEDO_AFT = 4;
 
 /**
  * Total fleet-sub fish at full rearm (forward + aft).
- * Finite magazines — depleted on fire; umpire rearm restores full rooms.
+ * Finite magazines — depleted on fire; player Reload refills after the
+ * countdown; umpire rearm restores instantly (live-event fiat).
  */
 export const FLEET_SUB_TORPEDO_LOAD = FLEET_SUB_TORPEDO_FORWARD + FLEET_SUB_TORPEDO_AFT;
 
 /**
- * Resolved turns after the player presses Reload before that room can fire again.
- * At default 3-min in-game turns ≈ **15 in-game minutes** (~several wall-clock
- * minutes of live ordering). Deliberately slow for physical-tube live events.
+ * Resolved turns after the player presses Reload before that room refills
+ * to capacity. At default 3-min in-game turns ≈ **15 in-game minutes**
+ * (~several wall-clock minutes of live ordering). Deliberately slow for
+ * physical-tube live events.
  */
 export const TORPEDO_RELOAD_TURNS = 5;
 
@@ -267,8 +269,9 @@ export const DEPTH_CHARGE_MAX_DEPTH_M = FLEET_SUB_CRUSH_DEPTH_M;
 export const DESTROYER_DEPTH_CHARGE_LOAD = 24;
 
 /**
- * Resolved turns after the player presses Reload before the DC rack can drop again.
- * Matches {@link TORPEDO_RELOAD_TURNS} — ~15 in-game minutes at default 3-min turns.
+ * Resolved turns after the player presses Reload before the DC rack refills
+ * to {@link DESTROYER_DEPTH_CHARGE_LOAD}. Matches {@link TORPEDO_RELOAD_TURNS}
+ * — ~15 in-game minutes at default 3-min turns.
  */
 export const DEPTH_CHARGE_RELOAD_TURNS = TORPEDO_RELOAD_TURNS;
 
@@ -427,7 +430,7 @@ export const DECK_GUN_FIRE_STAGGER_SEC = 2;
 export const TORPEDO_FIRE_STAGGER_SEC = 0.8;
 
 /**
- * Resolved turns after Reload before the deck gun can fire again.
+ * Resolved turns after Reload before the deck gun magazine refills to capacity.
  * Faster than tube/rack reload ({@link TORPEDO_RELOAD_TURNS}) — gun crew pace.
  * Applies once per **salvo** (not per individual round).
  */
@@ -1212,34 +1215,52 @@ export function startTorpedoRoomReload(
   };
 }
 
-/** Tick reload countdowns once per resolve; clear awaiting when a cycle finishes. */
+/** Tick reload countdowns once per resolve; refill room to capacity when done. */
 export function advanceTorpedoRoomReloads(unit: UnitState): UnitState {
   if (!isFleetSubTorpedoHull(unit)) return unit;
   let next = unit;
 
-  const fwd = advanceMagazineReload({
-    load: unit.torpedoForward ?? 0,
-    awaitingReload: Boolean(unit.torpedoForwardAwaitingReload),
-    reloadTurnsRemaining: torpedoRoomReloadTurnsRemaining(unit, 'forward'),
-  });
-  if (fwd.reloadTurnsRemaining !== torpedoRoomReloadTurnsRemaining(unit, 'forward')) {
+  const fwd = advanceMagazineReload(
+    {
+      load: unit.torpedoForward ?? 0,
+      awaitingReload: Boolean(unit.torpedoForwardAwaitingReload),
+      reloadTurnsRemaining: torpedoRoomReloadTurnsRemaining(unit, 'forward'),
+    },
+    FLEET_SUB_TORPEDO_FORWARD,
+  );
+  if (
+    fwd.reloadTurnsRemaining !== torpedoRoomReloadTurnsRemaining(unit, 'forward') ||
+    fwd.load !== (unit.torpedoForward ?? 0) ||
+    fwd.awaitingReload !== Boolean(unit.torpedoForwardAwaitingReload)
+  ) {
     next = {
       ...next,
+      torpedoForward: fwd.load,
       torpedoForwardReloadTurnsRemaining: fwd.reloadTurnsRemaining,
       torpedoForwardAwaitingReload: fwd.awaitingReload,
+      torpedoLoad: fwd.load + (next.torpedoAft ?? 0),
     };
   }
 
-  const aft = advanceMagazineReload({
-    load: next.torpedoAft ?? 0,
-    awaitingReload: Boolean(next.torpedoAftAwaitingReload),
-    reloadTurnsRemaining: torpedoRoomReloadTurnsRemaining(next, 'aft'),
-  });
-  if (aft.reloadTurnsRemaining !== torpedoRoomReloadTurnsRemaining(next, 'aft')) {
+  const aft = advanceMagazineReload(
+    {
+      load: next.torpedoAft ?? 0,
+      awaitingReload: Boolean(next.torpedoAftAwaitingReload),
+      reloadTurnsRemaining: torpedoRoomReloadTurnsRemaining(next, 'aft'),
+    },
+    FLEET_SUB_TORPEDO_AFT,
+  );
+  if (
+    aft.reloadTurnsRemaining !== torpedoRoomReloadTurnsRemaining(next, 'aft') ||
+    aft.load !== (next.torpedoAft ?? 0) ||
+    aft.awaitingReload !== Boolean(next.torpedoAftAwaitingReload)
+  ) {
     next = {
       ...next,
+      torpedoAft: aft.load,
       torpedoAftReloadTurnsRemaining: aft.reloadTurnsRemaining,
       torpedoAftAwaitingReload: aft.awaitingReload,
+      torpedoLoad: (next.torpedoForward ?? 0) + aft.load,
     };
   }
 
@@ -1377,16 +1398,24 @@ export function startDepthChargeReload(
 
 export function advanceDepthChargeReloads(unit: UnitState): UnitState {
   if (!isDestroyerDcHull(unit)) return unit;
-  const next = advanceMagazineReload({
-    load: unit.depthChargeLoad ?? 0,
-    awaitingReload: Boolean(unit.depthChargeAwaitingReload),
-    reloadTurnsRemaining: unit.depthChargeReloadTurnsRemaining ?? 0,
-  });
-  if (next.reloadTurnsRemaining === (unit.depthChargeReloadTurnsRemaining ?? 0)) {
+  const next = advanceMagazineReload(
+    {
+      load: unit.depthChargeLoad ?? 0,
+      awaitingReload: Boolean(unit.depthChargeAwaitingReload),
+      reloadTurnsRemaining: unit.depthChargeReloadTurnsRemaining ?? 0,
+    },
+    DESTROYER_DEPTH_CHARGE_LOAD,
+  );
+  if (
+    next.reloadTurnsRemaining === (unit.depthChargeReloadTurnsRemaining ?? 0) &&
+    next.load === (unit.depthChargeLoad ?? 0) &&
+    next.awaitingReload === Boolean(unit.depthChargeAwaitingReload)
+  ) {
     return unit;
   }
   return {
     ...unit,
+    depthChargeLoad: next.load,
     depthChargeReloadTurnsRemaining: next.reloadTurnsRemaining,
     depthChargeAwaitingReload: next.awaitingReload,
   };
@@ -1518,16 +1547,25 @@ export function startDeckGunReload(
 
 export function advanceDeckGunReloads(unit: UnitState): UnitState {
   if (!isDeckGunHull(unit)) return unit;
-  const next = advanceMagazineReload({
-    load: unit.deckGunLoad ?? 0,
-    awaitingReload: Boolean(unit.deckGunAwaitingReload),
-    reloadTurnsRemaining: unit.deckGunReloadTurnsRemaining ?? 0,
-  });
-  if (next.reloadTurnsRemaining === (unit.deckGunReloadTurnsRemaining ?? 0)) {
+  const capacity = defaultDeckGunLoad(unit);
+  const next = advanceMagazineReload(
+    {
+      load: unit.deckGunLoad ?? 0,
+      awaitingReload: Boolean(unit.deckGunAwaitingReload),
+      reloadTurnsRemaining: unit.deckGunReloadTurnsRemaining ?? 0,
+    },
+    capacity,
+  );
+  if (
+    next.reloadTurnsRemaining === (unit.deckGunReloadTurnsRemaining ?? 0) &&
+    next.load === (unit.deckGunLoad ?? 0) &&
+    next.awaitingReload === Boolean(unit.deckGunAwaitingReload)
+  ) {
     return unit;
   }
   return {
     ...unit,
+    deckGunLoad: next.load,
     deckGunReloadTurnsRemaining: next.reloadTurnsRemaining,
     deckGunAwaitingReload: next.awaitingReload,
   };

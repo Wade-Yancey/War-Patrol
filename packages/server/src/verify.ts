@@ -6255,10 +6255,11 @@ async function main() {
         };
       }).unit;
       check(
-        'forward reload completes after 5 turns',
+        'forward reload completes after 5 turns and refills to capacity',
         reloaded?.torpedoForwardAwaitingReload === false &&
           (reloaded?.torpedoForwardReloadTurnsRemaining ?? 0) === 0 &&
-          reloaded?.torpedoForward === 3,
+          reloaded?.torpedoForward === 6,
+        `fwd=${reloaded?.torpedoForward} awaiting=${reloaded?.torpedoForwardAwaitingReload} rem=${reloaded?.torpedoForwardReloadTurnsRemaining}`,
       );
 
       const rearm = await api('POST', `/api/games/${torpId}/units/ss-212/rearm`, {}, torpUTok);
@@ -7224,8 +7225,8 @@ async function main() {
         unit?: { depthChargeAwaitingReload?: boolean; depthChargeLoad?: number };
       }).unit;
       check(
-        'DC reload completes after 5 turns',
-        afterRack?.depthChargeAwaitingReload === false && afterRack?.depthChargeLoad === 23,
+        'DC reload completes after 5 turns and refills to capacity',
+        afterRack?.depthChargeAwaitingReload === false && afterRack?.depthChargeLoad === 24,
         `load=${afterRack?.depthChargeLoad} awaiting=${afterRack?.depthChargeAwaitingReload}`,
       );
       const dcRearm = await api(

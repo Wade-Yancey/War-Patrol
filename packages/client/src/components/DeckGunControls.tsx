@@ -140,7 +140,8 @@ export function DeckGunControls({
         <h2>Guns</h2>
         <p className="muted station-instrument-blurb">
           Deck gun · {magStatus} · max {maxShots}/turn (slow fire) · reload{' '}
-          {DECK_GUN_RELOAD_TURNS} turns · max {DECK_GUN_MAX_RANGE_NM} nm · surface only
+          {DECK_GUN_RELOAD_TURNS} turns (~{DECK_GUN_RELOAD_TURNS * 3} min) then mag
+          refills · max {DECK_GUN_MAX_RANGE_NM} nm · surface only
         </p>
       </div>
 

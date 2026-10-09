@@ -110,15 +110,27 @@ export function startMagazineReload(opts: {
   };
 }
 
-/** Tick one resolve; clear awaiting when the countdown finishes. */
-export function advanceMagazineReload(slice: MagazineSlice): MagazineSlice {
+/**
+ * Tick one resolve. When the countdown finishes, clear awaiting and refill
+ * the magazine to `capacity` (spent tubes / rack / shells come back).
+ */
+export function advanceMagazineReload(
+  slice: MagazineSlice,
+  capacity: number,
+): MagazineSlice {
   const turns = Math.max(0, Math.floor(Number(slice.reloadTurnsRemaining) || 0));
   if (turns <= 0) return slice;
   const remaining = turns - 1;
+  if (remaining === 0) {
+    return {
+      load: Math.max(0, Math.floor(capacity)),
+      awaitingReload: false,
+      reloadTurnsRemaining: 0,
+    };
+  }
   return {
     ...slice,
     reloadTurnsRemaining: remaining,
-    ...(remaining === 0 ? { awaitingReload: false } : {}),
   };
 }
 
