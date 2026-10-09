@@ -3737,6 +3737,8 @@ async function main() {
       applyHealthDamageResult,
       healthDamageApplied,
       presentationHealthFromUnrevealedDamage,
+      presentationSubsystemsFromUnrevealed,
+      presentationSensorGate,
       applyUnitKinematics,
       rollCombatCasualties,
       resolveSubsystems,
@@ -4120,6 +4122,60 @@ async function main() {
         prev = nextHp;
       }
       check('staged overkill ends at 0', prev === 0);
+
+      // Subsystem casualties stage with the same held-blast clock as HP.
+      const resolvedSubs = resolveSubsystems({ hydrophone: 'disabled', radar: 'intact' });
+      const heldCasualty = [
+        {
+          kind: 'subsystem_casualty' as const,
+          casualtyEffect: { kind: 'hydrophone_disabled' as const },
+        },
+      ];
+      const stagedSubs = presentationSubsystemsFromUnrevealed(resolvedSubs, heldCasualty);
+      check(
+        'staged hydrophone casualty rewinds to intact',
+        stagedSubs.hydrophone === 'intact' && stagedSubs.radar === 'intact',
+        `hydro=${stagedSubs.hydrophone} radar=${stagedSubs.radar}`,
+      );
+      const revealedSubs = presentationSubsystemsFromUnrevealed(resolvedSubs, []);
+      check(
+        'revealed hydrophone casualty stays disabled',
+        revealedSubs.hydrophone === 'disabled',
+      );
+      const gateHeld = presentationSensorGate(
+        { condition: 'afloat', subsystems: stagedSubs, type: 'Submarine' },
+        'hydrophone',
+        false,
+        'sensors_disabled',
+      );
+      check(
+        'presentation sensor gate holds sensors_disabled until reveal',
+        gateHeld.operational === true && gateHeld.unavailableReason === undefined,
+        JSON.stringify(gateHeld),
+      );
+      const gateRevealed = presentationSensorGate(
+        { condition: 'afloat', subsystems: revealedSubs, type: 'Submarine' },
+        'hydrophone',
+        false,
+        'sensors_disabled',
+      );
+      check(
+        'presentation sensor gate keeps disabled after reveal',
+        gateRevealed.operational === false &&
+          gateRevealed.unavailableReason === 'sensors_disabled',
+        JSON.stringify(gateRevealed),
+      );
+      const gateSurfaced = presentationSensorGate(
+        { condition: 'afloat', subsystems: stagedSubs, type: 'Submarine' },
+        'hydrophone',
+        false,
+        'surfaced',
+      );
+      check(
+        'presentation sensor gate passes through surfaced',
+        gateSurfaced.operational === false && gateSurfaced.unavailableReason === 'surfaced',
+        JSON.stringify(gateSurfaced),
+      );
     }
     // Granular casualties: deterministic RNG sequences.
     {

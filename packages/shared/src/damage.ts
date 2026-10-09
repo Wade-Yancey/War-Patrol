@@ -489,6 +489,32 @@ export function presentationSubsystemsFromUnrevealed(
   return next;
 }
 
+/**
+ * Hold back own-ship sensor “sensors_disabled” / “sunk” FoW until the staged
+ * damage report / blast reveal — same presentation clock as HP/subsystems.
+ *
+ * Canonical sim still knocks the set out at resolve; station UI uses this so
+ * hydrophone/radar/sonar/optics chrome does not go dark before the bang.
+ * Non-casualty reasons (surfaced, submerged, scope_down, sonar_off, …) pass through.
+ */
+export function presentationSensorGate<TReason extends string>(
+  presentation: Pick<UnitState, 'condition' | 'subsystems' | 'type'>,
+  kind: 'radar' | 'hydrophone' | 'active_sonar' | 'lookout',
+  serverOperational: boolean | undefined,
+  serverReason: TReason | undefined,
+): { operational: boolean; unavailableReason: TReason | undefined } {
+  if (
+    (serverReason === 'sensors_disabled' || serverReason === 'sunk') &&
+    canUseSensorStation(presentation, kind).ok
+  ) {
+    return { operational: true, unavailableReason: undefined };
+  }
+  return {
+    operational: Boolean(serverOperational),
+    unavailableReason: serverReason,
+  };
+}
+
 export function applyHealthDamageResult(
   unit: UnitState,
   damage: number,
