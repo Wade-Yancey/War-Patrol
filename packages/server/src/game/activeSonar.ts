@@ -107,10 +107,11 @@ export function buildActiveSonarContacts(own: UnitState, save: GameSave): Active
     });
   }
 
-  // Stationary noisemaker decoys paint as anonymous small submerged echoes —
+  // Drifting noisemaker decoys paint as anonymous small submerged echoes —
   // attract/distract ASW without revealing decoy identity. Contact-N reuses the
   // deploying hull's book key so a new Cn does not telegraph "extra = decoy."
   // Track `id` stays unique (separate blip / tween); only the designation is shared.
+  // courseDeg matches hull authenticity (facing chevron) — no decoy label leak.
   const decoySignature: RadarSignature = 'small';
   const decoyDetect = maxRangeNm * RADAR_SIGNATURE_RANGE_FACTOR[decoySignature];
   for (const nm of activeNoisemakers(save.noisemakers)) {
@@ -122,6 +123,8 @@ export function buildActiveSonarContacts(own: UnitState, save: GameSave): Active
       1,
       Math.max(0.12, rangeFactor * RADAR_SIGNATURE_STRENGTH[decoySignature]),
     );
+    const heading =
+      typeof nm.heading === 'number' && Number.isFinite(nm.heading) ? nm.heading : 0;
     contacts.push({
       id: `s-${opaqueTrackId([own.id, nm.id, 'sonar', 'nmkr'])}`,
       labelN: ensureContactLabel(own, nm.deployerUnitId),
@@ -130,6 +133,7 @@ export function buildActiveSonarContacts(own: UnitState, save: GameSave): Active
       strength: Math.round(strength * 100) / 100,
       signature: decoySignature,
       domain: 'surface',
+      courseDeg: coarsenPeriscopeCourseDeg(heading),
       estimatedDepthM: coarsenActiveSonarDepthM(nm.position.depth),
     });
   }

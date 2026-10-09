@@ -22,8 +22,8 @@ interface Props {
 }
 
 /**
- * Fleet-sub Controls · Countermeasures — deploy a stationary noisemaker at a
- * chosen depth. Cooldown between deploys; decoy stays put after resolve.
+ * Fleet-sub Controls · Countermeasures — deploy a drifting noisemaker at a
+ * chosen depth. Cooldown between deploys; decoy wanders slowly after resolve.
  */
 export function CountermeasuresControls({
   keelDepthM,
@@ -55,7 +55,7 @@ export function CountermeasuresControls({
       <div className="station-instrument-head">
         <h2>Countermeasures</h2>
         <p className="muted station-instrument-blurb">
-          Stationary noisemaker · cooldown {NOISEMAKER_COOLDOWN_TURNS} turns ·
+          Drifting noisemaker · cooldown {NOISEMAKER_COOLDOWN_TURNS} turns ·
           active {NOISEMAKER_LIFETIME_TURNS} turns
         </p>
       </div>
@@ -109,7 +109,8 @@ export function CountermeasuresControls({
           <ul className="mono muted" style={{ margin: 0, paddingLeft: '1.2rem' }}>
             {active.map((t) => (
               <li key={t.id}>
-                ACTIVE · {formatCoarseDepthMeters(t.position.depth)} · turns{' '}
+                ACTIVE · {formatCoarseDepthMeters(t.position.depth)} · HDG{' '}
+                {Math.round(t.heading ?? 0)}° · {(t.speedKn ?? 0).toFixed(1)} kn · turns{' '}
                 {t.deployedTurn}–{t.expiresTurn - 1}
               </li>
             ))}

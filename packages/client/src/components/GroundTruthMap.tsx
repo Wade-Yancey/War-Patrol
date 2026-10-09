@@ -26,6 +26,7 @@ import {
   metersPerDegLon,
   moveAlongHeading,
   normalizeHeading,
+  predictNoisemakerDriftTip,
   predictUnitMovePath,
   projectToUv,
   resolveActiveSonarHalfAngleDeg,
@@ -38,7 +39,7 @@ import {
   type TorpedoRoomId,
 } from '@war-patrol/shared';
 
-/** Umpire GT accent for stationary noisemaker decoys (distinct from fish / DC / hulls). */
+/** Umpire GT accent for drifting noisemaker decoys (distinct from fish / DC / hulls). */
 const NOISEMAKER_MAP_COLOR = '#e8b86d';
 import { MapAircraftMarker } from './ContactGlyphs';
 
@@ -52,8 +53,8 @@ interface Props {
   /** Full-truth depth-charge tracks (drop → sink/detonate). */
   depthCharges?: DepthChargeTrack[];
   /**
-   * Full-truth stationary noisemaker decoys (umpire GT only).
-   * Active tracks render as `NMKR · xxxM`; spent/expired tracks are omitted.
+   * Full-truth drifting noisemaker decoys (umpire GT only).
+   * Active tracks render as `NMKR · xxxM` with heading pip; spent omitted.
    */
   noisemakers?: NoisemakerTrack[];
   /**
@@ -338,7 +339,7 @@ function weaponsSignature(
   const n = (noisemakers ?? [])
     .map(
       (m) =>
-        `${m.id}:${m.status}:${m.position.lat.toFixed(5)},${m.position.lon.toFixed(5)},${m.position.depth.toFixed(0)}`,
+        `${m.id}:${m.status}:${m.position.lat.toFixed(5)},${m.position.lon.toFixed(5)},${m.position.depth.toFixed(0)}:${(m.heading ?? 0).toFixed(1)}:${(m.speedKn ?? 0).toFixed(2)}`,
     )
     .join('|');
   const g = (detonations ?? [])
@@ -894,21 +895,46 @@ function GroundTruthMapInner({
         };
       });
 
-    // Stationary noisemaker decoys — active only (expire → drop from GT map).
-    // Distinct acoustic-ring glyph + fixed accent (not vessel/fish/DC shapes).
+    // Drifting noisemaker decoys — active only (expire → drop from GT map).
+    // Acoustic rings + heading pip; dashed tip = deterministic next-turn drift.
     const decoys = activeNoisemakers(noisemakers).map((m) => {
       const tip = toXy(m.position.lat, m.position.lon);
+      const heading = normalizeHeading(
+        typeof m.heading === 'number' && Number.isFinite(m.heading) ? m.heading : 0,
+      );
+      const hRad = ((heading - 90) * Math.PI) / 180;
+      const pipLen = 12;
+      const pred = showMovePrediction ? predictNoisemakerDriftTip(m, turnLen) : null;
+      const predTip = pred ? toXy(pred.lat, pred.lon) : null;
+      const pts = predTip ? [tip, predTip] : [tip];
       return {
         id: m.id,
         color: NOISEMAKER_MAP_COLOR,
         tip,
-        label: `NMKR · ${Math.round(m.position.depth)}M`,
-        onPlot: uvBBoxHitsPlot([tip]),
+        pipX: tip.x + Math.cos(hRad) * pipLen,
+        pipY: tip.y + Math.sin(hRad) * pipLen,
+        predTip,
+        predParts: predTip ? clipPolylineParts([tip, predTip]) : [],
+        heading,
+        speedKn:
+          typeof m.speedKn === 'number' && Number.isFinite(m.speedKn) ? m.speedKn : 0,
+        label: `NMKR · ${Math.round(m.position.depth)}M · HDG ${heading.toFixed(0)}°`,
+        onPlot: uvBBoxHitsPlot(pts),
       };
     });
 
     return { fish, charges, dropTrails, guns, bombs, decoys };
-  }, [torpedoes, depthCharges, noisemakers, detonations, view, unitAccentById, units]);
+  }, [
+    torpedoes,
+    depthCharges,
+    noisemakers,
+    detonations,
+    view,
+    unitAccentById,
+    units,
+    showMovePrediction,
+    turnLen,
+  ]);
 
   /**
    * Standing aircraft / vessel intent — dashed unit→target line + mode tag.
@@ -2004,12 +2030,24 @@ function GroundTruthMapInner({
           {/*
             Active noisemakers above hull markers so a just-deployed decoy
             (same lat/lon as the sub) stays readable — concentric acoustic rings,
-            not a vessel pip / fish tip / DC diamond.
+            heading pip, optional dashed next-turn drift (not vessel/fish/DC).
           */}
           {weaponOverlays.decoys
             .filter((d) => d.onPlot)
             .map((d) => (
               <g key={`nmkr-${d.id}`} opacity={0.95} pointerEvents="none">
+                {d.predParts.map((points, partIdx) => (
+                  <polyline
+                    key={`nmkr-pred-${d.id}-${partIdx}`}
+                    points={points}
+                    fill="none"
+                    stroke={d.color}
+                    strokeWidth={1.2}
+                    strokeOpacity={0.55}
+                    strokeDasharray="3 4"
+                    strokeLinecap="round"
+                  />
+                ))}
                 {uvHitsPlot(d.tip.u, d.tip.v) && (
                   <>
                     <circle
@@ -2030,6 +2068,15 @@ function GroundTruthMapInner({
                       stroke={d.color}
                       strokeWidth={1.35}
                       strokeDasharray="4 2"
+                    />
+                    <line
+                      x1={d.tip.x}
+                      y1={d.tip.y}
+                      x2={d.pipX}
+                      y2={d.pipY}
+                      stroke={d.color}
+                      strokeWidth={1.5}
+                      strokeOpacity={0.9}
                     />
                     <rect
                       x={d.tip.x - 3}

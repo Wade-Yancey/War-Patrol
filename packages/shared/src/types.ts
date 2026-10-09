@@ -228,18 +228,25 @@ export interface TorpedoArcBlock {
 
 /** Pending noisemaker deploy for the current turn (fleet-sub Controls · Countermeasures). */
 export interface NoisemakerDeployOrder {
-  /** Ordered deploy depth meters (positive down) — stationary after resolve. */
+  /** Ordered deploy depth meters (positive down). Decoy drifts independently after deploy. */
   depthM: number;
 }
 
-/** Stationary acoustic decoy ejected by a fleet submarine. */
+/** Acoustic decoy ejected by a fleet submarine (slow random drift while active). */
 export type NoisemakerStatus = 'active' | 'spent';
 
 export interface NoisemakerTrack {
   id: string;
   deployerUnitId: string;
-  /** Fixed lat/lon/depth after deploy — does not follow the sub. */
+  /**
+   * Lat/lon/depth after last resolve. Depth stays at deploy set-point; lat/lon
+   * advance with slow random drift (does not follow the sub).
+   */
   position: LatLonDepth;
+  /** True heading degrees [0, 360) — wanders each resolve. */
+  heading: number;
+  /** Drift speed knots (within {@link NOISEMAKER_DRIFT_SPEED_MIN_KN}…MAX). */
+  speedKn: number;
   deployedTurn: number;
   /** First turn number at which the decoy is silent (`status → spent`). */
   expiresTurn: number;
@@ -374,7 +381,7 @@ export interface UnitOrders {
   dropDepthCharges?: DepthChargeDropOrder;
   /** Fire the deck gun this resolve (consumes one shell per shot in the salvo). */
   fireDeckGun?: DeckGunFireOrder;
-  /** Deploy a stationary noisemaker this resolve (fleet sub; subject to cooldown). */
+  /** Deploy a drifting noisemaker this resolve (fleet sub; subject to cooldown). */
   deployNoisemaker?: NoisemakerDeployOrder;
   /**
    * Standing umpire aircraft attack (intercept / strafe / bombing).
@@ -951,7 +958,7 @@ export interface TurnSnapshot {
    */
   torpedoes?: TorpedoTrack[];
   depthCharges?: DepthChargeTrack[];
-  /** Stationary noisemaker decoys as of end-of-resolve (umpire AAR scrubber). */
+  /** Noisemaker decoys as of end-of-resolve (umpire AAR scrubber). */
   noisemakers?: NoisemakerTrack[];
   /**
    * Umpire-authored note for this turn, shown alongside the resolve in the
@@ -1005,7 +1012,7 @@ export interface GameSave {
   /** In-flight / sinking weapons (umpire ground truth + resolve tracking). */
   torpedoes: TorpedoTrack[];
   depthCharges: DepthChargeTrack[];
-  /** Stationary noisemaker decoys (fleet-sub countermeasures; umpire GT). */
+  /** Noisemaker decoys (fleet-sub countermeasures; umpire GT). */
   noisemakers: NoisemakerTrack[];
   /** Recent depth-charge detonations for hydrophone / Controls audio FoW.
    * Pruned after a few turns.
@@ -1171,7 +1178,7 @@ export interface UmpireView {
   /** Full-truth weapon tracks (running fish + sinking/detonated charges). */
   torpedoes: TorpedoTrack[];
   depthCharges: DepthChargeTrack[];
-  /** Full-truth stationary noisemaker decoys. */
+  /** Full-truth noisemaker decoys (heading + slow drift). */
   noisemakers: NoisemakerTrack[];
   recentDetonations: WeaponDetonationEvent[];
   /** Sink-aftermath markers (umpire GT; vessel FoW via optics Sightings only). */

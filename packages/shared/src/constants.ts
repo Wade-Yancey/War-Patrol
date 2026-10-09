@@ -248,6 +248,19 @@ export const NOISEMAKER_LIFETIME_TURNS = 8;
 /**
  * Relative source loudness vs a typical underway propeller contact (1.0 = hull).
  * Hydrophone mix multiplies range×beam gain by this (capped at 1.0).
- * ~2.5× makes a stationary decoy compete with a nearby cruising hull.
+ * ~2.5× makes a drifting decoy compete with a nearby cruising hull.
  */
 export const NOISEMAKER_SOURCE_LEVEL = 2.5;
+
+/**
+ * Slow drift speed band (knots) for active noisemakers.
+ * ~1–2.5 kn ≈ 0.05–0.125 nm per default 3-min turn — wanders without teleporting.
+ */
+export const NOISEMAKER_DRIFT_SPEED_MIN_KN = 1.0;
+export const NOISEMAKER_DRIFT_SPEED_MAX_KN = 2.5;
+
+/** Max absolute course change (degrees true) applied per resolve when wandering. */
+export const NOISEMAKER_COURSE_WANDER_DEG = 18;
+
+/** Max absolute speed change (knots) applied per resolve when wandering. */
+export const NOISEMAKER_SPEED_WANDER_KN = 0.35;

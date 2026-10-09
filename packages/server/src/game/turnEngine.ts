@@ -116,6 +116,7 @@ export function resolveTurn(save: GameSave): GameSave {
     save.noisemakers ?? [],
     resolveTurnNumber,
     gameTimeSeconds,
+    turnLength,
   );
 
   // Clear helm/EOT/depth / one-shot weapon fields after resolve. Standing aircraft
