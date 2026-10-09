@@ -325,7 +325,7 @@ function PeriscopeScopeInner({
                 alt={silhouetteAlt(plateClass, plateKey)}
                 width={plateSize.width}
                 height={plateSize.height}
-                decoding="sync"
+                decoding="async"
                 loading="eager"
                 draggable={false}
                 onError={() => setImgFailed(true)}

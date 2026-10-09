@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import {
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   ACTIVE_SONAR_PING_INTERVAL_SEC,
@@ -25,6 +32,8 @@ import {
   type DeckGunFireOrder,
   type EotSetting,
   type NoisemakerDeployOrder,
+  type OpticsSighting,
+  type PeriscopeContact,
   type TorpedoFireOrder,
   type VesselView,
 } from '@war-patrol/shared';
@@ -128,6 +137,13 @@ function tokenKey(gameId: string, accessToken: string, stationId: string) {
 /** Course nudge step for the helm ◀ / ▶ train buttons (degrees). */
 const COURSE_NUDGE_DEG = 1;
 
+/** Stable empty optics lists — avoid new `[]` each render breaking `PeriscopeScope` memo. */
+const EMPTY_PERISCOPE_CONTACTS: PeriscopeContact[] = [];
+const EMPTY_OPTICS_SIGHTINGS: OpticsSighting[] = [];
+
+/** Coalesce rapid mast toggles so remote POSTs are not spammed per click. */
+const PERISCOPE_WRITE_DEBOUNCE_MS = 80;
+
 type SensorTab = 'radar' | 'hydrophone' | 'sonar' | 'periscope';
 type ControlsTab = ControlsInstrumentTab;
 
@@ -147,10 +163,20 @@ export function StationPage() {
   const [controlsTab, setControlsTab] = useState<ControlsTab>('helm');
   const [sonarBusy, setSonarBusy] = useState(false);
   const [periBusy, setPeriBusy] = useState(false);
+  /**
+   * Local-first mast overlay — UI follows this immediately; network write is
+   * debounced. Cleared once the SSE/view mast flag matches (or on write failure).
+   */
+  const [periOptimisticRaised, setPeriOptimisticRaised] = useState<boolean | null>(
+    null,
+  );
   const [weaponReloadBusy, setWeaponReloadBusy] = useState(false);
   /** Own-ship sunk popup — open until Acknowledge; reset if hull returns afloat. */
   const [sunkModalOpen, setSunkModalOpen] = useState(false);
   const sunkModalAckedRef = useRef(false);
+  const periWriteTimerRef = useRef<number | null>(null);
+  const periWriteGenRef = useRef(0);
+  const periDesiredRaisedRef = useRef<boolean | null>(null);
 
   const { view, stateVersion, connected, error } = useGameStream({
     gameId,
@@ -254,6 +280,38 @@ export function StationPage() {
   const opticsVariant: 'periscope' | 'lookout' =
     vessel?.unit.type === 'Submarine' ? 'periscope' : 'lookout';
   const opticsTabLabel = opticsVariant === 'lookout' ? 'Lookout' : 'Periscope';
+  /** Mast chrome follows optimistic overlay when set (remote RTT must not gate the button). */
+  const opticsMastRaised =
+    periOptimisticRaised !== null
+      ? periOptimisticRaised
+      : Boolean(vessel?.unit.periscopeRaised);
+  /**
+   * Scope-down blind: optimistic lower blinds immediately; optimistic raise
+   * unblinds chrome immediately (contacts fill when FoW arrives via SSE).
+   */
+  const opticsScopeDown =
+    opticsVariant === 'periscope' && periOptimisticRaised !== null
+      ? !periOptimisticRaised
+      : vessel?.periscopeUnavailableReason === 'scope_down';
+  const opticsHardUnavailable =
+    vessel?.periscopeOperational === false &&
+    vessel.periscopeUnavailableReason !== 'scope_down' &&
+    periOptimisticRaised !== true;
+  const streamOpticsContacts =
+    opticsScopeDown
+      ? EMPTY_PERISCOPE_CONTACTS
+      : (vessel?.periscopeContacts ?? EMPTY_PERISCOPE_CONTACTS);
+  const streamOpticsSightings =
+    opticsScopeDown
+      ? EMPTY_OPTICS_SIGHTINGS
+      : (vessel?.opticsSightings ??
+        vessel?.torpedoWakeCues ??
+        EMPTY_OPTICS_SIGHTINGS);
+  // Defer stream-driven optics picture so contact pick / compass stay urgent
+  // while a large remote SSE view reconciles. Settled FoW numbers still match.
+  const opticsContacts = useDeferredValue(streamOpticsContacts);
+  const opticsSightings = useDeferredValue(streamOpticsSightings);
+  const opticsOwnHeading = useDeferredValue(vessel?.unit.heading ?? 0);
   const sensorFocus =
     isSensors && (canRadar || canHydrophone || canActiveSonar || canPeriscope);
 
@@ -1275,17 +1333,55 @@ export function StationPage() {
     }
   };
 
-  const togglePeriscope = async (raised: boolean) => {
+  // Drop mast overlay once the streamed view agrees (SSE caught up).
+  useEffect(() => {
+    if (periOptimisticRaised === null || !vessel) return;
+    if (Boolean(vessel.unit.periscopeRaised) === periOptimisticRaised) {
+      setPeriOptimisticRaised(null);
+    }
+  }, [vessel, periOptimisticRaised]);
+
+  useEffect(() => {
+    return () => {
+      if (periWriteTimerRef.current != null) {
+        window.clearTimeout(periWriteTimerRef.current);
+      }
+    };
+  }, []);
+
+  /**
+   * Local-first mast toggle: paint immediately, debounce the POST so remote
+   * RTT / rapid clicks do not serialize UI behind every round-trip.
+   */
+  const togglePeriscope = (raised: boolean) => {
     if (!token) return;
     setActionError(null);
-    setPeriBusy(true);
-    try {
-      await api.setPeriscope(gameId, token, raised);
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Periscope toggle failed');
-    } finally {
-      setPeriBusy(false);
+    setPeriOptimisticRaised(raised);
+    periDesiredRaisedRef.current = raised;
+    if (periWriteTimerRef.current != null) {
+      window.clearTimeout(periWriteTimerRef.current);
     }
+    setPeriBusy(true);
+    const gen = ++periWriteGenRef.current;
+    periWriteTimerRef.current = window.setTimeout(() => {
+      periWriteTimerRef.current = null;
+      const desired = periDesiredRaisedRef.current;
+      if (desired === null) return;
+      void (async () => {
+        try {
+          await api.setPeriscope(gameId, token, desired);
+        } catch (err) {
+          if (gen !== periWriteGenRef.current) return;
+          setPeriOptimisticRaised(null);
+          periDesiredRaisedRef.current = null;
+          setActionError(
+            err instanceof Error ? err.message : 'Periscope toggle failed',
+          );
+        } finally {
+          if (gen === periWriteGenRef.current) setPeriBusy(false);
+        }
+      })();
+    }, PERISCOPE_WRITE_DEBOUNCE_MS);
   };
 
   const reloadTorpedoRoom = async (room: 'forward' | 'aft') => {
@@ -1575,31 +1671,30 @@ export function StationPage() {
                     <div className="sonar-toggle-row">
                       <button
                         type="button"
-                        className={vessel.unit.periscopeRaised ? 'primary' : undefined}
+                        className={opticsMastRaised ? 'primary' : undefined}
                         disabled={
                           periBusy ||
                           vessel.periscopeUnavailableReason === 'no_sensor' ||
                           vessel.periscopeUnavailableReason === 'sunk' ||
                           vessel.periscopeUnavailableReason === 'sensors_disabled' ||
-                          (!vessel.unit.periscopeRaised &&
+                          (!opticsMastRaised &&
                             (vessel.periscopeUnavailableReason === 'too_deep' ||
                               vessel.unit.position.depth > PERISCOPE_DEPTH_M))
                         }
-                        aria-pressed={Boolean(vessel.unit.periscopeRaised)}
-                        onClick={() => void togglePeriscope(!vessel.unit.periscopeRaised)}
+                        aria-pressed={opticsMastRaised}
+                        onClick={() => togglePeriscope(!opticsMastRaised)}
                       >
-                        {vessel.unit.periscopeRaised ? 'Periscope UP' : 'Periscope DOWN'}
+                        {opticsMastRaised ? 'Periscope UP' : 'Periscope DOWN'}
                       </button>
                       <span className="mono muted">
-                        {vessel.unit.periscopeRaised
+                        {opticsMastRaised
                           ? `RAISED · stamp ${vessel.unit.plotStampTurns ?? 0}`
                           : 'LOWERED · blind · not spottable'}
                       </span>
                     </div>
                   </div>
                 )}
-                {vessel.periscopeOperational === false &&
-                vessel.periscopeUnavailableReason !== 'scope_down' ? (
+                {opticsHardUnavailable ? (
                   <div className="radar-unavailable" role="status">
                     <p className="readout" style={{ margin: 0 }}>
                       {vessel.periscopeUnavailableReason === 'too_deep'
@@ -1615,20 +1710,12 @@ export function StationPage() {
                   </div>
                 ) : (
                   <PeriscopeScope
-                    contacts={
-                      vessel.periscopeUnavailableReason === 'scope_down'
-                        ? []
-                        : (vessel.periscopeContacts ?? [])
-                    }
-                    sightings={
-                      vessel.periscopeUnavailableReason === 'scope_down'
-                        ? []
-                        : (vessel.opticsSightings ?? vessel.torpedoWakeCues ?? [])
-                    }
+                    contacts={opticsContacts}
+                    sightings={opticsSightings}
                     maxRangeNm={vessel.periscopeMaxRangeNm ?? 6}
-                    ownHeading={vessel.unit.heading}
+                    ownHeading={opticsOwnHeading}
                     variant={opticsVariant}
-                    blind={vessel.periscopeUnavailableReason === 'scope_down'}
+                    blind={opticsScopeDown}
                   />
                 )}
               </section>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { startTransition, useEffect, useRef, useState } from 'react';
 import type { ClientView, UmpireView, VesselView } from '@war-patrol/shared';
 import { api } from '../api/client';
 
@@ -151,8 +151,13 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
 
     const applyState = (stateVersionNext: number, nextView: ClientView) => {
       lastVersionRef.current = stateVersionNext;
-      setStateVersion(stateVersionNext);
-      setView(nextView);
+      // SSE full-view payloads are large; apply as a transition so local optics
+      // interaction (contact pick, compass, silhouette) stays urgent and is not
+      // blocked behind remote tunnel delivery / React reconcile of the station tree.
+      startTransition(() => {
+        setStateVersion(stateVersionNext);
+        setView(nextView);
+      });
     };
 
     const applyConnections = (payload: {
