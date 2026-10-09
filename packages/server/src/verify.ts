@@ -9005,7 +9005,7 @@ async function main() {
     await api('DELETE', `/api/saves/${gunId}`);
   }
 
-  // Fleet-sub noisemaker countermeasures — deploy, cooldown, stationary GT, hydro/sonar FoW.
+  // Fleet-sub noisemaker countermeasures — deploy, cooldown, drift GT, hydro/sonar FoW.
   {
     const nmGame = await api('POST', '/api/games', {
       scenarioId: 'destroyer-sub-demo',
@@ -9050,10 +9050,25 @@ async function main() {
     );
     const gatoAfter = afterDeploy.units.find((u) => u.id === 'ss-212');
     check(
-      'noisemaker lat/lon frozen at deploy resolve position',
+      'noisemaker lat/lon at deploy resolve position',
       Boolean(gatoAfter) &&
         nmTracks[0]!.position.lat === gatoAfter!.position.lat &&
         nmTracks[0]!.position.lon === gatoAfter!.position.lon,
+    );
+    check(
+      'noisemaker has heading on deploy',
+      typeof nmTracks[0]!.heading === 'number' &&
+        Number.isFinite(nmTracks[0]!.heading) &&
+        nmTracks[0]!.heading >= 0 &&
+        nmTracks[0]!.heading < 360,
+      `hdg=${nmTracks[0]?.heading}`,
+    );
+    check(
+      'noisemaker has drift speed on deploy',
+      typeof nmTracks[0]!.speedKn === 'number' &&
+        nmTracks[0]!.speedKn >= 1 &&
+        nmTracks[0]!.speedKn <= 2.5,
+      `spd=${nmTracks[0]?.speedKn}`,
     );
     check(
       'noisemaker cooldown armed',
@@ -9074,9 +9089,10 @@ async function main() {
       .noisemakers;
     check('umpire view includes noisemakers', Array.isArray(umpNm) && umpNm.length === 1);
 
-    // Move the sub away — decoy must stay put.
+    // Move the sub away — decoy must drift independently (not follow the boat).
     const decoyLat = nmTracks[0]!.position.lat;
     const decoyLon = nmTracks[0]!.position.lon;
+    const decoyHdg = nmTracks[0]!.heading;
     await api(
       'POST',
       `/api/games/${nmId}/orders`,
@@ -9097,13 +9113,29 @@ async function main() {
     const afterMove = runtime.requireGame(nmId);
     const decoy2 = (afterMove.noisemakers ?? [])[0];
     const gatoMoved = afterMove.units.find((u) => u.id === 'ss-212');
-    check(
-      'noisemaker stays put after sub moves',
+    const decoyMoved =
       Boolean(decoy2) &&
-        decoy2!.position.lat === decoyLat &&
-        decoy2!.position.lon === decoyLon &&
+      (decoy2!.position.lat !== decoyLat || decoy2!.position.lon !== decoyLon);
+    const decoyNotOnSub =
+      Boolean(decoy2) &&
+      Boolean(gatoMoved) &&
+      (decoy2!.position.lat !== gatoMoved!.position.lat ||
+        decoy2!.position.lon !== gatoMoved!.position.lon);
+    check(
+      'noisemaker drifts after resolve (not stationary)',
+      decoyMoved,
+      `from=${decoyLat},${decoyLon} to=${decoy2?.position.lat},${decoy2?.position.lon}`,
+    );
+    check(
+      'noisemaker does not follow the sub',
+      decoyNotOnSub &&
         Boolean(gatoMoved) &&
         (gatoMoved!.position.lat !== decoyLat || gatoMoved!.position.lon !== decoyLon),
+    );
+    check(
+      'noisemaker heading may wander',
+      Boolean(decoy2) && typeof decoy2!.heading === 'number',
+      `hdg0=${decoyHdg} hdg1=${decoy2?.heading}`,
     );
     check(
       'noisemaker cooldown ticks down',
@@ -9111,8 +9143,12 @@ async function main() {
       `cd=${gatoMoved?.noisemakerCooldownTurnsRemaining}`,
     );
 
+    // Use post-drift decoy position for sensor geometry checks.
+    const liveDecoyLat = decoy2!.position.lat;
+    const liveDecoyLon = decoy2!.position.lon;
+
     // Sub Sensors hydrophone should hear the decoy as a loud propeller contact
-    // (same lat/lon at deploy is skipped — after move, range > 0).
+    // (same lat/lon at deploy is skipped — after drift/move, range > 0).
     const nmSubSensors = await api('POST', `/api/games/${nmId}/auth/vessel`, {
       accessToken: 'gato-demo',
       password: 'red',
@@ -9139,7 +9175,7 @@ async function main() {
       'PATCH',
       `/api/games/${nmId}/units/dd-101`,
       {
-        position: { lat: decoyLat, lon: decoyLon - 0.02, depth: 0 },
+        position: { lat: liveDecoyLat, lon: liveDecoyLon - 0.02, depth: 0 },
         heading: 90,
         orderedCourse: 90,
       },
@@ -9154,6 +9190,7 @@ async function main() {
           signature?: string;
           labelN?: number;
           id?: string;
+          courseDeg?: number;
         }>;
         sonarOperational?: boolean;
       }
@@ -9168,6 +9205,11 @@ async function main() {
       'noisemaker sonar echo has Contact-N',
       typeof decoyEcho?.labelN === 'number' && (decoyEcho!.labelN as number) >= 1,
       `labelN=${String(decoyEcho?.labelN)}`,
+    );
+    check(
+      'noisemaker sonar echo has courseDeg (drift authenticity)',
+      typeof decoyEcho?.courseDeg === 'number' && Number.isFinite(decoyEcho!.courseDeg),
+      `courseDeg=${String(decoyEcho?.courseDeg)}`,
     );
 
     // FoW Contact-N must bind to the deploying hull — never a separate nmkr: book key
@@ -9190,7 +9232,7 @@ async function main() {
         'PATCH',
         `/api/games/${nmId}/units/ss-212`,
         {
-          position: { lat: decoyLat, lon: decoyLon + 0.01, depth: 50 },
+          position: { lat: liveDecoyLat, lon: liveDecoyLon + 0.01, depth: 50 },
           heading: 270,
           orderedCourse: 270,
           speed: 0,
@@ -9229,23 +9271,27 @@ async function main() {
       Array.isArray(subCtrl.ownNoisemakers) && subCtrl.ownNoisemakers.length >= 1,
     );
 
-    // Umpire GT payload carries position + depth for map markers (NMKR · xxxM).
+    // Umpire GT payload carries position + depth + heading for map markers.
     const umpNmFull = (
       umpView.json.view as {
         noisemakers?: Array<{
           id: string;
           status: string;
+          heading?: number;
+          speedKn?: number;
           position: { lat: number; lon: number; depth: number };
         }>;
       }
     ).noisemakers;
     check(
-      'umpire noisemaker GT has lat/lon/depth for map marker',
+      'umpire noisemaker GT has lat/lon/depth/heading for map marker',
       Boolean(umpNmFull?.[0]) &&
         Number.isFinite(umpNmFull![0]!.position.lat) &&
         Number.isFinite(umpNmFull![0]!.position.lon) &&
         umpNmFull![0]!.position.depth === 80 &&
-        umpNmFull![0]!.status === 'active',
+        umpNmFull![0]!.status === 'active' &&
+        typeof umpNmFull![0]!.heading === 'number' &&
+        typeof umpNmFull![0]!.speedKn === 'number',
     );
 
     // Advance through lifetime — decoy goes spent on the resolve whose

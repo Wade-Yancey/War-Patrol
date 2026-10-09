@@ -167,9 +167,9 @@ export function buildHydrophoneContacts(own: UnitState, save: GameSave): Hydroph
     });
   }
 
-  // Stationary noisemaker decoys — loud continuous emitters. FoW paints them as
+  // Drifting noisemaker decoys — loud continuous emitters. FoW paints them as
   // propeller contacts (no decoy identity leak); sourceLevel makes them compete
-  // with underway hulls on the listen needle.
+  // with underway hulls on the listen needle. Hydro cues stay audio-only (no course).
   const nmLevel = noisemakerSourceLevel();
   for (const nm of activeNoisemakers(save.noisemakers)) {
     const { bearing, rangeNm } = bearingRangeNm(own.position, nm.position);

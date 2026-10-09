@@ -1,8 +1,9 @@
 /**
- * Resolve fleet-sub noisemaker countermeasure deploys and lifetimes.
+ * Resolve fleet-sub noisemaker countermeasure deploys, drift, and lifetimes.
  */
 import { nanoid } from 'nanoid';
 import {
+  DEFAULT_TURN_LENGTH_SECONDS,
   advanceNoisemakerCooldown,
   advanceNoisemakerTracks,
   armNoisemakerCooldown,
@@ -23,13 +24,15 @@ export type NoisemakersResolveResult = {
 
 /**
  * Tick cooldowns, deploy pending orders at post-kinematics lat/lon + chosen depth,
- * then expire aged decoys. Stationary — position never follows the sub afterward.
+ * drift prior active decoys (random heading/speed wander), then expire aged ones.
+ * Position never follows the sub after eject.
  */
 export function resolveNoisemakersForTurn(
   unitsIn: UnitState[],
   priorNoisemakers: NoisemakerTrack[],
   turnNumber: number,
   gameTimeSeconds: number,
+  turnLengthSeconds: number = DEFAULT_TURN_LENGTH_SECONDS,
 ): NoisemakersResolveResult {
   const combatLogEntries: CombatLogEntry[] = [];
   const launched: NoisemakerTrack[] = [];
@@ -57,7 +60,7 @@ export function resolveNoisemakersForTurn(
           turnNumber,
           gameTimeSeconds,
           actor: unit,
-          summary: `${unit.name} deployed noisemaker · set ${depthM} m (stationary)`,
+          summary: `${unit.name} deployed noisemaker · set ${depthM} m · hdg ${track.heading.toFixed(0)}° · ${track.speedKn.toFixed(1)} kn drift`,
         }),
       );
     }
@@ -71,6 +74,7 @@ export function resolveNoisemakersForTurn(
   const noisemakers = advanceNoisemakerTracks(
     [...(priorNoisemakers ?? []), ...launched],
     turnNumber,
+    turnLengthSeconds,
   );
 
   return { units, noisemakers, combatLogEntries };
