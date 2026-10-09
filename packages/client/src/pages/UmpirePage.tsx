@@ -42,7 +42,7 @@ import {
   type VesselType,
 } from '@war-patrol/shared';
 import { api } from '../api/client';
-import { getAuthToken, setAuthToken } from '../api/authStorage';
+import { clearAuthToken, getAuthToken, setAuthToken } from '../api/authStorage';
 import { useGameStream } from '../hooks/useGameStream';
 import { GroundTruthMap } from '../components/GroundTruthMap';
 import { CombatLogPanel } from '../components/CombatLogPanel';
@@ -117,6 +117,11 @@ export function UmpirePage() {
     gameId,
     token,
     enabled: Boolean(token),
+    onAuthInvalid: () => {
+      clearAuthToken(tokenKey(gameId));
+      setToken(null);
+      setAuthError('Session expired — sign in again');
+    },
   });
 
   const umpire = view?.role === 'umpire' ? (view as UmpireView) : null;

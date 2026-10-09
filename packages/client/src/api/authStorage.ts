@@ -35,3 +35,17 @@ export function setAuthToken(key: string, token: string): void {
     /* ignore */
   }
 }
+
+/** Drop a stale session so the join form returns (e.g. after server restart). */
+export function clearAuthToken(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    /* ignore */
+  }
+  try {
+    sessionStorage.removeItem(key);
+  } catch {
+    /* ignore */
+  }
+}

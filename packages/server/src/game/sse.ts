@@ -13,6 +13,9 @@ export interface SseClient {
 
 type ViewBuilder = (client: SseClient) => ClientView | null;
 
+/** Default ping interval — under common proxy/tablet idle cuts (~30–100s). */
+export const SSE_HEARTBEAT_MS = 15_000;
+
 /**
  * SSE hub — one connection per open station/umpire tab.
  * Pushes stateVersion envelopes; clients reconnect and full-refresh on gaps.
@@ -36,15 +39,25 @@ export class SseHub {
     } catch {
       /* already hijacked */
     }
+
+    const socket = reply.raw.socket;
+    if (socket) {
+      // Quiet tablets / reverse proxies must not see an idle TCP timeout while
+      // the game is between turns (no state events for minutes).
+      socket.setTimeout(0);
+      socket.setNoDelay(true);
+      socket.setKeepAlive(true, 30_000);
+    }
+
     if (!reply.raw.headersSent) {
       reply.raw.writeHead(200, {
-        'Content-Type': 'text/event-stream',
+        'Content-Type': 'text/event-stream; charset=utf-8',
         'Cache-Control': 'no-cache, no-transform',
         Connection: 'keep-alive',
         'X-Accel-Buffering': 'no',
       });
     }
-    reply.raw.write(`: connected\n\n`);
+    this.writeRaw(client, `: connected\n\n`);
 
     const onClose = () => {
       if (!this.clients.delete(client.id)) return;
@@ -81,7 +94,10 @@ export class SseHub {
     role: 'umpire' | 'vessel';
     count: number;
   }> {
-    const keyCount = new Map<string, { unitId: string | null; stationId: string | null; role: 'umpire' | 'vessel'; count: number }>();
+    const keyCount = new Map<
+      string,
+      { unitId: string | null; stationId: string | null; role: 'umpire' | 'vessel'; count: number }
+    >();
     for (const c of this.clients.values()) {
       if (c.gameId !== gameId) continue;
       const key = `${c.role}|${c.unitId ?? ''}|${c.stationId ?? ''}`;
@@ -131,32 +147,73 @@ export class SseHub {
     }
   }
 
+  /**
+   * Lean join/leave fan-out — connection counts only, not a full vessel/umpire
+   * view. Keeps cloudflared / tablet tabs from serializing multi-KB state on
+   * every StrictMode remount or second station opening.
+   */
+  broadcastConnections(gameId: string, stateVersion: number): void {
+    const umpireConnections = this.connectionSummary(gameId);
+    for (const client of [...this.clients.values()]) {
+      if (client.gameId !== gameId) continue;
+      try {
+        if (client.role === 'umpire') {
+          const payload = JSON.stringify({
+            type: 'connections',
+            stateVersion,
+            connections: umpireConnections,
+          });
+          this.writeRaw(client, `event: connections\ndata: ${payload}\n\n`);
+          continue;
+        }
+        if (client.role === 'vessel' && client.unitId) {
+          const payload = JSON.stringify({
+            type: 'connections',
+            stateVersion,
+            stationConnections: this.stationConnectionCounts(gameId, client.unitId),
+          });
+          this.writeRaw(client, `event: connections\ndata: ${payload}\n\n`);
+        }
+      } catch {
+        /* skip */
+      }
+    }
+  }
+
   sendFull(client: SseClient, stateVersion: number, view: ClientView): void {
     this.send(client, stateVersion, view);
   }
 
   private send(client: SseClient, stateVersion: number, view: ClientView): void {
     const payload = JSON.stringify({ type: 'state', stateVersion, view });
-    try {
-      client.reply.raw.write(`event: state\ndata: ${payload}\n\n`);
+    if (this.writeRaw(client, `event: state\ndata: ${payload}\n\n`)) {
       client.lastSentVersion = stateVersion;
-    } catch {
-      this.clients.delete(client.id);
     }
   }
 
-  /** Heartbeat to keep proxies from closing idle streams. */
-  startHeartbeat(intervalMs = 25000): NodeJS.Timeout {
+  /**
+   * Heartbeat to keep proxies / tablet browsers from closing quiet streams.
+   * Comment line wakes the wire; named `ping` event resets client idle timers
+   * that only notice SSE frames with data.
+   */
+  startHeartbeat(intervalMs = SSE_HEARTBEAT_MS): NodeJS.Timeout {
     return setInterval(() => {
+      const frame = `: ping\nevent: ping\ndata: {"type":"ping"}\n\n`;
       for (const client of [...this.clients.values()]) {
-        try {
-          client.reply.raw.write(`: ping\n\n`);
-        } catch {
-          if (this.clients.delete(client.id)) {
-            this.onConnectionsChanged?.(client.gameId);
-          }
-        }
+        this.writeRaw(client, frame);
       }
     }, intervalMs);
+  }
+
+  private writeRaw(client: SseClient, chunk: string): boolean {
+    try {
+      client.reply.raw.write(chunk);
+      return true;
+    } catch {
+      if (this.clients.delete(client.id)) {
+        this.onConnectionsChanged?.(client.gameId);
+      }
+      return false;
+    }
   }
 }

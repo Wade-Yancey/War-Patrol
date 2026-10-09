@@ -492,6 +492,8 @@ export class GameRuntime {
    * umpire edits cannot run during `await writeSave` and then be wiped by replace.
    */
   private gameMutationTail = new Map<string, Promise<unknown>>();
+  /** Debounce SSE connection-count meta frames per game. */
+  private connectionNotifyTimers = new Map<string, NodeJS.Timeout>();
 
   /**
    * Test-only barrier: when set, resolve/rollback await this after computing the
@@ -505,11 +507,19 @@ export class GameRuntime {
       if (!save) return null;
       return buildViewForSession(save, this.sse, client.role, client.unitId, client.stationId);
     });
-    // Connection join/leave should refresh umpire (and station multi-connect) without a turn bump.
+    // Connection join/leave: debounce + lean meta frame (not a full view rebuild).
+    // StrictMode remounts / multi-tab joins used to fan out multi-KB state to every
+    // station and stall remote Controls behind cloudflared.
     this.sse.onConnectionsChanged = (gameId) => {
-      const save = this.games.get(gameId);
-      if (!save) return;
-      this.sse.broadcast(gameId, save.stateVersion);
+      const prev = this.connectionNotifyTimers.get(gameId);
+      if (prev) clearTimeout(prev);
+      const timer = setTimeout(() => {
+        this.connectionNotifyTimers.delete(gameId);
+        const save = this.games.get(gameId);
+        if (!save) return;
+        this.sse.broadcastConnections(gameId, save.stateVersion);
+      }, 150);
+      this.connectionNotifyTimers.set(gameId, timer);
     };
   }
 
