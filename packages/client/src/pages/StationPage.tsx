@@ -1685,10 +1685,13 @@ export function StationPage() {
                 </div>
                 {opticsVariant === 'periscope' && (
                   <div className="stack" style={{ gap: '0.5rem' }}>
-                    <div className="sonar-toggle-row">
+                    <div className="sonar-toggle-row station-latch-row">
                       <button
                         type="button"
-                        className={opticsMastRaised ? 'primary' : undefined}
+                        className={[
+                          'station-latch',
+                          opticsMastRaised ? 'station-latch--raised' : 'station-latch--lowered',
+                        ].join(' ')}
                         disabled={
                           periBusy ||
                           presentationSensors.periscopeUnavailableReason === 'no_sensor' ||
@@ -1700,14 +1703,32 @@ export function StationPage() {
                               vessel.unit.position.depth > PERISCOPE_DEPTH_M))
                         }
                         aria-pressed={opticsMastRaised}
+                        aria-label={
+                          opticsMastRaised
+                            ? 'Periscope mast raised — click to lower'
+                            : 'Periscope mast lowered — click to raise'
+                        }
                         onClick={() => togglePeriscope(!opticsMastRaised)}
                       >
-                        {opticsMastRaised ? 'Periscope UP' : 'Periscope DOWN'}
+                        <span
+                          className={`station-latch-glyph station-latch-glyph--mast${
+                            opticsMastRaised ? ' is-up' : ' is-down'
+                          }`}
+                          aria-hidden
+                        />
+                        <span className="station-latch-copy">
+                          <span className="station-latch-state">
+                            {opticsMastRaised ? 'MAST RAISED' : 'MAST LOWERED'}
+                          </span>
+                          <span className="station-latch-action">
+                            {opticsMastRaised ? 'Lower periscope' : 'Raise periscope'}
+                          </span>
+                        </span>
                       </button>
-                      <span className="mono muted">
+                      <span className="mono muted station-latch-hint">
                         {opticsMastRaised
-                          ? `RAISED · stamp ${vessel.unit.plotStampTurns ?? 0}`
-                          : 'LOWERED · blind · not spottable'}
+                          ? `Scope live · stamp ${vessel.unit.plotStampTurns ?? 0}`
+                          : 'Blind · not spottable'}
                       </span>
                     </div>
                   </div>
@@ -1803,12 +1824,15 @@ export function StationPage() {
                     {vessel.sonarMaxRangeNm ? ` · max ${vessel.sonarMaxRangeNm} nm` : ''}
                   </p>
                 </div>
-                <div className="sonar-toggle-row">
+                <div className="sonar-toggle-row station-latch-row">
                   <button
                     type="button"
-                    className={
-                      presentationSensors.activeSonarEnabled ? 'primary' : undefined
-                    }
+                    className={[
+                      'station-latch',
+                      presentationSensors.activeSonarEnabled
+                        ? 'station-latch--raised'
+                        : 'station-latch--lowered',
+                    ].join(' ')}
                     disabled={
                       sonarBusy ||
                       presentationSensors.sonarUnavailableReason === 'no_sensor' ||
@@ -1816,16 +1840,36 @@ export function StationPage() {
                       presentationSensors.sonarUnavailableReason === 'sensors_disabled'
                     }
                     aria-pressed={presentationSensors.activeSonarEnabled}
+                    aria-label={
+                      presentationSensors.activeSonarEnabled
+                        ? 'Search sonar on — click to stand by'
+                        : 'Search sonar standby — click to start pinging'
+                    }
                     onClick={() =>
                       void toggleActiveSonar(!presentationSensors.activeSonarEnabled)
                     }
                   >
-                    {presentationSensors.activeSonarEnabled
-                      ? 'Search sonar ON'
-                      : 'Search sonar OFF'}
+                    <span
+                      className={`station-latch-glyph station-latch-glyph--sonar${
+                        presentationSensors.activeSonarEnabled ? ' is-on' : ' is-off'
+                      }`}
+                      aria-hidden
+                    />
+                    <span className="station-latch-copy">
+                      <span className="station-latch-state">
+                        {presentationSensors.activeSonarEnabled
+                          ? 'SONAR SEARCH'
+                          : 'SONAR STANDBY'}
+                      </span>
+                      <span className="station-latch-action">
+                        {presentationSensors.activeSonarEnabled
+                          ? 'Stop pinging'
+                          : 'Start search'}
+                      </span>
+                    </span>
                   </button>
-                  <span className="mono muted">
-                    {presentationSensors.activeSonarEnabled ? 'PINGING' : 'STANDBY'}
+                  <span className="mono muted station-latch-hint">
+                    {presentationSensors.activeSonarEnabled ? 'PINGING' : 'Quiet'}
                   </span>
                 </div>
                 {presentationSensors.sonarUnavailableReason === 'no_sensor' ||
