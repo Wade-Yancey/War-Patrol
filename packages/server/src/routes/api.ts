@@ -20,6 +20,7 @@ import { parseBearer, parseSseToken } from '../game/sessions.js';
 import { runtime } from '../game/runtime.js';
 import { buildViewForSession } from '../game/views.js';
 import type { SseClient } from '../game/sse.js';
+import { getListenPort, getPublicBaseUrl, isInternetMode } from '../hostInfo.js';
 
 function httpError(err: unknown): { statusCode: number; message: string } {
   if (err && typeof err === 'object' && 'statusCode' in err && 'message' in err) {
@@ -100,6 +101,17 @@ function requireAdmin(request: FastifyRequest): void {
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/health', async () => ({ ok: true }));
+
+  /**
+   * Non-secret hosting hints for the umpire UI: public join base (tunnel /
+   * WAR_PATROL_PUBLIC_URL) + listen port so Copy can target remotes while the
+   * host keeps station tabs on loopback. Never includes the admin token.
+   */
+  app.get('/api/host-info', async () => ({
+    publicBaseUrl: getPublicBaseUrl(),
+    listenPort: getListenPort() ?? Number(process.env.PORT ?? 8787),
+    internetMode: isInternetMode(),
+  }));
 
   app.get('/api/scenarios', async (request, reply) => {
     try {

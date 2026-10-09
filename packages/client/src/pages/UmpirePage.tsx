@@ -53,6 +53,7 @@ import { CrtShell } from '../components/CrtShell';
 import { TouchNumber } from '../components/TouchNumber';
 import { ConfirmAction } from '../components/ConfirmAction';
 import { VesselJoinLinks } from '../components/VesselJoinLinks';
+import { HostLocalBanner } from '../components/HostLocalBanner';
 import { EotTelegraph } from '../components/EotTelegraph';
 
 function tokenKey(gameId: string) {
@@ -512,6 +513,8 @@ export function UmpirePage() {
             <Link to="/">Home</Link>
           </div>
         </header>
+
+        <HostLocalBanner />
 
         {(error || actionError) && <p className="error">{error || actionError}</p>}
 
