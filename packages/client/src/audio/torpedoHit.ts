@@ -12,9 +12,10 @@ export const TORPEDO_HIT_CONTROLS_PEAK_GAIN = 0.72;
  * share the same presentation delay (same resolve moment). Keeps relative
  * turn-arrival timing; only same-moment stacks are split so museum crews can
  * count distinct bangs. Singles and uniquely-timed hits stay unchanged.
- * 250 ms sits mid 150–400 ms — countable without dragging a multi-fish salvo.
+ * 450 ms — playtest: 250 ms stacked too close to read as separate events;
+ * still short enough that a 4–6 fish salvo finishes in a couple of seconds.
  */
-export const TORPEDO_HIT_SAME_MOMENT_STAGGER_SEC = 0.25;
+export const TORPEDO_HIT_SAME_MOMENT_STAGGER_SEC = 0.45;
 
 export async function loadTorpedoHitBuffer(ctx: AudioContext): Promise<AudioBuffer> {
   const res = await fetch(TORPEDO_HIT_SAMPLE_URL);

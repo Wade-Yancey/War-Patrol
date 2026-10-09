@@ -106,7 +106,11 @@ export function DiveControls({
         )}
       </div>
 
-      <div className="dive-bands" role="group" aria-label="Depth band marks">
+      <div
+        className="dive-bands"
+        role="status"
+        aria-label="Depth band reference marks — readout only, not buttons"
+      >
         {DIVE_BAND_MARKS.map((mark) => {
           const active = coarseDraft === mark.depthM || coarseDepth === mark.depthM;
           return (
@@ -119,14 +123,19 @@ export function DiveControls({
               ]
                 .filter(Boolean)
                 .join(' ')}
-              title={`${mark.label} depth ${mark.depthM} m`}
+              title={`${mark.label} band · ${mark.depthM} m (reference)`}
+              aria-current={active ? 'true' : undefined}
             >
+              <span className="dive-band-kind">REF</span>
               <span className="dive-band-label">{mark.label}</span>
               <span className="dive-band-depth mono">{mark.depthM} m</span>
             </div>
           );
         })}
       </div>
+      <p className="dive-bands-caption muted mono">
+        Band marks are readouts — use presets or dial below to order depth
+      </p>
 
       {riskBanner && (
         <p
