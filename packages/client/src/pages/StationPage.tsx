@@ -29,7 +29,7 @@ import {
   type VesselView,
 } from '@war-patrol/shared';
 import { api } from '../api/client';
-import { getAuthToken, setAuthToken } from '../api/authStorage';
+import { clearAuthToken, getAuthToken, setAuthToken } from '../api/authStorage';
 import { playEngineOrderBell } from '../audio/engineOrderBell';
 import { useGameStream } from '../hooks/useGameStream';
 import { TurnStatus } from '../components/TurnStatus';
@@ -156,6 +156,11 @@ export function StationPage() {
     gameId,
     token,
     enabled: Boolean(token),
+    onAuthInvalid: () => {
+      clearAuthToken(tokenKey(gameId, accessToken, stationId));
+      setToken(null);
+      setAuthError('Session expired — enter the vessel password again');
+    },
   });
 
   const vessel = view?.role === 'vessel' ? (view as VesselView) : null;

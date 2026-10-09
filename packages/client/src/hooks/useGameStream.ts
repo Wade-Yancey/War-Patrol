@@ -1,17 +1,53 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ClientView } from '@war-patrol/shared';
+import type { ClientView, UmpireView, VesselView } from '@war-patrol/shared';
 import { api } from '../api/client';
 
 interface Options {
   gameId: string;
   token: string | null;
   enabled?: boolean;
+  /** Stale session (server restart / revoked) — clear storage and return to login. */
+  onAuthInvalid?: () => void;
 }
 
 const BASE_BACKOFF_MS = 600;
 const MAX_BACKOFF_MS = 12_000;
-/** Server heartbeats every ~25s; treat longer silence as a dead stream. */
-const IDLE_TIMEOUT_MS = 60_000;
+/**
+ * Server heartbeats every ~15s (comment + `event: ping`). Treat longer silence
+ * as a dead stream. Generous vs the ping interval so tablet timer jitter and a
+ * missed frame do not flap the Controls LIVE indicator.
+ */
+const IDLE_TIMEOUT_MS = 90_000;
+/** Show a sticky error only after several transient disconnects in a row. */
+const STICKY_ERROR_AFTER_FAILURES = 3;
+/** If the open stream has not delivered a state frame yet, fall back to GET view. */
+const FIRST_STATE_FALLBACK_MS = 2_500;
+
+function isTransientStreamError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message;
+  return (
+    msg === 'SSE idle timeout' ||
+    msg === 'SSE disconnected' ||
+    msg.startsWith('SSE failed (') ||
+    msg === 'Failed to fetch' ||
+    msg === 'network error' ||
+    msg === 'NetworkError when attempting to fetch resource.'
+  );
+}
+
+function isAuthFailure(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message.toLowerCase();
+  return (
+    msg.includes('unauthorized') ||
+    msg.includes('invalid session') ||
+    msg.includes('session required') ||
+    msg.includes('admin token required') ||
+    msg === 'sse failed (401)' ||
+    msg.includes('401')
+  );
+}
 
 /**
  * SSE subscription with auto-reconnect and full refresh on version gaps (ARCH-SA-05–08).
@@ -19,7 +55,7 @@ const IDLE_TIMEOUT_MS = 60_000;
  * Important: aborted attempts must not schedule a second reconnect (that killed healthy
  * streams and left the LIVE indicator stuck on RECONNECTING).
  */
-export function useGameStream({ gameId, token, enabled = true }: Options) {
+export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: Options) {
   const [view, setView] = useState<ClientView | null>(null);
   const [stateVersion, setStateVersion] = useState(0);
   const [connected, setConnected] = useState(false);
@@ -27,6 +63,8 @@ export function useGameStream({ gameId, token, enabled = true }: Options) {
   const lastVersionRef = useRef(0);
   const refreshRef = useRef<() => Promise<void>>(async () => undefined);
   const connectedRef = useRef(false);
+  const onAuthInvalidRef = useRef(onAuthInvalid);
+  onAuthInvalidRef.current = onAuthInvalid;
 
   useEffect(() => {
     if (!enabled || !token || !gameId) return;
@@ -37,6 +75,7 @@ export function useGameStream({ gameId, token, enabled = true }: Options) {
     /** Bumped on every new connect attempt so stale attempts never re-arm timers. */
     let generation = 0;
     let attempt = 0;
+    let authInvalid = false;
 
     const setConnectedState = (value: boolean) => {
       connectedRef.current = value;
@@ -51,16 +90,42 @@ export function useGameStream({ gameId, token, enabled = true }: Options) {
     };
 
     const scheduleReconnect = (fromGeneration: number) => {
-      if (cancelled || fromGeneration !== generation) return;
+      if (cancelled || authInvalid || fromGeneration !== generation) return;
       clearReconnect();
       const exp = Math.min(attempt, 5);
       const delay = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * 2 ** exp);
       const jitter = Math.floor(Math.random() * 300);
       reconnectTimer = window.setTimeout(() => {
         reconnectTimer = undefined;
-        if (cancelled || fromGeneration !== generation) return;
+        if (cancelled || authInvalid || fromGeneration !== generation) return;
         void openSse();
       }, delay + jitter);
+    };
+
+    const handleAuthInvalid = () => {
+      authInvalid = true;
+      clearReconnect();
+      setConnectedState(false);
+      setError('Session expired — sign in again');
+      onAuthInvalidRef.current?.();
+    };
+
+    const noteStreamFailure = (err: unknown) => {
+      if (isAuthFailure(err)) {
+        handleAuthInvalid();
+        return;
+      }
+      // LIVE/RECONNECTING already signals transient drops; keep Controls clean
+      // unless the stream keeps failing (auth, hard network, etc.).
+      if (isTransientStreamError(err) && attempt < STICKY_ERROR_AFTER_FAILURES) {
+        setError(null);
+        return;
+      }
+      if (err instanceof Error && err.message === 'SSE idle timeout') {
+        setError('Connection interrupted — retrying…');
+        return;
+      }
+      setError(err instanceof Error ? err.message : 'SSE disconnected');
     };
 
     const fullRefresh = async (signal?: AbortSignal) => {
@@ -76,7 +141,42 @@ export function useGameStream({ gameId, token, enabled = true }: Options) {
         await fullRefresh(abort?.signal);
       } catch (err) {
         if (cancelled || (err instanceof DOMException && err.name === 'AbortError')) return;
+        if (isAuthFailure(err)) {
+          handleAuthInvalid();
+          return;
+        }
         setError(err instanceof Error ? err.message : 'Refresh failed');
+      }
+    };
+
+    const applyState = (stateVersionNext: number, nextView: ClientView) => {
+      lastVersionRef.current = stateVersionNext;
+      setStateVersion(stateVersionNext);
+      setView(nextView);
+    };
+
+    const applyConnections = (payload: {
+      stateVersion?: number;
+      connections?: UmpireView['connections'];
+      stationConnections?: VesselView['stationConnections'];
+    }) => {
+      setView((prev) => {
+        if (!prev) return prev;
+        if (prev.role === 'umpire' && payload.connections) {
+          return { ...prev, connections: payload.connections };
+        }
+        if (prev.role === 'vessel' && payload.stationConnections) {
+          return { ...prev, stationConnections: payload.stationConnections };
+        }
+        return prev;
+      });
+      if (typeof payload.stateVersion === 'number') {
+        // Connection meta does not bump turn stateVersion; keep local marker in sync
+        // only when the server echoes the current version.
+        if (payload.stateVersion >= lastVersionRef.current) {
+          lastVersionRef.current = payload.stateVersion;
+          setStateVersion(payload.stateVersion);
+        }
       }
     };
 
@@ -103,6 +203,11 @@ export function useGameStream({ gameId, token, enabled = true }: Options) {
             if (settled) return;
             settled = true;
             document.removeEventListener('visibilitychange', onVisibility);
+            try {
+              void reader.cancel('SSE idle timeout');
+            } catch {
+              /* ignore */
+            }
             reject(new Error('SSE idle timeout'));
           }, IDLE_TIMEOUT_MS);
         };
@@ -149,7 +254,7 @@ export function useGameStream({ gameId, token, enabled = true }: Options) {
       });
 
     const openSse = async () => {
-      if (cancelled) return;
+      if (cancelled || authInvalid) return;
 
       clearReconnect();
       abort?.abort();
@@ -160,21 +265,31 @@ export function useGameStream({ gameId, token, enabled = true }: Options) {
       setConnectedState(false);
 
       try {
-        // Prefer a quick snapshot before opening the stream; do not hang reconnect on it.
-        try {
-          await fullRefresh(signal);
-        } catch (err) {
-          if (signal.aborted || cancelled) return;
-          // Continue — SSE open + post-connect resync still restore state.
-          setError(err instanceof Error ? err.message : 'Refresh failed');
+        // First paint only — reconnects rely on the stream's sendFull state frame
+        // so we do not hammer GET /view (and delay reading) on every blip.
+        if (lastVersionRef.current === 0) {
+          try {
+            await fullRefresh(signal);
+          } catch (err) {
+            if (signal.aborted || cancelled) return;
+            if (isAuthFailure(err)) {
+              handleAuthInvalid();
+              return;
+            }
+            setError(err instanceof Error ? err.message : 'Refresh failed');
+          }
+          if (signal.aborted || cancelled || myGeneration !== generation) return;
         }
-        if (signal.aborted || cancelled || myGeneration !== generation) return;
 
         // Token goes on the URL: native EventSource cannot set Authorization, and some
         // proxies drop Authorization on long-lived streams. Do not log this URL.
         const eventsUrl = `/api/games/${gameId}/events?token=${encodeURIComponent(token)}`;
         const res = await fetch(eventsUrl, { signal });
         if (!res.ok || !res.body) {
+          if (res.status === 401) {
+            handleAuthInvalid();
+            return;
+          }
           throw new Error(`SSE failed (${res.status})`);
         }
         if (signal.aborted || cancelled || myGeneration !== generation) return;
@@ -183,17 +298,18 @@ export function useGameStream({ gameId, token, enabled = true }: Options) {
         setError(null);
         attempt = 0;
 
-        // ARCH-SA-07/08: after (re)connect, resync full state in case of version gaps.
-        try {
-          await fullRefresh(signal);
-        } catch {
-          /* stream payload will catch up when available */
-        }
-        if (signal.aborted || cancelled || myGeneration !== generation) return;
-
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
+        let sawState = false;
+
+        // Server sendFull should arrive immediately; only GET if the stream is quiet.
+        const fallbackTimer = window.setTimeout(() => {
+          if (cancelled || signal.aborted || myGeneration !== generation || sawState) return;
+          void fullRefresh(signal).catch((err) => {
+            if (isAuthFailure(err)) handleAuthInvalid();
+          });
+        }, FIRST_STATE_FALLBACK_MS);
 
         try {
           while (!cancelled && !signal.aborted && myGeneration === generation) {
@@ -209,29 +325,30 @@ export function useGameStream({ gameId, token, enabled = true }: Options) {
               try {
                 const payload = JSON.parse(dataLine.slice(6)) as {
                   type: string;
-                  stateVersion: number;
-                  view: ClientView;
+                  stateVersion?: number;
+                  view?: ClientView;
+                  connections?: UmpireView['connections'];
+                  stationConnections?: VesselView['stationConnections'];
                 };
-                if (payload.type !== 'state') continue;
-                const prev = lastVersionRef.current;
-                // Same version is OK (connection-count refresh without turn bump).
-                if (prev > 0 && payload.stateVersion < prev) {
-                  await fullRefresh(signal);
+                if (payload.type === 'ping') continue;
+                if (payload.type === 'connections') {
+                  applyConnections(payload);
                   continue;
                 }
-                if (prev > 0 && payload.stateVersion > prev + 1) {
-                  await fullRefresh(signal);
+                if (payload.type !== 'state' || payload.view == null || payload.stateVersion == null) {
                   continue;
                 }
-                lastVersionRef.current = payload.stateVersion;
-                setStateVersion(payload.stateVersion);
-                setView(payload.view);
+                sawState = true;
+                // SSE state frames are full views — apply directly (including gaps /
+                // rollbacks). Avoid a second GET /view that stalls remote Controls.
+                applyState(payload.stateVersion, payload.view);
               } catch {
                 /* ignore parse errors */
               }
             }
           }
         } finally {
+          window.clearTimeout(fallbackTimer);
           try {
             reader.releaseLock();
           } catch {
@@ -239,25 +356,25 @@ export function useGameStream({ gameId, token, enabled = true }: Options) {
           }
         }
 
-        if (cancelled || signal.aborted || myGeneration !== generation) return;
+        if (cancelled || signal.aborted || myGeneration !== generation || authInvalid) return;
 
         setConnectedState(false);
-        setError('SSE disconnected');
         attempt += 1;
+        noteStreamFailure(new Error('SSE disconnected'));
         scheduleReconnect(myGeneration);
       } catch (err) {
-        if (cancelled || signal.aborted || myGeneration !== generation) return;
+        if (cancelled || signal.aborted || myGeneration !== generation || authInvalid) return;
         if (err instanceof DOMException && err.name === 'AbortError') return;
 
         setConnectedState(false);
-        setError(err instanceof Error ? err.message : 'SSE disconnected');
         attempt += 1;
+        noteStreamFailure(err);
         scheduleReconnect(myGeneration);
       }
     };
 
     const kickIfNeeded = () => {
-      if (cancelled) return;
+      if (cancelled || authInvalid) return;
       if (document.visibilityState === 'hidden') return;
       // Tab visible / network back: if stream is down, reconnect now; else soft-refresh.
       if (!connectedRef.current) {
