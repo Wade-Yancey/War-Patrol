@@ -42,6 +42,7 @@ import { clearAuthToken, getAuthToken, setAuthToken } from '../api/authStorage';
 import { playEngineOrderBell } from '../audio/engineOrderBell';
 import { useGameStream } from '../hooks/useGameStream';
 import { TurnStatus } from '../components/TurnStatus';
+import { HostLocalBanner } from '../components/HostLocalBanner';
 import { CrtShell } from '../components/CrtShell';
 import { EotTelegraph } from '../components/EotTelegraph';
 import { HelmCompass } from '../components/HelmCompass';
@@ -1499,6 +1500,8 @@ export function StationPage() {
             </div>
           </div>
         </header>
+
+        <HostLocalBanner />
 
         {(error || actionError) && <p className="error">{error || actionError}</p>}
 

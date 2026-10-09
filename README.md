@@ -99,7 +99,9 @@ reuse it) an admin token and prints a join-ready URL with it pre-filled
 (`http://<host>:<port>/?admin=<token>`) — open that link and the landing
 page's admin token is already wired in, no copy/paste. See
 [`docs/internet-hosting.md`](docs/internet-hosting.md) for the full walkthrough,
-an optional one-command `cloudflared` tunnel, and residual-risk notes.
+host vs remote URL guidance (keep host stations on `127.0.0.1`; Copy uses the
+tunnel for remotes), an optional one-command `cloudflared` tunnel, and
+residual-risk notes.
 
 Manual path, same effect, explicit token:
 

@@ -22,6 +22,13 @@ async function request<T>(
 
 export const api = {
   health: () => request<{ ok: boolean }>('/api/health'),
+  /** Public join base + listen port (no secrets) for host vs remote URL split. */
+  hostInfo: () =>
+    request<{
+      publicBaseUrl: string | null;
+      listenPort: number;
+      internetMode: boolean;
+    }>('/api/host-info'),
   scenarios: (adminToken?: string) =>
     request<Array<{ id: string; name: string; description?: string; mode: string; unitCount: number }>>(
       '/api/scenarios',

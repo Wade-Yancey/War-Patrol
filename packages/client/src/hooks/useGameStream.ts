@@ -289,7 +289,11 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
         // Token goes on the URL: native EventSource cannot set Authorization, and some
         // proxies drop Authorization on long-lived streams. Do not log this URL.
         const eventsUrl = `/api/games/${gameId}/events?token=${encodeURIComponent(token)}`;
-        const res = await fetch(eventsUrl, { signal });
+        const res = await fetch(eventsUrl, {
+          signal,
+          cache: 'no-store',
+          headers: { Accept: 'text/event-stream' },
+        });
         if (!res.ok || !res.body) {
           if (res.status === 401) {
             handleAuthInvalid();

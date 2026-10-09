@@ -25,6 +25,52 @@ export function isInternetMode(): boolean {
   return truthyFlag(process.env.WAR_PATROL_INTERNET);
 }
 
+/** Strip trailing slashes so join-link joins stay clean. */
+function normalizeBaseUrl(url: string): string {
+  return url.trim().replace(/\/+$/, '');
+}
+
+/**
+ * Public join base for remote players (tunnel / reverse-proxy HTTPS origin).
+ * Set from `WAR_PATROL_PUBLIC_URL`, or auto-filled when a cloudflared quick
+ * tunnel allocates its `*.trycloudflare.com` URL. Used by `/api/host-info` so
+ * the umpire UI can Copy remote-ready station URLs while the host stays on
+ * loopback for their own screens (avoids tunnel-origin SSE reconnect loops
+ * on the host machine).
+ */
+let publicBaseUrl: string | null = null;
+let listenPort: number | null = null;
+/** True when publicBaseUrl came from WAR_PATROL_PUBLIC_URL (do not overwrite with tunnel). */
+let publicBaseUrlFromEnv = false;
+
+export function getPublicBaseUrl(): string | null {
+  return publicBaseUrl;
+}
+
+export function getListenPort(): number | null {
+  return listenPort;
+}
+
+export function setListenPort(port: number): void {
+  listenPort = port;
+}
+
+export function setPublicBaseUrl(url: string | null, opts?: { fromEnv?: boolean }): void {
+  if (!url) {
+    publicBaseUrl = null;
+    publicBaseUrlFromEnv = false;
+    return;
+  }
+  publicBaseUrl = normalizeBaseUrl(url);
+  publicBaseUrlFromEnv = Boolean(opts?.fromEnv);
+}
+
+/** Prefer an explicit public URL; tunnel auto-detect fills in only when unset. */
+export function resolvePublicBaseUrlFromEnv(): void {
+  const fromEnv = process.env.WAR_PATROL_PUBLIC_URL?.trim();
+  if (fromEnv) setPublicBaseUrl(fromEnv, { fromEnv: true });
+}
+
 function adminTokenFile(): string {
   return path.join(dataRoot(), '.admin-token');
 }
@@ -123,6 +169,18 @@ export function printStartupBanner(opts: {
       'plaintext in this URL — put HTTPS in front (reverse proxy or WAR_PATROL_TUNNEL=',
     );
     console.log('cloudflared) before sharing a link beyond this machine. See docs.');
+    console.log('');
+    console.log(
+      'Host machine: open umpire + your own station tabs on http://127.0.0.1:' +
+        `${port}/ (loopback).`,
+    );
+    console.log(
+      'Remote players: use the public/tunnel URLs from Player join URLs (Copy) — not',
+    );
+    console.log(
+      'loopback. Opening trycloudflare links on the host can leave stations stuck on',
+    );
+    console.log('RECONNECTING while remotes stay LIVE.');
   }
   console.log('');
 }
@@ -163,12 +221,28 @@ export function maybeStartTunnel(port: number): void {
     const match = buf.toString().match(CLOUDFLARED_QUICK_TUNNEL_URL);
     if (match) {
       printed = true;
+      // Env override wins; otherwise publish the allocated quick-tunnel origin
+      // so umpire Copy can hand remotes a working HTTPS join link.
+      if (!publicBaseUrlFromEnv) {
+        setPublicBaseUrl(match[0]);
+      }
       const token = process.env.WAR_PATROL_ADMIN_TOKEN;
+      const publicOrigin = getPublicBaseUrl() ?? match[0];
       console.log('');
       console.log(`[war-patrol] Public tunnel URL: ${match[0]}`);
       if (token) {
-        console.log(`[war-patrol] Join-ready (admin):  ${match[0]}/?admin=${token}`);
+        console.log(`[war-patrol] Join-ready (admin):  ${publicOrigin}/?admin=${token}`);
       }
+      console.log(
+        `[war-patrol] Host UI (this machine):     http://127.0.0.1:${port}/` +
+          (token ? `?admin=${token}` : ''),
+      );
+      console.log(
+        '[war-patrol] Remotes: copy station links from the umpire Player join URLs panel',
+      );
+      console.log(
+        '[war-patrol] (uses this public origin). Keep your own station tabs on 127.0.0.1.',
+      );
       console.log(
         '[war-patrol] Quick tunnels are unauthenticated and anyone with the URL can reach',
       );
