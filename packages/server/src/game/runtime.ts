@@ -4,6 +4,7 @@ import {
   SCHEMA_VERSION,
   clampSpeedToMax,
   clampSubmarineDepth,
+  nearestEotForSpeed,
   defaultBeamM,
   defaultLengthM,
   defaultMaxSpeed,
@@ -1754,6 +1755,13 @@ export class GameRuntime {
         }
         clearPendingCourse();
       }
+      // Speed ownership (mirror of course / heading above):
+      // - speed = GT fiat hull knots (immediate).
+      // - Standing `eot` must retarget to the nearest telegraph so resolve does
+      //   not accel/decel back toward a stale bell (Wade: destroyer speed snap-back).
+      // - Clear pending orders.eot so a prior station/umpire EOT order cannot
+      //   overwrite the fiat on the next resolve.
+      // Sync runs after clamp below (uses final knots + effective ceiling).
       if (patch.speed !== undefined) unit.speed = patch.speed;
       if (patch.name !== undefined) unit.name = patch.name;
       if (patch.password !== undefined) unit.password = patch.password || undefined;
@@ -1858,14 +1866,20 @@ export class GameRuntime {
           ? unit.maxSpeed
           : defaultMaxSpeed(unit.class);
       unit.maxSpeed = maxSpeed;
-      unit.speed = clampSpeedToMax(
-        unit.speed,
-        effectiveMaxSpeed({
-          type: unit.type,
-          maxSpeed,
-          depth: unit.position.depth,
-        }),
-      );
+      const speedCeiling = effectiveMaxSpeed({
+        type: unit.type,
+        maxSpeed,
+        depth: unit.position.depth,
+      });
+      unit.speed = clampSpeedToMax(unit.speed, speedCeiling);
+      if (patch.speed !== undefined) {
+        unit.eot = nearestEotForSpeed(unit.type, unit.speed, speedCeiling);
+        if (unit.orders?.eot !== undefined) {
+          const next = { ...unit.orders };
+          delete next.eot;
+          unit.orders = next;
+        }
+      }
       // Re-normalize so type rules (surface depth, flight level, dead-in-water) stick.
       save.units[idx] = normalizeUnit(unit);
       return save;

@@ -2921,6 +2921,99 @@ async function main() {
     umpireToken,
   );
 
+  // --- Umpire speed fiat: sync EOT + persist through resolve (Wade destroyer snap-back) ---
+  // Ring up flank via station order, let it acknowledge, then umpire fiats a lower speed.
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { speed: 36, heading: 90 },
+    umpireToken,
+  );
+  await api('POST', `/api/games/${gameId}/orders`, { eot: 'ahead_flank' }, blueToken);
+  const speedBefore = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
+  check('pre-speed-fiat at flank knots', Math.abs(speedBefore.speed - 36) < 0.01);
+  check('pre-speed-fiat pending flank EOT', speedBefore.orders?.eot === 'ahead_flank');
+  // ahead_2 @ 36 kn max → 0.3 × 36 = 10.8. Navigation dial may send integers (11);
+  // fiat still syncs to nearest bell, and resolve holds at that bell (not flank).
+  const fiatSpeedDial = 11;
+  const ahead2Target = 0.3 * 36;
+  const speedPatch = await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { speed: fiatSpeedDial },
+    umpireToken,
+  );
+  check('umpire speed patch ok', speedPatch.status === 200);
+  const speedApplied = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
+  check(
+    'umpire speed sets hull knots',
+    Math.abs(speedApplied.speed - fiatSpeedDial) < 0.01,
+    `spd=${speedApplied.speed}`,
+  );
+  check(
+    'umpire speed syncs standing EOT to nearest bell',
+    speedApplied.eot === 'ahead_2',
+    `eot=${speedApplied.eot}`,
+  );
+  check(
+    'umpire speed clears stale pending EOT',
+    speedApplied.orders?.eot === undefined,
+    `pending=${speedApplied.orders?.eot}`,
+  );
+  await api('POST', `/api/games/${gameId}/turn/lock`, {}, umpireToken);
+  await api('POST', `/api/games/${gameId}/turn/resolve`, {}, umpireToken);
+  const speedAfter = runtime.requireGame(gameId).units.find((u) => u.id === 'dd-101')!;
+  check(
+    'umpire speed persists after resolve (no snap back to flank)',
+    Math.abs(speedAfter.speed - ahead2Target) < 0.05 && speedAfter.speed < 20,
+    `spd=${speedAfter.speed} want≈${ahead2Target}`,
+  );
+  check(
+    'umpire speed EOT stays nearest bell after resolve',
+    speedAfter.eot === 'ahead_2',
+    `eot=${speedAfter.eot}`,
+  );
+  // Same path for submarine (surfaced). ahead_2 @ 21 kn max → 6.3.
+  const subAhead2Target = 0.3 * 21;
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { speed: 21, position: { depth: 0 } },
+    umpireToken,
+  );
+  await api('POST', `/api/games/${gameId}/orders`, { eot: 'ahead_flank' }, redToken);
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/ss-212`,
+    { speed: 6 },
+    umpireToken,
+  );
+  const subSpeedApplied = runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!;
+  check(
+    'umpire sub speed syncs EOT',
+    subSpeedApplied.eot === 'ahead_2' && Math.abs(subSpeedApplied.speed - 6) < 0.01,
+    `eot=${subSpeedApplied.eot} spd=${subSpeedApplied.speed}`,
+  );
+  check(
+    'umpire sub speed clears pending EOT',
+    subSpeedApplied.orders?.eot === undefined,
+  );
+  await api('POST', `/api/games/${gameId}/turn/lock`, {}, umpireToken);
+  await api('POST', `/api/games/${gameId}/turn/resolve`, {}, umpireToken);
+  const subSpeedAfter = runtime.requireGame(gameId).units.find((u) => u.id === 'ss-212')!;
+  check(
+    'umpire sub speed persists after resolve',
+    Math.abs(subSpeedAfter.speed - subAhead2Target) < 0.05 && subSpeedAfter.eot === 'ahead_2',
+    `spd=${subSpeedAfter.speed} eot=${subSpeedAfter.eot}`,
+  );
+  // Restore porter eastbound cruise for later tests.
+  await api(
+    'PATCH',
+    `/api/games/${gameId}/units/dd-101`,
+    { heading: 90, speed: 12 },
+    umpireToken,
+  );
+
   // Submerged submarine speed ceiling ~9 kn (hull maxSpeed stays 21).
   await api(
     'PATCH',
