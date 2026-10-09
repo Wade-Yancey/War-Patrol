@@ -43,12 +43,15 @@ export function formatTrueBearing(trueDeg: number): string {
  */
 function OpticsBearingCompassInner({ relativeBearing, ownHeading }: Props) {
   const hasContact = relativeBearing !== null && Number.isFinite(relativeBearing);
-  const hdg = useTweenedHeading(ownHeading);
+  // HDG needle may tween after resolve; contact REL/TRUE readouts stay live so
+  // selection / fire-control numbers never wait on the presentation crawl.
+  const hdgNeedle = useTweenedHeading(ownHeading);
+  const hdgLive = normalizeHeading(ownHeading);
   const rel = hasContact ? relativeBearing : 0;
-  const contactTrue = hasContact ? normalizeHeading(hdg + rel) : null;
+  const contactTrue = hasContact ? normalizeHeading(hdgLive + rel) : null;
   const intensity = hasContact ? 'full' : 'dim';
 
-  const hdgLabel = String(Math.round(hdg)).padStart(3, '0');
+  const hdgLabel = String(Math.round(hdgLive)).padStart(3, '0');
   const relLabel = hasContact ? formatRelBearing(rel) : '——';
   const contactTrueLabel =
     contactTrue !== null ? formatTrueBearing(contactTrue) : '——';
@@ -76,7 +79,7 @@ function OpticsBearingCompassInner({ relativeBearing, ownHeading }: Props) {
             />
           )}
           <CrtCompassHdgNeedle
-            bearing={hdg}
+            bearing={hdgNeedle}
             className="optics-bearing-compass-needle"
             intensity={intensity}
           />
