@@ -33,12 +33,15 @@ export type SyncedDamagePresentation = {
  * Stage Controls Damage-report UI (and firer BRIDGE hit lines) until the
  * matching bridge blast SFX plays.
  *
- * Sim / vessel health stay at resolve-time truth; only presentation is held.
- * Entries without a live `bridgeDetonations` cue (or no `sourceDetonationId`)
- * reveal immediately. DC cues use the pattern stagger `whenSec`; torpedo-hit
- * cues use `audioDelaySec` (arrival inside the resolved turn) plus a short
- * same-moment multi-hit stagger so bangs stay countable. Umpire Action log is
- * untouched.
+ * Sim / vessel health + subsystems stay at resolve-time truth; only presentation
+ * is held (HP bar, casualty lines, staged subsystems). Station chrome that
+ * mirrors those subsystems (hydrophone / radar / helm locks) should consume
+ * `subsystems` / `condition` from this hook — not raw `vessel.unit` — so Sensors
+ * do not go dark before the bang. Entries without a live `bridgeDetonations`
+ * cue (or no `sourceDetonationId`) reveal immediately. DC cues use the pattern
+ * stagger `whenSec`; torpedo-hit cues use `audioDelaySec` (arrival inside the
+ * resolved turn) plus a short same-moment multi-hit stagger so bangs stay
+ * countable. Umpire Action log is untouched.
  *
  * Reveals are scheduled from live `bridgeDetonations` (Sensors + Controls) and
  * again from Controls audio flush — first schedule wins (idempotent).

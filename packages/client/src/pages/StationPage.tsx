@@ -62,6 +62,7 @@ import { CountermeasuresControls } from '../components/CountermeasuresControls';
 import { DamageReportPanel } from '../components/DamageReportPanel';
 import { MoveDistanceReadout } from '../components/MoveDistanceReadout';
 import { useAudioSyncedDamageReport } from '../hooks/useAudioSyncedDamageReport';
+import { usePresentationSensorStations } from '../hooks/usePresentationSensorStations';
 import { resolveSunkCause, SunkModal } from '../components/SunkModal';
 import {
   depthChargeBatchWhenSecById,
@@ -239,21 +240,6 @@ export function StationPage() {
         vessel?.unit.orderedDepth ??
         vessel?.unit.position.depth ??
         0);
-  const expectedMove = useMemo(() => {
-    if (!vessel) return null;
-    return expectedMoveThisTurn({
-      type: vessel.unit.type,
-      class: vessel.unit.class,
-      maxSpeed: vessel.unit.maxSpeed,
-      speed: vessel.unit.speed,
-      depth: vessel.unit.position.depth,
-      orderedDepth: moveOrderedDepth,
-      eot: moveEot,
-      turnLengthSeconds: vessel.turnLengthSeconds,
-      propulsion: vessel.unit.subsystems?.propulsion,
-      condition: vessel.unit.condition,
-    });
-  }, [vessel, moveEot, moveOrderedDepth]);
   const canHelm = caps.has('helm');
   const canEot = caps.has('engineering') || caps.has('helm');
   const canRadar = caps.has('radar');
@@ -280,38 +266,6 @@ export function StationPage() {
   const opticsVariant: 'periscope' | 'lookout' =
     vessel?.unit.type === 'Submarine' ? 'periscope' : 'lookout';
   const opticsTabLabel = opticsVariant === 'lookout' ? 'Lookout' : 'Periscope';
-  /** Mast chrome follows optimistic overlay when set (remote RTT must not gate the button). */
-  const opticsMastRaised =
-    periOptimisticRaised !== null
-      ? periOptimisticRaised
-      : Boolean(vessel?.unit.periscopeRaised);
-  /**
-   * Scope-down blind: optimistic lower blinds immediately; optimistic raise
-   * unblinds chrome immediately (contacts fill when FoW arrives via SSE).
-   */
-  const opticsScopeDown =
-    opticsVariant === 'periscope' && periOptimisticRaised !== null
-      ? !periOptimisticRaised
-      : vessel?.periscopeUnavailableReason === 'scope_down';
-  const opticsHardUnavailable =
-    vessel?.periscopeOperational === false &&
-    vessel.periscopeUnavailableReason !== 'scope_down' &&
-    periOptimisticRaised !== true;
-  const streamOpticsContacts =
-    opticsScopeDown
-      ? EMPTY_PERISCOPE_CONTACTS
-      : (vessel?.periscopeContacts ?? EMPTY_PERISCOPE_CONTACTS);
-  const streamOpticsSightings =
-    opticsScopeDown
-      ? EMPTY_OPTICS_SIGHTINGS
-      : (vessel?.opticsSightings ??
-        vessel?.torpedoWakeCues ??
-        EMPTY_OPTICS_SIGHTINGS);
-  // Defer stream-driven optics picture so contact pick / compass stay urgent
-  // while a large remote SSE view reconciles. Settled FoW numbers still match.
-  const opticsContacts = useDeferredValue(streamOpticsContacts);
-  const opticsSightings = useDeferredValue(streamOpticsSightings);
-  const opticsOwnHeading = useDeferredValue(vessel?.unit.heading ?? 0);
   const sensorFocus =
     isSensors && (canRadar || canHydrophone || canActiveSonar || canPeriscope);
 
@@ -331,6 +285,61 @@ export function StationPage() {
         }
       : null,
   );
+  /** Presentation subsystems/condition for station chrome (matches blast reveal). */
+  const presentationSubs = syncedDamage.subsystems;
+  const presentationSensors = usePresentationSensorStations(
+    vessel,
+    vessel
+      ? {
+          condition: syncedDamage.condition,
+          subsystems: presentationSubs,
+          type: vessel.unit.type,
+        }
+      : null,
+  );
+  const expectedMove = useMemo(() => {
+    if (!vessel) return null;
+    return expectedMoveThisTurn({
+      type: vessel.unit.type,
+      class: vessel.unit.class,
+      maxSpeed: vessel.unit.maxSpeed,
+      speed: vessel.unit.speed,
+      depth: vessel.unit.position.depth,
+      orderedDepth: moveOrderedDepth,
+      eot: moveEot,
+      turnLengthSeconds: vessel.turnLengthSeconds,
+      propulsion: presentationSubs.propulsion,
+      condition: syncedDamage.condition,
+    });
+  }, [vessel, moveEot, moveOrderedDepth, presentationSubs.propulsion, syncedDamage.condition]);
+  /** Mast chrome follows optimistic overlay when set (remote RTT must not gate the button). */
+  const opticsMastRaised =
+    periOptimisticRaised !== null
+      ? periOptimisticRaised
+      : presentationSensors.periscopeRaised;
+  /**
+   * Scope-down blind: optimistic lower blinds immediately; optimistic raise
+   * unblinds chrome immediately (contacts fill when FoW arrives via SSE).
+   */
+  const opticsScopeDown =
+    opticsVariant === 'periscope' && periOptimisticRaised !== null
+      ? !periOptimisticRaised
+      : presentationSensors.periscopeUnavailableReason === 'scope_down';
+  const opticsHardUnavailable =
+    presentationSensors.periscopeOperational === false &&
+    presentationSensors.periscopeUnavailableReason !== 'scope_down' &&
+    periOptimisticRaised !== true;
+  const streamOpticsContacts = opticsScopeDown
+    ? EMPTY_PERISCOPE_CONTACTS
+    : presentationSensors.periscopeContacts;
+  const streamOpticsSightings = opticsScopeDown
+    ? EMPTY_OPTICS_SIGHTINGS
+    : presentationSensors.opticsSightings;
+  // Defer stream-driven optics picture so contact pick / compass stay urgent
+  // while a large remote SSE view reconciles. Settled FoW numbers still match.
+  const opticsContacts = useDeferredValue(streamOpticsContacts);
+  const opticsSightings = useDeferredValue(streamOpticsSightings);
+  const opticsOwnHeading = useDeferredValue(vessel?.unit.heading ?? 0);
   const scheduleDamageRevealRef = useRef(syncedDamage.scheduleRevealForDetonation);
   scheduleDamageRevealRef.current = syncedDamage.scheduleRevealForDetonation;
 
@@ -786,11 +795,11 @@ export function StationPage() {
   const hearOwnControlsSonar =
     onControlsBridge &&
     canActiveSonar &&
-    Boolean(vessel?.unit.activeSonarEnabled) &&
+    presentationSensors.activeSonarEnabled &&
     vessel != null &&
-    vessel.unit.condition !== 'sunk' &&
-    vessel.unit.condition !== 'sinking' &&
-    vessel.unit.subsystems?.activeSonar !== 'disabled';
+    syncedDamage.condition !== 'sunk' &&
+    syncedDamage.condition !== 'sinking' &&
+    presentationSubs.activeSonar !== 'disabled';
 
   // Submarine Controls: occasional hull creaks while submerged (shallow of crush).
   useEffect(() => {
@@ -1336,10 +1345,11 @@ export function StationPage() {
   // Drop mast overlay once the streamed view agrees (SSE caught up).
   useEffect(() => {
     if (periOptimisticRaised === null || !vessel) return;
-    if (Boolean(vessel.unit.periscopeRaised) === periOptimisticRaised) {
+    // Match presentation mast (held through blast reveal), not resolve-time FoW.
+    if (presentationSensors.periscopeRaised === periOptimisticRaised) {
       setPeriOptimisticRaised(null);
     }
-  }, [vessel, periOptimisticRaised]);
+  }, [vessel, periOptimisticRaised, presentationSensors.periscopeRaised]);
 
   useEffect(() => {
     return () => {
@@ -1599,36 +1609,38 @@ export function StationPage() {
                 <div className="station-instrument-head">
                   <h2>Radar · PPI</h2>
                   <p className="muted station-instrument-blurb">
-                    {vessel.radarUnavailableReason === 'submerged'
+                    {presentationSensors.radarUnavailableReason === 'submerged'
                       ? ''
-                      : vessel.radarOperational
+                      : presentationSensors.radarOperational
                         ? `Surface search · ${vessel.radarMaxRangeNm ?? 25} nm`
-                        : vessel.radarUnavailableReason === 'no_sensor'
+                        : presentationSensors.radarUnavailableReason === 'no_sensor'
                           ? 'No radar set installed'
-                          : vessel.radarUnavailableReason === 'sunk'
+                          : presentationSensors.radarUnavailableReason === 'sunk'
                             ? sunkSetOfflineBlurb
-                            : vessel.radarUnavailableReason === 'sensors_disabled'
+                            : presentationSensors.radarUnavailableReason ===
+                                'sensors_disabled'
                               ? 'Sensors disabled'
                               : ''}
                   </p>
                 </div>
-                {vessel.radarOperational === false ? (
+                {presentationSensors.radarOperational === false ? (
                   <div className="radar-unavailable" role="status">
                     <p className="readout" style={{ margin: 0 }}>
-                      {vessel.radarUnavailableReason === 'submerged'
+                      {presentationSensors.radarUnavailableReason === 'submerged'
                         ? 'Radar unavailable — submerged'
-                        : vessel.radarUnavailableReason === 'sunk'
+                        : presentationSensors.radarUnavailableReason === 'sunk'
                           ? sunkUnavailableLine('Radar')
-                          : vessel.radarUnavailableReason === 'sensors_disabled'
+                          : presentationSensors.radarUnavailableReason ===
+                              'sensors_disabled'
                             ? 'Radar unavailable — sensors disabled'
-                            : vessel.radarUnavailableReason === 'no_sensor'
+                            : presentationSensors.radarUnavailableReason === 'no_sensor'
                               ? 'Radar unavailable — no sensor'
                               : 'Radar unavailable'}
                     </p>
                   </div>
                 ) : (
                   <RadarScope
-                    contacts={vessel.radarContacts ?? []}
+                    contacts={presentationSensors.radarContacts}
                     maxRangeNm={vessel.radarMaxRangeNm ?? 25}
                     ownHeading={vessel.unit.heading}
                   />
@@ -1644,24 +1656,26 @@ export function StationPage() {
                   </h2>
                   <p className="muted station-instrument-blurb">
                     {opticsVariant === 'lookout'
-                      ? vessel.periscopeOperational
+                      ? presentationSensors.periscopeOperational
                         ? `Visual · ${vessel.periscopeMaxRangeNm ?? 6} nm · bridge lookout`
-                        : vessel.periscopeUnavailableReason === 'no_sensor'
+                        : presentationSensors.periscopeUnavailableReason === 'no_sensor'
                           ? 'No lookout set installed'
-                          : vessel.periscopeUnavailableReason === 'sunk'
+                          : presentationSensors.periscopeUnavailableReason === 'sunk'
                             ? sunkSetOfflineBlurb
                             : ''
-                      : vessel.periscopeOperational
+                      : presentationSensors.periscopeOperational || opticsMastRaised
                         ? `Visual · ${vessel.periscopeMaxRangeNm ?? 6} nm · mast UP · depth ≤ ${PERISCOPE_DEPTH_M} m`
-                        : vessel.periscopeUnavailableReason === 'scope_down'
+                        : presentationSensors.periscopeUnavailableReason === 'scope_down' ||
+                            opticsScopeDown
                           ? 'Mast DOWN — blind'
-                          : vessel.periscopeUnavailableReason === 'too_deep'
+                          : presentationSensors.periscopeUnavailableReason === 'too_deep'
                             ? `Depth ≤ ${PERISCOPE_DEPTH_M} m required`
-                            : vessel.periscopeUnavailableReason === 'no_sensor'
+                            : presentationSensors.periscopeUnavailableReason === 'no_sensor'
                               ? 'No periscope set installed'
-                              : vessel.periscopeUnavailableReason === 'sunk'
+                              : presentationSensors.periscopeUnavailableReason === 'sunk'
                                 ? sunkSetOfflineBlurb
-                                : vessel.periscopeUnavailableReason === 'sensors_disabled'
+                                : presentationSensors.periscopeUnavailableReason ===
+                                    'sensors_disabled'
                                   ? 'Sensors disabled'
                                   : ''}
                   </p>
@@ -1674,11 +1688,12 @@ export function StationPage() {
                         className={opticsMastRaised ? 'primary' : undefined}
                         disabled={
                           periBusy ||
-                          vessel.periscopeUnavailableReason === 'no_sensor' ||
-                          vessel.periscopeUnavailableReason === 'sunk' ||
-                          vessel.periscopeUnavailableReason === 'sensors_disabled' ||
+                          presentationSensors.periscopeUnavailableReason === 'no_sensor' ||
+                          presentationSensors.periscopeUnavailableReason === 'sunk' ||
+                          presentationSensors.periscopeUnavailableReason ===
+                            'sensors_disabled' ||
                           (!opticsMastRaised &&
-                            (vessel.periscopeUnavailableReason === 'too_deep' ||
+                            (presentationSensors.periscopeUnavailableReason === 'too_deep' ||
                               vessel.unit.position.depth > PERISCOPE_DEPTH_M))
                         }
                         aria-pressed={opticsMastRaised}
@@ -1697,13 +1712,14 @@ export function StationPage() {
                 {opticsHardUnavailable ? (
                   <div className="radar-unavailable" role="status">
                     <p className="readout" style={{ margin: 0 }}>
-                      {vessel.periscopeUnavailableReason === 'too_deep'
+                      {presentationSensors.periscopeUnavailableReason === 'too_deep'
                         ? 'Periscope unavailable — too deep'
-                        : vessel.periscopeUnavailableReason === 'sunk'
+                        : presentationSensors.periscopeUnavailableReason === 'sunk'
                           ? sunkUnavailableLine(opticsTabLabel)
-                          : vessel.periscopeUnavailableReason === 'sensors_disabled'
+                          : presentationSensors.periscopeUnavailableReason ===
+                              'sensors_disabled'
                             ? `${opticsTabLabel} unavailable — sensors disabled`
-                            : vessel.periscopeUnavailableReason === 'no_sensor'
+                            : presentationSensors.periscopeUnavailableReason === 'no_sensor'
                               ? `${opticsTabLabel} unavailable — no sensor`
                               : `${opticsTabLabel} unavailable`}
                     </p>
@@ -1726,36 +1742,39 @@ export function StationPage() {
                 <div className="station-instrument-head">
                   <h2>Hydrophone · Bearing listen</h2>
                   <p className="muted station-instrument-blurb">
-                    {vessel.hydrophoneOperational
+                    {presentationSensors.hydrophoneOperational
                       ? `Passive · eff ~${Math.round(vessel.hydrophoneEffectiveRangeNm ?? vessel.hydrophoneMaxRangeNm ?? 30)} / ${vessel.hydrophoneMaxRangeNm ?? 30} nm`
-                      : vessel.hydrophoneUnavailableReason === 'surfaced'
+                      : presentationSensors.hydrophoneUnavailableReason === 'surfaced'
                         ? 'Submerged only (depth > 5 m)'
-                        : vessel.hydrophoneUnavailableReason === 'no_sensor'
+                        : presentationSensors.hydrophoneUnavailableReason === 'no_sensor'
                           ? 'No hydrophone set installed'
-                          : vessel.hydrophoneUnavailableReason === 'sunk'
+                          : presentationSensors.hydrophoneUnavailableReason === 'sunk'
                             ? sunkSetOfflineBlurb
-                            : vessel.hydrophoneUnavailableReason === 'sensors_disabled'
+                            : presentationSensors.hydrophoneUnavailableReason ===
+                                'sensors_disabled'
                               ? 'Sensors disabled'
                               : ''}
                   </p>
                 </div>
-                {vessel.hydrophoneOperational === false ? (
+                {presentationSensors.hydrophoneOperational === false ? (
                   <div className="radar-unavailable" role="status">
                     <p className="readout" style={{ margin: 0 }}>
-                      {vessel.hydrophoneUnavailableReason === 'surfaced'
+                      {presentationSensors.hydrophoneUnavailableReason === 'surfaced'
                         ? 'Hydrophone unavailable — surfaced'
-                        : vessel.hydrophoneUnavailableReason === 'sunk'
+                        : presentationSensors.hydrophoneUnavailableReason === 'sunk'
                           ? sunkUnavailableLine('Hydrophone')
-                          : vessel.hydrophoneUnavailableReason === 'sensors_disabled'
+                          : presentationSensors.hydrophoneUnavailableReason ===
+                              'sensors_disabled'
                             ? 'Hydrophone unavailable — sensors disabled'
-                            : vessel.hydrophoneUnavailableReason === 'no_sensor'
+                            : presentationSensors.hydrophoneUnavailableReason ===
+                                'no_sensor'
                               ? 'Hydrophone unavailable — no sensor'
                               : 'Hydrophone unavailable'}
                     </p>
                   </div>
                 ) : (
                   <HydrophoneScope
-                    contacts={vessel.hydrophoneContacts ?? []}
+                    contacts={presentationSensors.hydrophoneContacts}
                     maxRangeNm={vessel.hydrophoneMaxRangeNm ?? 30}
                     effectiveRangeNm={vessel.hydrophoneEffectiveRangeNm}
                     listenQuality={vessel.hydrophoneListenQuality}
@@ -1784,35 +1803,41 @@ export function StationPage() {
                 <div className="sonar-toggle-row">
                   <button
                     type="button"
-                    className={vessel.unit.activeSonarEnabled ? 'primary' : undefined}
+                    className={
+                      presentationSensors.activeSonarEnabled ? 'primary' : undefined
+                    }
                     disabled={
                       sonarBusy ||
-                      vessel.sonarUnavailableReason === 'no_sensor' ||
-                      vessel.sonarUnavailableReason === 'sunk' ||
-                      vessel.sonarUnavailableReason === 'sensors_disabled'
+                      presentationSensors.sonarUnavailableReason === 'no_sensor' ||
+                      presentationSensors.sonarUnavailableReason === 'sunk' ||
+                      presentationSensors.sonarUnavailableReason === 'sensors_disabled'
                     }
-                    aria-pressed={vessel.unit.activeSonarEnabled}
-                    onClick={() => void toggleActiveSonar(!vessel.unit.activeSonarEnabled)}
+                    aria-pressed={presentationSensors.activeSonarEnabled}
+                    onClick={() =>
+                      void toggleActiveSonar(!presentationSensors.activeSonarEnabled)
+                    }
                   >
-                    {vessel.unit.activeSonarEnabled ? 'Search sonar ON' : 'Search sonar OFF'}
+                    {presentationSensors.activeSonarEnabled
+                      ? 'Search sonar ON'
+                      : 'Search sonar OFF'}
                   </button>
                   <span className="mono muted">
-                    {vessel.unit.activeSonarEnabled ? 'PINGING' : 'STANDBY'}
+                    {presentationSensors.activeSonarEnabled ? 'PINGING' : 'STANDBY'}
                   </span>
                 </div>
-                {vessel.sonarUnavailableReason === 'no_sensor' ||
-                vessel.sonarUnavailableReason === 'sunk' ||
-                vessel.sonarUnavailableReason === 'sensors_disabled' ? (
+                {presentationSensors.sonarUnavailableReason === 'no_sensor' ||
+                presentationSensors.sonarUnavailableReason === 'sunk' ||
+                presentationSensors.sonarUnavailableReason === 'sensors_disabled' ? (
                   <div className="radar-unavailable" role="status">
                     <p className="readout" style={{ margin: 0 }}>
-                      {vessel.sonarUnavailableReason === 'sunk'
+                      {presentationSensors.sonarUnavailableReason === 'sunk'
                         ? sunkUnavailableLine('Sonar')
-                        : vessel.sonarUnavailableReason === 'sensors_disabled'
+                        : presentationSensors.sonarUnavailableReason === 'sensors_disabled'
                           ? 'Sonar unavailable — sensors disabled'
                           : 'Sonar unavailable — no sensor'}
                     </p>
                   </div>
-                ) : vessel.sonarOperational === false ? (
+                ) : presentationSensors.sonarOperational === false ? (
                   <div className="radar-unavailable" role="status">
                     <p className="readout" style={{ margin: 0 }}>
                       Active sonar standby — toggle ON to search
@@ -1820,11 +1845,11 @@ export function StationPage() {
                   </div>
                 ) : (
                   <ActiveSonarScope
-                    contacts={vessel.sonarContacts ?? []}
+                    contacts={presentationSensors.sonarContacts}
                     maxRangeNm={vessel.sonarMaxRangeNm ?? 8}
                     halfAngleDeg={vessel.sonarHalfAngleDeg ?? 30}
                     ownHeading={vessel.unit.heading}
-                    pinging={Boolean(vessel.unit.activeSonarEnabled)}
+                    pinging={presentationSensors.activeSonarEnabled}
                   />
                 )}
               </section>
@@ -1997,15 +2022,15 @@ export function StationPage() {
                     onDraftCourseChange={setCourse}
                     disabled={
                       !vessel.canSubmitOrders ||
-                      vessel.unit.subsystems?.steering === 'stuck' ||
-                      vessel.unit.subsystems?.steering === 'disabled'
+                      presentationSubs.steering === 'stuck' ||
+                      presentationSubs.steering === 'disabled'
                     }
                     turnRate={vessel.unit.turnRate}
                   >
-                    {(vessel.unit.subsystems?.steering === 'stuck' ||
-                      vessel.unit.subsystems?.steering === 'disabled') && (
+                    {(presentationSubs.steering === 'stuck' ||
+                      presentationSubs.steering === 'disabled') && (
                       <p className="dive-risk dive-risk--warn" role="status">
-                        {vessel.unit.subsystems?.steering === 'stuck'
+                        {presentationSubs.steering === 'stuck'
                           ? 'Rudder stuck — course orders blocked until repaired.'
                           : 'Steering disabled — course orders blocked until repaired.'}
                       </p>
@@ -2021,8 +2046,8 @@ export function StationPage() {
                       increaseLabel={`Steer course ${COURSE_NUDGE_DEG} degree to starboard. Hold to repeat.`}
                       disabled={
                         !vessel.canSubmitOrders ||
-                        vessel.unit.subsystems?.steering === 'stuck' ||
-                        vessel.unit.subsystems?.steering === 'disabled'
+                        presentationSubs.steering === 'stuck' ||
+                        presentationSubs.steering === 'disabled'
                       }
                     />
                     <div className="control-actions">
@@ -2031,8 +2056,8 @@ export function StationPage() {
                         type="button"
                         disabled={
                           !vessel.canSubmitOrders ||
-                          vessel.unit.subsystems?.steering === 'stuck' ||
-                          vessel.unit.subsystems?.steering === 'disabled'
+                          presentationSubs.steering === 'stuck' ||
+                          presentationSubs.steering === 'disabled'
                         }
                         onClick={() => void submit({ course })}
                       >
@@ -2058,8 +2083,8 @@ export function StationPage() {
                   orderStepM={SUBMARINE_DEPTH_ORDER_STEP_M}
                   disabled={!vessel.canSubmitOrders}
                   divePlanesLocked={
-                    vessel.unit.subsystems?.divePlanes === 'stuck' ||
-                    vessel.unit.subsystems?.divePlanes === 'disabled'
+                    presentationSubs.divePlanes === 'stuck' ||
+                    presentationSubs.divePlanes === 'disabled'
                   }
                   onSubmit={(d, opts) => {
                     const blow = Boolean(opts?.emergencyBlow);
@@ -2166,7 +2191,7 @@ export function StationPage() {
                     <div className="station-instrument-head">
                       <h2>Engine orders</h2>
                     </div>
-                    {vessel.unit.subsystems?.propulsion === 'disabled' && (
+                    {presentationSubs.propulsion === 'disabled' && (
                       <p className="dive-risk dive-risk--warn" role="status">
                         Propulsion disabled — engine orders blocked until repaired.
                       </p>
@@ -2176,7 +2201,7 @@ export function StationPage() {
                       onChange={setEot}
                       disabled={
                         !vessel.canSubmitOrders ||
-                        vessel.unit.subsystems?.propulsion === 'disabled'
+                        presentationSubs.propulsion === 'disabled'
                       }
                     />
                     <div className="control-actions">
@@ -2185,7 +2210,7 @@ export function StationPage() {
                         type="button"
                         disabled={
                           !vessel.canSubmitOrders ||
-                          vessel.unit.subsystems?.propulsion === 'disabled'
+                          presentationSubs.propulsion === 'disabled'
                         }
                         onClick={() => {
                           // Engine-room confirm ring: only when locking in a real EOT change
