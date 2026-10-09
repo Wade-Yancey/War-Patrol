@@ -120,3 +120,27 @@ export const ALL_EOT_SETTINGS: EotSetting[] = [
   'ahead_full',
   'ahead_flank',
 ];
+
+/**
+ * Pick the telegraph bell whose target speed is closest to `speedKn`.
+ * Used when the umpire fiats hull speed so the next resolve does not
+ * accelerate back toward a stale standing / pending EOT.
+ */
+export function nearestEotForSpeed(
+  type: VesselType | string | undefined,
+  speedKn: number,
+  maxSpeed: number,
+): EotSetting {
+  const speed = Number.isFinite(speedKn) ? speedKn : 0;
+  let best: EotSetting = 'stop';
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (const eot of ALL_EOT_SETTINGS) {
+    const target = targetSpeedForUnit(type, eot, maxSpeed);
+    const dist = Math.abs(target - speed);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = eot;
+    }
+  }
+  return best;
+}
