@@ -77,7 +77,8 @@ export function DepthChargeControls({
       <div className="station-instrument-head">
         <h2>Depth charges</h2>
         <p className="muted station-instrument-blurb">
-          Rack {rackStatus} · reload {DEPTH_CHARGE_RELOAD_TURNS} turns (optional)
+          Rack {rackStatus} · reload {DEPTH_CHARGE_RELOAD_TURNS} turns (~
+          {DEPTH_CHARGE_RELOAD_TURNS * 3} min) then rack refills
         </p>
       </div>
 

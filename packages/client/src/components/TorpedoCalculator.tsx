@@ -215,7 +215,8 @@ export function TorpedoCalculator({
         <p className="muted station-instrument-blurb">
           {TORPEDO_SPEED_KN} kn · {TORPEDO_MAX_RUN_NM} nm · bow ±
           {TORPEDO_FORWARD_ARC_HALF_DEG}° / stern ±{TORPEDO_AFT_ARC_HALF_DEG}° · reload{' '}
-          {TORPEDO_RELOAD_TURNS} turns (optional; ready tubes stay live)
+          {TORPEDO_RELOAD_TURNS} turns (~{TORPEDO_RELOAD_TURNS * 3} min) then tubes refill;
+          ready tubes stay live
         </p>
       </div>
 

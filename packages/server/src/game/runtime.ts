@@ -1362,7 +1362,8 @@ export class GameRuntime {
   /**
    * Immediate Controls action: start a torpedo-room reload countdown after a salvo
    * (optional — remaining ready fish stay fireable during the countdown).
-   * Completes over {@link TORPEDO_RELOAD_TURNS} resolves — not an instant rearm.
+   * Completes over {@link TORPEDO_RELOAD_TURNS} resolves and refills the room to
+   * capacity — not an instant umpire rearm.
    */
   async startTorpedoReload(
     gameId: string,
@@ -1398,6 +1399,7 @@ export class GameRuntime {
   /**
    * Immediate Controls action: start a depth-charge rack reload countdown after a drop
    * (optional — remaining ready charges stay droppable during the countdown).
+   * Completes over {@link DEPTH_CHARGE_RELOAD_TURNS} resolves and refills the rack.
    */
   async startDepthChargeReload(
     gameId: string,
@@ -1424,6 +1426,7 @@ export class GameRuntime {
 
   /**
    * Immediate Controls action: start a deck-gun reload countdown after a shot.
+   * Completes over {@link DECK_GUN_RELOAD_TURNS} resolves and refills the magazine.
    */
   async startDeckGunReload(
     gameId: string,

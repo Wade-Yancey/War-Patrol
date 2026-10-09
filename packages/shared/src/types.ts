@@ -716,13 +716,13 @@ export interface UnitState {
   torpedoForward: number;
   /** Aft room fish remaining (fleet subs; capacity 4). */
   torpedoAft: number;
-  /** True after a forward salvo until a reload cycle completes. */
+  /** True after a forward salvo until a reload cycle completes (then room refills). */
   torpedoForwardAwaitingReload: boolean;
-  /** True after an aft salvo until a reload cycle completes. */
+  /** True after an aft salvo until a reload cycle completes (then room refills). */
   torpedoAftAwaitingReload: boolean;
-  /** Resolved turns left on an in-progress forward reload (0 = not counting). */
+  /** Resolved turns left on an in-progress forward reload (0 = not counting / done). */
   torpedoForwardReloadTurnsRemaining: number;
-  /** Resolved turns left on an in-progress aft reload (0 = not counting). */
+  /** Resolved turns left on an in-progress aft reload (0 = not counting / done). */
   torpedoAftReloadTurnsRemaining: number;
   /**
    * Turn number when a torpedo-room reload was started (acoustic cue stamp).
