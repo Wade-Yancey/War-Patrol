@@ -108,6 +108,8 @@ import {
   hydrophoneSelfNoise,
   hydrophoneListenQuality,
   hydrophoneDepthRadiatedGain,
+  hydrophonePropellerPlaybackRateScale,
+  hydrophonePropellerPlaybackRate,
   isHydrophoneReloadCueLive,
   HYDROPHONE_LISTEN_QUALITY_FLOOR,
   HYDROPHONE_SELF_NOISE_FLANK,
@@ -3484,6 +3486,20 @@ async function main() {
     const flankLvl = hydrophoneRadiatedSourceLevel(flankSub);
     const deepLvl = hydrophoneRadiatedSourceLevel(deepFlank);
     check('creep radiated quieter than flank', creepLvl > 0 && creepLvl < flankLvl);
+    check(
+      'propeller playback faster at flank sourceLevel than creep',
+      hydrophonePropellerPlaybackRateScale(flankLvl) >
+        hydrophonePropellerPlaybackRateScale(creepLvl),
+    );
+    check(
+      'propeller playback rate combines identity + source scale',
+      Math.abs(
+        hydrophonePropellerPlaybackRate('contact-a', 1) /
+          hydrophonePropellerPlaybackRateScale(1) -
+          hydrophonePropellerPlaybackRate('contact-a', 0.35) /
+            hydrophonePropellerPlaybackRateScale(0.35),
+      ) < 1e-9,
+    );
     check(
       'depth attenuates radiated noise',
       deepLvl < flankLvl &&

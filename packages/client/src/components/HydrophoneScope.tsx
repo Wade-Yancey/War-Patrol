@@ -4,6 +4,7 @@ import {
   formatHydrophoneRangeCue,
   hydrophoneContactGain,
   hydrophoneContactVoiceOffset,
+  hydrophonePropellerPlaybackRate,
   hydrophoneListenCue,
   normalizeHeading,
   type HydrophoneAssumedSource,
@@ -304,8 +305,7 @@ function HydrophoneScopeInner({
         const source = ctx.createBufferSource();
         source.buffer = buffer;
         source.loop = true;
-        const { playbackRate, loopStartFraction } = hydrophoneContactVoiceOffset(c.id);
-        source.playbackRate.value = playbackRate;
+        const { loopStartFraction } = hydrophoneContactVoiceOffset(c.id);
         // Offset loop phase so overlapping contacts do not stack identically.
         const offsetSec = loopStartFraction * Math.max(0.01, buffer.duration);
         source.loopStart = offsetSec;
@@ -320,6 +320,12 @@ function HydrophoneScopeInner({
         voice = { id: c.id, source, gain };
         voicesRef.current.set(c.id, voice);
       }
+      // Refresh rate every sync — radiated sourceLevel (speed proxy) changes
+      // across turns; do not freeze the creation-time rate.
+      voice.source.playbackRate.value = hydrophonePropellerPlaybackRate(
+        c.id,
+        c.sourceLevel ?? 1,
+      );
       const target = hydrophoneContactGain(
         c.rangeNm,
         bearing,

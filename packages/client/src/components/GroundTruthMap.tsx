@@ -741,7 +741,7 @@ function GroundTruthMapInner({
       return { x: u * W, y: v * H, u, v };
     };
 
-    const fish = torpedoes.map((t) => {
+    const fishRaw = torpedoes.map((t) => {
       const color = unitAccentById.get(t.firerUnitId) ?? '#ffc857';
       const launch = t.launchPosition ?? t.path?.[0] ?? t.position;
       const pathPts = (t.path?.length ? t.path : [{ lat: launch.lat, lon: launch.lon }]).map((p) =>
@@ -779,6 +779,46 @@ function GroundTruthMapInner({
         showHeadingPip: tipLen > 0,
         label: statusLabel,
         onPlot: uvBBoxHitsPlot([...trackPts, tip, origin]),
+      };
+    });
+
+    // Fan out co-located hit tips so multi-fish explosions read as distinct
+    // events on GT / AAR (same presentation path — display offset only).
+    const HIT_CLUSTER_PX = 10;
+    const HIT_FAN_RADIUS_PX = 11;
+    const hitTips = fishRaw.filter((f) => f.status === 'hit');
+    const hitOffsetById = new Map<string, { dx: number; dy: number }>();
+    const hitAssigned = new Set<string>();
+    for (const seed of hitTips) {
+      if (hitAssigned.has(seed.id)) continue;
+      const cluster = hitTips.filter((o) => {
+        if (hitAssigned.has(o.id)) return false;
+        const dx = o.tip.x - seed.tip.x;
+        const dy = o.tip.y - seed.tip.y;
+        return dx * dx + dy * dy <= HIT_CLUSTER_PX * HIT_CLUSTER_PX;
+      });
+      cluster.sort((a, b) => a.id.localeCompare(b.id));
+      for (const m of cluster) hitAssigned.add(m.id);
+      if (cluster.length < 2) continue;
+      for (let i = 0; i < cluster.length; i++) {
+        const ang = (Math.PI * 2 * i) / cluster.length - Math.PI / 2;
+        hitOffsetById.set(cluster[i]!.id, {
+          dx: Math.cos(ang) * HIT_FAN_RADIUS_PX,
+          dy: Math.sin(ang) * HIT_FAN_RADIUS_PX,
+        });
+      }
+    }
+    const fish = fishRaw.map((f) => {
+      const off = hitOffsetById.get(f.id);
+      if (!off) return f;
+      const tip = { ...f.tip, x: f.tip.x + off.dx, y: f.tip.y + off.dy };
+      return {
+        ...f,
+        tip,
+        tipX: f.tipX + off.dx,
+        tipY: f.tipY + off.dy,
+        // Display-only tip nudge — keep plot membership from true geometry.
+        onPlot: f.onPlot,
       };
     });
 

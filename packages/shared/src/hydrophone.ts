@@ -492,7 +492,9 @@ export function hydrophoneListenCue(
 
 /**
  * Stable per-contact voice coloring so multiple propellers do not stack identically.
- * Returns playbackRate (~0.92–1.08) and loop start fraction (0–1 of buffer length).
+ * Base playbackRate (~0.92–1.08) is identity jitter only — callers should multiply by
+ * {@link hydrophonePropellerPlaybackRateScale} so screw tempo tracks radiated speed.
+ * Loop start fraction (0–1 of buffer length) stays identity-stable.
  */
 export function hydrophoneContactVoiceOffset(contactId: string): {
   playbackRate: number;
@@ -507,6 +509,28 @@ export function hydrophoneContactVoiceOffset(contactId: string): {
   const playbackRate = 0.92 + ((u % 17) / 16) * 0.16;
   const loopStartFraction = (u % 1000) / 1000;
   return { playbackRate, loopStartFraction };
+}
+
+/**
+ * Soft screw-tempo scale from FoW radiated `sourceLevel` (speed/depth proxy).
+ * Creep (~0.35) → ~0.88×; flank (~1) → ~1.08×; noisemaker-loud → slight extra.
+ * Keeps identity voice distinct while making faster/louder contacts audibly quicker
+ * than creep — was previously ID-only and sticky for the life of the voice node.
+ */
+export function hydrophonePropellerPlaybackRateScale(sourceLevel: number): number {
+  const level = Number.isFinite(sourceLevel) ? Math.max(0, sourceLevel) : 1;
+  // Map typical radiated band [0.35 creep … 1.0 flank] → [0.88 … 1.08].
+  const t = Math.min(1.25, level) / 1;
+  return 0.82 + 0.26 * t;
+}
+
+/** Combined propeller playback rate: identity jitter × radiated speed scale. */
+export function hydrophonePropellerPlaybackRate(
+  contactId: string,
+  sourceLevel: number = 1,
+): number {
+  const { playbackRate } = hydrophoneContactVoiceOffset(contactId);
+  return playbackRate * hydrophonePropellerPlaybackRateScale(sourceLevel);
 }
 
 /**
