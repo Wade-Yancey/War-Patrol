@@ -33,6 +33,8 @@ export interface DiveControlsProps {
    * preset is applied (Surface / dial / other presets omit the flag).
    */
   onSubmit: (depthM: number, opts?: { emergencyBlow?: boolean }) => void;
+  /** True while a depth/order write is in flight (pressed chrome; not a hard lock). */
+  writePending?: boolean;
 }
 
 /**
@@ -49,6 +51,7 @@ export function DiveControls({
   disabled = false,
   divePlanesLocked = false,
   onSubmit,
+  writePending = false,
 }: DiveControlsProps) {
   const depthLabel = formatCoarseDepthMeters(depth);
   const orderedLabel = formatCoarseDepthMeters(orderedDepth);
@@ -208,12 +211,13 @@ export function DiveControls({
 
       <div className="control-actions">
         <button
-          className="primary"
+          className={['primary', writePending ? 'is-pending' : ''].filter(Boolean).join(' ')}
           type="button"
           disabled={ordinaryDisabled}
+          aria-busy={writePending || undefined}
           onClick={() => submitDepthOrder(draftDepth)}
         >
-          Submit depth
+          {writePending ? 'Submitting…' : 'Submit depth'}
         </button>
       </div>
 

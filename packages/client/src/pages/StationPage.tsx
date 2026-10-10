@@ -28,19 +28,21 @@ import {
   normalizeHeading,
   torpedoHitControlsGain,
   type ControlsInstrumentTab,
-  type DepthChargeDropOrder,
-  type DeckGunFireOrder,
   type EotSetting,
-  type NoisemakerDeployOrder,
   type OpticsSighting,
   type PeriscopeContact,
-  type TorpedoFireOrder,
+  type UnitOrders,
   type VesselView,
 } from '@war-patrol/shared';
 import { api } from '../api/client';
 import { clearAuthToken, getAuthToken, setAuthToken } from '../api/authStorage';
 import { playEngineOrderBell } from '../audio/engineOrderBell';
 import { useGameStream } from '../hooks/useGameStream';
+import {
+  mergeOrdersOptimistic,
+  ordersContentEqual,
+  type StationOrdersPatch,
+} from '../ordersOptimistic';
 import { TurnStatus } from '../components/TurnStatus';
 import { CrtShell } from '../components/CrtShell';
 import { EotTelegraph } from '../components/EotTelegraph';
@@ -165,6 +167,13 @@ export function StationPage() {
   const [sensorTab, setSensorTab] = useState<SensorTab | null>(null);
   const [controlsTab, setControlsTab] = useState<ControlsTab>('helm');
   const [sonarBusy, setSonarBusy] = useState(false);
+  /**
+   * Local-first active-sonar latch — paints immediately; cleared when SSE matches
+   * (or on write failure). Same remote-RTT pattern as mast UP/DOWN.
+   */
+  const [sonarOptimisticEnabled, setSonarOptimisticEnabled] = useState<boolean | null>(
+    null,
+  );
   const [periBusy, setPeriBusy] = useState(false);
   /**
    * Local-first mast overlay — UI follows this immediately; network write is
@@ -173,13 +182,31 @@ export function StationPage() {
   const [periOptimisticRaised, setPeriOptimisticRaised] = useState<boolean | null>(
     null,
   );
+  /**
+   * Optimistic of-record orders: paint on click, refine from POST body, clear
+   * when SSE catches up. Avoids waiting a full tunnel SSE cycle for ORD chrome.
+   */
+  const [ordersOverlay, setOrdersOverlay] = useState<UnitOrders | null>(null);
+  /** In-flight order POSTs (latest-wins; not a hard lock against other fields). */
+  const [orderWriteInFlight, setOrderWriteInFlight] = useState(0);
   const [weaponReloadBusy, setWeaponReloadBusy] = useState(false);
+  /** Local-first reload latch until SSE awaitingReload matches. */
+  const [reloadOptimistic, setReloadOptimistic] = useState<{
+    torpedoForward?: boolean;
+    torpedoAft?: boolean;
+    depthCharges?: boolean;
+    deckGun?: boolean;
+  }>({});
   /** Own-ship sunk popup — open until Acknowledge; reset if hull returns afloat. */
   const [sunkModalOpen, setSunkModalOpen] = useState(false);
   const sunkModalAckedRef = useRef(false);
   const periWriteTimerRef = useRef<number | null>(null);
   const periWriteGenRef = useRef(0);
   const periDesiredRaisedRef = useRef<boolean | null>(null);
+  const orderWriteGenRef = useRef(0);
+  const ordersOverlayRef = useRef<UnitOrders | null>(null);
+  const turnNumberRef = useRef<number | null>(null);
+  const sonarWriteGenRef = useRef(0);
 
   const { view, stateVersion, connected, error } = useGameStream({
     gameId,
@@ -193,7 +220,45 @@ export function StationPage() {
   });
 
   const vessel = view?.role === 'vessel' ? (view as VesselView) : null;
+  /** Pending of-record for chrome: overlay first, else streamed unit.orders. */
+  const displayOrders: UnitOrders = ordersOverlay ?? vessel?.unit.orders ?? {};
+  const orderWritePending = orderWriteInFlight > 0;
   const faction = vessel?.unit.faction;
+
+  useEffect(() => {
+    ordersOverlayRef.current = ordersOverlay;
+  }, [ordersOverlay]);
+
+  // Drop order overlay once SSE of-record matches (or after resolve clears orders).
+  useEffect(() => {
+    if (!vessel || !ordersOverlay) return;
+    if (ordersContentEqual(vessel.unit.orders, ordersOverlay)) {
+      setOrdersOverlay(null);
+      return;
+    }
+    // Turn resolve / reopen emptied stream orders while we were not writing.
+    if (
+      orderWriteInFlight === 0 &&
+      !hasPendingOrders(vessel.unit.orders) &&
+      hasPendingOrders(ordersOverlay) &&
+      !vessel.canSubmitOrders
+    ) {
+      setOrdersOverlay(null);
+    }
+  }, [vessel, ordersOverlay, orderWriteInFlight]);
+
+  // New turn number → drop stale optimistic of-record (resolve applied).
+  useEffect(() => {
+    const n = vessel?.turn.number ?? null;
+    if (n == null) return;
+    if (turnNumberRef.current != null && turnNumberRef.current !== n) {
+      setOrdersOverlay(null);
+      setOrderWriteInFlight(0);
+      orderWriteGenRef.current += 1;
+      setReloadOptimistic({});
+    }
+    turnNumberRef.current = n;
+  }, [vessel?.turn.number]);
   const speedCeiling = vessel
     ? effectiveMaxSpeed({
         type: vessel.unit.type,
@@ -333,6 +398,11 @@ export function StationPage() {
     periOptimisticRaised !== null
       ? periOptimisticRaised
       : presentationSensors.periscopeRaised;
+  /** Active-sonar latch chrome — optimistic first so remote taps are not dead. */
+  const sonarLatchEnabled =
+    sonarOptimisticEnabled !== null
+      ? sonarOptimisticEnabled
+      : presentationSensors.activeSonarEnabled;
   /**
    * Scope-down blind: optimistic lower blinds immediately; optimistic raise
    * unblinds chrome immediately (contacts fill when FoW arrives via SSE).
@@ -1324,38 +1394,59 @@ export function StationPage() {
     }
   };
 
-  const submit = async (
-    patch: {
-      course?: number;
-      eot?: EotSetting;
-      depth?: number;
-      emergencyBlow?: boolean;
-      fireTorpedo?: TorpedoFireOrder | null;
-      dropDepthCharges?: DepthChargeDropOrder | null;
-      fireDeckGun?: DeckGunFireOrder | null;
-      deployNoisemaker?: NoisemakerDeployOrder | null;
-    },
-  ) => {
-    if (!token) return;
+  const submit = async (patch: StationOrdersPatch) => {
+    if (!token || !vessel) return;
+    if (!vessel.canSubmitOrders) {
+      setActionError('Ordering is locked');
+      return;
+    }
     setActionError(null);
+    const base = ordersOverlayRef.current ?? vessel.unit.orders ?? {};
+    const optimistic = mergeOrdersOptimistic(base, patch, stationId);
+    setOrdersOverlay(optimistic);
+    ordersOverlayRef.current = optimistic;
+    const gen = ++orderWriteGenRef.current;
+    setOrderWriteInFlight((n) => n + 1);
     try {
-      await api.orders(gameId, token, patch);
+      const res = await api.orders(gameId, token, patch);
+      // Only the latest in-flight write may refine the overlay from POST.
+      if (gen === orderWriteGenRef.current && res.orders) {
+        setOrdersOverlay(res.orders);
+        ordersOverlayRef.current = res.orders;
+      }
     } catch (err) {
+      if (gen === orderWriteGenRef.current) {
+        // Revert to stream truth; a newer click may already own the overlay.
+        setOrdersOverlay(null);
+        ordersOverlayRef.current = null;
+      }
       setActionError(err instanceof Error ? err.message : 'Order failed');
+    } finally {
+      setOrderWriteInFlight((n) => Math.max(0, n - 1));
     }
   };
 
-  const toggleActiveSonar = async (enabled: boolean) => {
+  /**
+   * Local-first sonar latch: paint immediately so the toggle is not dead for a
+   * full RTT. Busy briefly gates double-fire; SSE reconcile clears the overlay.
+   */
+  const toggleActiveSonar = (enabled: boolean) => {
     if (!token) return;
     setActionError(null);
+    setSonarOptimisticEnabled(enabled);
     setSonarBusy(true);
-    try {
-      await api.setActiveSonar(gameId, token, enabled);
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Sonar toggle failed');
-    } finally {
-      setSonarBusy(false);
-    }
+    const gen = ++sonarWriteGenRef.current;
+    void (async () => {
+      try {
+        await api.setActiveSonar(gameId, token, enabled);
+      } catch (err) {
+        if (gen !== sonarWriteGenRef.current) return;
+        setSonarOptimisticEnabled(null);
+        setActionError(err instanceof Error ? err.message : 'Sonar toggle failed');
+      } finally {
+        if (gen === sonarWriteGenRef.current) setSonarBusy(false);
+      }
+    })();
   };
 
   // Drop mast overlay once the streamed view agrees (SSE caught up).
@@ -1366,6 +1457,46 @@ export function StationPage() {
       setPeriOptimisticRaised(null);
     }
   }, [vessel, periOptimisticRaised, presentationSensors.periscopeRaised]);
+
+  // Drop sonar overlay once the streamed latch agrees.
+  useEffect(() => {
+    if (sonarOptimisticEnabled === null || !vessel) return;
+    if (presentationSensors.activeSonarEnabled === sonarOptimisticEnabled) {
+      setSonarOptimisticEnabled(null);
+    }
+  }, [vessel, sonarOptimisticEnabled, presentationSensors.activeSonarEnabled]);
+
+  // Drop reload overlays once SSE awaiting flags catch up.
+  useEffect(() => {
+    if (!vessel) return;
+    setReloadOptimistic((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      if (prev.torpedoForward && vessel.unit.torpedoForwardAwaitingReload) {
+        delete next.torpedoForward;
+        changed = true;
+      }
+      if (prev.torpedoAft && vessel.unit.torpedoAftAwaitingReload) {
+        delete next.torpedoAft;
+        changed = true;
+      }
+      if (prev.depthCharges && vessel.unit.depthChargeAwaitingReload) {
+        delete next.depthCharges;
+        changed = true;
+      }
+      if (prev.deckGun && vessel.unit.deckGunAwaitingReload) {
+        delete next.deckGun;
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [
+    vessel,
+    vessel?.unit.torpedoForwardAwaitingReload,
+    vessel?.unit.torpedoAftAwaitingReload,
+    vessel?.unit.depthChargeAwaitingReload,
+    vessel?.unit.deckGunAwaitingReload,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -1413,10 +1544,20 @@ export function StationPage() {
   const reloadTorpedoRoom = async (room: 'forward' | 'aft') => {
     if (!token) return;
     setActionError(null);
+    setReloadOptimistic((prev) => ({
+      ...prev,
+      ...(room === 'forward' ? { torpedoForward: true } : { torpedoAft: true }),
+    }));
     setWeaponReloadBusy(true);
     try {
       await api.startTorpedoReload(gameId, token, room);
     } catch (err) {
+      setReloadOptimistic((prev) => {
+        const next = { ...prev };
+        if (room === 'forward') delete next.torpedoForward;
+        else delete next.torpedoAft;
+        return next;
+      });
       setActionError(err instanceof Error ? err.message : 'Torpedo reload failed');
     } finally {
       setWeaponReloadBusy(false);
@@ -1426,10 +1567,16 @@ export function StationPage() {
   const reloadDepthCharges = async () => {
     if (!token) return;
     setActionError(null);
+    setReloadOptimistic((prev) => ({ ...prev, depthCharges: true }));
     setWeaponReloadBusy(true);
     try {
       await api.startDepthChargeReload(gameId, token);
     } catch (err) {
+      setReloadOptimistic((prev) => {
+        const next = { ...prev };
+        delete next.depthCharges;
+        return next;
+      });
       setActionError(err instanceof Error ? err.message : 'Depth-charge reload failed');
     } finally {
       setWeaponReloadBusy(false);
@@ -1439,10 +1586,16 @@ export function StationPage() {
   const reloadDeckGun = async () => {
     if (!token) return;
     setActionError(null);
+    setReloadOptimistic((prev) => ({ ...prev, deckGun: true }));
     setWeaponReloadBusy(true);
     try {
       await api.startDeckGunReload(gameId, token);
     } catch (err) {
+      setReloadOptimistic((prev) => {
+        const next = { ...prev };
+        delete next.deckGun;
+        return next;
+      });
       setActionError(err instanceof Error ? err.message : 'Deck-gun reload failed');
     } finally {
       setWeaponReloadBusy(false);
@@ -1721,7 +1874,10 @@ export function StationPage() {
                         className={[
                           'station-latch',
                           opticsMastRaised ? 'station-latch--raised' : 'station-latch--lowered',
-                        ].join(' ')}
+                          periBusy ? 'is-pending' : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
                         disabled={
                           periBusy ||
                           presentationSensors.periscopeUnavailableReason === 'no_sensor' ||
@@ -1733,6 +1889,7 @@ export function StationPage() {
                               vessel.unit.position.depth > PERISCOPE_DEPTH_M))
                         }
                         aria-pressed={opticsMastRaised}
+                        aria-busy={periBusy || undefined}
                         aria-label={
                           opticsMastRaised
                             ? 'Periscope mast raised — click to lower'
@@ -1873,47 +2030,49 @@ export function StationPage() {
                     type="button"
                     className={[
                       'station-latch',
-                      presentationSensors.activeSonarEnabled
+                      sonarLatchEnabled
                         ? 'station-latch--raised'
                         : 'station-latch--lowered',
-                    ].join(' ')}
+                      sonarBusy ? 'is-pending' : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
                     disabled={
                       sonarBusy ||
                       presentationSensors.sonarUnavailableReason === 'no_sensor' ||
                       presentationSensors.sonarUnavailableReason === 'sunk' ||
                       presentationSensors.sonarUnavailableReason === 'sensors_disabled'
                     }
-                    aria-pressed={presentationSensors.activeSonarEnabled}
+                    aria-pressed={sonarLatchEnabled}
+                    aria-busy={sonarBusy || undefined}
                     aria-label={
-                      presentationSensors.activeSonarEnabled
+                      sonarLatchEnabled
                         ? 'Search sonar on — click to stand by'
                         : 'Search sonar standby — click to start pinging'
                     }
-                    onClick={() =>
-                      void toggleActiveSonar(!presentationSensors.activeSonarEnabled)
-                    }
+                    onClick={() => toggleActiveSonar(!sonarLatchEnabled)}
                   >
                     <span
                       className={`station-latch-glyph station-latch-glyph--sonar${
-                        presentationSensors.activeSonarEnabled ? ' is-on' : ' is-off'
+                        sonarLatchEnabled ? ' is-on' : ' is-off'
                       }`}
                       aria-hidden
                     />
                     <span className="station-latch-copy">
                       <span className="station-latch-state">
-                        {presentationSensors.activeSonarEnabled
-                          ? 'SONAR SEARCH'
-                          : 'SONAR STANDBY'}
+                        {sonarLatchEnabled ? 'SONAR SEARCH' : 'SONAR STANDBY'}
                       </span>
                       <span className="station-latch-action">
-                        {presentationSensors.activeSonarEnabled
-                          ? 'Stop pinging'
-                          : 'Start search'}
+                        {sonarLatchEnabled ? 'Stop pinging' : 'Start search'}
                       </span>
                     </span>
                   </button>
                   <span className="mono muted station-latch-hint">
-                    {presentationSensors.activeSonarEnabled ? 'PINGING' : 'Quiet'}
+                    {sonarBusy
+                      ? 'Sending…'
+                      : sonarLatchEnabled
+                        ? 'PINGING'
+                        : 'Quiet'}
                   </span>
                 </div>
                 {presentationSensors.sonarUnavailableReason === 'no_sensor' ||
@@ -1928,7 +2087,7 @@ export function StationPage() {
                           : 'Sonar unavailable — no sensor'}
                     </p>
                   </div>
-                ) : presentationSensors.sonarOperational === false ? (
+                ) : !sonarLatchEnabled ? (
                   <div className="radar-unavailable" role="status">
                     <p className="readout" style={{ margin: 0 }}>
                       Active sonar standby — toggle ON to search
@@ -1940,7 +2099,7 @@ export function StationPage() {
                     maxRangeNm={vessel.sonarMaxRangeNm ?? 8}
                     halfAngleDeg={vessel.sonarHalfAngleDeg ?? 30}
                     ownHeading={vessel.unit.heading}
-                    pinging={presentationSensors.activeSonarEnabled}
+                    pinging={sonarLatchEnabled}
                   />
                 )}
               </section>
@@ -1951,12 +2110,24 @@ export function StationPage() {
             <section className="panel stack station-turn-panel">
               <h2>Turn</h2>
               <TurnStatus turn={vessel.turn} turnLengthSeconds={vessel.turnLengthSeconds} />
-              {hasPendingOrders(vessel.unit.orders) ? (
+              {hasPendingOrders(displayOrders) ? (
                 <div className="orders-of-record" role="status">
-                  <span className="status-pill open">Of record</span>
-                  <span className="mono readout">{formatPendingOrdersSummary(vessel.unit.orders)}</span>
-                  {vessel.unit.orders.updatedByStationId && (
-                    <span className="mono muted">via {vessel.unit.orders.updatedByStationId}</span>
+                  <span
+                    className={`status-pill ${
+                      orderWritePending || ordersOverlay ? 'pending' : 'open'
+                    }`}
+                  >
+                    {orderWritePending
+                      ? 'Sending'
+                      : ordersOverlay
+                        ? 'Acked'
+                        : 'Of record'}
+                  </span>
+                  <span className="mono readout">
+                    {formatPendingOrdersSummary(displayOrders)}
+                  </span>
+                  {displayOrders.updatedByStationId && (
+                    <span className="mono muted">via {displayOrders.updatedByStationId}</span>
                   )}
                 </div>
               ) : (
@@ -2070,7 +2241,10 @@ export function StationPage() {
                 )}
                 <div className="controls-status-item controls-status-item--wide">
                   <span className="controls-status-key">ORD</span>
-                  <span className="readout">{formatPendingOrdersSummary(vessel.unit.orders)}</span>
+                  <span className="readout">
+                    {orderWritePending ? '… ' : ''}
+                    {formatPendingOrdersSummary(displayOrders)}
+                  </span>
                 </div>
               </div>
             </section>
@@ -2147,16 +2321,29 @@ export function StationPage() {
                     />
                     <div className="control-actions">
                       <button
-                        className="primary"
+                        className={[
+                          'primary',
+                          orderWritePending && displayOrders.course !== undefined
+                            ? 'is-pending'
+                            : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
                         type="button"
                         disabled={
                           !vessel.canSubmitOrders ||
                           presentationSubs.steering === 'stuck' ||
                           presentationSubs.steering === 'disabled'
                         }
+                        aria-busy={
+                          (orderWritePending && displayOrders.course !== undefined) ||
+                          undefined
+                        }
                         onClick={() => void submit({ course })}
                       >
-                        Submit course
+                        {orderWritePending && displayOrders.course !== undefined
+                          ? 'Submitting…'
+                          : 'Submit course'}
                       </button>
                     </div>
                   </HelmCompass>
@@ -2185,6 +2372,9 @@ export function StationPage() {
                     presentationSubs.divePlanes === 'stuck' ||
                     presentationSubs.divePlanes === 'disabled'
                   }
+                  writePending={
+                    orderWritePending && displayOrders.depth !== undefined
+                  }
                   onSubmit={(d, opts) => {
                     const blow = Boolean(opts?.emergencyBlow);
                     pendingEmergencyBlowRef.current = blow;
@@ -2206,19 +2396,25 @@ export function StationPage() {
                 orderedCourse={vessel.unit.orderedCourse}
                 forward={{
                   ready: vessel.unit.torpedoForward ?? 0,
-                  awaitingReload: Boolean(vessel.unit.torpedoForwardAwaitingReload),
+                  awaitingReload: Boolean(
+                    vessel.unit.torpedoForwardAwaitingReload ||
+                      reloadOptimistic.torpedoForward,
+                  ),
                   reloadTurnsRemaining: vessel.unit.torpedoForwardReloadTurnsRemaining ?? 0,
                 }}
                 aft={{
                   ready: vessel.unit.torpedoAft ?? 0,
-                  awaitingReload: Boolean(vessel.unit.torpedoAftAwaitingReload),
+                  awaitingReload: Boolean(
+                    vessel.unit.torpedoAftAwaitingReload || reloadOptimistic.torpedoAft,
+                  ),
                   reloadTurnsRemaining: vessel.unit.torpedoAftReloadTurnsRemaining ?? 0,
                 }}
-                pending={vessel.unit.orders.fireTorpedo}
+                pending={displayOrders.fireTorpedo}
                 arcBlock={vessel.unit.torpedoArcBlock}
                 running={vessel.ownTorpedoes}
                 disabled={!vessel.canSubmitOrders}
                 reloadBusy={weaponReloadBusy}
+                writePending={orderWritePending}
                 onSubmit={(fireTorpedo) => void submit({ fireTorpedo })}
                 onClear={() => void submit({ fireTorpedo: null })}
                 onReload={(room) => void reloadTorpedoRoom(room)}
@@ -2232,12 +2428,15 @@ export function StationPage() {
                 hullClass={vessel.unit.class}
                 keelDepthM={vessel.unit.position.depth}
                 deckGunLoad={vessel.unit.deckGunLoad ?? 0}
-                awaitingReload={Boolean(vessel.unit.deckGunAwaitingReload)}
+                awaitingReload={Boolean(
+                  vessel.unit.deckGunAwaitingReload || reloadOptimistic.deckGun,
+                )}
                 reloadTurnsRemaining={vessel.unit.deckGunReloadTurnsRemaining ?? 0}
-                pending={vessel.unit.orders.fireDeckGun}
+                pending={displayOrders.fireDeckGun}
                 fireBlock={vessel.unit.deckGunFireBlock}
                 disabled={!vessel.canSubmitOrders}
                 reloadBusy={weaponReloadBusy}
+                writePending={orderWritePending}
                 onSubmit={(fireDeckGun) => void submit({ fireDeckGun })}
                 onClear={() => void submit({ fireDeckGun: null })}
                 onReload={() => void reloadDeckGun()}
@@ -2247,12 +2446,15 @@ export function StationPage() {
             {controlsTab === 'depth_charges' && canDepthCharges && (
               <DepthChargeControls
                 depthChargeLoad={vessel.unit.depthChargeLoad ?? 0}
-                awaitingReload={Boolean(vessel.unit.depthChargeAwaitingReload)}
+                awaitingReload={Boolean(
+                  vessel.unit.depthChargeAwaitingReload || reloadOptimistic.depthCharges,
+                )}
                 reloadTurnsRemaining={vessel.unit.depthChargeReloadTurnsRemaining ?? 0}
-                pending={vessel.unit.orders.dropDepthCharges}
+                pending={displayOrders.dropDepthCharges}
                 tracks={vessel.ownDepthCharges}
                 disabled={!vessel.canSubmitOrders}
                 reloadBusy={weaponReloadBusy}
+                writePending={orderWritePending}
                 onSubmit={(dropDepthCharges) => void submit({ dropDepthCharges })}
                 onClear={() => void submit({ dropDepthCharges: null })}
                 onReload={() => void reloadDepthCharges()}
@@ -2263,9 +2465,10 @@ export function StationPage() {
               <CountermeasuresControls
                 keelDepthM={vessel.unit.position.depth}
                 cooldownTurnsRemaining={vessel.unit.noisemakerCooldownTurnsRemaining ?? 0}
-                pending={vessel.unit.orders.deployNoisemaker}
+                pending={displayOrders.deployNoisemaker}
                 tracks={vessel.ownNoisemakers}
                 disabled={!vessel.canSubmitOrders}
+                writePending={orderWritePending}
                 onSubmit={(deployNoisemaker) => void submit({ deployNoisemaker })}
                 onClear={() => void submit({ deployNoisemaker: null })}
               />
@@ -2310,22 +2513,35 @@ export function StationPage() {
                     />
                     <div className="control-actions">
                       <button
-                        className="primary"
+                        className={[
+                          'primary',
+                          orderWritePending && displayOrders.eot !== undefined
+                            ? 'is-pending'
+                            : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
                         type="button"
                         disabled={
                           !vessel.canSubmitOrders ||
                           presentationSubs.propulsion === 'disabled'
                         }
+                        aria-busy={
+                          (orderWritePending && displayOrders.eot !== undefined) ||
+                          undefined
+                        }
                         onClick={() => {
                           // Engine-room confirm ring: only when locking in a real EOT change
                           // (telegraph already dinged on position move). Re-submit of the
                           // standing order is silent — no pointless double ding.
-                          const standing = vessel.unit.orders.eot ?? vessel.unit.eot;
+                          const standing = displayOrders.eot ?? vessel.unit.eot;
                           if (eot !== standing) void playEngineOrderBell();
                           void submit({ eot });
                         }}
                       >
-                        Submit engine orders
+                        {orderWritePending && displayOrders.eot !== undefined
+                          ? 'Submitting…'
+                          : 'Submit engine orders'}
                       </button>
                     </div>
                   </section>
@@ -2419,14 +2635,24 @@ export function StationPage() {
             <section className="panel stack station-turn-panel">
               <h2>Turn</h2>
               <TurnStatus turn={vessel.turn} turnLengthSeconds={vessel.turnLengthSeconds} />
-              {hasPendingOrders(vessel.unit.orders) ? (
+              {hasPendingOrders(displayOrders) ? (
                 <div className="orders-of-record" role="status">
-                  <span className="status-pill open">Of record</span>
-                  <span className="mono readout">
-                    {formatPendingOrdersSummary(vessel.unit.orders)}
+                  <span
+                    className={`status-pill ${
+                      orderWritePending || ordersOverlay ? 'pending' : 'open'
+                    }`}
+                  >
+                    {orderWritePending
+                      ? 'Sending'
+                      : ordersOverlay
+                        ? 'Acked'
+                        : 'Of record'}
                   </span>
-                  {vessel.unit.orders.updatedByStationId && (
-                    <span className="mono muted">via {vessel.unit.orders.updatedByStationId}</span>
+                  <span className="mono readout">
+                    {formatPendingOrdersSummary(displayOrders)}
+                  </span>
+                  {displayOrders.updatedByStationId && (
+                    <span className="mono muted">via {displayOrders.updatedByStationId}</span>
                   )}
                 </div>
               ) : (

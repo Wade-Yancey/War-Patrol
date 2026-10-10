@@ -18,6 +18,8 @@ interface Props {
   pending?: NoisemakerDeployOrder;
   tracks?: NoisemakerTrack[];
   disabled?: boolean;
+  /** Order write in flight — pressed chrome; still allows latest-wins resubmit. */
+  writePending?: boolean;
   onSubmit: (order: NoisemakerDeployOrder) => void;
   onClear?: () => void;
 }
@@ -32,6 +34,7 @@ export function CountermeasuresControls({
   pending,
   tracks = [],
   disabled,
+  writePending = false,
   onSubmit,
   onClear,
 }: Props) {
@@ -83,12 +86,13 @@ export function CountermeasuresControls({
 
       <div className="control-actions">
         <button
-          className="primary"
+          className={['primary', writePending ? 'is-pending' : ''].filter(Boolean).join(' ')}
           type="button"
           disabled={!canDeploy}
+          aria-busy={writePending || undefined}
           onClick={() => onSubmit({ depthM: clampSubmarineDepth(depthM) })}
         >
-          Deploy noisemaker
+          {writePending ? 'Deploying…' : 'Deploy noisemaker'}
         </button>
         {onClear && pending && (
           <button type="button" disabled={disabled} onClick={onClear}>

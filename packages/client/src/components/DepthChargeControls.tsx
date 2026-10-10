@@ -20,6 +20,8 @@ interface Props {
   tracks?: DepthChargeTrack[];
   disabled?: boolean;
   reloadBusy?: boolean;
+  /** Order write in flight — pressed chrome; still allows latest-wins resubmit. */
+  writePending?: boolean;
   onSubmit: (order: DepthChargeDropOrder) => void;
   onClear?: () => void;
   onReload?: () => void;
@@ -34,6 +36,7 @@ export function DepthChargeControls({
   tracks = [],
   disabled,
   reloadBusy,
+  writePending = false,
   onSubmit,
   onClear,
   onReload,
@@ -123,12 +126,13 @@ export function DepthChargeControls({
 
       <div className="control-actions">
         <button
-          className="primary"
+          className={['primary', writePending ? 'is-pending' : ''].filter(Boolean).join(' ')}
           type="button"
           disabled={!canDrop}
+          aria-busy={writePending || undefined}
           onClick={() => onSubmit({ count: need, depthSettingM })}
         >
-          Queue depth-charge drop ({need || 0})
+          {writePending ? 'Queuing…' : `Queue depth-charge drop (${need || 0})`}
         </button>
         {pending && onClear && (
           <button type="button" disabled={disabled} onClick={onClear}>
