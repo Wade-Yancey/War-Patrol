@@ -44,6 +44,8 @@ export class SseHub {
   private viewBuilder: ViewBuilder | null = null;
   /** Optional hook so runtime can rebroadcast connection counts (umpire live panel). */
   onConnectionsChanged: ((gameId: string) => void) | null = null;
+  /** Current game stateVersion for ping envelopes (gap catch-up on the client). */
+  versionForGame: ((gameId: string) => number) | null = null;
 
   setViewBuilder(builder: ViewBuilder): void {
     this.viewBuilder = builder;
@@ -216,7 +218,10 @@ export class SseHub {
 
   private send(client: SseClient, stateVersion: number, view: ClientView): void {
     const payload = JSON.stringify({ type: 'state', stateVersion, view });
-    if (this.writeRaw(client, `event: state\ndata: ${payload}\n\n`)) {
+    // Leading pad helps cloudflared / CDN edges flush the large state chunk the
+    // same way padded pings do — mid-turn FoW (peri feather) was the casualty
+    // when tiny heartbeats got through but multi-KB state stayed buffered.
+    if (this.writeRaw(client, `${PING_PAD}event: state\ndata: ${payload}\n\n`)) {
       client.lastSentVersion = stateVersion;
     }
   }
@@ -225,12 +230,16 @@ export class SseHub {
    * Heartbeat to keep proxies / tablet browsers from closing quiet streams.
    * Padded comment wakes buffered intermediaries; named `ping` event resets
    * client stale watchdogs that only count parsed SSE frames (not raw bytes).
+   * Each ping carries `stateVersion` so a client that keeps receiving pings
+   * but missed a large `state` frame (classic high-RTT tunnel buffering) can
+   * GET `/view` without waiting for a zombie idle timeout or browser refresh.
    */
   startHeartbeat(intervalMs = SSE_HEARTBEAT_MS): NodeJS.Timeout {
     return setInterval(() => {
-      const frame = `${PING_PAD}event: ping\ndata: {"type":"ping"}\n\n`;
       for (const client of [...this.clients.values()]) {
-        this.writeRaw(client, frame);
+        const stateVersion = this.versionForGame?.(client.gameId) ?? 0;
+        const payload = JSON.stringify({ type: 'ping', stateVersion });
+        this.writeRaw(client, `${PING_PAD}event: ping\ndata: ${payload}\n\n`);
       }
     }, intervalMs);
   }

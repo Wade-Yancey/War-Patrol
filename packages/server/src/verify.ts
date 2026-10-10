@@ -1816,6 +1816,77 @@ async function main() {
     !noFeather.some((c) => c.kind === 'periscope'),
   );
 
+  // Live SSE path: DD Sensors already subscribed must receive the feather on
+  // peri raise without a separate GET /view (remote lookout freeze regression).
+  {
+    const sseAbort = new AbortController();
+    const sseRes = await fetch(
+      `${base}/api/games/${gameId}/events?token=${encodeURIComponent(radarToken)}`,
+      { signal: sseAbort.signal, headers: { Accept: 'text/event-stream' } },
+    );
+    check('DD lookout SSE open for peri push', sseRes.status === 200 && Boolean(sseRes.body));
+    const reader = sseRes.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let sawInitial = false;
+    let sawFeatherPush = false;
+    let sawClearPush = false;
+    const deadline = Date.now() + 8_000;
+    const readUntil = async (pred: () => boolean) => {
+      while (!pred() && Date.now() < deadline) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() ?? '';
+        for (const part of parts) {
+          const dataLine = part.split('\n').find((l) => l.startsWith('data: '));
+          if (!dataLine) continue;
+          try {
+            const payload = JSON.parse(dataLine.slice(6)) as {
+              type?: string;
+              view?: { periscopeContacts?: Array<Json> };
+            };
+            if (payload.type !== 'state' || !payload.view) continue;
+            sawInitial = true;
+            const pcs = payload.view.periscopeContacts ?? [];
+            const hasFeather = pcs.some((c) => c.kind === 'periscope');
+            if (hasFeather) sawFeatherPush = true;
+            if (sawFeatherPush && !hasFeather) sawClearPush = true;
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+    };
+    await readUntil(() => sawInitial);
+    check('DD lookout SSE initial state before peri toggle', sawInitial);
+    const raiseLive = await api(
+      'POST',
+      `/api/games/${gameId}/periscope`,
+      { raised: true, exposure: 1 },
+      subSensorsToken,
+    );
+    check('SSE peri raise ok', raiseLive.status === 200);
+    await readUntil(() => sawFeatherPush);
+    check('DD lookout SSE receives peri feather without GET /view', sawFeatherPush);
+    const lowerLive = await api(
+      'POST',
+      `/api/games/${gameId}/periscope`,
+      { raised: false },
+      subSensorsToken,
+    );
+    check('SSE peri lower ok', lowerLive.status === 200);
+    await readUntil(() => sawClearPush);
+    check('DD lookout SSE clears peri feather on lower', sawClearPush);
+    sseAbort.abort();
+    try {
+      await reader.cancel();
+    } catch {
+      /* ignore */
+    }
+  }
+
   // Wake Sightings: relativeBearing = LOS (compass); travelRelativeBearing = fish run.
   {
     const {

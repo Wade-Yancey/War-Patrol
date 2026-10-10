@@ -508,6 +508,7 @@ export class GameRuntime {
       if (!save) return null;
       return buildViewForSession(save, this.sse, client.role, client.unitId, client.stationId);
     });
+    this.sse.versionForGame = (gameId) => this.games.get(gameId)?.stateVersion ?? 0;
     // Connection join/leave: debounce + lean meta frame (not a full view rebuild).
     // StrictMode remounts / multi-tab joins used to fan out multi-KB state to every
     // station and stall remote Controls behind cloudflared.

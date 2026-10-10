@@ -94,6 +94,8 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
     let streamOpenedAt = 0;
     /** True once headers+body stream is open; LIVE also requires a fresh event. */
     let streamOpen = false;
+    /** Last applied view — detect FoW optics changes that must not defer. */
+    let appliedView: ClientView | null = null;
 
     const setConnectedState = (value: boolean) => {
       connectedRef.current = value;
@@ -169,6 +171,7 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       const data = await api.view(gameId, token, { signal });
       if (cancelled || signal?.aborted) return;
       lastVersionRef.current = data.stateVersion;
+      appliedView = data.view;
       // Snapshot catch-up is urgent — do not defer behind optics transitions.
       setStateVersion(data.stateVersion);
       setView(data.view);
@@ -187,11 +190,57 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       }
     };
 
+    const opticsFowChanged = (prev: ClientView | null, next: ClientView): boolean => {
+      if (!prev || prev.role !== 'vessel' || next.role !== 'vessel') return false;
+      if (Boolean(prev.unit.periscopeRaised) !== Boolean(next.unit.periscopeRaised)) {
+        return true;
+      }
+      if ((prev.unit.periscopeExposure ?? 0) !== (next.unit.periscopeExposure ?? 0)) {
+        return true;
+      }
+      const prevC = prev.periscopeContacts ?? [];
+      const nextC = next.periscopeContacts ?? [];
+      if (prevC.length !== nextC.length) return true;
+      for (let i = 0; i < prevC.length; i += 1) {
+        const a = prevC[i]!;
+        const b = nextC[i]!;
+        if (
+          a.id !== b.id ||
+          (a.kind ?? 'hull') !== (b.kind ?? 'hull') ||
+          a.relativeBearing !== b.relativeBearing ||
+          a.rangeNm !== b.rangeNm
+        ) {
+          return true;
+        }
+      }
+      const prevS = prev.opticsSightings ?? prev.torpedoWakeCues ?? [];
+      const nextS = next.opticsSightings ?? next.torpedoWakeCues ?? [];
+      if (prevS.length !== nextS.length) return true;
+      for (let i = 0; i < prevS.length; i += 1) {
+        const a = prevS[i]!;
+        const b = nextS[i]!;
+        if (a.id !== b.id || a.kind !== b.kind || a.relativeBearing !== b.relativeBearing) {
+          return true;
+        }
+      }
+      return false;
+    };
+
     const applyState = (stateVersionNext: number, nextView: ClientView) => {
       lastVersionRef.current = stateVersionNext;
-      // SSE full-view payloads are large; apply as a transition so local optics
-      // interaction (contact pick, compass, silhouette) stays urgent and is not
-      // blocked behind remote tunnel delivery / React reconcile of the station tree.
+      // Cross-station FoW (DD lookout feather when a remote sub raises peri, wake
+      // sightings, mast flag) must paint immediately — deferring behind
+      // startTransition left lookout frozen until a full browser refresh when the
+      // tab was busy or the transition was starved on high-RTT hosts.
+      const urgent = opticsFowChanged(appliedView, nextView);
+      appliedView = nextView;
+      if (urgent) {
+        setStateVersion(stateVersionNext);
+        setView(nextView);
+        return;
+      }
+      // Other full-view payloads stay a transition so local optics chrome
+      // (contact pick / compass) is not blocked by a large tunnel frame.
       startTransition(() => {
         setStateVersion(stateVersionNext);
         setView(nextView);
@@ -440,7 +489,19 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
                 // Count ping/state/connections — any parsed frame proves the
                 // live path is delivering (not a zombie OPEN).
                 noteEvent();
-                if (payload.type === 'ping') continue;
+                if (payload.type === 'ping') {
+                  // Pings can get through a buffering tunnel while a large mid-turn
+                  // `state` frame (peri feather, etc.) never arrives. Gap → snapshot.
+                  if (
+                    typeof payload.stateVersion === 'number' &&
+                    payload.stateVersion > lastVersionRef.current
+                  ) {
+                    void fullRefresh(signal).catch((err) => {
+                      if (isAuthFailure(err)) handleAuthInvalid();
+                    });
+                  }
+                  continue;
+                }
                 if (payload.type === 'connections') {
                   applyConnections(payload);
                   continue;

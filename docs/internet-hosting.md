@@ -343,7 +343,10 @@ data/ (saves, scenarios) on local disk
   through a quick tunnel — the LIVE dot used to stay green on a zombie OPEN
   connection. Clients now treat **~25s without a parsed ping/state frame** as
   stale: they flip to **RECONNECTING**, force-close the stream, refetch
-  `/view`, and reopen SSE (no full page refresh needed). Server-side, stuck
+  `/view`, and reopen SSE (no full page refresh needed). Heartbeat pings also
+  carry `stateVersion` so a client that still receives small pings but missed
+  a large mid-turn `state` (e.g. remote peri raise → DD lookout feather)
+  catches up via `/view` within about one ping interval. Server-side, stuck
   write backpressure drops the fan-out client after ~45s so dead tunnels do
   not sit in the broadcast list forever. LAN and nearer remotes (e.g. STL)
   should still see a steady LIVE when pings arrive.
@@ -363,12 +366,14 @@ data/ (saves, scenarios) on local disk
   minutes" smoke tests.
 - **Optics (Lookout / Periscope) on remote:** contact pick, compass REL/TRUE,
   and silhouette swaps are local-first — they must not wait on tunnel RTT.
-  Fleet-sub mast UP/DOWN paints immediately; the POST is debounced. SSE view
-  apply runs as a React transition so a large remote state frame does not
-  block those interactions. **Still tunnel-bound:** FoW contact/sighting
-  lists filling after mast raise or turn resolve (server picture must arrive),
-  and any other station seeing your raised feather — local chrome cannot
-  invent accurate FoW.
+  Fleet-sub mast UP/DOWN paints immediately; the POST is debounced. Large
+  non-FoW SSE frames still apply as a React transition, but **FoW optics
+  changes** (peri feather appear/clear, contact list, sightings, mast flag)
+  apply urgently so destroyer lookout sees a remote mast toggle live. Contact
+  / sighting lists are not `useDeferredValue`-deferred (that hid feathers
+  until a full browser refresh on busy remote tabs). **Still tunnel-bound:**
+  the SSE/stream must deliver the server picture — a zombie stream falls back
+  to the stale-watchdog reconnect + `/view` catch-up above.
 - **Same-origin client:** build the client into the server's static bundle
   (`pnpm build` at the repo root builds `shared` → `client` → `server`, and
   `app.ts` auto-serves `packages/client/dist` when present) so there is no
