@@ -1816,6 +1816,84 @@ async function main() {
     !noFeather.some((c) => c.kind === 'periscope'),
   );
 
+  // Mid-turn peri raise must push DD lookout feather on the live SSE stream
+  // (not only on the next GET /view / browser refresh).
+  {
+    const sseAbort = new AbortController();
+    const featherFromSse = (async () => {
+      const res = await fetch(
+        `${base}/api/games/${gameId}/events?token=${encodeURIComponent(radarToken)}`,
+        { signal: sseAbort.signal },
+      );
+      if (!res.ok || !res.body) return false;
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let sawInitial = false;
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() ?? '';
+        for (const part of parts) {
+          const dataLine = part.split('\n').find((l) => l.startsWith('data: '));
+          if (!dataLine) continue;
+          let payload: {
+            type?: string;
+            stateVersion?: number;
+            view?: { periscopeContacts?: Array<Json> };
+          };
+          try {
+            payload = JSON.parse(dataLine.slice(6)) as typeof payload;
+          } catch {
+            continue;
+          }
+          if (payload.type === 'ping' && typeof payload.stateVersion === 'number') {
+            // Heartbeat carries version for tunnel catch-up (may arrive before state).
+            continue;
+          }
+          if (payload.type !== 'state' || !payload.view) continue;
+          const contacts = payload.view.periscopeContacts ?? [];
+          const hasFeather = contacts.some((c) => c.kind === 'periscope');
+          if (!sawInitial) {
+            sawInitial = true;
+            // Initial snapshot should match scope-down (no feather).
+            if (hasFeather) return false;
+            continue;
+          }
+          if (hasFeather) {
+            try {
+              await reader.cancel();
+            } catch {
+              /* ignore */
+            }
+            return true;
+          }
+        }
+      }
+      try {
+        await reader.cancel();
+      } catch {
+        /* ignore */
+      }
+      return false;
+    })();
+    await new Promise((r) => setTimeout(r, 150));
+    const raiseForSse = await api(
+      'POST',
+      `/api/games/${gameId}/periscope`,
+      { raised: true, exposure: 1 },
+      subSensorsToken,
+    );
+    check('raise for SSE feather push', raiseForSse.status === 200);
+    const gotFeatherPush = await featherFromSse;
+    sseAbort.abort();
+    check('SSE pushes DD lookout feather on peri raise', gotFeatherPush);
+    await api('POST', `/api/games/${gameId}/periscope`, { raised: false }, subSensorsToken);
+  }
+
   // Wake Sightings: relativeBearing = LOS (compass); travelRelativeBearing = fish run.
   {
     const {
