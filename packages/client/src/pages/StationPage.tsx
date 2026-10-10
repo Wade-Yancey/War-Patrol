@@ -203,6 +203,21 @@ export function StationPage() {
   const periWriteTimerRef = useRef<number | null>(null);
   const periWriteGenRef = useRef(0);
   const periDesiredRaisedRef = useRef<boolean | null>(null);
+  /**
+   * Raise-window FoW readiness — optimistic mast UP must not flash “no contacts”
+   * while the first authoritative picture is still in flight over the tunnel.
+   * `periRaiseGen` bumps on each raise; `periFowReadyGen` catches up when the
+   * streamed view confirms mast UP (SSE or GET /view).
+   */
+  const [periRaiseGen, setPeriRaiseGen] = useState(0);
+  /** Starts equal to `periRaiseGen` so a cold load with mast already UP is not “Raising…”. */
+  const [periFowReadyGen, setPeriFowReadyGen] = useState(0);
+  /** Turn-scoped last-good peri FoW (contacts + sightings) for re-raise / catch-up. */
+  const [periTurnFowCache, setPeriTurnFowCache] = useState<{
+    turn: number;
+    contacts: PeriscopeContact[];
+    sightings: OpticsSighting[];
+  } | null>(null);
   const orderWriteGenRef = useRef(0);
   const ordersOverlayRef = useRef<UnitOrders | null>(null);
   const turnNumberRef = useRef<number | null>(null);
@@ -256,6 +271,8 @@ export function StationPage() {
       setOrderWriteInFlight(0);
       orderWriteGenRef.current += 1;
       setReloadOptimistic({});
+      setPeriTurnFowCache(null);
+      setPeriFowReadyGen(-1);
     }
     turnNumberRef.current = n;
   }, [vessel?.turn.number]);
@@ -418,13 +435,28 @@ export function StationPage() {
   // Do not defer contacts/sightings — DD lookout must paint a remote peri feather
   // (and wake sightings) as soon as the SSE/view catch-up arrives. Contact pick /
   // compass stay local in PeriscopeScope; only streamed HDG is deferred below.
-  // (#246 already applies SSE state urgently + ping stateVersion catch-up.)
+  // (#246 urgent SSE + ping version catch-up; ping-before-state hardens remotes.)
+  const turnNumber = vessel?.turn.number ?? null;
+  const periTurnCache =
+    periTurnFowCache && turnNumber != null && periTurnFowCache.turn === turnNumber
+      ? periTurnFowCache
+      : null;
+  const periFowPending =
+    opticsVariant === 'periscope' &&
+    opticsMastRaised &&
+    !opticsScopeDown &&
+    periFowReadyGen !== periRaiseGen;
+  const opticsRaising = periFowPending && !periTurnCache;
   const opticsContacts = opticsScopeDown
     ? EMPTY_PERISCOPE_CONTACTS
-    : presentationSensors.periscopeContacts;
+    : periFowPending
+      ? (periTurnCache?.contacts ?? EMPTY_PERISCOPE_CONTACTS)
+      : presentationSensors.periscopeContacts;
   const opticsSightings = opticsScopeDown
     ? EMPTY_OPTICS_SIGHTINGS
-    : presentationSensors.opticsSightings;
+    : periFowPending
+      ? (periTurnCache?.sightings ?? EMPTY_OPTICS_SIGHTINGS)
+      : presentationSensors.opticsSightings;
   const opticsOwnHeading = useDeferredValue(vessel?.unit.heading ?? 0);
   const scheduleDamageRevealRef = useRef(syncedDamage.scheduleRevealForDetonation);
   scheduleDamageRevealRef.current = syncedDamage.scheduleRevealForDetonation;
@@ -1458,6 +1490,26 @@ export function StationPage() {
     }
   }, [vessel, periOptimisticRaised, presentationSensors.periscopeRaised]);
 
+  // Authoritative peri FoW for this raise window — mark ready + refresh turn cache.
+  // Keyed on stateVersion (not contact array identity) so empty `?? []` aliases
+  // from presentationSensors cannot retrigger setState every render.
+  useEffect(() => {
+    if (!vessel || opticsVariant !== 'periscope') return;
+    if (!presentationSensors.periscopeRaised) return;
+    const turn = vessel.turn.number;
+    const contacts = presentationSensors.periscopeContacts;
+    const sightings = presentationSensors.opticsSightings;
+    setPeriFowReadyGen((ready) => (ready === periRaiseGen ? ready : periRaiseGen));
+    setPeriTurnFowCache({ turn, contacts, sightings });
+  }, [
+    opticsVariant,
+    periRaiseGen,
+    vessel,
+    vessel?.turn.number,
+    vessel?.stateVersion,
+    presentationSensors.periscopeRaised,
+  ]);
+
   // Drop sonar overlay once the streamed latch agrees.
   useEffect(() => {
     if (sonarOptimisticEnabled === null || !vessel) return;
@@ -1515,6 +1567,13 @@ export function StationPage() {
     setActionError(null);
     setPeriOptimisticRaised(raised);
     periDesiredRaisedRef.current = raised;
+    if (raised) {
+      // New raise window — wait for streamed FoW (or show turn cache / “Raising…”).
+      setPeriRaiseGen((g) => g + 1);
+    } else {
+      // Mast down — next raise is a new window; keep turn cache for re-raise.
+      setPeriFowReadyGen(-1);
+    }
     if (periWriteTimerRef.current != null) {
       window.clearTimeout(periWriteTimerRef.current);
     }
@@ -1943,6 +2002,7 @@ export function StationPage() {
                     ownHeading={opticsOwnHeading}
                     variant={opticsVariant}
                     blind={opticsScopeDown}
+                    raising={opticsRaising}
                   />
                 )}
               </section>

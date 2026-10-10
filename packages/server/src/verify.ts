@@ -1851,7 +1851,8 @@ async function main() {
             continue;
           }
           if (payload.type === 'ping' && typeof payload.stateVersion === 'number') {
-            // Heartbeat carries version for tunnel catch-up (may arrive before state).
+            // Ping-before-state + heartbeat: version hint may arrive before the
+            // multi-KB state frame (tunnel catch-up path).
             continue;
           }
           if (payload.type !== 'state' || !payload.view) continue;
@@ -1891,6 +1892,93 @@ async function main() {
     const gotFeatherPush = await featherFromSse;
     sseAbort.abort();
     check('SSE pushes DD lookout feather on peri raise', gotFeatherPush);
+    await api('POST', `/api/games/${gameId}/periscope`, { raised: false }, subSensorsToken);
+  }
+
+  // Ping-before-state: remotes must see a versioned ping at or before the large
+  // state frame so tunnel clients can GET /view when `state` stalls.
+  {
+    await api('POST', `/api/games/${gameId}/periscope`, { raised: false }, subSensorsToken);
+    const before = await api('GET', `/api/games/${gameId}/view`, undefined, radarToken);
+    const beforeVersion = Number((before.json as Json).stateVersion ?? 0);
+    const sseAbort = new AbortController();
+    const versionHintFirst = (async () => {
+      const res = await fetch(
+        `${base}/api/games/${gameId}/events?token=${encodeURIComponent(radarToken)}`,
+        { signal: sseAbort.signal },
+      );
+      if (!res.ok || !res.body) return false;
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let sawInitialState = false;
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() ?? '';
+        for (const part of parts) {
+          const dataLine = part.split('\n').find((l) => l.startsWith('data: '));
+          if (!dataLine) continue;
+          let payload: { type?: string; stateVersion?: number; view?: unknown };
+          try {
+            payload = JSON.parse(dataLine.slice(6)) as typeof payload;
+          } catch {
+            continue;
+          }
+          if (!sawInitialState) {
+            if (payload.type === 'state') sawInitialState = true;
+            continue;
+          }
+          // After the initial snapshot, the raise broadcast must deliver a
+          // versioned ping before (or without waiting on) the multi-KB state.
+          if (
+            payload.type === 'ping' &&
+            typeof payload.stateVersion === 'number' &&
+            payload.stateVersion > beforeVersion
+          ) {
+            try {
+              await reader.cancel();
+            } catch {
+              /* ignore */
+            }
+            return true;
+          }
+          if (
+            payload.type === 'state' &&
+            typeof payload.stateVersion === 'number' &&
+            payload.stateVersion > beforeVersion
+          ) {
+            // State without a preceding version ping — fail the hardening check.
+            try {
+              await reader.cancel();
+            } catch {
+              /* ignore */
+            }
+            return false;
+          }
+        }
+      }
+      try {
+        await reader.cancel();
+      } catch {
+        /* ignore */
+      }
+      return false;
+    })();
+    await new Promise((r) => setTimeout(r, 150));
+    const raiseHint = await api(
+      'POST',
+      `/api/games/${gameId}/periscope`,
+      { raised: true, exposure: 1 },
+      subSensorsToken,
+    );
+    check('raise for ping-before-state', raiseHint.status === 200);
+    const gotVersionHint = await versionHintFirst;
+    sseAbort.abort();
+    check('SSE ping-before-state carries newer stateVersion', gotVersionHint);
     await api('POST', `/api/games/${gameId}/periscope`, { raised: false }, subSensorsToken);
   }
 
