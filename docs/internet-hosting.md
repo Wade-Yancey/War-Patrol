@@ -101,8 +101,10 @@ What the UI does now:
 - Umpire **Copy** uses `publicBaseUrl` when set (remote-ready HTTPS links)
   even if your umpire tab is on loopback. **Open** stays on the current
   browser origin (relative SPA path) so host tabs do not jump onto the tunnel.
-- If you do open a tunnel URL on the host, a banner offers a one-click
-  `http://127.0.0.1:<port>` equivalent of the current path.
+- If you open the **umpire** UI on a tunnel/public origin, a banner offers a
+  one-click `http://127.0.0.1:<port>` equivalent. Station pages never show that
+  banner (remotes share the public origin; use **Open** / loopback for host
+  stations).
 
 Optional explicit public base (named tunnel / VPS / reverse proxy):
 
