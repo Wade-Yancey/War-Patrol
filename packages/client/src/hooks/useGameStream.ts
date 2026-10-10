@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ClientView, UmpireView, VesselView } from '@war-patrol/shared';
 import { api } from '../api/client';
 
@@ -13,10 +13,10 @@ interface Options {
 const BASE_BACKOFF_MS = 600;
 const MAX_BACKOFF_MS = 12_000;
 /**
- * Server heartbeats every ~8s (padded comment + `event: ping`). Treat longer
- * silence as a dead stream. Kept above 2–3 missed pings so LAN/STL jitter does
- * not flap LIVE, but well under the old 90s window that left UK tunnel clients
- * looking "LIVE" while frozen.
+ * Server heartbeats every ~8s (padded comment + `event: ping` with
+ * `stateVersion`). Treat longer silence as a dead stream. Kept above 2–3
+ * missed pings so LAN/STL jitter does not flap LIVE, but well under the old
+ * 90s window that left UK tunnel clients looking "LIVE" while frozen.
  */
 const IDLE_TIMEOUT_MS = 40_000;
 /**
@@ -189,13 +189,12 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
 
     const applyState = (stateVersionNext: number, nextView: ClientView) => {
       lastVersionRef.current = stateVersionNext;
-      // SSE full-view payloads are large; apply as a transition so local optics
-      // interaction (contact pick, compass, silhouette) stays urgent and is not
-      // blocked behind remote tunnel delivery / React reconcile of the station tree.
-      startTransition(() => {
-        setStateVersion(stateVersionNext);
-        setView(nextView);
-      });
+      // Apply urgently — mid-turn FoW (DD lookout feather on peri raise/lower)
+      // must land without waiting on a transition. Optics chrome stays snappy via
+      // StationPage `useDeferredValue` + local-first mast overlay (#235), not by
+      // deferring the whole vessel view (that left tunnel remotes stale until F5).
+      setStateVersion(stateVersionNext);
+      setView(nextView);
     };
 
     const applyConnections = (payload: {
@@ -440,7 +439,23 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
                 // Count ping/state/connections — any parsed frame proves the
                 // live path is delivering (not a zombie OPEN).
                 noteEvent();
-                if (payload.type === 'ping') continue;
+                if (payload.type === 'ping') {
+                  // Small pings often still arrive through cloudflared when a
+                  // multi-KB `state` frame was buffered/dropped. If the server
+                  // is ahead, catch up with GET /view (same path as F5).
+                  if (
+                    typeof payload.stateVersion === 'number' &&
+                    payload.stateVersion > lastVersionRef.current
+                  ) {
+                    void fullRefresh(signal).catch((err) => {
+                      if (signal.aborted || cancelled || myGeneration !== generation) {
+                        return;
+                      }
+                      if (isAuthFailure(err)) handleAuthInvalid();
+                    });
+                  }
+                  continue;
+                }
                 if (payload.type === 'connections') {
                   applyConnections(payload);
                   continue;

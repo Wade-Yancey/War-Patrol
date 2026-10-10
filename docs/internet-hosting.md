@@ -333,9 +333,11 @@ data/ (saves, scenarios) on local disk
   `X-Accel-Buffering: no` and disables timeouts). For nginx:
   `proxy_buffering off; proxy_read_timeout 3600s;` on that location.
   The server sends SSE keepalives about every **8s** (≈1KiB padded comment +
-  `event: ping`) so quiet stations (Controls between turns, LAN tablets, and
-  cloudflared/quick-tunnel clients) do not look idle to the proxy or the
-  browser. Padding helps intermediaries that buffer tiny writes. You still need
+  `event: ping` with `stateVersion`) so quiet stations (Controls between turns,
+  LAN tablets, and cloudflared/quick-tunnel clients) do not look idle to the
+  proxy or the browser. Padding helps intermediaries that buffer tiny writes.
+  Full `state` frames get the same trailing pad so mid-turn FoW pushes are less
+  likely to sit in an edge buffer while only pings flush. You still need
   buffering off / long read timeouts on that path — heartbeats alone cannot
   fix a proxy that buffers the whole stream.
 - **High-RTT / UK-style SSE freeze:** Order POSTs and `GET /view` (browser
@@ -343,10 +345,12 @@ data/ (saves, scenarios) on local disk
   through a quick tunnel — the LIVE dot used to stay green on a zombie OPEN
   connection. Clients now treat **~25s without a parsed ping/state frame** as
   stale: they flip to **RECONNECTING**, force-close the stream, refetch
-  `/view`, and reopen SSE (no full page refresh needed). Server-side, stuck
-  write backpressure drops the fan-out client after ~45s so dead tunnels do
-  not sit in the broadcast list forever. LAN and nearer remotes (e.g. STL)
-  should still see a steady LIVE when pings arrive.
+  `/view`, and reopen SSE (no full page refresh needed). When pings still
+  arrive but a large `state` was missed, a newer `stateVersion` on `ping`
+  triggers the same GET `/view` catch-up (DD lookout feather / mid-turn FoW
+  without F5). Server-side, stuck write backpressure drops the fan-out client
+  after ~45s so dead tunnels do not sit in the broadcast list forever. LAN and
+  nearer remotes (e.g. STL) should still see a steady LIVE when pings arrive.
 - **Turn timer sync:** stations count down from the shared ISO
   `turn.timerDeadline` with local wall clocks. If one remote tablet lights the
   timer a second or two after another, that is delayed SSE delivery (tunnel /
@@ -363,12 +367,13 @@ data/ (saves, scenarios) on local disk
   minutes" smoke tests.
 - **Optics (Lookout / Periscope) on remote:** contact pick, compass REL/TRUE,
   and silhouette swaps are local-first — they must not wait on tunnel RTT.
-  Fleet-sub mast UP/DOWN paints immediately; the POST is debounced. SSE view
-  apply runs as a React transition so a large remote state frame does not
-  block those interactions. **Still tunnel-bound:** FoW contact/sighting
-  lists filling after mast raise or turn resolve (server picture must arrive),
-  and any other station seeing your raised feather — local chrome cannot
-  invent accurate FoW.
+  Fleet-sub mast UP/DOWN paints immediately; the POST is debounced. Streamed
+  FoW lists use `useDeferredValue` so pick/compass stay urgent while the
+  picture settles. **Other stations seeing your raised feather** still need
+  the server picture: full `state` frames are padded for proxy flush, and
+  heartbeat `ping` frames carry `stateVersion` so a tunnel client that keeps
+  LIVE (pings) but misses a large mid-turn `state` (classic cloudflared
+  buffering) catches up via GET `/view` without a browser refresh.
 - **Same-origin client:** build the client into the server's static bundle
   (`pnpm build` at the repo root builds `shared` → `client` → `server`, and
   `app.ts` auto-serves `packages/client/dist` when present) so there is no

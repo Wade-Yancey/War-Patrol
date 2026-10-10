@@ -42,11 +42,22 @@ const PING_PAD = `: ${' '.repeat(1024)}\n`;
 export class SseHub {
   private clients = new Map<string, SseClient>();
   private viewBuilder: ViewBuilder | null = null;
+  /**
+   * Latest broadcast stateVersion per game — echoed on heartbeat pings so
+   * tunnel clients that still receive small pings (LIVE) but miss large
+   * `state` frames can detect the gap and GET /view.
+   */
+  private latestVersionByGame = new Map<string, number>();
   /** Optional hook so runtime can rebroadcast connection counts (umpire live panel). */
   onConnectionsChanged: ((gameId: string) => void) | null = null;
 
   setViewBuilder(builder: ViewBuilder): void {
     this.viewBuilder = builder;
+  }
+
+  private noteVersion(gameId: string, stateVersion: number): void {
+    const prev = this.latestVersionByGame.get(gameId) ?? 0;
+    if (stateVersion >= prev) this.latestVersionByGame.set(gameId, stateVersion);
   }
 
   add(client: SseClient): void {
@@ -115,6 +126,7 @@ export class SseHub {
         /* ignore */
       }
     }
+    this.latestVersionByGame.delete(gameId);
   }
 
   /** Connection counts for multi-connect indicator (ARCH-AC-09–12). */
@@ -159,6 +171,7 @@ export class SseHub {
 
   broadcast(gameId: string, stateVersion: number): void {
     if (!this.viewBuilder) return;
+    this.noteVersion(gameId, stateVersion);
     for (const client of this.clients.values()) {
       if (client.gameId !== gameId) continue;
       // One client's view build failing (e.g. transient bad state) must not
@@ -215,8 +228,13 @@ export class SseHub {
   }
 
   private send(client: SseClient, stateVersion: number, view: ClientView): void {
+    this.noteVersion(client.gameId, stateVersion);
     const payload = JSON.stringify({ type: 'state', stateVersion, view });
-    if (this.writeRaw(client, `event: state\ndata: ${payload}\n\n`)) {
+    // Trailing pad comment punches the large state frame through the same
+    // cloudflared / edge buffers that otherwise flush only small pings —
+    // mid-turn FoW (e.g. DD lookout feather on peri raise) was landing on
+    // loopback but stalling for tunnel remotes until a full page refresh.
+    if (this.writeRaw(client, `event: state\ndata: ${payload}\n\n${PING_PAD}\n`)) {
       client.lastSentVersion = stateVersion;
     }
   }
@@ -225,12 +243,15 @@ export class SseHub {
    * Heartbeat to keep proxies / tablet browsers from closing quiet streams.
    * Padded comment wakes buffered intermediaries; named `ping` event resets
    * client stale watchdogs that only count parsed SSE frames (not raw bytes).
+   * Includes `stateVersion` so clients can catch up via GET /view when a
+   * full `state` frame was dropped/buffered by the tunnel.
    */
   startHeartbeat(intervalMs = SSE_HEARTBEAT_MS): NodeJS.Timeout {
     return setInterval(() => {
-      const frame = `${PING_PAD}event: ping\ndata: {"type":"ping"}\n\n`;
       for (const client of [...this.clients.values()]) {
-        this.writeRaw(client, frame);
+        const stateVersion = this.latestVersionByGame.get(client.gameId) ?? 0;
+        const payload = JSON.stringify({ type: 'ping', stateVersion });
+        this.writeRaw(client, `${PING_PAD}event: ping\ndata: ${payload}\n\n`);
       }
     }, intervalMs);
   }
