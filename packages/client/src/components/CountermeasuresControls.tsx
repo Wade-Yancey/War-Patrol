@@ -9,6 +9,7 @@ import {
   type NoisemakerDeployOrder,
   type NoisemakerTrack,
 } from '@war-patrol/shared';
+import { StationInstrumentTitle } from './StationInfoButton';
 import { TouchNumber } from './TouchNumber';
 
 interface Props {
@@ -53,7 +54,7 @@ export function CountermeasuresControls({
   return (
     <section className="panel stack controls-weapons-panel station-instrument-panel">
       <div className="station-instrument-head">
-        <h2>Countermeasures</h2>
+        <StationInstrumentTitle title="Countermeasures" guideId="sub/countermeasures" />
         <p className="muted station-instrument-blurb">
           Drifting noisemaker · cooldown {NOISEMAKER_COOLDOWN_TURNS} turns ·
           active {NOISEMAKER_LIFETIME_TURNS} turns

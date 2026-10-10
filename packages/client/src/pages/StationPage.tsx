@@ -65,6 +65,8 @@ import { MoveDistanceReadout } from '../components/MoveDistanceReadout';
 import { useAudioSyncedDamageReport } from '../hooks/useAudioSyncedDamageReport';
 import { usePresentationSensorStations } from '../hooks/usePresentationSensorStations';
 import { resolveSunkCause, SunkModal } from '../components/SunkModal';
+import { StationInstrumentTitle } from '../components/StationInfoButton';
+import { stationGuideIdFor } from '../stationGuides';
 import {
   depthChargeBatchWhenSecById,
   depthChargeControlsPeakGain,
@@ -267,6 +269,20 @@ export function StationPage() {
   const opticsVariant: 'periscope' | 'lookout' =
     vessel?.unit.type === 'Submarine' ? 'periscope' : 'lookout';
   const opticsTabLabel = opticsVariant === 'lookout' ? 'Lookout' : 'Periscope';
+  /** Playable hull for station-guide blurbs (DD / Fleet Sub). */
+  const hullGuideClass =
+    vessel?.unit.class ??
+    (vessel?.unit.type === 'Submarine' ? 'Fleet Submarine' : undefined);
+  const guideHelm = stationGuideIdFor(hullGuideClass, 'helm');
+  const guideEot = stationGuideIdFor(hullGuideClass, 'eot');
+  const guideDive = stationGuideIdFor(hullGuideClass, 'dive');
+  const guideRadar = stationGuideIdFor(hullGuideClass, 'radar');
+  const guideOptics = stationGuideIdFor(
+    hullGuideClass,
+    opticsVariant === 'lookout' ? 'lookout' : 'periscope',
+  );
+  const guideHydrophone = stationGuideIdFor(hullGuideClass, 'hydrophone');
+  const guideActiveSonar = stationGuideIdFor(hullGuideClass, 'active_sonar');
   const sensorFocus =
     isSensors && (canRadar || canHydrophone || canActiveSonar || canPeriscope);
 
@@ -1610,7 +1626,11 @@ export function StationPage() {
                 (!canHydrophone && !canActiveSonar && !canPeriscope)) && (
               <section className="panel stack station-instrument-panel">
                 <div className="station-instrument-head">
-                  <h2>Radar · PPI</h2>
+                  {guideRadar ? (
+                    <StationInstrumentTitle title="Radar · PPI" guideId={guideRadar} />
+                  ) : (
+                    <h2>Radar · PPI</h2>
+                  )}
                   <p className="muted station-instrument-blurb">
                     {presentationSensors.radarUnavailableReason === 'submerged'
                       ? ''
@@ -1654,9 +1674,22 @@ export function StationPage() {
             {canPeriscope && activeTab === 'periscope' && (
               <section className="panel stack station-instrument-panel">
                 <div className="station-instrument-head">
-                  <h2>
-                    {opticsVariant === 'lookout' ? 'Lookout · Visual' : 'Periscope · Visual'}
-                  </h2>
+                  {guideOptics ? (
+                    <StationInstrumentTitle
+                      title={
+                        opticsVariant === 'lookout'
+                          ? 'Lookout · Visual'
+                          : 'Periscope · Visual'
+                      }
+                      guideId={guideOptics}
+                    />
+                  ) : (
+                    <h2>
+                      {opticsVariant === 'lookout'
+                        ? 'Lookout · Visual'
+                        : 'Periscope · Visual'}
+                    </h2>
+                  )}
                   <p className="muted station-instrument-blurb">
                     {opticsVariant === 'lookout'
                       ? presentationSensors.periscopeOperational
@@ -1764,7 +1797,14 @@ export function StationPage() {
             {canHydrophone && activeTab === 'hydrophone' && (
               <section className="panel stack station-instrument-panel">
                 <div className="station-instrument-head">
-                  <h2>Hydrophone · Bearing listen</h2>
+                  {guideHydrophone ? (
+                    <StationInstrumentTitle
+                      title="Hydrophone · Bearing listen"
+                      guideId={guideHydrophone}
+                    />
+                  ) : (
+                    <h2>Hydrophone · Bearing listen</h2>
+                  )}
                   <p className="muted station-instrument-blurb">
                     {presentationSensors.hydrophoneOperational
                       ? `Passive · eff ~${Math.round(vessel.hydrophoneEffectiveRangeNm ?? vessel.hydrophoneMaxRangeNm ?? 30)} / ${vessel.hydrophoneMaxRangeNm ?? 30} nm`
@@ -1818,7 +1858,14 @@ export function StationPage() {
             {canActiveSonar && activeTab === 'sonar' && (
               <section className="panel stack station-instrument-panel">
                 <div className="station-instrument-head">
-                  <h2>Active search sonar</h2>
+                  {guideActiveSonar ? (
+                    <StationInstrumentTitle
+                      title="Active search sonar"
+                      guideId={guideActiveSonar}
+                    />
+                  ) : (
+                    <h2>Active search sonar</h2>
+                  )}
                   <p className="muted station-instrument-blurb">
                     Cone ±{vessel.sonarHalfAngleDeg ?? 30}°
                     {vessel.sonarMaxRangeNm ? ` · max ${vessel.sonarMaxRangeNm} nm` : ''}
@@ -2059,7 +2106,11 @@ export function StationPage() {
             {controlsTab === 'helm' && (
               <section className="panel stack controls-helm-panel station-instrument-panel">
                 <div className="station-instrument-head">
-                  <h2>Helm</h2>
+                  {guideHelm ? (
+                    <StationInstrumentTitle title="Helm" guideId={guideHelm} />
+                  ) : (
+                    <h2>Helm</h2>
+                  )}
                 </div>
                 {canHelm && (
                   <HelmCompass
@@ -2119,7 +2170,11 @@ export function StationPage() {
             {controlsTab === 'dive' && canHelm && vessel.unit.type === 'Submarine' && (
               <section className="panel stack controls-dive-panel station-instrument-panel">
                 <div className="station-instrument-head">
-                  <h2>Dive plane</h2>
+                  {guideDive ? (
+                    <StationInstrumentTitle title="Dive plane" guideId={guideDive} />
+                  ) : (
+                    <h2>Dive plane</h2>
+                  )}
                 </div>
                 <DiveControls
                   depth={vessel.unit.position.depth}
@@ -2223,6 +2278,7 @@ export function StationPage() {
               <DamageReportPanel
                 vesselName={vessel.unit.name}
                 vesselType={vessel.unit.type}
+                hullClass={vessel.unit.class}
                 health={syncedDamage.health}
                 condition={syncedDamage.condition}
                 subsystems={syncedDamage.subsystems}
@@ -2236,7 +2292,11 @@ export function StationPage() {
                 {canEot && (
                   <section className="panel stack controls-eot-panel station-instrument-panel">
                     <div className="station-instrument-head">
-                      <h2>Engine orders</h2>
+                      {guideEot ? (
+                        <StationInstrumentTitle title="Engine orders" guideId={guideEot} />
+                      ) : (
+                        <h2>Engine orders</h2>
+                      )}
                     </div>
                     {presentationSubs.propulsion === 'disabled' && (
                       <p className="dive-risk dive-risk--warn" role="status">

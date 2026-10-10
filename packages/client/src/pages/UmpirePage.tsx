@@ -55,6 +55,7 @@ import { ConfirmAction } from '../components/ConfirmAction';
 import { VesselJoinLinks } from '../components/VesselJoinLinks';
 import { HostLocalBanner } from '../components/HostLocalBanner';
 import { EotTelegraph } from '../components/EotTelegraph';
+import { StationInfoButton } from '../components/StationInfoButton';
 
 function tokenKey(gameId: string) {
   return `wp-token:${gameId}:umpire`;
@@ -490,7 +491,10 @@ export function UmpirePage() {
       <div className="app-shell app-shell--umpire">
         <header className="header-bar">
           <div>
-            <span className="brand-mark">Umpire · ground truth</span>
+            <div className="umpire-brand-row">
+              <span className="brand-mark">Umpire · ground truth</span>
+              <StationInfoButton guideId="umpire" />
+            </div>
             <p className="brand" style={{ fontSize: 'clamp(1.35rem, 3.5vw, 1.85rem)' }}>
               War Patrol
             </p>

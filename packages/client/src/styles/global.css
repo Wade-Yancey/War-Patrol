@@ -936,9 +936,136 @@ label {
   margin: 0;
 }
 
+.station-instrument-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.station-instrument-title-row h2 {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .station-instrument-blurb {
   margin: 0;
   font-size: 0.85rem;
+}
+
+/* Discrete station-guide info control — does not compete with primary CRT chrome. */
+.station-info-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  min-height: 2rem;
+  min-width: 2rem;
+  padding: 0.2rem 0.45rem;
+  border-color: rgba(61, 255, 106, 0.14);
+  background: transparent;
+  color: var(--ink-muted);
+  text-transform: none;
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+}
+
+.station-info-btn:hover:not(:disabled) {
+  border-color: rgba(61, 255, 106, 0.35);
+  background: rgba(10, 26, 16, 0.65);
+  color: var(--ink);
+}
+
+.station-info-btn-glyph {
+  font-size: 1rem;
+  line-height: 1;
+  font-style: normal;
+}
+
+.station-info-btn-label {
+  display: none;
+}
+
+@media (min-width: 520px) {
+  .station-info-btn-label {
+    display: inline;
+  }
+}
+
+.station-info-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0.75rem;
+  background: rgba(1, 8, 5, 0.62);
+}
+
+@media (min-width: 640px) {
+  .station-info-backdrop {
+    align-items: center;
+    padding: 1.25rem;
+  }
+}
+
+.station-info-dialog {
+  width: min(28rem, 100%);
+  max-height: min(78dvh, 34rem);
+  margin: 0;
+  overflow: auto;
+  box-shadow: 0 0 0 1px rgba(61, 255, 106, 0.18);
+}
+
+.station-info-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+}
+
+.station-info-dialog-title {
+  margin: 0 !important;
+  flex: 1 1 auto;
+  font-size: clamp(1rem, 3vw, 1.2rem) !important;
+  letter-spacing: 0.06em !important;
+}
+
+.station-info-close {
+  flex: 0 0 auto;
+  min-height: 2.25rem;
+  padding: 0.35rem 0.7rem;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+}
+
+.station-info-purpose {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.station-info-bullets {
+  margin: 0;
+  padding-left: 1.15rem;
+  display: grid;
+  gap: 0.45rem;
+  font-size: 0.88rem;
+  line-height: 1.4;
+  color: var(--ink);
+}
+
+.station-info-bullets li::marker {
+  color: var(--ink-muted);
+}
+
+.umpire-brand-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
 }
 
 .station-turn-panel {
