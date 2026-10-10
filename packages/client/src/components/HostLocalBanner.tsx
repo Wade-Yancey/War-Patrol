@@ -7,10 +7,28 @@ function isPublicTunnelHost(hostname: string): boolean {
   );
 }
 
+function isLoopbackHostname(hostname: string): boolean {
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '[::1]' ||
+    hostname === '::1'
+  );
+}
+
+/** Umpire is host-only (admin token); remotes never land here. */
+function isUmpirePath(pathname: string): boolean {
+  return /\/g\/[^/]+\/umpire\/?$/.test(pathname);
+}
+
 /**
- * When the browser is on the public/tunnel origin, nudge the operator to the
- * loopback equivalent. Host-machine tabs through cloudflared often stick on
- * RECONNECTING while remote clients on the same URL stay LIVE.
+ * When the **host** opens the umpire UI on the public/tunnel origin, nudge them
+ * to the loopback equivalent. Host-machine tabs through cloudflared often stick
+ * on RECONNECTING while remote clients on the same URL stay LIVE.
+ *
+ * Shown only on `/g/:gameId/umpire` while that tab’s hostname is a tunnel or
+ * configured public base — never on station pages (remotes share that origin)
+ * and never when the tab is already on localhost / 127.0.0.1.
  */
 export function HostLocalBanner() {
   const hostInfo = useHostInfo();
@@ -18,6 +36,8 @@ export function HostLocalBanner() {
   if (typeof window === 'undefined') return null;
 
   const { protocol, hostname, port, pathname, search, hash } = window.location;
+  if (isLoopbackHostname(hostname) || !isUmpirePath(pathname)) return null;
+
   const onTunnelHost = isPublicTunnelHost(hostname);
   const publicBase = hostInfo?.publicBaseUrl?.replace(/\/+$/, '') ?? null;
   let onConfiguredPublic = false;
