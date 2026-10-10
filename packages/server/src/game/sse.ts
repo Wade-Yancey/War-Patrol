@@ -9,12 +9,31 @@ export interface SseClient {
   stationId?: string;
   reply: FastifyReply;
   lastSentVersion: number;
+  /** True while Node reports write backpressure (`write` returned false). */
+  waitingDrain?: boolean;
+  /** Drop the client if drain never arrives (zombie high-RTT / tunnel stall). */
+  drainTimer?: ReturnType<typeof setTimeout>;
 }
 
 type ViewBuilder = (client: SseClient) => ClientView | null;
 
-/** Default ping interval — under common proxy/tablet idle cuts (~30–100s). */
-export const SSE_HEARTBEAT_MS = 15_000;
+/**
+ * Heartbeat interval — under common proxy/tablet idle cuts (~30–100s).
+ * Slightly under 10s so high-RTT cloudflared clients still see pings before
+ * edge/browser idle logic, and so the client stale watchdog (~25s) can miss
+ * a couple without flapping LAN/STL paths.
+ */
+export const SSE_HEARTBEAT_MS = 8_000;
+
+/** If `write()` backpressures longer than this, treat the socket as dead. */
+const DRAIN_WATCHDOG_MS = 45_000;
+
+/**
+ * Comment padding so intermediaries that buffer small writes (cloudflared /
+ * some CDN edges) still flush a ping frame to the browser. ~1KiB is enough
+ * to punch through typical buffers without bloating quiet games.
+ */
+const PING_PAD = `: ${' '.repeat(1024)}\n`;
 
 /**
  * SSE hub — one connection per open station/umpire tab.
@@ -54,12 +73,20 @@ export class SseHub {
         'Content-Type': 'text/event-stream; charset=utf-8',
         'Cache-Control': 'no-cache, no-transform',
         Connection: 'keep-alive',
+        // nginx + Cloudflare respect this to disable response buffering on SSE.
         'X-Accel-Buffering': 'no',
       });
+      const flushHeaders = (reply.raw as { flushHeaders?: () => void }).flushHeaders;
+      try {
+        flushHeaders?.call(reply.raw);
+      } catch {
+        /* ignore */
+      }
     }
     this.writeRaw(client, `: connected\n\n`);
 
     const onClose = () => {
+      this.clearDrainWatch(client);
       if (!this.clients.delete(client.id)) return;
       this.onConnectionsChanged?.(client.gameId);
     };
@@ -70,7 +97,9 @@ export class SseHub {
 
   remove(id: string): void {
     const existing = this.clients.get(id);
-    if (!this.clients.delete(id) || !existing) return;
+    if (!existing) return;
+    this.clearDrainWatch(existing);
+    if (!this.clients.delete(id)) return;
     this.onConnectionsChanged?.(existing.gameId);
   }
 
@@ -78,6 +107,7 @@ export class SseHub {
   dropGame(gameId: string): void {
     for (const client of [...this.clients.values()]) {
       if (client.gameId !== gameId) continue;
+      this.clearDrainWatch(client);
       this.clients.delete(client.id);
       try {
         client.reply.raw.end();
@@ -193,26 +223,72 @@ export class SseHub {
 
   /**
    * Heartbeat to keep proxies / tablet browsers from closing quiet streams.
-   * Comment line wakes the wire; named `ping` event resets client idle timers
-   * that only notice SSE frames with data.
+   * Padded comment wakes buffered intermediaries; named `ping` event resets
+   * client stale watchdogs that only count parsed SSE frames (not raw bytes).
    */
   startHeartbeat(intervalMs = SSE_HEARTBEAT_MS): NodeJS.Timeout {
     return setInterval(() => {
-      const frame = `: ping\nevent: ping\ndata: {"type":"ping"}\n\n`;
+      const frame = `${PING_PAD}event: ping\ndata: {"type":"ping"}\n\n`;
       for (const client of [...this.clients.values()]) {
         this.writeRaw(client, frame);
       }
     }, intervalMs);
   }
 
+  private clearDrainWatch(client: SseClient): void {
+    if (client.drainTimer !== undefined) {
+      clearTimeout(client.drainTimer);
+      client.drainTimer = undefined;
+    }
+    client.waitingDrain = false;
+  }
+
+  private dropClient(id: string): void {
+    const existing = this.clients.get(id);
+    if (!existing) return;
+    this.clearDrainWatch(existing);
+    if (!this.clients.delete(id)) return;
+    this.onConnectionsChanged?.(existing.gameId);
+  }
+
   private writeRaw(client: SseClient, chunk: string): boolean {
     try {
-      client.reply.raw.write(chunk);
+      const raw = client.reply.raw;
+      if (raw.writableEnded || raw.destroyed) {
+        this.dropClient(client.id);
+        return false;
+      }
+      const ok = raw.write(chunk);
+      // Compression / transform streams (if any proxy layer adds them) need an
+      // explicit flush; plain sockets no-op.
+      const flushable = raw as { flush?: () => void };
+      try {
+        flushable.flush?.();
+      } catch {
+        /* ignore */
+      }
+
+      if (!ok && !client.waitingDrain) {
+        // High-RTT tunnel clients can backpressure for a while; if drain never
+        // fires the fan-out would keep a silent dead connection forever.
+        client.waitingDrain = true;
+        const onDrain = () => {
+          this.clearDrainWatch(client);
+        };
+        raw.once('drain', onDrain);
+        client.drainTimer = setTimeout(() => {
+          if (!client.waitingDrain) return;
+          try {
+            raw.end();
+          } catch {
+            /* ignore */
+          }
+          this.dropClient(client.id);
+        }, DRAIN_WATCHDOG_MS);
+      }
       return true;
     } catch {
-      if (this.clients.delete(client.id)) {
-        this.onConnectionsChanged?.(client.gameId);
-      }
+      this.dropClient(client.id);
       return false;
     }
   }

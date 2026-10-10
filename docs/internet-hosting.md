@@ -332,11 +332,21 @@ data/ (saves, scenarios) on local disk
   (`configure` block in `packages/client/vite.config.ts` sets
   `X-Accel-Buffering: no` and disables timeouts). For nginx:
   `proxy_buffering off; proxy_read_timeout 3600s;` on that location.
-  The server already sends SSE keepalives about every **15s** (comment +
+  The server sends SSE keepalives about every **8s** (≈1KiB padded comment +
   `event: ping`) so quiet stations (Controls between turns, LAN tablets, and
   cloudflared/quick-tunnel clients) do not look idle to the proxy or the
-  browser. You still need buffering off / long read timeouts on that path —
-  heartbeats alone cannot fix a proxy that buffers the whole stream.
+  browser. Padding helps intermediaries that buffer tiny writes. You still need
+  buffering off / long read timeouts on that path — heartbeats alone cannot
+  fix a proxy that buffers the whole stream.
+- **High-RTT / UK-style SSE freeze:** Order POSTs and `GET /view` (browser
+  refresh) can keep working while the long-lived `/events` stream stalls
+  through a quick tunnel — the LIVE dot used to stay green on a zombie OPEN
+  connection. Clients now treat **~25s without a parsed ping/state frame** as
+  stale: they flip to **RECONNECTING**, force-close the stream, refetch
+  `/view`, and reopen SSE (no full page refresh needed). Server-side, stuck
+  write backpressure drops the fan-out client after ~45s so dead tunnels do
+  not sit in the broadcast list forever. LAN and nearer remotes (e.g. STL)
+  should still see a steady LIVE when pings arrive.
 - **Turn timer sync:** stations count down from the shared ISO
   `turn.timerDeadline` with local wall clocks. If one remote tablet lights the
   timer a second or two after another, that is delayed SSE delivery (tunnel /

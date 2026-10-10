@@ -123,5 +123,5 @@ allowlist) to restrict cross-origin API access — unnecessary if you serve the
 client from the same origin as the API (`pnpm build && pnpm start`, as
 above). Put a TLS-terminating reverse proxy (Caddy/nginx/Cloudflare Tunnel)
 in front for HTTPS; disable proxy buffering / long timeouts on
-`/api/games/:gameId/events` (long-lived SSE — server sends ~15s keepalives).
+`/api/games/:gameId/events` (long-lived SSE — server sends ~8s padded keepalives; clients stale-reconnect if pings stop).
 Cloudflare quick tunnels add irreducible RTT; named tunnel/VPS feels snappier.
