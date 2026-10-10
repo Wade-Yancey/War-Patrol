@@ -415,16 +415,16 @@ export function StationPage() {
     presentationSensors.periscopeOperational === false &&
     presentationSensors.periscopeUnavailableReason !== 'scope_down' &&
     periOptimisticRaised !== true;
-  const streamOpticsContacts = opticsScopeDown
+  // Do not defer contacts/sightings — DD lookout must paint a remote peri feather
+  // (and wake sightings) as soon as the SSE/view catch-up arrives. Contact pick /
+  // compass stay local in PeriscopeScope; only streamed HDG is deferred below.
+  // (#246 already applies SSE state urgently + ping stateVersion catch-up.)
+  const opticsContacts = opticsScopeDown
     ? EMPTY_PERISCOPE_CONTACTS
     : presentationSensors.periscopeContacts;
-  const streamOpticsSightings = opticsScopeDown
+  const opticsSightings = opticsScopeDown
     ? EMPTY_OPTICS_SIGHTINGS
     : presentationSensors.opticsSightings;
-  // Defer stream-driven optics picture so contact pick / compass stay urgent
-  // while a large remote SSE view reconciles. Settled FoW numbers still match.
-  const opticsContacts = useDeferredValue(streamOpticsContacts);
-  const opticsSightings = useDeferredValue(streamOpticsSightings);
   const opticsOwnHeading = useDeferredValue(vessel?.unit.heading ?? 0);
   const scheduleDamageRevealRef = useRef(syncedDamage.scheduleRevealForDetonation);
   scheduleDamageRevealRef.current = syncedDamage.scheduleRevealForDetonation;

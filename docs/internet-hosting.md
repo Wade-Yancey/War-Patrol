@@ -367,13 +367,14 @@ data/ (saves, scenarios) on local disk
   minutes" smoke tests.
 - **Optics (Lookout / Periscope) on remote:** contact pick, compass REL/TRUE,
   and silhouette swaps are local-first — they must not wait on tunnel RTT.
-  Fleet-sub mast UP/DOWN paints immediately; the POST is debounced. Streamed
-  FoW lists use `useDeferredValue` so pick/compass stay urgent while the
-  picture settles. **Other stations seeing your raised feather** still need
-  the server picture: full `state` frames are padded for proxy flush, and
-  heartbeat `ping` frames carry `stateVersion` so a tunnel client that keeps
-  LIVE (pings) but misses a large mid-turn `state` (classic cloudflared
-  buffering) catches up via GET `/view` without a browser refresh.
+  Fleet-sub mast UP/DOWN paints immediately; the POST is debounced. SSE
+  `state` applies urgently (#246); contact/sighting lists are **not**
+  `useDeferredValue`-deferred so a remote peri feather paints as soon as the
+  view arrives (only streamed HDG stays deferred). **Other stations seeing
+  your raised feather** still need the server picture: full `state` frames are
+  padded for proxy flush, and heartbeat `ping` frames carry `stateVersion` so
+  a tunnel client that keeps LIVE (pings) but misses a large mid-turn `state`
+  catches up via GET `/view` without a browser refresh.
 - **Same-origin client:** build the client into the server's static bundle
   (`pnpm build` at the repo root builds `shared` → `client` → `server`, and
   `app.ts` auto-serves `packages/client/dist` when present) so there is no
