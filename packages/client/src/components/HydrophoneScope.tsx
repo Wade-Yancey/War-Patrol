@@ -83,14 +83,26 @@ function bearingFromPointer(
   return normalizeHeading(deg);
 }
 
+/** Player-facing loudness prior labels (math still uses flank/creep/unknown). */
 function assumedSourceLabel(assumed: HydrophoneAssumedSource): string {
   switch (assumed) {
     case 'flank':
-      return 'FLANK';
+      return 'LOUD';
     case 'creep':
-      return 'CREEP';
+      return 'QUIET';
     default:
       return 'UNK';
+  }
+}
+
+function assumedSourceAriaLabel(assumed: HydrophoneAssumedSource): string {
+  switch (assumed) {
+    case 'flank':
+      return 'Assumed source loudness loud';
+    case 'creep':
+      return 'Assumed source loudness quiet';
+    default:
+      return 'Assumed source loudness unknown';
   }
 }
 
@@ -528,8 +540,8 @@ function HydrophoneScopeInner({
     cue.approxRangeMinNm == null || cue.approxRangeMaxNm == null
       ? 'range indeterminate — train needle on a propeller contact'
       : cue.approxRangeMinNm === cue.approxRangeMaxNm
-        ? `approximate range about ${cue.approxRangeMinNm} nautical miles under ${assumedSourceLabel(assumedSource)} assumption`
-        : `approximate range ${cue.approxRangeMinNm} to ${cue.approxRangeMaxNm} nautical miles under ${assumedSourceLabel(assumedSource)} assumption`;
+        ? `approximate range about ${cue.approxRangeMinNm} nautical miles under ${assumedSourceAriaLabel(assumedSource)}`
+        : `approximate range ${cue.approxRangeMinNm} to ${cue.approxRangeMaxNm} nautical miles under ${assumedSourceAriaLabel(assumedSource)}`;
 
   return (
     <div className="radar-scope radar-console crt-console hydrophone-scope">
@@ -695,6 +707,8 @@ function HydrophoneScopeInner({
                     : 'hydrophone-assume-btn'
                 }
                 aria-pressed={assumedSource === opt}
+                aria-label={assumedSourceAriaLabel(opt)}
+                title={assumedSourceAriaLabel(opt)}
                 onClick={() => setAssumedSource(opt)}
               >
                 {assumedSourceLabel(opt)}
