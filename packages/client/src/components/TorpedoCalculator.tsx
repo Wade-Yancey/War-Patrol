@@ -48,6 +48,8 @@ interface Props {
   running?: TorpedoTrack[];
   disabled?: boolean;
   reloadBusy?: boolean;
+  /** Order write in flight — pressed chrome; still allows latest-wins resubmit. */
+  writePending?: boolean;
   onSubmit: (order: TorpedoFireOrder) => void;
   onClear?: () => void;
   onReload?: (room: TorpedoRoomId) => void;
@@ -116,6 +118,7 @@ export function TorpedoCalculator({
   running = [],
   disabled,
   reloadBusy,
+  writePending = false,
   onSubmit,
   onClear,
   onReload,
@@ -438,9 +441,10 @@ export function TorpedoCalculator({
 
       <div className="control-actions">
         <button
-          className="primary"
+          className={['primary', writePending ? 'is-pending' : ''].filter(Boolean).join(' ')}
           type="button"
           disabled={!canQueue}
+          aria-busy={writePending || undefined}
           onClick={() =>
             onSubmit({
               room,
@@ -454,8 +458,11 @@ export function TorpedoCalculator({
             })
           }
         >
-          Queue torpedo fire
-          {effectiveCount > 1 ? ` (×${effectiveCount})` : ''} · {room === 'aft' ? 'aft' : 'fwd'}
+          {writePending
+            ? 'Queuing…'
+            : `Queue torpedo fire${
+                effectiveCount > 1 ? ` (×${effectiveCount})` : ''
+              } · ${room === 'aft' ? 'aft' : 'fwd'}`}
         </button>
         {pending && onClear && (
           <button type="button" disabled={disabled} onClick={onClear}>

@@ -1,4 +1,4 @@
-import type { ClientView, EotSetting } from '@war-patrol/shared';
+import type { ClientView, EotSetting, UnitOrders } from '@war-patrol/shared';
 
 async function request<T>(
   path: string,
@@ -128,11 +128,14 @@ export const api = {
       } | null;
     },
   ) =>
-    request<{ ok: boolean; stateVersion: number }>(`/api/games/${gameId}/orders`, {
-      method: 'POST',
-      token,
-      body: JSON.stringify(body),
-    }),
+    request<{ ok: boolean; stateVersion: number; orders?: UnitOrders }>(
+      `/api/games/${gameId}/orders`,
+      {
+        method: 'POST',
+        token,
+        body: JSON.stringify(body),
+      },
+    ),
   /** Umpire: apply course/EOT to all non-detached convoy members. */
   formationOrders: (
     gameId: string,

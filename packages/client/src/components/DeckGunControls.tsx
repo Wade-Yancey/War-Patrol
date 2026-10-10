@@ -32,6 +32,8 @@ interface Props {
   fireBlock?: DeckGunFireBlock;
   disabled?: boolean;
   reloadBusy?: boolean;
+  /** Order write in flight — pressed chrome; still allows latest-wins resubmit. */
+  writePending?: boolean;
   onSubmit: (order: DeckGunFireOrder) => void;
   onClear?: () => void;
   onReload?: () => void;
@@ -75,6 +77,7 @@ export function DeckGunControls({
   fireBlock,
   disabled,
   reloadBusy,
+  writePending = false,
   onSubmit,
   onClear,
   onReload,
@@ -254,9 +257,10 @@ export function DeckGunControls({
 
       <div className="control-actions">
         <button
-          className="primary"
+          className={['primary', writePending ? 'is-pending' : ''].filter(Boolean).join(' ')}
           type="button"
           disabled={!canQueue}
+          aria-busy={writePending || undefined}
           onClick={() =>
             onSubmit({
               aimHeading: aimTrue,
@@ -267,8 +271,9 @@ export function DeckGunControls({
             })
           }
         >
-          Queue deck-gun fire
-          {effectiveShots > 1 ? ` ×${effectiveShots}` : ''}
+          {writePending
+            ? 'Queuing…'
+            : `Queue deck-gun fire${effectiveShots > 1 ? ` ×${effectiveShots}` : ''}`}
         </button>
         {pending && onClear && (
           <button type="button" disabled={disabled} onClick={onClear}>
