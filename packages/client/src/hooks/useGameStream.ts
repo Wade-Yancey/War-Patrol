@@ -13,11 +13,21 @@ interface Options {
 const BASE_BACKOFF_MS = 600;
 const MAX_BACKOFF_MS = 12_000;
 /**
- * Server heartbeats every ~15s (comment + `event: ping`). Treat longer silence
- * as a dead stream. Generous vs the ping interval so tablet timer jitter and a
- * missed frame do not flap the Controls LIVE indicator.
+ * Server heartbeats every ~8s (padded comment + `event: ping`). Treat longer
+ * silence as a dead stream. Kept above 2–3 missed pings so LAN/STL jitter does
+ * not flap LIVE, but well under the old 90s window that left UK tunnel clients
+ * looking "LIVE" while frozen.
  */
-const IDLE_TIMEOUT_MS = 90_000;
+const IDLE_TIMEOUT_MS = 40_000;
+/**
+ * Parsed SSE frames (including `ping`) must arrive within this window or we
+ * force close + reconnect + snapshot refetch. Separates "TCP still open /
+ * headers received" from "actually receiving the live view stream" — the UK
+ * desync failure mode through cloudflared.
+ */
+const STALE_AFTER_MS = 25_000;
+/** How often to check `lastEventAt` while a stream is open. */
+const STALE_CHECK_MS = 5_000;
 /** Show a sticky error only after several transient disconnects in a row. */
 const STICKY_ERROR_AFTER_FAILURES = 3;
 /** If the open stream has not delivered a state frame yet, fall back to GET view. */
@@ -28,6 +38,7 @@ function isTransientStreamError(err: unknown): boolean {
   const msg = err.message;
   return (
     msg === 'SSE idle timeout' ||
+    msg === 'SSE stale timeout' ||
     msg === 'SSE disconnected' ||
     msg.startsWith('SSE failed (') ||
     msg === 'Failed to fetch' ||
@@ -71,21 +82,42 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
 
     let cancelled = false;
     let reconnectTimer: number | undefined;
+    let staleTimer: number | undefined;
     let abort: AbortController | undefined;
     /** Bumped on every new connect attempt so stale attempts never re-arm timers. */
     let generation = 0;
     let attempt = 0;
     let authInvalid = false;
+    /** Last time we parsed a complete SSE event (`ping`, `state`, `connections`). */
+    let lastEventAt = 0;
+    /** When the current fetch stream became open (headers OK). */
+    let streamOpenedAt = 0;
+    /** True once headers+body stream is open; LIVE also requires a fresh event. */
+    let streamOpen = false;
 
     const setConnectedState = (value: boolean) => {
       connectedRef.current = value;
       setConnected(value);
     };
 
+    const publishConnected = () => {
+      // Never show green LIVE for a zombie stream that opened but stopped
+      // delivering pings/state (high-RTT cloudflared failure mode).
+      const fresh = lastEventAt > 0 && Date.now() - lastEventAt < STALE_AFTER_MS;
+      setConnectedState(streamOpen && fresh);
+    };
+
     const clearReconnect = () => {
       if (reconnectTimer !== undefined) {
         window.clearTimeout(reconnectTimer);
         reconnectTimer = undefined;
+      }
+    };
+
+    const clearStaleWatch = () => {
+      if (staleTimer !== undefined) {
+        window.clearInterval(staleTimer);
+        staleTimer = undefined;
       }
     };
 
@@ -98,13 +130,15 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       reconnectTimer = window.setTimeout(() => {
         reconnectTimer = undefined;
         if (cancelled || authInvalid || fromGeneration !== generation) return;
-        void openSse();
+        void openSse({ catchUp: true });
       }, delay + jitter);
     };
 
     const handleAuthInvalid = () => {
       authInvalid = true;
       clearReconnect();
+      clearStaleWatch();
+      streamOpen = false;
       setConnectedState(false);
       setError('Session expired — sign in again');
       onAuthInvalidRef.current?.();
@@ -121,7 +155,10 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
         setError(null);
         return;
       }
-      if (err instanceof Error && err.message === 'SSE idle timeout') {
+      if (
+        err instanceof Error &&
+        (err.message === 'SSE idle timeout' || err.message === 'SSE stale timeout')
+      ) {
         setError('Connection interrupted — retrying…');
         return;
       }
@@ -132,6 +169,7 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       const data = await api.view(gameId, token, { signal });
       if (cancelled || signal?.aborted) return;
       lastVersionRef.current = data.stateVersion;
+      // Snapshot catch-up is urgent — do not defer behind optics transitions.
       setStateVersion(data.stateVersion);
       setView(data.view);
       setError(null);
@@ -183,6 +221,50 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
           setStateVersion(payload.stateVersion);
         }
       }
+    };
+
+    const noteEvent = () => {
+      lastEventAt = Date.now();
+      publishConnected();
+    };
+
+    const forceStaleReconnect = (fromGeneration: number) => {
+      if (cancelled || authInvalid || fromGeneration !== generation) return;
+      streamOpen = false;
+      publishConnected();
+      attempt += 1;
+      noteStreamFailure(new Error('SSE stale timeout'));
+      try {
+        abort?.abort();
+      } catch {
+        /* ignore */
+      }
+      // Immediate catch-up reconnect (no backoff) — UK players were stuck until
+      // a full browser refresh; snapshot refetch runs inside openSse.
+      void openSse({ catchUp: true });
+    };
+
+    const armStaleWatch = (fromGeneration: number) => {
+      clearStaleWatch();
+      staleTimer = window.setInterval(() => {
+        if (cancelled || authInvalid || fromGeneration !== generation) return;
+        if (document.visibilityState === 'hidden') return;
+        if (!streamOpen) return;
+        const now = Date.now();
+        if (lastEventAt > 0) {
+          if (now - lastEventAt < STALE_AFTER_MS) {
+            publishConnected();
+            return;
+          }
+          forceStaleReconnect(fromGeneration);
+          return;
+        }
+        // Headers arrived but no parseable ping/state yet — same zombie path
+        // (buffered/stalled tunnel) as a stream that went quiet later.
+        if (streamOpenedAt > 0 && now - streamOpenedAt >= STALE_AFTER_MS) {
+          forceStaleReconnect(fromGeneration);
+        }
+      }, STALE_CHECK_MS);
     };
 
     const readWithIdleTimeout = (
@@ -258,20 +340,27 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
         );
       });
 
-    const openSse = async () => {
+    const openSse = async (opts?: { catchUp?: boolean }) => {
       if (cancelled || authInvalid) return;
 
       clearReconnect();
+      clearStaleWatch();
       abort?.abort();
       const myGeneration = ++generation;
       abort = new AbortController();
       const { signal } = abort;
 
+      streamOpen = false;
+      streamOpenedAt = 0;
+      lastEventAt = 0;
       setConnectedState(false);
 
+      const catchUp = opts?.catchUp === true || lastVersionRef.current > 0;
+
       try {
-        // First paint only — reconnects rely on the stream's sendFull state frame
-        // so we do not hammer GET /view (and delay reading) on every blip.
+        // First paint: await snapshot so the station is not blank before SSE.
+        // Reconnect / stale catch-up: refresh in parallel so we do not delay
+        // opening the stream (and still recover if the tunnel SSE path is wedged).
         if (lastVersionRef.current === 0) {
           try {
             await fullRefresh(signal);
@@ -284,6 +373,11 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
             setError(err instanceof Error ? err.message : 'Refresh failed');
           }
           if (signal.aborted || cancelled || myGeneration !== generation) return;
+        } else if (catchUp) {
+          void fullRefresh(signal).catch((err) => {
+            if (signal.aborted || cancelled || myGeneration !== generation) return;
+            if (isAuthFailure(err)) handleAuthInvalid();
+          });
         }
 
         // Token goes on the URL: native EventSource cannot set Authorization, and some
@@ -303,9 +397,13 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
         }
         if (signal.aborted || cancelled || myGeneration !== generation) return;
 
-        setConnectedState(true);
+        streamOpen = true;
+        streamOpenedAt = Date.now();
+        // Headers alone are not "connected" for LIVE — wait for a ping/state frame.
+        publishConnected();
         setError(null);
         attempt = 0;
+        armStaleWatch(myGeneration);
 
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
@@ -339,6 +437,9 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
                   connections?: UmpireView['connections'];
                   stationConnections?: VesselView['stationConnections'];
                 };
+                // Count ping/state/connections — any parsed frame proves the
+                // live path is delivering (not a zombie OPEN).
+                noteEvent();
                 if (payload.type === 'ping') continue;
                 if (payload.type === 'connections') {
                   applyConnections(payload);
@@ -367,6 +468,8 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
 
         if (cancelled || signal.aborted || myGeneration !== generation || authInvalid) return;
 
+        streamOpen = false;
+        clearStaleWatch();
         setConnectedState(false);
         attempt += 1;
         noteStreamFailure(new Error('SSE disconnected'));
@@ -375,6 +478,8 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
         if (cancelled || signal.aborted || myGeneration !== generation || authInvalid) return;
         if (err instanceof DOMException && err.name === 'AbortError') return;
 
+        streamOpen = false;
+        clearStaleWatch();
         setConnectedState(false);
         attempt += 1;
         noteStreamFailure(err);
@@ -385,11 +490,11 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
     const kickIfNeeded = () => {
       if (cancelled || authInvalid) return;
       if (document.visibilityState === 'hidden') return;
-      // Tab visible / network back: if stream is down, reconnect now; else soft-refresh.
+      // Tab visible / network back: if stream is down or stale, reconnect + catch up.
       if (!connectedRef.current) {
         attempt = 0;
         clearReconnect();
-        void openSse();
+        void openSse({ catchUp: true });
       } else {
         void refreshRef.current();
       }
@@ -399,7 +504,7 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       if (document.visibilityState === 'visible') kickIfNeeded();
     };
 
-    void openSse();
+    void openSse({ catchUp: false });
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('online', kickIfNeeded);
 
@@ -407,7 +512,9 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       cancelled = true;
       generation += 1;
       clearReconnect();
+      clearStaleWatch();
       abort?.abort();
+      streamOpen = false;
       setConnectedState(false);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('online', kickIfNeeded);
