@@ -229,6 +229,13 @@ export class SseHub {
 
   private send(client: SseClient, stateVersion: number, view: ClientView): void {
     this.noteVersion(client.gameId, stateVersion);
+    // Tiny versioned ping FIRST — cloudflared/edge often flush small frames
+    // while a multi-KB `state` sits buffered. Remotes learn the version gap
+    // immediately and GET /view instead of waiting up to one heartbeat (~8s)
+    // (or forever on a zombie OPEN that only ever delivers keepalives).
+    const versionHint = JSON.stringify({ type: 'ping', stateVersion });
+    this.writeRaw(client, `${PING_PAD}event: ping\ndata: ${versionHint}\n\n`);
+
     const payload = JSON.stringify({ type: 'state', stateVersion, view });
     // Trailing pad comment punches the large state frame through the same
     // cloudflared / edge buffers that otherwise flush only small pings —
