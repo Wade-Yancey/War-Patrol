@@ -16,6 +16,8 @@ import {
   type VesselType,
 } from '@war-patrol/shared';
 import { formatRelBearing } from './OpticsBearingCompass';
+import { StationInstrumentTitle } from './StationInfoButton';
+import { stationGuideIdFor } from '../stationGuides';
 import { TouchNumber } from './TouchNumber';
 
 interface Props {
@@ -134,10 +136,16 @@ export function DeckGunControls({
 
   const inputsDisabled = disabled || magBlocked || submerged;
 
+  const gunsGuideId = stationGuideIdFor(hullClass, 'guns');
+
   return (
     <section className="panel stack controls-weapons-panel station-instrument-panel">
       <div className="station-instrument-head">
-        <h2>Guns</h2>
+        {gunsGuideId ? (
+          <StationInstrumentTitle title="Guns" guideId={gunsGuideId} />
+        ) : (
+          <h2>Guns</h2>
+        )}
         <p className="muted station-instrument-blurb">
           Deck gun · {magStatus} · max {maxShots}/turn (slow fire) · reload{' '}
           {DECK_GUN_RELOAD_TURNS} turns (~{DECK_GUN_RELOAD_TURNS * 3} min) then mag

@@ -9,6 +9,7 @@ import {
   type DepthChargeDropOrder,
   type DepthChargeTrack,
 } from '@war-patrol/shared';
+import { StationInstrumentTitle } from './StationInfoButton';
 import { TouchNumber } from './TouchNumber';
 
 interface Props {
@@ -75,7 +76,7 @@ export function DepthChargeControls({
   return (
     <section className="panel stack controls-weapons-panel station-instrument-panel">
       <div className="station-instrument-head">
-        <h2>Depth charges</h2>
+        <StationInstrumentTitle title="Depth charges" guideId="dd/depth_charges" />
         <p className="muted station-instrument-blurb">
           Rack {rackStatus} · reload {DEPTH_CHARGE_RELOAD_TURNS} turns (~
           {DEPTH_CHARGE_RELOAD_TURNS * 3} min) then rack refills

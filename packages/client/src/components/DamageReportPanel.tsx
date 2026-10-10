@@ -4,15 +4,20 @@ import {
   formatGameClock,
   subsystemStateLabel,
   type GopherTask,
+  type HullClass,
   type OwnDamageEvent,
   type UnitCondition,
   type UnitSubsystems,
   type VesselType,
 } from '@war-patrol/shared';
+import { StationInstrumentTitle } from './StationInfoButton';
+import { stationGuideIdFor } from '../stationGuides';
 
 interface Props {
   vesselName: string;
   vesselType: VesselType;
+  /** Playable hull class — selects the in-app station guide blurb. */
+  hullClass?: HullClass;
   health: number;
   condition: UnitCondition;
   subsystems: UnitSubsystems;
@@ -56,6 +61,7 @@ function isBad(state: string): boolean {
 export function DamageReportPanel({
   vesselName,
   vesselType,
+  hullClass,
   health,
   condition,
   subsystems,
@@ -86,10 +92,19 @@ export function DamageReportPanel({
       ? `${subsystemStateLabel(subsystems.divePlanes)} ${Math.round(subsystems.divePlanesStuckDepth)} m`
       : subsystemStateLabel(subsystems.divePlanes);
 
+  const damageGuideId = stationGuideIdFor(
+    hullClass ?? (vesselType === 'Submarine' ? 'Fleet Submarine' : undefined),
+    'damage',
+  );
+
   return (
     <section className="panel stack controls-damage-panel station-instrument-panel" aria-label="Damage report">
       <div className="station-instrument-head">
-        <h2>Damage report</h2>
+        {damageGuideId ? (
+          <StationInstrumentTitle title="Damage report" guideId={damageGuideId} />
+        ) : (
+          <h2>Damage report</h2>
+        )}
         <p className="muted station-instrument-blurb">{vesselName} — own ship only</p>
       </div>
 

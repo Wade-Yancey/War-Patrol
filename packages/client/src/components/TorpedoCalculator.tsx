@@ -27,6 +27,7 @@ import {
   type TorpedoTrack,
 } from '@war-patrol/shared';
 import { formatRelBearing } from './OpticsBearingCompass';
+import { StationInstrumentTitle } from './StationInfoButton';
 import { TouchNumber } from './TouchNumber';
 
 interface RoomState {
@@ -211,7 +212,7 @@ export function TorpedoCalculator({
   return (
     <section className="panel stack controls-weapons-panel station-instrument-panel">
       <div className="station-instrument-head">
-        <h2>Torpedoes</h2>
+        <StationInstrumentTitle title="Torpedoes" guideId="sub/torpedoes" />
         <p className="muted station-instrument-blurb">
           {TORPEDO_SPEED_KN} kn · {TORPEDO_MAX_RUN_NM} nm · bow ±
           {TORPEDO_FORWARD_ARC_HALF_DEG}° / stern ±{TORPEDO_AFT_ARC_HALF_DEG}° · reload{' '}
