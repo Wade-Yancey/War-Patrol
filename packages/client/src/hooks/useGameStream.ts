@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ClientView, UmpireView, VesselView } from '@war-patrol/shared';
 import { api } from '../api/client';
+import { isWpDebugEnabled, wpDebug } from '../debug/wpDebug';
 
 interface Options {
   gameId: string;
@@ -9,6 +10,16 @@ interface Options {
   /** Stale session (server restart / revoked) — clear storage and return to login. */
   onAuthInvalid?: () => void;
 }
+
+export type ViewRefreshReason =
+  | 'initial'
+  | 'catchUp'
+  | 'firstStateFallback'
+  | 'pingGap'
+  | 'kickRefresh'
+  | 'softView'
+  | 'manual'
+  | 'unknown';
 
 const BASE_BACKOFF_MS = 600;
 const MAX_BACKOFF_MS = 12_000;
@@ -72,7 +83,9 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lastVersionRef = useRef(0);
-  const refreshRef = useRef<() => Promise<void>>(async () => undefined);
+  const refreshRef = useRef<(reason?: ViewRefreshReason) => Promise<void>>(
+    async () => undefined,
+  );
   const connectedRef = useRef(false);
   const onAuthInvalidRef = useRef(onAuthInvalid);
   onAuthInvalidRef.current = onAuthInvalid;
@@ -94,8 +107,36 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
     let streamOpenedAt = 0;
     /** True once headers+body stream is open; LIVE also requires a fresh event. */
     let streamOpen = false;
+    /** Diagnostics-only clocks — do not affect LIVE / reconnect policy. */
+    let lastPingAt = 0;
+    let lastStateAt = 0;
+    let lastViewAt = 0;
+    let lastConnectionsAt = 0;
+    let staleForceCount = 0;
+    let debug = isWpDebugEnabled();
+
+    const debugSnap = (extra?: Record<string, unknown>) => {
+      const now = Date.now();
+      return {
+        gen: generation,
+        streamOpen,
+        connected: connectedRef.current,
+        lastVersion: lastVersionRef.current,
+        ageEventMs: lastEventAt ? now - lastEventAt : null,
+        agePingMs: lastPingAt ? now - lastPingAt : null,
+        ageStateMs: lastStateAt ? now - lastStateAt : null,
+        ageViewMs: lastViewAt ? now - lastViewAt : null,
+        ageConnMs: lastConnectionsAt ? now - lastConnectionsAt : null,
+        staleForceCount,
+        attempt,
+        ...extra,
+      };
+    };
 
     const setConnectedState = (value: boolean) => {
+      if (debug && connectedRef.current !== value) {
+        wpDebug('connected', debugSnap({ next: value }));
+      }
       connectedRef.current = value;
       setConnected(value);
     };
@@ -127,6 +168,9 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       const exp = Math.min(attempt, 5);
       const delay = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * 2 ** exp);
       const jitter = Math.floor(Math.random() * 300);
+      if (debug) {
+        wpDebug('scheduleReconnect', debugSnap({ delayMs: delay + jitter, fromGeneration }));
+      }
       reconnectTimer = window.setTimeout(() => {
         reconnectTimer = undefined;
         if (cancelled || authInvalid || fromGeneration !== generation) return;
@@ -165,18 +209,62 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       setError(err instanceof Error ? err.message : 'SSE disconnected');
     };
 
-    const fullRefresh = async (signal?: AbortSignal) => {
-      const data = await api.view(gameId, token, { signal });
-      if (cancelled || signal?.aborted) return;
-      lastVersionRef.current = data.stateVersion;
-      // Snapshot catch-up is urgent — do not defer behind optics transitions.
-      setStateVersion(data.stateVersion);
-      setView(data.view);
-      setError(null);
-    };
-    refreshRef.current = async () => {
+    const fullRefresh = async (signal?: AbortSignal, reason: ViewRefreshReason = 'unknown') => {
+      const started = Date.now();
+      if (debug) {
+        wpDebug('viewStart', debugSnap({ reason, aborted: Boolean(signal?.aborted) }));
+      }
       try {
-        await fullRefresh(abort?.signal);
+        const data = await api.view(gameId, token, { signal });
+        if (cancelled || signal?.aborted) {
+          if (debug) {
+            wpDebug('viewAbort', debugSnap({ reason, ms: Date.now() - started, phase: 'afterFetch' }));
+          }
+          return;
+        }
+        lastVersionRef.current = data.stateVersion;
+        lastViewAt = Date.now();
+        // Snapshot catch-up is urgent — do not defer behind optics transitions.
+        setStateVersion(data.stateVersion);
+        setView(data.view);
+        setError(null);
+        if (debug) {
+          const vessel = data.view.role === 'vessel' ? data.view : null;
+          wpDebug(
+            'viewOk',
+            debugSnap({
+              reason,
+              ms: Date.now() - started,
+              stateVersion: data.stateVersion,
+              periRaised: vessel?.unit.periscopeRaised ?? null,
+              contactCount: vessel?.periscopeContacts?.length ?? null,
+              sightingCount: vessel?.opticsSightings?.length ?? null,
+            }),
+          );
+        }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          if (debug) {
+            wpDebug('viewAbort', debugSnap({ reason, ms: Date.now() - started, phase: 'fetch' }));
+          }
+          throw err;
+        }
+        if (debug) {
+          wpDebug(
+            'viewFail',
+            debugSnap({
+              reason,
+              ms: Date.now() - started,
+              error: err instanceof Error ? err.message : String(err),
+            }),
+          );
+        }
+        throw err;
+      }
+    };
+    refreshRef.current = async (reason: ViewRefreshReason = 'manual') => {
+      try {
+        await fullRefresh(abort?.signal, reason);
       } catch (err) {
         if (cancelled || (err instanceof DOMException && err.name === 'AbortError')) return;
         if (isAuthFailure(err)) {
@@ -189,12 +277,25 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
 
     const applyState = (stateVersionNext: number, nextView: ClientView) => {
       lastVersionRef.current = stateVersionNext;
+      lastStateAt = Date.now();
       // Apply urgently — mid-turn FoW (DD lookout feather on peri raise/lower)
       // must land without waiting on a transition. Optics chrome stays snappy via
       // StationPage `useDeferredValue` + local-first mast overlay (#235), not by
       // deferring the whole vessel view (that left tunnel remotes stale until F5).
       setStateVersion(stateVersionNext);
       setView(nextView);
+      if (debug) {
+        const vessel = nextView.role === 'vessel' ? nextView : null;
+        wpDebug(
+          'stateFrame',
+          debugSnap({
+            stateVersion: stateVersionNext,
+            periRaised: vessel?.unit.periscopeRaised ?? null,
+            contactCount: vessel?.periscopeContacts?.length ?? null,
+            sightingCount: vessel?.opticsSightings?.length ?? null,
+          }),
+        );
+      }
     };
 
     const applyConnections = (payload: {
@@ -229,6 +330,10 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
 
     const forceStaleReconnect = (fromGeneration: number) => {
       if (cancelled || authInvalid || fromGeneration !== generation) return;
+      staleForceCount += 1;
+      if (debug) {
+        wpDebug('staleForce', debugSnap({ fromGeneration }));
+      }
       streamOpen = false;
       publishConnected();
       attempt += 1;
@@ -352,9 +457,15 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       streamOpen = false;
       streamOpenedAt = 0;
       lastEventAt = 0;
+      lastPingAt = 0;
+      lastStateAt = 0;
+      lastConnectionsAt = 0;
       setConnectedState(false);
 
       const catchUp = opts?.catchUp === true || lastVersionRef.current > 0;
+      if (debug) {
+        wpDebug('sseOpen', debugSnap({ catchUp, myGeneration }));
+      }
 
       try {
         // First paint: await snapshot so the station is not blank before SSE.
@@ -362,7 +473,7 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
         // opening the stream (and still recover if the tunnel SSE path is wedged).
         if (lastVersionRef.current === 0) {
           try {
-            await fullRefresh(signal);
+            await fullRefresh(signal, 'initial');
           } catch (err) {
             if (signal.aborted || cancelled) return;
             if (isAuthFailure(err)) {
@@ -373,7 +484,7 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
           }
           if (signal.aborted || cancelled || myGeneration !== generation) return;
         } else if (catchUp) {
-          void fullRefresh(signal).catch((err) => {
+          void fullRefresh(signal, 'catchUp').catch((err) => {
             if (signal.aborted || cancelled || myGeneration !== generation) return;
             if (isAuthFailure(err)) handleAuthInvalid();
           });
@@ -398,6 +509,9 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
 
         streamOpen = true;
         streamOpenedAt = Date.now();
+        if (debug) {
+          wpDebug('streamOpen', debugSnap({ myGeneration }));
+        }
         // Headers alone are not "connected" for LIVE — wait for a ping/state frame.
         publishConnected();
         setError(null);
@@ -412,7 +526,10 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
         // Server sendFull should arrive immediately; only GET if the stream is quiet.
         const fallbackTimer = window.setTimeout(() => {
           if (cancelled || signal.aborted || myGeneration !== generation || sawState) return;
-          void fullRefresh(signal).catch((err) => {
+          if (debug) {
+            wpDebug('firstStateFallback', debugSnap({ myGeneration }));
+          }
+          void fullRefresh(signal, 'firstStateFallback').catch((err) => {
             if (isAuthFailure(err)) handleAuthInvalid();
           });
         }, FIRST_STATE_FALLBACK_MS);
@@ -420,7 +537,12 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
         try {
           while (!cancelled && !signal.aborted && myGeneration === generation) {
             const { done, value } = await readWithIdleTimeout(reader, signal);
-            if (done) break;
+            if (done) {
+              if (debug) {
+                wpDebug('sseDone', debugSnap({ myGeneration }));
+              }
+              break;
+            }
             buffer += decoder.decode(value, { stream: true });
             const chunks = buffer.split('\n\n');
             buffer = chunks.pop() ?? '';
@@ -440,6 +562,7 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
                 // live path is delivering (not a zombie OPEN).
                 noteEvent();
                 if (payload.type === 'ping') {
+                  lastPingAt = Date.now();
                   // Small pings often still arrive through cloudflared when a
                   // multi-KB `state` frame was buffered/dropped. If the server
                   // is ahead, catch up with GET /view (same path as F5).
@@ -447,7 +570,16 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
                     typeof payload.stateVersion === 'number' &&
                     payload.stateVersion > lastVersionRef.current
                   ) {
-                    void fullRefresh(signal).catch((err) => {
+                    if (debug) {
+                      wpDebug(
+                        'pingGap',
+                        debugSnap({
+                          pingVersion: payload.stateVersion,
+                          localVersion: lastVersionRef.current,
+                        }),
+                      );
+                    }
+                    void fullRefresh(signal, 'pingGap').catch((err) => {
                       if (signal.aborted || cancelled || myGeneration !== generation) {
                         return;
                       }
@@ -457,6 +589,7 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
                   continue;
                 }
                 if (payload.type === 'connections') {
+                  lastConnectionsAt = Date.now();
                   applyConnections(payload);
                   continue;
                 }
@@ -481,22 +614,51 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
           }
         }
 
-        if (cancelled || signal.aborted || myGeneration !== generation || authInvalid) return;
+        if (cancelled || signal.aborted || myGeneration !== generation || authInvalid) {
+          if (debug && (cancelled || signal.aborted)) {
+            wpDebug(
+              'sseClose',
+              debugSnap({
+                myGeneration,
+                cancelled,
+                aborted: signal.aborted,
+              }),
+            );
+          }
+          return;
+        }
 
         streamOpen = false;
         clearStaleWatch();
         setConnectedState(false);
         attempt += 1;
+        if (debug) {
+          wpDebug('sseDisconnected', debugSnap({ myGeneration }));
+        }
         noteStreamFailure(new Error('SSE disconnected'));
         scheduleReconnect(myGeneration);
       } catch (err) {
         if (cancelled || signal.aborted || myGeneration !== generation || authInvalid) return;
-        if (err instanceof DOMException && err.name === 'AbortError') return;
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          if (debug) {
+            wpDebug('sseAbort', debugSnap({ myGeneration }));
+          }
+          return;
+        }
 
         streamOpen = false;
         clearStaleWatch();
         setConnectedState(false);
         attempt += 1;
+        if (debug) {
+          wpDebug(
+            'sseError',
+            debugSnap({
+              myGeneration,
+              error: err instanceof Error ? err.message : String(err),
+            }),
+          );
+        }
         noteStreamFailure(err);
         scheduleReconnect(myGeneration);
       }
@@ -507,11 +669,17 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       if (document.visibilityState === 'hidden') return;
       // Tab visible / network back: if stream is down or stale, reconnect + catch up.
       if (!connectedRef.current) {
+        if (debug) {
+          wpDebug('kickReconnect', debugSnap({ why: 'notConnected' }));
+        }
         attempt = 0;
         clearReconnect();
         void openSse({ catchUp: true });
       } else {
-        void refreshRef.current();
+        if (debug) {
+          wpDebug('kickRefresh', debugSnap({ why: 'connected' }));
+        }
+        void refreshRef.current('kickRefresh');
       }
     };
 
@@ -536,7 +704,7 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
     };
   }, [gameId, token, enabled]);
 
-  const refresh = () => refreshRef.current();
+  const refresh = (reason: ViewRefreshReason = 'manual') => refreshRef.current(reason);
 
   return { view, stateVersion, connected, error, setView, refresh };
 }

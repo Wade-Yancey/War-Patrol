@@ -20,6 +20,7 @@ import { parseBearer, parseSseToken } from '../game/sessions.js';
 import { runtime } from '../game/runtime.js';
 import { buildViewForSession } from '../game/views.js';
 import type { SseClient } from '../game/sse.js';
+import { sseDebug } from '../game/debugSse.js';
 import { getListenPort, getPublicBaseUrl, isInternetMode } from '../hostInfo.js';
 
 function httpError(err: unknown): { statusCode: number; message: string } {
@@ -611,6 +612,16 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         exposure,
       );
       const unit = save.units.find((u) => u.id === session.unitId);
+      sseDebug('mastPost', {
+        gameId: session.gameId,
+        unitId: session.unitId,
+        stationId: session.stationId,
+        raised,
+        stateVersion: save.stateVersion,
+        periscopeRaised: Boolean(unit?.periscopeRaised),
+        // mutate() already broadcast — this records fan-out intent for logs.
+        broadcast: true,
+      });
       return {
         ok: true,
         stateVersion: save.stateVersion,
