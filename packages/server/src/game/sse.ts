@@ -1,5 +1,6 @@
 import type { FastifyReply } from 'fastify';
 import type { ClientView } from '@war-patrol/shared';
+import { sseDebug } from './debugSse.js';
 
 export interface SseClient {
   id: string;
@@ -62,6 +63,14 @@ export class SseHub {
 
   add(client: SseClient): void {
     this.clients.set(client.id, client);
+    sseDebug('subscribe', {
+      id: client.id,
+      gameId: client.gameId,
+      role: client.role,
+      unitId: client.unitId ?? null,
+      stationId: client.stationId ?? null,
+      clients: this.clients.size,
+    });
     const reply = client.reply;
     // Hijack so Fastify does not finalize/buffer the long-lived stream.
     try {
@@ -99,6 +108,12 @@ export class SseHub {
     const onClose = () => {
       this.clearDrainWatch(client);
       if (!this.clients.delete(client.id)) return;
+      sseDebug('unsubscribe', {
+        id: client.id,
+        gameId: client.gameId,
+        reason: 'socketClose',
+        clients: this.clients.size,
+      });
       this.onConnectionsChanged?.(client.gameId);
     };
     reply.raw.on('close', onClose);
@@ -111,6 +126,12 @@ export class SseHub {
     if (!existing) return;
     this.clearDrainWatch(existing);
     if (!this.clients.delete(id)) return;
+    sseDebug('unsubscribe', {
+      id,
+      gameId: existing.gameId,
+      reason: 'remove',
+      clients: this.clients.size,
+    });
     this.onConnectionsChanged?.(existing.gameId);
   }
 
@@ -224,10 +245,18 @@ export class SseHub {
   }
 
   sendFull(client: SseClient, stateVersion: number, view: ClientView): void {
-    this.send(client, stateVersion, view);
+    const ok = this.send(client, stateVersion, view);
+    if (!ok) {
+      sseDebug('sendFullFail', {
+        id: client.id,
+        gameId: client.gameId,
+        stateVersion,
+        stationId: client.stationId ?? null,
+      });
+    }
   }
 
-  private send(client: SseClient, stateVersion: number, view: ClientView): void {
+  private send(client: SseClient, stateVersion: number, view: ClientView): boolean {
     this.noteVersion(client.gameId, stateVersion);
     const payload = JSON.stringify({ type: 'state', stateVersion, view });
     // Trailing pad comment punches the large state frame through the same
@@ -236,7 +265,9 @@ export class SseHub {
     // loopback but stalling for tunnel remotes until a full page refresh.
     if (this.writeRaw(client, `event: state\ndata: ${payload}\n\n${PING_PAD}\n`)) {
       client.lastSentVersion = stateVersion;
+      return true;
     }
+    return false;
   }
 
   /**
@@ -269,6 +300,12 @@ export class SseHub {
     if (!existing) return;
     this.clearDrainWatch(existing);
     if (!this.clients.delete(id)) return;
+    sseDebug('unsubscribe', {
+      id,
+      gameId: existing.gameId,
+      reason: 'drop',
+      clients: this.clients.size,
+    });
     this.onConnectionsChanged?.(existing.gameId);
   }
 
@@ -276,6 +313,11 @@ export class SseHub {
     try {
       const raw = client.reply.raw;
       if (raw.writableEnded || raw.destroyed) {
+        sseDebug('writeFail', {
+          id: client.id,
+          gameId: client.gameId,
+          reason: 'endedOrDestroyed',
+        });
         this.dropClient(client.id);
         return false;
       }
@@ -293,12 +335,22 @@ export class SseHub {
         // High-RTT tunnel clients can backpressure for a while; if drain never
         // fires the fan-out would keep a silent dead connection forever.
         client.waitingDrain = true;
+        sseDebug('backpressure', {
+          id: client.id,
+          gameId: client.gameId,
+          stationId: client.stationId ?? null,
+        });
         const onDrain = () => {
           this.clearDrainWatch(client);
         };
         raw.once('drain', onDrain);
         client.drainTimer = setTimeout(() => {
           if (!client.waitingDrain) return;
+          sseDebug('drainTimeout', {
+            id: client.id,
+            gameId: client.gameId,
+            ms: DRAIN_WATCHDOG_MS,
+          });
           try {
             raw.end();
           } catch {
@@ -308,7 +360,13 @@ export class SseHub {
         }, DRAIN_WATCHDOG_MS);
       }
       return true;
-    } catch {
+    } catch (err) {
+      sseDebug('writeFail', {
+        id: client.id,
+        gameId: client.gameId,
+        reason: 'exception',
+        error: err instanceof Error ? err.message : String(err),
+      });
       this.dropClient(client.id);
       return false;
     }

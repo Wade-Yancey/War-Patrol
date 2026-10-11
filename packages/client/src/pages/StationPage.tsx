@@ -37,7 +37,8 @@ import {
 import { api } from '../api/client';
 import { clearAuthToken, getAuthToken, setAuthToken } from '../api/authStorage';
 import { playEngineOrderBell } from '../audio/engineOrderBell';
-import { useGameStream } from '../hooks/useGameStream';
+import { isWpDebugEnabled, wpDebug } from '../debug/wpDebug';
+import { useGameStream, type ViewRefreshReason } from '../hooks/useGameStream';
 import {
   mergeOrdersOptimistic,
   ordersContentEqual,
@@ -230,7 +231,7 @@ export function StationPage() {
   const opticsTabFocusedRef = useRef(false);
   const opticsTabRefreshAtRef = useRef(0);
   const periRaiseGenRef = useRef(0);
-  const streamRefreshRef = useRef<() => void>(() => undefined);
+  const streamRefreshRef = useRef<(reason?: ViewRefreshReason) => void>(() => undefined);
   const orderWriteGenRef = useRef(0);
   const ordersOverlayRef = useRef<UnitOrders | null>(null);
   const turnNumberRef = useRef<number | null>(null);
@@ -473,6 +474,54 @@ export function StationPage() {
       ? (periTurnCache?.sightings ?? EMPTY_OPTICS_SIGHTINGS)
       : presentationSensors.opticsSightings;
   const opticsOwnHeading = useDeferredValue(vessel?.unit.heading ?? 0);
+
+  // Diagnostics-only: peri / lookout FoW readiness vs streamed mast (gated).
+  useEffect(() => {
+    if (!isWpDebugEnabled()) return;
+    if (opticsVariant !== 'periscope' && opticsVariant !== 'lookout') return;
+    wpDebug('periFow', {
+      opticsVariant,
+      turnId: turnNumber,
+      stateVersion,
+      connected,
+      periRaiseGen,
+      periFowReadyGen,
+      periFowPending,
+      opticsRaising,
+      opticsScopeDown,
+      optimisticMast: periOptimisticRaised,
+      serverMast: presentationSensors.periscopeRaised,
+      paintedMast: opticsMastRaised,
+      contactCount: opticsContacts.length,
+      sightingCount: opticsSightings.length,
+      streamedContactCount: presentationSensors.periscopeContacts.length,
+      turnCache: periTurnCache
+        ? {
+            turn: periTurnCache.turn,
+            contacts: periTurnCache.contacts.length,
+            sightings: periTurnCache.sightings.length,
+          }
+        : null,
+      emptyWhilePending: periFowPending && opticsContacts.length === 0,
+    });
+  }, [
+    opticsVariant,
+    turnNumber,
+    stateVersion,
+    connected,
+    periRaiseGen,
+    periFowReadyGen,
+    periFowPending,
+    opticsRaising,
+    opticsScopeDown,
+    periOptimisticRaised,
+    presentationSensors.periscopeRaised,
+    opticsMastRaised,
+    opticsContacts.length,
+    opticsSightings.length,
+    presentationSensors.periscopeContacts.length,
+    periTurnCache,
+  ]);
   const scheduleDamageRevealRef = useRef(syncedDamage.scheduleRevealForDetonation);
   scheduleDamageRevealRef.current = syncedDamage.scheduleRevealForDetonation;
 
@@ -1535,12 +1584,22 @@ export function StationPage() {
     if (!opticsMastRaised || opticsScopeDown) return;
     if (periFowReadyGen === periRaiseGen) return;
     const raiseGen = periRaiseGen;
+    if (isWpDebugEnabled()) {
+      wpDebug('softViewSchedule', {
+        reason: 'periRaise',
+        raiseGen,
+        delaysMs: [...PERI_FOW_VIEW_REFRESH_DELAYS_MS],
+      });
+    }
     const timers = PERI_FOW_VIEW_REFRESH_DELAYS_MS.map((delay) =>
       window.setTimeout(() => {
         if (periDesiredRaisedRef.current === false) return;
         // Raise window may have advanced; only poll for the gen we scheduled.
         if (raiseGen !== periRaiseGenRef.current) return;
-        void streamRefreshRef.current();
+        if (isWpDebugEnabled()) {
+          wpDebug('softViewFire', { reason: 'periRaise', raiseGen, delayMs: delay });
+        }
+        void streamRefreshRef.current('softView');
       }, delay),
     );
     return () => {
@@ -1573,7 +1632,10 @@ export function StationPage() {
       return;
     }
     opticsTabRefreshAtRef.current = now;
-    void streamRefreshRef.current();
+    if (isWpDebugEnabled()) {
+      wpDebug('softViewFire', { reason: 'opticsTabFocus', activeTab });
+    }
+    void streamRefreshRef.current('softView');
   }, [activeTab, isSensors, canPeriscope, vessel]);
 
   // Drop sonar overlay once the streamed latch agrees.
@@ -1633,6 +1695,16 @@ export function StationPage() {
     setActionError(null);
     setPeriOptimisticRaised(raised);
     periDesiredRaisedRef.current = raised;
+    if (isWpDebugEnabled()) {
+      wpDebug('mastToggle', {
+        desired: raised,
+        serverMast: presentationSensors.periscopeRaised,
+        periRaiseGen,
+        periFowReadyGen,
+        stateVersion,
+        connected,
+      });
+    }
     if (raised) {
       // New raise window — wait for streamed FoW (or show turn cache / “Raising…”).
       setPeriRaiseGen((g) => g + 1);
