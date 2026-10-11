@@ -2670,18 +2670,23 @@ label {
   max-width: 100%;
 }
 
-/* Smaller dial than helm/radar so gauge + presets fit one viewport. */
+/*
+ * Dominant dial — helm-scale footprint, no hard 15.5rem cap.
+ * Aux stays narrow + compact so the row fits without page scroll.
+ */
 .depth-gauge.crt-console .radar-scope-svg {
-  width: min(calc(100vw - 17rem), calc(100dvh - 10.5rem), 15.5rem);
-  max-width: min(calc(100vw - 17rem), calc(100dvh - 10.5rem), 15.5rem);
-  max-height: min(calc(100vw - 17rem), calc(100dvh - 10.5rem), 15.5rem);
+  width: min(calc(100vw - 14.5rem), calc(100dvh - 6.75rem), 28rem);
+  max-width: min(calc(100vw - 14.5rem), calc(100dvh - 6.75rem), 28rem);
+  max-height: min(calc(100vw - 14.5rem), calc(100dvh - 6.75rem), 28rem);
 }
 
 .depth-gauge.crt-console .radar-side-panel {
-  width: min(var(--crt-aux-w), 13.5rem);
-  max-width: min(var(--crt-aux-w), 13.5rem);
-  max-height: min(calc(100dvh - 8.5rem), 28rem);
-  gap: 0.35rem;
+  width: min(var(--crt-aux-w), 12.75rem);
+  max-width: min(var(--crt-aux-w), 12.75rem);
+  max-height: min(calc(100vw - 14.5rem), calc(100dvh - 6.75rem), 28rem);
+  gap: 0.3rem;
+  overflow-x: visible;
+  overflow-y: auto;
 }
 
 .depth-gauge-svg {
@@ -2690,7 +2695,7 @@ label {
 
 .depth-gauge-tick-label {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.02em;
   pointer-events: none;
   user-select: none;
@@ -2698,7 +2703,7 @@ label {
 
 .depth-gauge-face-title {
   font-family: var(--font-display);
-  font-size: 12px;
+  font-size: 13px;
   letter-spacing: 0.28em;
   pointer-events: none;
   user-select: none;
@@ -2706,7 +2711,7 @@ label {
 
 .depth-gauge-face-unit {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 9px;
   letter-spacing: 0.16em;
   pointer-events: none;
   user-select: none;
@@ -2888,7 +2893,7 @@ label {
   opacity: 0.85;
 }
 
-/* Narrow phones: stack dial above controls, keep total height tight. */
+/* Narrow phones: dial still dominates; controls densify underneath. */
 @media (max-width: 640px) {
   .depth-gauge.crt-console.radar-scope {
     flex-direction: column;
@@ -2897,15 +2902,15 @@ label {
   }
 
   .depth-gauge.crt-console .radar-scope-svg {
-    width: min(72vw, 14rem);
-    max-width: min(72vw, 14rem);
-    max-height: min(42dvh, 14rem);
+    width: min(88vw, 56dvh, 22rem);
+    max-width: min(88vw, 56dvh, 22rem);
+    max-height: min(88vw, 56dvh, 22rem);
   }
 
   .depth-gauge.crt-console .radar-side-panel {
-    width: min(100%, 20rem);
-    max-width: min(100%, 20rem);
-    max-height: none;
+    width: min(100%, 22rem);
+    max-width: min(100%, 22rem);
+    max-height: min(38dvh, 16rem);
   }
 
   .dive-presets {
