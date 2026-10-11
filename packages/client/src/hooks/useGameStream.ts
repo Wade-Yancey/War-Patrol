@@ -89,6 +89,7 @@ function isTransientStreamError(err: unknown): boolean {
   const msg = err.message;
   return (
     msg === 'SSE stale timeout' ||
+    msg === 'SSE connect stall' ||
     msg === 'SSE disconnected' ||
     msg === 'SSE error' ||
     msg.startsWith('SSE failed (') ||
@@ -129,6 +130,12 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
   const [view, setView] = useState<ClientView | null>(null);
   const [stateVersion, setStateVersion] = useState(0);
   const [connected, setConnected] = useState(false);
+  /**
+   * EventSource is CONNECTING or OPEN but LIVE (`connected`) is still false —
+   * status chrome can say "Connecting…" instead of scary RECONNECTING while
+   * soft `/view` keeps the station usable (Wade post-#260 stall).
+   */
+  const [sseConnecting, setSseConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lastVersionRef = useRef(0);
   const refreshRef = useRef<(reason?: ViewRefreshReason) => Promise<void>>(
@@ -190,6 +197,7 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       }
       connectedRef.current = value;
       setConnected(value);
+      if (value) setSseConnecting(false);
     };
 
     const publishConnected = () => {
@@ -518,6 +526,7 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       eventSource = es;
       let sawState = false;
       let opened = false;
+      setSseConnecting(true);
       if (debug) {
         wpDebug(
           'esCreate',
@@ -607,6 +616,7 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
         if (eventSource !== es) return;
         void probeEventsStatus(eventsUrl).then((probe) => {
           if (cancelled || myGeneration !== generation || opened || authInvalid) return;
+          if (eventSource !== es) return;
           if (debug) {
             wpDebug(
               'esConnectStall',
@@ -625,7 +635,26 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
               /* ignore */
             }
             if (eventSource === es) eventSource = null;
+            setSseConnecting(false);
             handleAuthInvalid();
+            return;
+          }
+          // Still CONNECTING after stall — do not sit forever (Wade: no open/error).
+          // Close and let backoff retry; server hello pad should make open fast.
+          if (es.readyState === EventSource.CONNECTING) {
+            try {
+              es.close();
+            } catch {
+              /* ignore */
+            }
+            if (eventSource === es) eventSource = null;
+            setSseConnecting(false);
+            streamOpen = false;
+            clearStaleWatch();
+            setConnectedState(false);
+            attempt += 1;
+            noteStreamFailure(new Error('SSE connect stall'));
+            scheduleReconnect(myGeneration);
           }
         });
       }, ES_CONNECT_STALL_MS);
@@ -643,6 +672,8 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
         opened = true;
         streamOpen = true;
         streamOpenedAt = Date.now();
+        // Still waiting on first ping/state for LIVE; keep "Connecting…" chrome.
+        setSseConnecting(true);
         if (debug) {
           wpDebug(
             'streamOpen',
@@ -693,6 +724,7 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
         streamOpen = false;
         clearStaleWatch();
         setConnectedState(false);
+        setSseConnecting(false);
         attempt += 1;
 
         // EventSource hides HTTP status; probe when we never reached open so
@@ -801,6 +833,7 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       }
       streamOpen = false;
       setConnectedState(false);
+      setSseConnecting(false);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('online', kickIfNeeded);
     };
@@ -808,5 +841,5 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
 
   const refresh = (reason: ViewRefreshReason = 'manual') => refreshRef.current(reason);
 
-  return { view, stateVersion, connected, error, setView, refresh };
+  return { view, stateVersion, connected, sseConnecting, error, setView, refresh };
 }
