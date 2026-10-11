@@ -35,6 +35,11 @@ export function resetWpDebugCache(): void {
   cachedEnabled = null;
 }
 
+/** Redact `token` query values from URLs before logging. */
+export function redactTokenQuery(url: string): string {
+  return url.replace(/([?&]token=)[^&]*/gi, '$1[REDACTED]');
+}
+
 export function wpDebug(tag: string, data?: Record<string, unknown>): void {
   if (!isWpDebugEnabled()) return;
   const payload = data ? { t: Date.now(), ...data } : { t: Date.now() };

@@ -361,6 +361,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     } catch (err) {
       const e = httpError(err);
       if (!reply.raw.headersSent) {
+        sseDebug('eventsAuthOrOpenFail', {
+          gameId: request.params.gameId,
+          status: e.statusCode,
+          error: e.message,
+          hasQueryToken: Boolean(request.query?.token),
+          hasBearer: Boolean(parseBearer(request.headers.authorization)),
+        });
         return reply.code(e.statusCode).send({ error: e.message });
       }
     }
