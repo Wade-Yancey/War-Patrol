@@ -157,12 +157,6 @@ const PERISCOPE_WRITE_DEBOUNCE_MS = 80;
 const PERI_FOW_VIEW_REFRESH_DELAYS_MS = [1_500, 4_000] as const;
 /** Min gap between Sensors Lookout/Periscope tab focus → /view refreshes. */
 const OPTICS_TAB_VIEW_REFRESH_COOLDOWN_MS = 6_000;
-/**
- * Second Lookout-tab `/view` shortly after focus — catches a peer mast raise
- * that landed while the large SSE `state` was still buffered on the tunnel.
- * Slim `optics` SSE is the primary path; this is a bounded backup only.
- */
-const OPTICS_TAB_EARLY_VIEW_REFRESH_MS = 700;
 
 type SensorTab = 'radar' | 'hydrophone' | 'sonar' | 'periscope';
 type ControlsTab = ControlsInstrumentTab;
@@ -1535,12 +1529,9 @@ export function StationPage() {
    * Gentle FoW catch-up after mast raise: at most two delayed GET /view polls,
    * cancelled once this raise’s FoW is ready or the mast lowers. Snapshot only —
    * never force-closes SSE / flips RECONNECTING (the #248 failure mode).
-   * Deps use a vessel presence flag (not `vessel` identity) so every SSE state
-   * apply does not clear/re-arm the timers.
    */
-  const hasVesselView = Boolean(vessel);
   useEffect(() => {
-    if (!hasVesselView || opticsVariant !== 'periscope') return;
+    if (!vessel || opticsVariant !== 'periscope') return;
     if (!opticsMastRaised || opticsScopeDown) return;
     if (periFowReadyGen === periRaiseGen) return;
     const raiseGen = periRaiseGen;
@@ -1561,19 +1552,18 @@ export function StationPage() {
     opticsMastRaised,
     opticsScopeDown,
     opticsVariant,
-    hasVesselView,
+    vessel,
   ]);
 
   /**
-   * GET /view when the operator focuses Lookout / Periscope — remotes that
-   * missed a large mid-turn `state` (DD feather) catch up without reopening
-   * EventSource. Immediate + one early follow-up; cooldown avoids a refresh
-   * storm if the tab effect re-runs. Slim SSE `optics` + heartbeat versioned
-   * pings (#246) remain the primary paths while already on the tab.
+   * One-shot GET /view when the operator focuses Lookout / Periscope — remotes
+   * that missed a large mid-turn `state` (DD feather) catch up without reopening
+   * EventSource. Cooldown avoids a refresh storm if the tab effect re-runs.
+   * Heartbeat versioned pings (#246) remain the background path.
    */
   useEffect(() => {
     const onOpticsTab = Boolean(
-      hasVesselView && isSensors && canPeriscope && activeTab === 'periscope',
+      vessel && isSensors && canPeriscope && activeTab === 'periscope',
     );
     const entered = onOpticsTab && !opticsTabFocusedRef.current;
     opticsTabFocusedRef.current = onOpticsTab;
@@ -1584,11 +1574,7 @@ export function StationPage() {
     }
     opticsTabRefreshAtRef.current = now;
     void streamRefreshRef.current();
-    const early = window.setTimeout(() => {
-      void streamRefreshRef.current();
-    }, OPTICS_TAB_EARLY_VIEW_REFRESH_MS);
-    return () => window.clearTimeout(early);
-  }, [activeTab, isSensors, canPeriscope, hasVesselView]);
+  }, [activeTab, isSensors, canPeriscope, vessel]);
 
   // Drop sonar overlay once the streamed latch agrees.
   useEffect(() => {

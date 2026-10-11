@@ -1,24 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import type {
-  ClientView,
-  OpticsSighting,
-  PeriscopeContact,
-  UmpireView,
-  VesselView,
-} from '@war-patrol/shared';
+import type { ClientView, UmpireView, VesselView } from '@war-patrol/shared';
 import { api } from '../api/client';
-
-/** Slim lookout FoW SSE payload (server `event: optics`) — feather-relevant only. */
-type OpticsSsePayload = {
-  stateVersion?: number;
-  periscopeContacts?: PeriscopeContact[];
-  opticsSightings?: OpticsSighting[];
-  periscopeMaxRangeNm?: number;
-  periscopeOperational?: boolean;
-  periscopeUnavailableReason?: VesselView['periscopeUnavailableReason'];
-  periscopeRaised?: boolean;
-  periscopeExposure?: number;
-};
 
 interface Options {
   gameId: string;
@@ -38,18 +20,12 @@ const MAX_BACKOFF_MS = 12_000;
  */
 const IDLE_TIMEOUT_MS = 40_000;
 /**
- * After this long without a parsed SSE frame, try one soft GET `/view` without
- * killing the stream. Large mid-turn `state` frames can backpressure cloudflared
- * so pings pause briefly — a hard reconnect here was the LIVE↔RECONNECTING
- * thrash (#248 / post-#250 Sensors-on-tunnel).
+ * Parsed SSE frames (including `ping`) must arrive within this window or we
+ * force close + reconnect + snapshot refetch. Separates "TCP still open /
+ * headers received" from "actually receiving the live view stream" — the UK
+ * desync failure mode through cloudflared.
  */
-const STALE_SOFT_MS = 25_000;
-/**
- * Force close + reconnect only after this longer silence. Kept above the
- * server drain watchdog (~45s) so a wedged tunnel socket is dropped server-side
- * before we pile a second EventSource + sendFull onto the same pipe.
- */
-const STALE_HARD_MS = 55_000;
+const STALE_AFTER_MS = 25_000;
 /** How often to check `lastEventAt` while a stream is open. */
 const STALE_CHECK_MS = 5_000;
 /** Show a sticky error only after several transient disconnects in a row. */
@@ -108,22 +84,16 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
     let reconnectTimer: number | undefined;
     let staleTimer: number | undefined;
     let abort: AbortController | undefined;
-    /** Snapshot GETs — never share the SSE AbortSignal (optics soft polls / catch-up). */
-    let snapshotAbort: AbortController | undefined;
-    /** Coalesce concurrent GET /view (ping gap + optics soft poll + reconnect). */
-    let refreshInFlight: Promise<void> | null = null;
     /** Bumped on every new connect attempt so stale attempts never re-arm timers. */
     let generation = 0;
     let attempt = 0;
     let authInvalid = false;
-    /** Last time we parsed a complete SSE event (`ping`, `state`, `optics`, `connections`). */
+    /** Last time we parsed a complete SSE event (`ping`, `state`, `connections`). */
     let lastEventAt = 0;
     /** When the current fetch stream became open (headers OK). */
     let streamOpenedAt = 0;
     /** True once headers+body stream is open; LIVE also requires a fresh event. */
     let streamOpen = false;
-    /** One soft `/view` per soft-stale episode — avoid a 5s poll storm. */
-    let softCatchUpAttempted = false;
 
     const setConnectedState = (value: boolean) => {
       connectedRef.current = value;
@@ -131,10 +101,9 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
     };
 
     const publishConnected = () => {
-      // LIVE stays green through brief tunnel stalls (soft window). Only the
-      // hard window flips RECONNECTING — stops thrash when large `state`
-      // frames briefly delay pings through cloudflared.
-      const fresh = lastEventAt > 0 && Date.now() - lastEventAt < STALE_HARD_MS;
+      // Never show green LIVE for a zombie stream that opened but stopped
+      // delivering pings/state (high-RTT cloudflared failure mode).
+      const fresh = lastEventAt > 0 && Date.now() - lastEventAt < STALE_AFTER_MS;
       setConnectedState(streamOpen && fresh);
     };
 
@@ -196,47 +165,18 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       setError(err instanceof Error ? err.message : 'SSE disconnected');
     };
 
-    /**
-     * GET /view on a dedicated AbortController — never the SSE `abort` signal.
-     * Optics soft polls (#250) and ping-gap catch-up must not share lifecycle
-     * with EventSource reopen (that was the #248-class thrash amplifier).
-     */
-    const snapshotRefresh = async () => {
-      if (cancelled || authInvalid) return;
-      if (refreshInFlight) {
-        try {
-          await refreshInFlight;
-        } catch {
-          /* coalesced caller notes errors */
-        }
-        return;
-      }
-      if (!snapshotAbort || snapshotAbort.signal.aborted) {
-        snapshotAbort = new AbortController();
-      }
-      const { signal } = snapshotAbort;
-      const run = (async () => {
-        const data = await api.view(gameId, token, { signal });
-        if (cancelled || signal.aborted) return;
-        lastVersionRef.current = data.stateVersion;
-        // Snapshot catch-up is urgent — do not defer behind optics transitions.
-        setStateVersion(data.stateVersion);
-        setView(data.view);
-        setError(null);
-        // Successful HTTP snapshot proves the origin is reachable. Count it as
-        // liveness so bounded optics `/view` polls (and ping-gap catch-up) do
-        // not race the stale watchdog into an SSE reopen thrash on tunnels.
-        if (streamOpen) {
-          lastEventAt = Date.now();
-          softCatchUpAttempted = false;
-          publishConnected();
-        }
-      })();
-      refreshInFlight = run.finally(() => {
-        if (refreshInFlight === run) refreshInFlight = null;
-      });
+    const fullRefresh = async (signal?: AbortSignal) => {
+      const data = await api.view(gameId, token, { signal });
+      if (cancelled || signal?.aborted) return;
+      lastVersionRef.current = data.stateVersion;
+      // Snapshot catch-up is urgent — do not defer behind optics transitions.
+      setStateVersion(data.stateVersion);
+      setView(data.view);
+      setError(null);
+    };
+    refreshRef.current = async () => {
       try {
-        await refreshInFlight;
+        await fullRefresh(abort?.signal);
       } catch (err) {
         if (cancelled || (err instanceof DOMException && err.name === 'AbortError')) return;
         if (isAuthFailure(err)) {
@@ -247,7 +187,6 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       }
     };
 
-    refreshRef.current = () => snapshotRefresh();
     const applyState = (stateVersionNext: number, nextView: ClientView) => {
       lastVersionRef.current = stateVersionNext;
       // Apply urgently — mid-turn FoW (DD lookout feather on peri raise/lower)
@@ -283,66 +222,8 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       }
     };
 
-    /**
-     * Merge slim lookout FoW (peri feather / contacts / sightings) without
-     * waiting on the trailing multi-KB `state` frame. Does **not** advance
-     * `lastVersionRef` — ping-gap GET `/view` and full `state` still reconcile
-     * the rest of the vessel picture (avoids inventing feathers client-side).
-     */
-    const applyOptics = (payload: OpticsSsePayload) => {
-      if (typeof payload.stateVersion === 'number') {
-        // Stale/replayed optics must not clobber a newer full view.
-        if (payload.stateVersion < lastVersionRef.current) return;
-        setStateVersion((v) => (payload.stateVersion! > v ? payload.stateVersion! : v));
-      }
-      setView((prev) => {
-        if (!prev || prev.role !== 'vessel') return prev;
-        if (
-          typeof payload.stateVersion === 'number' &&
-          payload.stateVersion < prev.stateVersion
-        ) {
-          return prev;
-        }
-        const next: VesselView = {
-          ...prev,
-          ...(typeof payload.stateVersion === 'number'
-            ? { stateVersion: payload.stateVersion }
-            : {}),
-          ...(payload.periscopeContacts !== undefined
-            ? { periscopeContacts: payload.periscopeContacts }
-            : {}),
-          ...(payload.opticsSightings !== undefined
-            ? {
-                opticsSightings: payload.opticsSightings,
-                torpedoWakeCues: payload.opticsSightings,
-              }
-            : {}),
-          ...(typeof payload.periscopeMaxRangeNm === 'number'
-            ? { periscopeMaxRangeNm: payload.periscopeMaxRangeNm }
-            : {}),
-          ...(typeof payload.periscopeOperational === 'boolean'
-            ? { periscopeOperational: payload.periscopeOperational }
-            : {}),
-          ...(payload.periscopeUnavailableReason !== undefined
-            ? { periscopeUnavailableReason: payload.periscopeUnavailableReason }
-            : {}),
-          unit: {
-            ...prev.unit,
-            ...(typeof payload.periscopeRaised === 'boolean'
-              ? { periscopeRaised: payload.periscopeRaised }
-              : {}),
-            ...(typeof payload.periscopeExposure === 'number'
-              ? { periscopeExposure: payload.periscopeExposure }
-              : {}),
-          },
-        };
-        return next;
-      });
-    };
-
     const noteEvent = () => {
       lastEventAt = Date.now();
-      softCatchUpAttempted = false;
       publishConnected();
     };
 
@@ -369,26 +250,19 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
         if (document.visibilityState === 'hidden') return;
         if (!streamOpen) return;
         const now = Date.now();
-        const silenceFrom =
-          lastEventAt > 0 ? lastEventAt : streamOpenedAt > 0 ? streamOpenedAt : 0;
-        if (silenceFrom <= 0) return;
-        const age = now - silenceFrom;
-        if (age < STALE_SOFT_MS) {
-          publishConnected();
-          return;
-        }
-        // Soft phase: one snapshot catch-up, leave EventSource open. Hard kill
-        // only after STALE_HARD_MS (above server drain) — avoids reconnect thrash
-        // when a large `state` briefly delays pings on the tunnel.
-        if (age < STALE_HARD_MS) {
-          publishConnected();
-          if (!softCatchUpAttempted) {
-            softCatchUpAttempted = true;
-            void snapshotRefresh();
+        if (lastEventAt > 0) {
+          if (now - lastEventAt < STALE_AFTER_MS) {
+            publishConnected();
+            return;
           }
+          forceStaleReconnect(fromGeneration);
           return;
         }
-        forceStaleReconnect(fromGeneration);
+        // Headers arrived but no parseable ping/state yet — same zombie path
+        // (buffered/stalled tunnel) as a stream that went quiet later.
+        if (streamOpenedAt > 0 && now - streamOpenedAt >= STALE_AFTER_MS) {
+          forceStaleReconnect(fromGeneration);
+        }
       }, STALE_CHECK_MS);
     };
 
@@ -478,37 +352,36 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       streamOpen = false;
       streamOpenedAt = 0;
       lastEventAt = 0;
-      softCatchUpAttempted = false;
       setConnectedState(false);
 
       const catchUp = opts?.catchUp === true || lastVersionRef.current > 0;
-      const knownVersion = lastVersionRef.current;
 
       try {
         // First paint: await snapshot so the station is not blank before SSE.
         // Reconnect / stale catch-up: refresh in parallel so we do not delay
         // opening the stream (and still recover if the tunnel SSE path is wedged).
-        // Snapshot uses its own abort — not `signal` — so optics polls and this
-        // catch-up are not cancelled by / do not cancel the EventSource lifecycle.
-        if (knownVersion === 0) {
+        if (lastVersionRef.current === 0) {
           try {
-            await snapshotRefresh();
-          } catch {
-            /* snapshotRefresh already notes errors */
+            await fullRefresh(signal);
+          } catch (err) {
+            if (signal.aborted || cancelled) return;
+            if (isAuthFailure(err)) {
+              handleAuthInvalid();
+              return;
+            }
+            setError(err instanceof Error ? err.message : 'Refresh failed');
           }
           if (signal.aborted || cancelled || myGeneration !== generation) return;
         } else if (catchUp) {
-          void snapshotRefresh();
+          void fullRefresh(signal).catch((err) => {
+            if (signal.aborted || cancelled || myGeneration !== generation) return;
+            if (isAuthFailure(err)) handleAuthInvalid();
+          });
         }
 
         // Token goes on the URL: native EventSource cannot set Authorization, and some
         // proxies drop Authorization on long-lived streams. Do not log this URL.
-        // Pass lastVersion so a reconnect that already has the current snapshot
-        // gets a lightweight ping hello instead of another multi-KB sendFull
-        // (double payload was amplifying tunnel backpressure thrash).
-        const versionQs =
-          knownVersion > 0 ? `&lastVersion=${encodeURIComponent(String(knownVersion))}` : '';
-        const eventsUrl = `/api/games/${gameId}/events?token=${encodeURIComponent(token)}${versionQs}`;
+        const eventsUrl = `/api/games/${gameId}/events?token=${encodeURIComponent(token)}`;
         const res = await fetch(eventsUrl, {
           signal,
           cache: 'no-store',
@@ -539,7 +412,9 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
         // Server sendFull should arrive immediately; only GET if the stream is quiet.
         const fallbackTimer = window.setTimeout(() => {
           if (cancelled || signal.aborted || myGeneration !== generation || sawState) return;
-          void snapshotRefresh();
+          void fullRefresh(signal).catch((err) => {
+            if (isAuthFailure(err)) handleAuthInvalid();
+          });
         }, FIRST_STATE_FALLBACK_MS);
 
         try {
@@ -560,37 +435,29 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
                   view?: ClientView;
                   connections?: UmpireView['connections'];
                   stationConnections?: VesselView['stationConnections'];
-                  periscopeContacts?: PeriscopeContact[];
-                  opticsSightings?: OpticsSighting[];
-                  periscopeMaxRangeNm?: number;
-                  periscopeOperational?: boolean;
-                  periscopeUnavailableReason?: VesselView['periscopeUnavailableReason'];
-                  periscopeRaised?: boolean;
-                  periscopeExposure?: number;
                 };
-                // Count ping/state/optics/connections — any parsed frame proves the
+                // Count ping/state/connections — any parsed frame proves the
                 // live path is delivering (not a zombie OPEN).
                 noteEvent();
                 if (payload.type === 'ping') {
                   // Small pings often still arrive through cloudflared when a
                   // multi-KB `state` frame was buffered/dropped. If the server
                   // is ahead, catch up with GET /view (same path as F5).
-                  // Snapshot path is coalesced + independent of SSE abort.
                   if (
                     typeof payload.stateVersion === 'number' &&
                     payload.stateVersion > lastVersionRef.current
                   ) {
-                    void snapshotRefresh();
+                    void fullRefresh(signal).catch((err) => {
+                      if (signal.aborted || cancelled || myGeneration !== generation) {
+                        return;
+                      }
+                      if (isAuthFailure(err)) handleAuthInvalid();
+                    });
                   }
                   continue;
                 }
                 if (payload.type === 'connections') {
                   applyConnections(payload);
-                  continue;
-                }
-                if (payload.type === 'optics') {
-                  // Authoritative slim FoW — paint peri feathers before full state.
-                  applyOptics(payload);
                   continue;
                 }
                 if (payload.type !== 'state' || payload.view == null || payload.stateVersion == null) {
@@ -662,7 +529,6 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       clearReconnect();
       clearStaleWatch();
       abort?.abort();
-      snapshotAbort?.abort();
       streamOpen = false;
       setConnectedState(false);
       document.removeEventListener('visibilitychange', onVisibility);

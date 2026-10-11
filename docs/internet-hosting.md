@@ -337,38 +337,31 @@ data/ (saves, scenarios) on local disk
   LAN tablets, and cloudflared/quick-tunnel clients) do not look idle to the
   proxy or the browser. Padding helps intermediaries that buffer tiny writes.
   Full `state` frames get the same trailing pad so mid-turn FoW pushes are less
-  likely to sit in an edge buffer while only pings flush. Lookout / Sensors
-  tabs also get a slim padded `event: optics` (contacts / feathers / sightings
-  only) **before** the multi-KB `state` frame, and lookout clients are fanned
-  out before the umpire view, so peri-feather FoW can flush through cloudflared
-  without waiting on the full vessel payload. You still need buffering off /
-  long read timeouts on that path — heartbeats alone cannot fix a proxy that
-  buffers the whole stream.
+  likely to sit in an edge buffer while only pings flush. You still need
+  buffering off / long read timeouts on that path — heartbeats alone cannot
+  fix a proxy that buffers the whole stream.
 - **High-RTT / UK-style SSE freeze:** Order POSTs and `GET /view` (browser
   refresh) can keep working while the long-lived `/events` stream stalls
   through a quick tunnel — the LIVE dot used to stay green on a zombie OPEN
-  connection. Clients treat **~25s without a parsed ping/state frame** as a
-  soft stall (one coalesced GET `/view`, EventSource stays open) and only
-  force-close + reopen SSE after **~55s** (above the server ~45s drain drop),
-  so a large mid-turn `state` that briefly delays pings on cloudflared does
-  not flap **LIVE↔RECONNECTING**. LIVE itself uses the hard window. Snapshot
-  GETs use a dedicated abort controller (not the SSE signal) and successful
-  `/view` while the stream is open counts as liveness. Reconnects pass
-  `lastVersion` so an already-current client gets a padded ping hello instead
-  of another multi-KB `sendFull`. When pings still arrive but a large `state`
-  was missed, a newer `stateVersion` on `ping` triggers the same GET `/view`
-  catch-up (DD lookout feather / mid-turn FoW without F5). Server-side, stuck
-  write backpressure skips further state/heartbeat writes until drain, then
-  sends a small ping; dead sockets drop after ~45s. LAN and nearer remotes
-  (e.g. STL) should still see a steady LIVE when pings arrive.
+  connection. Clients now treat **~25s without a parsed ping/state frame** as
+  stale: they flip to **RECONNECTING**, force-close the stream, refetch
+  `/view`, and reopen SSE (no full page refresh needed). When pings still
+  arrive but a large `state` was missed, a newer `stateVersion` on `ping`
+  triggers the same GET `/view` catch-up (DD lookout feather / mid-turn FoW
+  without F5). Server-side, stuck write backpressure drops the fan-out client
+  after ~45s so dead tunnels do not sit in the broadcast list forever. LAN and
+  nearer remotes (e.g. STL) should still see a steady LIVE when pings arrive.
   **Do not** emit a versioned ping before every `state` frame ([#248](https://github.com/Wade-Yancey/War-Patrol/pull/248)
   was reverted by [#249](https://github.com/Wade-Yancey/War-Patrol/pull/249)):
   that over-triggered `/view` catch-up through cloudflared and starved the
   stream until the stale watchdog flapped **LIVE↔RECONNECTING**. Prefer
   heartbeat version hints + bounded client `/view` polls after mast raise /
-  Lookout focus (snapshot only — no EventSource thrash). Keep [#250](https://github.com/Wade-Yancey/War-Patrol/pull/250)
-  raise UX / contact cache; loosen only the reconnect path if tunnel red-light
-  thrash returns.
+  Lookout focus (snapshot only — no EventSource thrash). Keep
+  [#250](https://github.com/Wade-Yancey/War-Patrol/pull/250) raise UX /
+  contact cache. Soft-stale/hard-reconnect ([#251](https://github.com/Wade-Yancey/War-Patrol/pull/251))
+  and slim lookout `optics` SSE ([#252](https://github.com/Wade-Yancey/War-Patrol/pull/252))
+  were reverted after tunnel remotes returned to constant **RECONNECTING** and
+  peri→feather needing refresh — tree matches post-#250 / pre-#251.
 - **Turn timer sync:** stations count down from the shared ISO
   `turn.timerDeadline` with local wall clocks. If one remote tablet lights the
   timer a second or two after another, that is delayed SSE delivery (tunnel /
@@ -389,19 +382,16 @@ data/ (saves, scenarios) on local disk
   `state` applies urgently (#246); contact/sighting lists are **not**
   `useDeferredValue`-deferred so a remote peri feather paints as soon as the
   view arrives (only streamed HDG stays deferred). **Other stations seeing
-  your raised feather** still need the server picture: slim `optics` SSE
-  carries authoritative lookout FoW first, full `state` frames are padded for
-  proxy flush, and heartbeat `ping` frames carry `stateVersion` so a tunnel
-  client that keeps LIVE (pings) but misses a large mid-turn `state` catches
-  up via GET `/view` without a browser refresh. After a sub mast raise (and
-  when the Lookout/Periscope tab is focused), the client also issues a
-  **bounded** `/view` poll (immediate + one early follow-up) — not a
-  reconnect. Expect at most a couple of seconds of tunnel delay for feathers;
-  a massive wait, missing the whole raise window, or only painting after F5,
-  is the failure mode. **Do not** invent feathers client-side. **Sub peri
-  raise UX:** while the first FoW after raise is in flight, the viewer shows
-  **Raising periscope…** (or the turn-scoped contact cache), never a false
-  **no contacts** flash.
+  your raised feather** still need the server picture: full `state` frames are
+  padded for proxy flush, and heartbeat `ping` frames carry `stateVersion` so
+  a tunnel client that keeps LIVE (pings) but misses a large mid-turn `state`
+  catches up via GET `/view` without a browser refresh. After a sub mast raise
+  (and when the Lookout/Periscope tab is focused), the client also issues a
+  **bounded** one-shot/`/view` poll — not a reconnect. Expect a few seconds of
+  tunnel delay for feathers; missing the whole raise window, or only painting
+  after F5, is the failure mode. **Sub peri raise UX:** while the first FoW
+  after raise is in flight, the viewer shows **Raising periscope…** (or the
+  turn-scoped contact cache), never a false **no contacts** flash.
 - **Same-origin client:** build the client into the server's static bundle
   (`pnpm build` at the repo root builds `shared` → `client` → `server`, and
   `app.ts` auto-serves `packages/client/dist` when present) so there is no
