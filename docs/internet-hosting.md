@@ -351,6 +351,12 @@ data/ (saves, scenarios) on local disk
   without F5). Server-side, stuck write backpressure drops the fan-out client
   after ~45s so dead tunnels do not sit in the broadcast list forever. LAN and
   nearer remotes (e.g. STL) should still see a steady LIVE when pings arrive.
+  **Note:** [#248](https://github.com/Wade-Yancey/War-Patrol/pull/248)
+  (versioned ping before every `state` frame + peri “Raising…” / turn-cache
+  UX) was **reverted** — it caused constant **RECONNECTING** on
+  `*.trycloudflare.com` tunnel URLs. Heartbeat versioned pings and
+  [#244](https://github.com/Wade-Yancey/War-Patrol/pull/244)–[#247](https://github.com/Wade-Yancey/War-Patrol/pull/247)
+  remain.
 - **Turn timer sync:** stations count down from the shared ISO
   `turn.timerDeadline` with local wall clocks. If one remote tablet lights the
   timer a second or two after another, that is delayed SSE delivery (tunnel /
