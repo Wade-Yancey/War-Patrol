@@ -1902,8 +1902,11 @@ async function main() {
       scenarioId: 'destroyer-sub-demo',
       name: 'feather-after-resolve',
     });
-    check('feather-resolve game created', featherGame.status === 200);
-    const fgId = featherGame.json.id as string;
+    check(
+      'feather-resolve game created',
+      featherGame.status === 200 && typeof featherGame.json.gameId === 'string',
+    );
+    const fgId = featherGame.json.gameId as string;
     const fgUmp = await api('POST', `/api/games/${fgId}/auth/umpire`, { password: 'umpire' });
     const fgUTok = fgUmp.json.token as string;
     const fgDd = await api('POST', `/api/games/${fgId}/auth/vessel`, {
