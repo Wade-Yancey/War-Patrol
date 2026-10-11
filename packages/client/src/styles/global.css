@@ -2904,9 +2904,9 @@ label {
   }
 
   .depth-gauge.crt-console .radar-scope-svg {
-    width: min(88vw, 52dvh, 22rem);
-    max-width: min(88vw, 52dvh, 22rem);
-    max-height: min(88vw, 52dvh, 22rem);
+    width: min(90vw, 58dvh, 24.5rem);
+    max-width: min(90vw, 58dvh, 24.5rem);
+    max-height: min(90vw, 58dvh, 24.5rem);
   }
 
   .depth-gauge.crt-console .radar-side-panel {
