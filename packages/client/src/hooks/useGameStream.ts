@@ -73,7 +73,6 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
   const [error, setError] = useState<string | null>(null);
   const lastVersionRef = useRef(0);
   const refreshRef = useRef<() => Promise<void>>(async () => undefined);
-  const connectedRef = useRef(false);
   const onAuthInvalidRef = useRef(onAuthInvalid);
   onAuthInvalidRef.current = onAuthInvalid;
 
@@ -96,13 +95,14 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
     let streamOpen = false;
 
     const setConnectedState = (value: boolean) => {
-      connectedRef.current = value;
       setConnected(value);
     };
 
     const publishConnected = () => {
-      // Never show green LIVE for a zombie stream that opened but stopped
-      // delivering pings/state (high-RTT cloudflared failure mode).
+      // LIVE only while the EventSource is open and we have recent proof of
+      // delivery (parsed SSE frame and/or successful GET /view while open).
+      // RECONNECTING is reserved for actual reconnect (!streamOpen) — not for
+      // "soft /view caught up the station but the indicator never cleared".
       const fresh = lastEventAt > 0 && Date.now() - lastEventAt < STALE_AFTER_MS;
       setConnectedState(streamOpen && fresh);
     };
@@ -173,6 +173,15 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       setStateVersion(data.stateVersion);
       setView(data.view);
       setError(null);
+      // #250 soft `/view` polls (and reconnect catch-up) update the station
+      // without parsing an SSE frame. Count a successful snapshot while the
+      // stream is open as liveness so LIVE clears — otherwise the header can
+      // stay RECONNECTING forever even though peri/lookout/feather work.
+      // Does not open/close EventSource (no #248/#251 reconnect thrash).
+      if (streamOpen) {
+        lastEventAt = Date.now();
+        publishConnected();
+      }
     };
     refreshRef.current = async () => {
       try {
@@ -505,8 +514,11 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
     const kickIfNeeded = () => {
       if (cancelled || authInvalid) return;
       if (document.visibilityState === 'hidden') return;
-      // Tab visible / network back: if stream is down or stale, reconnect + catch up.
-      if (!connectedRef.current) {
+      // Key off streamOpen — not the LIVE indicator. `connected` stays false
+      // until the first ping/state (or snapshot-while-open); treating that as
+      // "down" aborted healthy streams on visibility/online and left the
+      // header stuck on RECONNECTING while catch-up `/view` kept the UI alive.
+      if (!streamOpen) {
         attempt = 0;
         clearReconnect();
         void openSse({ catchUp: true });
