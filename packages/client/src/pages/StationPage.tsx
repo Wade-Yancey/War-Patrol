@@ -1529,9 +1529,12 @@ export function StationPage() {
    * Gentle FoW catch-up after mast raise: at most two delayed GET /view polls,
    * cancelled once this raise’s FoW is ready or the mast lowers. Snapshot only —
    * never force-closes SSE / flips RECONNECTING (the #248 failure mode).
+   * Deps use a vessel presence flag (not `vessel` identity) so every SSE state
+   * apply does not clear/re-arm the timers.
    */
+  const hasVesselView = Boolean(vessel);
   useEffect(() => {
-    if (!vessel || opticsVariant !== 'periscope') return;
+    if (!hasVesselView || opticsVariant !== 'periscope') return;
     if (!opticsMastRaised || opticsScopeDown) return;
     if (periFowReadyGen === periRaiseGen) return;
     const raiseGen = periRaiseGen;
@@ -1552,7 +1555,7 @@ export function StationPage() {
     opticsMastRaised,
     opticsScopeDown,
     opticsVariant,
-    vessel,
+    hasVesselView,
   ]);
 
   /**
@@ -1563,7 +1566,7 @@ export function StationPage() {
    */
   useEffect(() => {
     const onOpticsTab = Boolean(
-      vessel && isSensors && canPeriscope && activeTab === 'periscope',
+      hasVesselView && isSensors && canPeriscope && activeTab === 'periscope',
     );
     const entered = onOpticsTab && !opticsTabFocusedRef.current;
     opticsTabFocusedRef.current = onOpticsTab;
@@ -1574,8 +1577,7 @@ export function StationPage() {
     }
     opticsTabRefreshAtRef.current = now;
     void streamRefreshRef.current();
-  }, [activeTab, isSensors, canPeriscope, vessel]);
-
+  }, [activeTab, isSensors, canPeriscope, hasVesselView]);
   // Drop sonar overlay once the streamed latch agrees.
   useEffect(() => {
     if (sonarOptimisticEnabled === null || !vessel) return;
