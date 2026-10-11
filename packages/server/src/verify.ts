@@ -2423,7 +2423,8 @@ async function main() {
     }),
   );
 
-  // 4. SSE: query-token auth (EventSource-safe) + wait for resolve push
+  // 4. SSE: auth + wait for resolve push. Browser uses POST (quick-tunnel GET buffering);
+  // GET + ?token= remains for curl / named tunnels / legacy.
   const sseUnauth = await fetch(`${base}/api/games/${gameId}/events`);
   check('SSE rejects missing token', sseUnauth.status === 401);
 
@@ -2432,15 +2433,19 @@ async function main() {
   );
   check('SSE rejects bad query token', sseBad.status === 401);
 
+  const ssePostUnauth = await fetch(`${base}/api/games/${gameId}/events`, { method: 'POST' });
+  check('SSE POST rejects missing token', ssePostUnauth.status === 401);
+
   let sseVersions: number[] = [];
   const sseAbort = new AbortController();
   const ssePromise = (async () => {
-    // Prefer query token — matches browser EventSource / client reconnect path.
-    const res = await fetch(
-      `${base}/api/games/${gameId}/events?token=${encodeURIComponent(blueToken)}`,
-      { signal: sseAbort.signal },
-    );
-    check('SSE accepts query token', res.status === 200 && Boolean(res.body));
+    // Prefer POST + Bearer — matches browser client (quick-tunnel-safe).
+    const res = await fetch(`${base}/api/games/${gameId}/events`, {
+      method: 'POST',
+      signal: sseAbort.signal,
+      headers: { Authorization: `Bearer ${blueToken}`, Accept: 'text/event-stream' },
+    });
+    check('SSE POST accepts Bearer', res.status === 200 && Boolean(res.body));
     const reader = res.body?.getReader();
     if (!reader) return;
     const decoder = new TextDecoder();
@@ -2465,7 +2470,14 @@ async function main() {
     }
   })();
 
-  // Bearer still accepted on SSE for non-browser clients.
+  // GET + query token still accepted (curl / named tunnels / EventSource-shaped clients).
+  const sseGetQuery = await fetch(
+    `${base}/api/games/${gameId}/events?token=${encodeURIComponent(blueToken)}`,
+  );
+  check('SSE GET accepts query token', sseGetQuery.status === 200 && Boolean(sseGetQuery.body));
+  sseGetQuery.body?.cancel().catch(() => undefined);
+
+  // Bearer still accepted on GET SSE for non-browser clients.
   const sseBearer = await fetch(`${base}/api/games/${gameId}/events`, {
     headers: { Authorization: `Bearer ${umpireToken}` },
   });

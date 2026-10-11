@@ -23,8 +23,8 @@ function isUmpirePath(pathname: string): boolean {
 
 /**
  * When the **host** opens the umpire UI on the public/tunnel origin, nudge them
- * to the loopback equivalent. Host-machine tabs through cloudflared often stick
- * on RECONNECTING while remote clients on the same URL stay LIVE.
+ * to the loopback equivalent. Prefer loopback on the host machine (DNS/1016
+ * quirks + cleaner smoke); remotes keep the tunnel join links.
  *
  * Shown only on `/g/:gameId/umpire` while that tab’s hostname is a tunnel or
  * configured public base — never on station pages (remotes share that origin)

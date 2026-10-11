@@ -63,9 +63,9 @@ export class SseHub {
 
   /**
    * Subscribe a station/umpire tab. `helloStateVersion` is echoed on the
-   * immediate padded ping so EventSource can leave CONNECTING before the
-   * multi-KB `sendFull` is serialized (cloudflared / edges often hold tiny
-   * `: connected` comments and the browser never fires `open`).
+   * immediate padded ping so the first flush is large enough for intermediaries
+   * that hold tiny `: connected` comments. (Quick-tunnel GET buffering is a
+   * separate issue — the browser client uses POST `/events`; see api routes.)
    */
   add(client: SseClient, helloStateVersion = 0): void {
     this.clients.set(client.id, client);

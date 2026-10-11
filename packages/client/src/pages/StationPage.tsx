@@ -152,7 +152,7 @@ const PERISCOPE_WRITE_DEBOUNCE_MS = 80;
 
 /**
  * Bounded GET /view polls after a peri raise when FoW is still pending.
- * Snapshot-only — does not reopen EventSource or trip the stale watchdog.
+ * Snapshot-only — does not reopen the live stream or trip the stale watchdog.
  * (#248 ping-before-state catch-up was reverted for tunnel RECONNECTING thrash.)
  */
 const PERI_FOW_VIEW_REFRESH_DELAYS_MS = [1_500, 4_000] as const;
@@ -237,7 +237,7 @@ export function StationPage() {
   const turnNumberRef = useRef<number | null>(null);
   const sonarWriteGenRef = useRef(0);
 
-  const { view, stateVersion, connected, sseConnecting, error, refresh } = useGameStream({
+  const { view, stateVersion, connected, error, refresh } = useGameStream({
     gameId,
     token,
     enabled: Boolean(token),
@@ -1617,7 +1617,7 @@ export function StationPage() {
   /**
    * One-shot GET /view when the operator focuses Lookout / Periscope — remotes
    * that missed a large mid-turn `state` (DD feather) catch up without reopening
-   * EventSource. Cooldown avoids a refresh storm if the tab effect re-runs.
+   * the live stream. Cooldown avoids a refresh storm if the tab effect re-runs.
    * Heartbeat versioned pings (#246) remain the background path.
    */
   useEffect(() => {
@@ -1861,7 +1861,7 @@ export function StationPage() {
             <div className="row" style={{ alignItems: 'center' }}>
               <span className={`live-dot ${connected ? '' : 'off'}`} />
               <span className={`mono muted`}>
-                {connected ? 'LIVE' : sseConnecting ? 'Connecting…' : 'RECONNECTING'}
+                {connected ? 'LIVE' : 'RECONNECTING'}
               </span>
               <span className="mono muted">v{stateVersion}</span>
             </div>
