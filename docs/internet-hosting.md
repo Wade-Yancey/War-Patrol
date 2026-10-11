@@ -351,12 +351,12 @@ data/ (saves, scenarios) on local disk
   without F5). Server-side, stuck write backpressure drops the fan-out client
   after ~45s so dead tunnels do not sit in the broadcast list forever. LAN and
   nearer remotes (e.g. STL) should still see a steady LIVE when pings arrive.
-  **Note:** [#248](https://github.com/Wade-Yancey/War-Patrol/pull/248)
-  (versioned ping before every `state` frame + peri “Raising…” / turn-cache
-  UX) was **reverted** — it caused constant **RECONNECTING** on
-  `*.trycloudflare.com` tunnel URLs. Heartbeat versioned pings and
-  [#244](https://github.com/Wade-Yancey/War-Patrol/pull/244)–[#247](https://github.com/Wade-Yancey/War-Patrol/pull/247)
-  remain.
+  **Do not** emit a versioned ping before every `state` frame ([#248](https://github.com/Wade-Yancey/War-Patrol/pull/248)
+  was reverted by [#249](https://github.com/Wade-Yancey/War-Patrol/pull/249)):
+  that over-triggered `/view` catch-up through cloudflared and starved the
+  stream until the stale watchdog flapped **LIVE↔RECONNECTING**. Prefer
+  heartbeat version hints + bounded client `/view` polls after mast raise /
+  Lookout focus (snapshot only — no EventSource thrash).
 - **Turn timer sync:** stations count down from the shared ISO
   `turn.timerDeadline` with local wall clocks. If one remote tablet lights the
   timer a second or two after another, that is delayed SSE delivery (tunnel /
@@ -380,7 +380,13 @@ data/ (saves, scenarios) on local disk
   your raised feather** still need the server picture: full `state` frames are
   padded for proxy flush, and heartbeat `ping` frames carry `stateVersion` so
   a tunnel client that keeps LIVE (pings) but misses a large mid-turn `state`
-  catches up via GET `/view` without a browser refresh.
+  catches up via GET `/view` without a browser refresh. After a sub mast raise
+  (and when the Lookout/Periscope tab is focused), the client also issues a
+  **bounded** one-shot/`/view` poll — not a reconnect. Expect a few seconds of
+  tunnel delay for feathers; missing the whole raise window, or only painting
+  after F5, is the failure mode. **Sub peri raise UX:** while the first FoW
+  after raise is in flight, the viewer shows **Raising periscope…** (or the
+  turn-scoped contact cache), never a false **no contacts** flash.
 - **Same-origin client:** build the client into the server's static bundle
   (`pnpm build` at the repo root builds `shared` → `client` → `server`, and
   `app.ts` auto-serves `packages/client/dist` when present) so there is no
