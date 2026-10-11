@@ -9,6 +9,7 @@ import {
   submarineDepthRisk,
   type DivePresetId,
 } from '@war-patrol/shared';
+import { DepthGauge } from './DepthGauge';
 import { TouchNumber } from './TouchNumber';
 
 export interface DiveControlsProps {
@@ -38,7 +39,7 @@ export interface DiveControlsProps {
 }
 
 /**
- * Submarine dive panel: preset depth buttons + coarse touch depth setter.
+ * Submarine dive panel: analog depth gauge + preset buttons + coarse touch setter.
  * Ships never render this — depth is surface-only for them.
  */
 export function DiveControls({
@@ -53,13 +54,8 @@ export function DiveControls({
   onSubmit,
   writePending = false,
 }: DiveControlsProps) {
-  const depthLabel = formatCoarseDepthMeters(depth);
-  const orderedLabel = formatCoarseDepthMeters(orderedDepth);
-  const draftLabel = formatCoarseDepthMeters(draftDepth);
   const coarseDepth = Math.round(depth / orderStepM) * orderStepM;
-  const coarseOrdered = Math.round(orderedDepth / orderStepM) * orderStepM;
   const coarseDraft = Math.round(draftDepth / orderStepM) * orderStepM;
-  const onOrdered = coarseDepth === coarseOrdered;
   const ordinaryDisabled = disabled || divePlanesLocked;
 
   const draftRisk = submarineDepthRisk(draftDepth);
@@ -91,23 +87,12 @@ export function DiveControls({
 
   return (
     <div className="dive-controls">
-      <div className="crt-console-readouts dive-readouts" aria-live="polite">
-        <div className="crt-console-readout dive-readout">
-          <span className="crt-console-key dive-key">DEPTH</span>
-          <span className="readout crt-console-val dive-val">{depthLabel}</span>
-        </div>
-        <div className="crt-console-readout dive-readout">
-          <span className="crt-console-key dive-key">ORDERED</span>
-          <span className="readout crt-console-val dive-val">{orderedLabel}</span>
-          {onOrdered && <span className="dive-ok">ON</span>}
-        </div>
-        {coarseDraft !== coarseOrdered && (
-          <div className="crt-console-readout dive-readout dive-readout--draft">
-            <span className="crt-console-key dive-key">SET</span>
-            <span className="readout crt-console-val dive-val">{draftLabel}</span>
-          </div>
-        )}
-      </div>
+      <DepthGauge
+        depth={depth}
+        orderedDepth={orderedDepth}
+        draftDepth={draftDepth}
+        maxDepthM={maxDepthM}
+      />
 
       <div
         className="dive-bands"
