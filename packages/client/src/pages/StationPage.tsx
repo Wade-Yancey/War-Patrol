@@ -237,7 +237,7 @@ export function StationPage() {
   const turnNumberRef = useRef<number | null>(null);
   const sonarWriteGenRef = useRef(0);
 
-  const { view, stateVersion, connected, error, refresh } = useGameStream({
+  const { view, stateVersion, connected, sseConnecting, error, refresh } = useGameStream({
     gameId,
     token,
     enabled: Boolean(token),
@@ -1860,7 +1860,9 @@ export function StationPage() {
           <div className="stack" style={{ alignItems: 'flex-end', gap: '0.35rem' }}>
             <div className="row" style={{ alignItems: 'center' }}>
               <span className={`live-dot ${connected ? '' : 'off'}`} />
-              <span className={`mono muted`}>{connected ? 'LIVE' : 'RECONNECTING'}</span>
+              <span className={`mono muted`}>
+                {connected ? 'LIVE' : sseConnecting ? 'Connecting…' : 'RECONNECTING'}
+              </span>
               <span className="mono muted">v{stateVersion}</span>
             </div>
           </div>

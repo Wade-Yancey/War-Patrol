@@ -61,8 +61,15 @@ export class SseHub {
     if (stateVersion >= prev) this.latestVersionByGame.set(gameId, stateVersion);
   }
 
-  add(client: SseClient): void {
+  /**
+   * Subscribe a station/umpire tab. `helloStateVersion` is echoed on the
+   * immediate padded ping so EventSource can leave CONNECTING before the
+   * multi-KB `sendFull` is serialized (cloudflared / edges often hold tiny
+   * `: connected` comments and the browser never fires `open`).
+   */
+  add(client: SseClient, helloStateVersion = 0): void {
     this.clients.set(client.id, client);
+    if (helloStateVersion > 0) this.noteVersion(client.gameId, helloStateVersion);
     sseDebug('subscribe', {
       id: client.id,
       gameId: client.gameId,
@@ -70,6 +77,7 @@ export class SseHub {
       unitId: client.unitId ?? null,
       stationId: client.stationId ?? null,
       clients: this.clients.size,
+      helloStateVersion,
     });
     const reply = client.reply;
     // Hijack so Fastify does not finalize/buffer the long-lived stream.
@@ -103,7 +111,16 @@ export class SseHub {
         /* ignore */
       }
     }
-    this.writeRaw(client, `: connected\n\n`);
+    // Pad + named ping immediately — do not wait on sendFull. A 14-byte
+    // `: connected` alone is often held by intermediaries; EventSource then
+    // stays CONNECTING forever (Wade post-#260: esCreate → esConnectStall,
+    // no open/error, ages null) while GET /view still works.
+    const stateVersion = this.latestVersionByGame.get(client.gameId) ?? helloStateVersion;
+    const helloPing = JSON.stringify({ type: 'ping', stateVersion });
+    this.writeRaw(
+      client,
+      `${PING_PAD}: connected\n\n${PING_PAD}event: ping\ndata: ${helloPing}\n\n`,
+    );
 
     const onClose = () => {
       this.clearDrainWatch(client);

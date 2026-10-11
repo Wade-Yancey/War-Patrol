@@ -333,18 +333,33 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         reply,
         lastSentVersion: 0,
       };
-      runtime.sse.add(client);
+      // Padded hello + ping flush inside add() before any view serialize.
+      runtime.sse.add(client, save.stateVersion);
 
-      const view = buildViewForSession(
-        save,
-        runtime.sse,
-        session.role,
-        session.unitId,
-        session.stationId,
-      );
-      if (view) {
-        runtime.sse.sendFull(client, save.stateVersion, view);
-      }
+      // Defer multi-KB sendFull so the hello can leave the event loop / wire
+      // before JSON.stringify of a full vessel/umpire view blocks the thread.
+      // Not ping-before-state on every broadcast (#248) — subscribe open only.
+      setImmediate(() => {
+        try {
+          if (reply.raw.writableEnded || reply.raw.destroyed) return;
+          const view = buildViewForSession(
+            save,
+            runtime.sse,
+            session.role,
+            session.unitId,
+            session.stationId,
+          );
+          if (view) {
+            runtime.sse.sendFull(client, save.stateVersion, view);
+          }
+        } catch (err) {
+          sseDebug('sendFullDeferredFail', {
+            id: client.id,
+            gameId: session.gameId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      });
 
       // Keep the request open after hijack; resolve when the client disconnects.
       await new Promise<void>((resolve) => {
