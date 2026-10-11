@@ -165,36 +165,14 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       setError(err instanceof Error ? err.message : 'SSE disconnected');
     };
 
-    /** Coalesce concurrent GET /view catch-ups (ping-before-state + heartbeat). */
-    let refreshInFlight: Promise<void> | null = null;
-    /** Highest stateVersion advertised by a parsed ping (may exceed applied view). */
-    let hintedServerVersion = 0;
-
     const fullRefresh = async (signal?: AbortSignal) => {
-      if (refreshInFlight) {
-        await refreshInFlight;
-        // Another refresh may have closed the gap while we waited.
-        if (
-          cancelled ||
-          signal?.aborted ||
-          lastVersionRef.current >= hintedServerVersion
-        ) {
-          return;
-        }
-      }
-      const run = (async () => {
-        const data = await api.view(gameId, token, { signal });
-        if (cancelled || signal?.aborted) return;
-        lastVersionRef.current = data.stateVersion;
-        // Snapshot catch-up is urgent — do not defer behind optics transitions.
-        setStateVersion(data.stateVersion);
-        setView(data.view);
-        setError(null);
-      })();
-      refreshInFlight = run.finally(() => {
-        if (refreshInFlight === run) refreshInFlight = null;
-      });
-      await refreshInFlight;
+      const data = await api.view(gameId, token, { signal });
+      if (cancelled || signal?.aborted) return;
+      lastVersionRef.current = data.stateVersion;
+      // Snapshot catch-up is urgent — do not defer behind optics transitions.
+      setStateVersion(data.stateVersion);
+      setView(data.view);
+      setError(null);
     };
     refreshRef.current = async () => {
       try {
@@ -209,33 +187,12 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       }
     };
 
-    /**
-     * Ping advertised a newer stateVersion than we have applied — classic
-     * tunnel failure (LIVE on small frames, large `state` missing). Catch up
-     * via GET /view (same path as F5). Coalesced so ping-before-state +
-     * heartbeat do not stampede.
-     */
-    const catchUpFromVersionHint = (
-      hinted: number,
-      signal: AbortSignal,
-      fromGeneration: number,
-    ) => {
-      if (hinted <= lastVersionRef.current) return;
-      hintedServerVersion = Math.max(hintedServerVersion, hinted);
-      void fullRefresh(signal).catch((err) => {
-        if (signal.aborted || cancelled || fromGeneration !== generation) return;
-        if (isAuthFailure(err)) handleAuthInvalid();
-      });
-    };
-
     const applyState = (stateVersionNext: number, nextView: ClientView) => {
       lastVersionRef.current = stateVersionNext;
-      if (stateVersionNext > hintedServerVersion) {
-        hintedServerVersion = stateVersionNext;
-      }
       // Apply urgently — mid-turn FoW (DD lookout feather on peri raise/lower)
       // must land without waiting on a transition. Optics chrome stays snappy via
-      // local-first mast overlay (#235); contact lists are not deferred (#247).
+      // StationPage `useDeferredValue` + local-first mast overlay (#235), not by
+      // deferring the whole vessel view (that left tunnel remotes stale until F5).
       setStateVersion(stateVersionNext);
       setView(nextView);
     };
@@ -483,15 +440,19 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
                 // live path is delivering (not a zombie OPEN).
                 noteEvent();
                 if (payload.type === 'ping') {
-                  // Small pings (heartbeat + ping-before-state) often still
-                  // arrive through cloudflared when a multi-KB `state` frame
-                  // was buffered/dropped. Version gap → GET /view catch-up.
-                  if (typeof payload.stateVersion === 'number') {
-                    catchUpFromVersionHint(
-                      payload.stateVersion,
-                      signal,
-                      myGeneration,
-                    );
+                  // Small pings often still arrive through cloudflared when a
+                  // multi-KB `state` frame was buffered/dropped. If the server
+                  // is ahead, catch up with GET /view (same path as F5).
+                  if (
+                    typeof payload.stateVersion === 'number' &&
+                    payload.stateVersion > lastVersionRef.current
+                  ) {
+                    void fullRefresh(signal).catch((err) => {
+                      if (signal.aborted || cancelled || myGeneration !== generation) {
+                        return;
+                      }
+                      if (isAuthFailure(err)) handleAuthInvalid();
+                    });
                   }
                   continue;
                 }

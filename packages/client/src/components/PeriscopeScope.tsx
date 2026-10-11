@@ -44,11 +44,6 @@ interface Props {
    * Scope-down / optically blind — clears viewer + contacts; compass stays idle.
    */
   blind?: boolean;
-  /**
-   * Mast chrome is up but authoritative FoW has not arrived yet (tunnel RTT).
-   * Must not flash “no contacts” — empty array is not a loading sentinel.
-   */
-  raising?: boolean;
 }
 
 /** Shared selection — contacts and sightings share the optics compass. */
@@ -189,22 +184,21 @@ function PeriscopeScopeInner({
   ownHeading,
   variant = 'periscope',
   blind = false,
-  raising = false,
 }: Props) {
   const sorted = useMemo(() => {
-    if (blind || raising) return [];
+    if (blind) return [];
     return [...contacts].sort(
       (a, b) =>
         Math.abs(a.relativeBearing) - Math.abs(b.relativeBearing) || a.rangeNm - b.rangeNm,
     );
-  }, [blind, raising, contacts]);
+  }, [blind, contacts]);
 
   const sortedSightings = useMemo(() => {
-    if (blind || raising) return [];
+    if (blind) return [];
     return [...sightings].sort(
       (a, b) => Math.abs(a.relativeBearing) - Math.abs(b.relativeBearing),
     );
-  }, [blind, raising, sightings]);
+  }, [blind, sightings]);
 
   const [selection, setSelection] = useState<OpticsSelection | null>(null);
   const [imgFailed, setImgFailed] = useState(false);
@@ -281,10 +275,6 @@ function PeriscopeScopeInner({
 
         {blind ? (
           <p className="periscope-empty mono periscope-empty--blind">Scope down</p>
-        ) : raising ? (
-          <p className="periscope-empty mono muted" role="status" aria-live="polite">
-            Raising periscope…
-          </p>
         ) : !hasVisual ? (
           <p className="periscope-empty mono muted">No visual contacts within {maxRangeNm} nm</p>
         ) : selectedSighting ? (
@@ -505,9 +495,6 @@ function PeriscopeScopeInner({
           </div>
         )}
         {blind && <p className="periscope-caption muted">Mast lowered</p>}
-        {raising && !blind && (
-          <p className="periscope-caption muted">Raising periscope…</p>
-        )}
       </aside>
     </div>
   );
@@ -521,7 +508,6 @@ export const PeriscopeScope = memo(PeriscopeScopeInner, (prev, next) => {
     prev.ownHeading === next.ownHeading &&
     prev.variant === next.variant &&
     prev.blind === next.blind &&
-    prev.raising === next.raising &&
     contactsKey(prev.contacts) === contactsKey(next.contacts) &&
     prev.contacts.length === next.contacts.length &&
     prev.contacts.every((c, i) => {
