@@ -337,9 +337,13 @@ data/ (saves, scenarios) on local disk
   LAN tablets, and cloudflared/quick-tunnel clients) do not look idle to the
   proxy or the browser. Padding helps intermediaries that buffer tiny writes.
   Full `state` frames get the same trailing pad so mid-turn FoW pushes are less
-  likely to sit in an edge buffer while only pings flush. You still need
-  buffering off / long read timeouts on that path — heartbeats alone cannot
-  fix a proxy that buffers the whole stream.
+  likely to sit in an edge buffer while only pings flush. Lookout / Sensors
+  tabs also get a slim padded `event: optics` (contacts / feathers / sightings
+  only) **before** the multi-KB `state` frame, and lookout clients are fanned
+  out before the umpire view, so peri-feather FoW can flush through cloudflared
+  without waiting on the full vessel payload. You still need buffering off /
+  long read timeouts on that path — heartbeats alone cannot fix a proxy that
+  buffers the whole stream.
 - **High-RTT / UK-style SSE freeze:** Order POSTs and `GET /view` (browser
   refresh) can keep working while the long-lived `/events` stream stalls
   through a quick tunnel — the LIVE dot used to stay green on a zombie OPEN
@@ -385,16 +389,19 @@ data/ (saves, scenarios) on local disk
   `state` applies urgently (#246); contact/sighting lists are **not**
   `useDeferredValue`-deferred so a remote peri feather paints as soon as the
   view arrives (only streamed HDG stays deferred). **Other stations seeing
-  your raised feather** still need the server picture: full `state` frames are
-  padded for proxy flush, and heartbeat `ping` frames carry `stateVersion` so
-  a tunnel client that keeps LIVE (pings) but misses a large mid-turn `state`
-  catches up via GET `/view` without a browser refresh. After a sub mast raise
-  (and when the Lookout/Periscope tab is focused), the client also issues a
-  **bounded** one-shot/`/view` poll — not a reconnect. Expect a few seconds of
-  tunnel delay for feathers; missing the whole raise window, or only painting
-  after F5, is the failure mode. **Sub peri raise UX:** while the first FoW
-  after raise is in flight, the viewer shows **Raising periscope…** (or the
-  turn-scoped contact cache), never a false **no contacts** flash.
+  your raised feather** still need the server picture: slim `optics` SSE
+  carries authoritative lookout FoW first, full `state` frames are padded for
+  proxy flush, and heartbeat `ping` frames carry `stateVersion` so a tunnel
+  client that keeps LIVE (pings) but misses a large mid-turn `state` catches
+  up via GET `/view` without a browser refresh. After a sub mast raise (and
+  when the Lookout/Periscope tab is focused), the client also issues a
+  **bounded** `/view` poll (immediate + one early follow-up) — not a
+  reconnect. Expect at most a couple of seconds of tunnel delay for feathers;
+  a massive wait, missing the whole raise window, or only painting after F5,
+  is the failure mode. **Do not** invent feathers client-side. **Sub peri
+  raise UX:** while the first FoW after raise is in flight, the viewer shows
+  **Raising periscope…** (or the turn-scoped contact cache), never a false
+  **no contacts** flash.
 - **Same-origin client:** build the client into the server's static bundle
   (`pnpm build` at the repo root builds `shared` → `client` → `server`, and
   `app.ts` auto-serves `packages/client/dist` when present) so there is no

@@ -1,6 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ClientView, UmpireView, VesselView } from '@war-patrol/shared';
+import type {
+  ClientView,
+  OpticsSighting,
+  PeriscopeContact,
+  UmpireView,
+  VesselView,
+} from '@war-patrol/shared';
 import { api } from '../api/client';
+
+/** Slim lookout FoW SSE payload (server `event: optics`) — feather-relevant only. */
+type OpticsSsePayload = {
+  stateVersion?: number;
+  periscopeContacts?: PeriscopeContact[];
+  opticsSightings?: OpticsSighting[];
+  periscopeMaxRangeNm?: number;
+  periscopeOperational?: boolean;
+  periscopeUnavailableReason?: VesselView['periscopeUnavailableReason'];
+  periscopeRaised?: boolean;
+  periscopeExposure?: number;
+};
 
 interface Options {
   gameId: string;
@@ -98,7 +116,7 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
     let generation = 0;
     let attempt = 0;
     let authInvalid = false;
-    /** Last time we parsed a complete SSE event (`ping`, `state`, `connections`). */
+    /** Last time we parsed a complete SSE event (`ping`, `state`, `optics`, `connections`). */
     let lastEventAt = 0;
     /** When the current fetch stream became open (headers OK). */
     let streamOpenedAt = 0;
@@ -263,6 +281,63 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
           setStateVersion(payload.stateVersion);
         }
       }
+    };
+
+    /**
+     * Merge slim lookout FoW (peri feather / contacts / sightings) without
+     * waiting on the trailing multi-KB `state` frame. Does **not** advance
+     * `lastVersionRef` — ping-gap GET `/view` and full `state` still reconcile
+     * the rest of the vessel picture (avoids inventing feathers client-side).
+     */
+    const applyOptics = (payload: OpticsSsePayload) => {
+      if (typeof payload.stateVersion === 'number') {
+        // Stale/replayed optics must not clobber a newer full view.
+        if (payload.stateVersion < lastVersionRef.current) return;
+        setStateVersion((v) => (payload.stateVersion! > v ? payload.stateVersion! : v));
+      }
+      setView((prev) => {
+        if (!prev || prev.role !== 'vessel') return prev;
+        if (
+          typeof payload.stateVersion === 'number' &&
+          payload.stateVersion < prev.stateVersion
+        ) {
+          return prev;
+        }
+        const next: VesselView = {
+          ...prev,
+          ...(typeof payload.stateVersion === 'number'
+            ? { stateVersion: payload.stateVersion }
+            : {}),
+          ...(payload.periscopeContacts !== undefined
+            ? { periscopeContacts: payload.periscopeContacts }
+            : {}),
+          ...(payload.opticsSightings !== undefined
+            ? {
+                opticsSightings: payload.opticsSightings,
+                torpedoWakeCues: payload.opticsSightings,
+              }
+            : {}),
+          ...(typeof payload.periscopeMaxRangeNm === 'number'
+            ? { periscopeMaxRangeNm: payload.periscopeMaxRangeNm }
+            : {}),
+          ...(typeof payload.periscopeOperational === 'boolean'
+            ? { periscopeOperational: payload.periscopeOperational }
+            : {}),
+          ...(payload.periscopeUnavailableReason !== undefined
+            ? { periscopeUnavailableReason: payload.periscopeUnavailableReason }
+            : {}),
+          unit: {
+            ...prev.unit,
+            ...(typeof payload.periscopeRaised === 'boolean'
+              ? { periscopeRaised: payload.periscopeRaised }
+              : {}),
+            ...(typeof payload.periscopeExposure === 'number'
+              ? { periscopeExposure: payload.periscopeExposure }
+              : {}),
+          },
+        };
+        return next;
+      });
     };
 
     const noteEvent = () => {
@@ -485,8 +560,15 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
                   view?: ClientView;
                   connections?: UmpireView['connections'];
                   stationConnections?: VesselView['stationConnections'];
+                  periscopeContacts?: PeriscopeContact[];
+                  opticsSightings?: OpticsSighting[];
+                  periscopeMaxRangeNm?: number;
+                  periscopeOperational?: boolean;
+                  periscopeUnavailableReason?: VesselView['periscopeUnavailableReason'];
+                  periscopeRaised?: boolean;
+                  periscopeExposure?: number;
                 };
-                // Count ping/state/connections — any parsed frame proves the
+                // Count ping/state/optics/connections — any parsed frame proves the
                 // live path is delivering (not a zombie OPEN).
                 noteEvent();
                 if (payload.type === 'ping') {
@@ -504,6 +586,11 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
                 }
                 if (payload.type === 'connections') {
                   applyConnections(payload);
+                  continue;
+                }
+                if (payload.type === 'optics') {
+                  // Authoritative slim FoW — paint peri feathers before full state.
+                  applyOptics(payload);
                   continue;
                 }
                 if (payload.type !== 'state' || payload.view == null || payload.stateVersion == null) {
