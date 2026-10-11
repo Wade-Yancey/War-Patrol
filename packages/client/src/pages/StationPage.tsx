@@ -286,8 +286,19 @@ export function StationPage() {
       setOrderWriteInFlight(0);
       orderWriteGenRef.current += 1;
       setReloadOptimistic({});
+      // Drop turn FoW cache + mast overlay. Do **not** set periFowReadyGen to -1:
+      // that forced periFowPending with an empty cache and hid live optics
+      // (sub peri + DD lookout feather via stale raise-window) after resolve —
+      // sometimes until remount, and forever when mast auto-lowered while the
+      // optimistic raise latch was still held. Sync ready to the current raise
+      // gen so the new turn trusts streamed /view contacts immediately.
       setPeriTurnFowCache(null);
-      setPeriFowReadyGen(-1);
+      setPeriOptimisticRaised(null);
+      periDesiredRaisedRef.current = null;
+      setPeriFowReadyGen(periRaiseGenRef.current);
+      // Soft GET /view catch-up after Lock/Resolve — tunnel SSE may still be
+      // draining a multi-KB state frame; snapshot-only (no EventSource reopen).
+      void streamRefreshRef.current();
     }
     turnNumberRef.current = n;
   }, [vessel?.turn.number]);
@@ -451,6 +462,8 @@ export function StationPage() {
   // (and wake sightings) as soon as the SSE/view catch-up arrives. Contact pick /
   // compass stay local in PeriscopeScope; only streamed HDG is deferred below.
   // (#246 urgent SSE + heartbeat ping version catch-up; no ping-before-state.)
+  // Raise-window cache is **sub peri only** — lookout always uses live FoW so a
+  // cleared/empty turn cache after Lock/Resolve cannot hide a real feather.
   const turnNumber = vessel?.turn.number ?? null;
   const periTurnCache =
     periTurnFowCache && turnNumber != null && periTurnFowCache.turn === turnNumber
@@ -1496,18 +1509,28 @@ export function StationPage() {
     })();
   };
 
-  // Drop mast overlay once the streamed view agrees (SSE caught up).
+  // Drop mast overlay once the streamed view agrees (SSE caught up), or when
+  // the server moved the mast without our pending desire (resolve auto-lower /
+  // lookout casualty) so chrome cannot stay "UP" while FoW is scope-down.
   useEffect(() => {
     if (periOptimisticRaised === null || !vessel) return;
-    // Match presentation mast (held through blast reveal), not resolve-time FoW.
-    if (presentationSensors.periscopeRaised === periOptimisticRaised) {
+    const serverRaised = presentationSensors.periscopeRaised;
+    if (serverRaised === periOptimisticRaised) {
       setPeriOptimisticRaised(null);
+      return;
+    }
+    const desired = periDesiredRaisedRef.current;
+    if (desired === null || desired === serverRaised) {
+      setPeriOptimisticRaised(null);
+      periDesiredRaisedRef.current = null;
     }
   }, [vessel, periOptimisticRaised, presentationSensors.periscopeRaised]);
 
   // Authoritative peri FoW for this raise window — mark ready + refresh turn cache.
   // Keyed on stateVersion (not contact array identity) so empty `?? []` aliases
   // from presentationSensors cannot retrigger setState every render.
+  // Subs only: DD lookout has no mast raise-window (`opticsVariant === 'lookout'`)
+  // and always paints live `periscopeContacts` (including peri feathers).
   useEffect(() => {
     if (!vessel || opticsVariant !== 'periscope') return;
     if (!presentationSensors.periscopeRaised) return;
