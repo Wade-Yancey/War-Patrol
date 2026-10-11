@@ -342,17 +342,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         session.stationId,
       );
       if (view) {
-        // Reconnecting clients pass lastVersion when they already hold a
-        // current snapshot (parallel GET /view). Skip another multi-KB
-        // sendFull — a padded ping is enough to mark LIVE and advertise gaps.
-        const rawLast = request.query.lastVersion;
-        const lastVersion =
-          typeof rawLast === 'string' && rawLast.length > 0 ? Number(rawLast) : NaN;
-        if (Number.isFinite(lastVersion) && lastVersion >= save.stateVersion) {
-          runtime.sse.sendPing(client, save.stateVersion);
-        } else {
-          runtime.sse.sendFull(client, save.stateVersion, view);
-        }
+        runtime.sse.sendFull(client, save.stateVersion, view);
       }
 
       // Keep the request open after hijack; resolve when the client disconnects.

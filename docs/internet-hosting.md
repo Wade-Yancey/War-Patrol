@@ -343,28 +343,20 @@ data/ (saves, scenarios) on local disk
 - **High-RTT / UK-style SSE freeze:** Order POSTs and `GET /view` (browser
   refresh) can keep working while the long-lived `/events` stream stalls
   through a quick tunnel — the LIVE dot used to stay green on a zombie OPEN
-  connection. Clients treat **~25s without a parsed ping/state frame** as a
-  soft stall (one coalesced GET `/view`, EventSource stays open) and only
-  force-close + reopen SSE after **~55s** (above the server ~45s drain drop),
-  so a large mid-turn `state` that briefly delays pings on cloudflared does
-  not flap **LIVE↔RECONNECTING**. LIVE itself uses the hard window. Snapshot
-  GETs use a dedicated abort controller (not the SSE signal) and successful
-  `/view` while the stream is open counts as liveness. Reconnects pass
-  `lastVersion` so an already-current client gets a padded ping hello instead
-  of another multi-KB `sendFull`. When pings still arrive but a large `state`
-  was missed, a newer `stateVersion` on `ping` triggers the same GET `/view`
-  catch-up (DD lookout feather / mid-turn FoW without F5). Server-side, stuck
-  write backpressure skips further state/heartbeat writes until drain, then
-  sends a small ping; dead sockets drop after ~45s. LAN and nearer remotes
-  (e.g. STL) should still see a steady LIVE when pings arrive.
+  connection. Clients now treat **~25s without a parsed ping/state frame** as
+  stale: they flip to **RECONNECTING**, force-close the stream, refetch
+  `/view`, and reopen SSE (no full page refresh needed). When pings still
+  arrive but a large `state` was missed, a newer `stateVersion` on `ping`
+  triggers the same GET `/view` catch-up (DD lookout feather / mid-turn FoW
+  without F5). Server-side, stuck write backpressure drops the fan-out client
+  after ~45s so dead tunnels do not sit in the broadcast list forever. LAN and
+  nearer remotes (e.g. STL) should still see a steady LIVE when pings arrive.
   **Do not** emit a versioned ping before every `state` frame ([#248](https://github.com/Wade-Yancey/War-Patrol/pull/248)
   was reverted by [#249](https://github.com/Wade-Yancey/War-Patrol/pull/249)):
   that over-triggered `/view` catch-up through cloudflared and starved the
   stream until the stale watchdog flapped **LIVE↔RECONNECTING**. Prefer
   heartbeat version hints + bounded client `/view` polls after mast raise /
-  Lookout focus (snapshot only — no EventSource thrash). Keep [#250](https://github.com/Wade-Yancey/War-Patrol/pull/250)
-  raise UX / contact cache; loosen only the reconnect path if tunnel red-light
-  thrash returns.
+  Lookout focus (snapshot only — no EventSource thrash).
 - **Turn timer sync:** stations count down from the shared ISO
   `turn.timerDeadline` with local wall clocks. If one remote tablet lights the
   timer a second or two after another, that is delayed SSE delivery (tunnel /

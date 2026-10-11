@@ -199,7 +199,6 @@ export class SseHub {
     const umpireConnections = this.connectionSummary(gameId);
     for (const client of [...this.clients.values()]) {
       if (client.gameId !== gameId) continue;
-      if (client.waitingDrain) continue;
       try {
         if (client.role === 'umpire') {
           const payload = JSON.stringify({
@@ -228,22 +227,7 @@ export class SseHub {
     this.send(client, stateVersion, view);
   }
 
-  /**
-   * Lightweight hello / liveness frame (padded ping with stateVersion).
-   * Used when a reconnecting client already has the current snapshot so we do
-   * not pile another multi-KB `state` onto a cloudflared pipe mid-thrash.
-   */
-  sendPing(client: SseClient, stateVersion: number): void {
-    this.noteVersion(client.gameId, stateVersion);
-    const payload = JSON.stringify({ type: 'ping', stateVersion });
-    this.writeRaw(client, `${PING_PAD}event: ping\ndata: ${payload}\n\n`);
-  }
-
   private send(client: SseClient, stateVersion: number, view: ClientView): void {
-    // Backpressured tunnel sockets cannot accept another multi-KB frame —
-    // piling on delays drain and starves heartbeats (client reconnect thrash).
-    // Client catches up via GET /view / next push after drain.
-    if (client.waitingDrain) return;
     this.noteVersion(client.gameId, stateVersion);
     const payload = JSON.stringify({ type: 'state', stateVersion, view });
     // Trailing pad comment punches the large state frame through the same
@@ -265,10 +249,9 @@ export class SseHub {
   startHeartbeat(intervalMs = SSE_HEARTBEAT_MS): NodeJS.Timeout {
     return setInterval(() => {
       for (const client of [...this.clients.values()]) {
-        // Do not enqueue more bytes on a backpressured socket — wait for drain.
-        if (client.waitingDrain) continue;
         const stateVersion = this.latestVersionByGame.get(client.gameId) ?? 0;
-        this.sendPing(client, stateVersion);
+        const payload = JSON.stringify({ type: 'ping', stateVersion });
+        this.writeRaw(client, `${PING_PAD}event: ping\ndata: ${payload}\n\n`);
       }
     }, intervalMs);
   }
@@ -312,11 +295,6 @@ export class SseHub {
         client.waitingDrain = true;
         const onDrain = () => {
           this.clearDrainWatch(client);
-          // Immediate small ping after drain so the client stale watchdog sees
-          // a parsed frame without waiting for the next ~8s heartbeat — and
-          // without another multi-KB state while the pipe is still tender.
-          const stateVersion = this.latestVersionByGame.get(client.gameId) ?? 0;
-          this.sendPing(client, stateVersion);
         };
         raw.once('drain', onDrain);
         client.drainTimer = setTimeout(() => {
