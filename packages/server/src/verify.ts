@@ -1817,7 +1817,8 @@ async function main() {
   );
 
   // Mid-turn peri raise must push DD lookout feather on the live SSE stream
-  // (not only on the next GET /view / browser refresh).
+  // (not only on the next GET /view / browser refresh). Prefer slim `optics`
+  // before full `state` so tunnel remotes paint without waiting on multi-KB frames.
   {
     const sseAbort = new AbortController();
     const featherFromSse = (async () => {
@@ -1844,6 +1845,7 @@ async function main() {
             type?: string;
             stateVersion?: number;
             view?: { periscopeContacts?: Array<Json> };
+            periscopeContacts?: Array<Json>;
           };
           try {
             payload = JSON.parse(dataLine.slice(6)) as typeof payload;
@@ -1854,8 +1856,13 @@ async function main() {
             // Heartbeat carries version for tunnel catch-up (may arrive before state).
             continue;
           }
-          if (payload.type !== 'state' || !payload.view) continue;
-          const contacts = payload.view.periscopeContacts ?? [];
+          const contacts =
+            payload.type === 'optics'
+              ? (payload.periscopeContacts ?? [])
+              : payload.type === 'state' && payload.view
+                ? (payload.view.periscopeContacts ?? [])
+                : null;
+          if (!contacts) continue;
           const hasFeather = contacts.some((c) => c.kind === 'periscope');
           if (!sawInitial) {
             sawInitial = true;
@@ -1891,6 +1898,127 @@ async function main() {
     const gotFeatherPush = await featherFromSse;
     sseAbort.abort();
     check('SSE pushes DD lookout feather on peri raise', gotFeatherPush);
+    await api('POST', `/api/games/${gameId}/periscope`, { raised: false }, subSensorsToken);
+
+    // Dedicated pass: slim optics must carry the feather (and beat full state).
+    {
+      await new Promise((r) => setTimeout(r, 100));
+      const opticsAbort = new AbortController();
+      const raiseGate: {
+        promise: Promise<{ status: number }> | null;
+      } = { promise: null };
+      const opticsOrder = (async () => {
+        const res = await fetch(
+          `${base}/api/games/${gameId}/events?token=${encodeURIComponent(radarToken)}`,
+          { signal: opticsAbort.signal },
+        );
+        if (!res.ok || !res.body) return { ok: false, opticsFirst: false };
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let ready = false;
+        let sawOpticsFeather = false;
+        let sawStateFeather = false;
+        let opticsFirst = false;
+        const deadline = Date.now() + 5_000;
+        const kickRaise = () => {
+          if (raiseGate.promise) return;
+          raiseGate.promise = api(
+            'POST',
+            `/api/games/${gameId}/periscope`,
+            { raised: true, exposure: 1 },
+            subSensorsToken,
+          );
+        };
+        while (Date.now() < deadline) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop() ?? '';
+          for (const part of parts) {
+            const dataLine = part.split('\n').find((l) => l.startsWith('data: '));
+            if (!dataLine) continue;
+            let payload: {
+              type?: string;
+              view?: { periscopeContacts?: Array<Json> };
+              periscopeContacts?: Array<Json>;
+            };
+            try {
+              payload = JSON.parse(dataLine.slice(6)) as typeof payload;
+            } catch {
+              continue;
+            }
+            if (payload.type === 'ping') continue;
+            if (!ready) {
+              // Wait for initial snapshot (optics or state) with no feather.
+              if (payload.type === 'optics') {
+                const has = (payload.periscopeContacts ?? []).some(
+                  (c) => c.kind === 'periscope',
+                );
+                if (has) return { ok: false, opticsFirst: false };
+                ready = true;
+                kickRaise();
+                continue;
+              }
+              if (payload.type === 'state' && payload.view) {
+                const has = (payload.view.periscopeContacts ?? []).some(
+                  (c) => c.kind === 'periscope',
+                );
+                if (has) return { ok: false, opticsFirst: false };
+                ready = true;
+                kickRaise();
+                continue;
+              }
+              continue;
+            }
+            if (payload.type === 'optics') {
+              const has = (payload.periscopeContacts ?? []).some(
+                (c) => c.kind === 'periscope',
+              );
+              if (has) {
+                sawOpticsFeather = true;
+                if (!sawStateFeather) opticsFirst = true;
+                try {
+                  await reader.cancel();
+                } catch {
+                  /* ignore */
+                }
+                return { ok: true, opticsFirst };
+              }
+              continue;
+            }
+            if (payload.type === 'state' && payload.view) {
+              const has = (payload.view.periscopeContacts ?? []).some(
+                (c) => c.kind === 'periscope',
+              );
+              if (has) {
+                sawStateFeather = true;
+                try {
+                  await reader.cancel();
+                } catch {
+                  /* ignore */
+                }
+                // State feather without a prior optics feather fails the optics-first check.
+                return { ok: sawOpticsFeather, opticsFirst };
+              }
+            }
+          }
+        }
+        try {
+          await reader.cancel();
+        } catch {
+          /* ignore */
+        }
+        return { ok: sawOpticsFeather, opticsFirst };
+      })();
+      const opticsResult = await opticsOrder;
+      const raiseForOptics = raiseGate.promise ? await raiseGate.promise : null;
+      check('raise for SSE optics feather', raiseForOptics?.status === 200);
+      opticsAbort.abort();
+      check('SSE optics event carries DD lookout feather', opticsResult.ok);
+      check('SSE optics feather arrives before state feather', opticsResult.opticsFirst);
+    }
     await api('POST', `/api/games/${gameId}/periscope`, { raised: false }, subSensorsToken);
   }
 

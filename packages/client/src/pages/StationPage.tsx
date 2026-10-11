@@ -157,6 +157,12 @@ const PERISCOPE_WRITE_DEBOUNCE_MS = 80;
 const PERI_FOW_VIEW_REFRESH_DELAYS_MS = [1_500, 4_000] as const;
 /** Min gap between Sensors Lookout/Periscope tab focus → /view refreshes. */
 const OPTICS_TAB_VIEW_REFRESH_COOLDOWN_MS = 6_000;
+/**
+ * Second Lookout-tab `/view` shortly after focus — catches a peer mast raise
+ * that landed while the large SSE `state` was still buffered on the tunnel.
+ * Slim `optics` SSE is the primary path; this is a bounded backup only.
+ */
+const OPTICS_TAB_EARLY_VIEW_REFRESH_MS = 700;
 
 type SensorTab = 'radar' | 'hydrophone' | 'sonar' | 'periscope';
 type ControlsTab = ControlsInstrumentTab;
@@ -1559,10 +1565,11 @@ export function StationPage() {
   ]);
 
   /**
-   * One-shot GET /view when the operator focuses Lookout / Periscope — remotes
-   * that missed a large mid-turn `state` (DD feather) catch up without reopening
-   * EventSource. Cooldown avoids a refresh storm if the tab effect re-runs.
-   * Heartbeat versioned pings (#246) remain the background path.
+   * GET /view when the operator focuses Lookout / Periscope — remotes that
+   * missed a large mid-turn `state` (DD feather) catch up without reopening
+   * EventSource. Immediate + one early follow-up; cooldown avoids a refresh
+   * storm if the tab effect re-runs. Slim SSE `optics` + heartbeat versioned
+   * pings (#246) remain the primary paths while already on the tab.
    */
   useEffect(() => {
     const onOpticsTab = Boolean(
@@ -1577,7 +1584,12 @@ export function StationPage() {
     }
     opticsTabRefreshAtRef.current = now;
     void streamRefreshRef.current();
+    const early = window.setTimeout(() => {
+      void streamRefreshRef.current();
+    }, OPTICS_TAB_EARLY_VIEW_REFRESH_MS);
+    return () => window.clearTimeout(early);
   }, [activeTab, isSensors, canPeriscope, hasVesselView]);
+
   // Drop sonar overlay once the streamed latch agrees.
   useEffect(() => {
     if (sonarOptimisticEnabled === null || !vessel) return;
