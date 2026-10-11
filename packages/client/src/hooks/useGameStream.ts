@@ -14,25 +14,18 @@ const BASE_BACKOFF_MS = 600;
 const MAX_BACKOFF_MS = 12_000;
 /**
  * Server heartbeats every ~8s (padded comment + `event: ping` with
- * `stateVersion`). No readable bytes for this long → treat the fetch body as
- * dead. Kept **above** STALE_HARD_MS so the soft/hard stale watchdog owns
- * tunnel backpressure (large `state` delaying pings) instead of the idle
- * reader undercutting it at 40s and thrashing RECONNECTING (#254 follow-up).
+ * `stateVersion`). Treat longer silence as a dead stream. Kept above 2–3
+ * missed pings so LAN/STL jitter does not flap LIVE, but well under the old
+ * 90s window that left UK tunnel clients looking "LIVE" while frozen.
  */
-const IDLE_TIMEOUT_MS = 60_000;
+const IDLE_TIMEOUT_MS = 40_000;
 /**
- * After this long without a parsed SSE frame, try one soft GET `/view` without
- * killing the stream. Large mid-turn `state` frames can backpressure cloudflared
- * so pings pause briefly — a hard reconnect here was the LIVE↔RECONNECTING
- * thrash (#248 / post-#250 / post-#254 Sensors-on-tunnel).
+ * Parsed SSE frames (including `ping`) must arrive within this window or we
+ * force close + reconnect + snapshot refetch. Separates "TCP still open /
+ * headers received" from "actually receiving the live view stream" — the UK
+ * desync failure mode through cloudflared.
  */
-const STALE_SOFT_MS = 25_000;
-/**
- * Force close + reconnect only after this longer silence. Kept above the
- * server drain watchdog (~45s) so a wedged tunnel socket is dropped server-side
- * before we pile a second EventSource + sendFull onto the same pipe.
- */
-const STALE_HARD_MS = 55_000;
+const STALE_AFTER_MS = 25_000;
 /** How often to check `lastEventAt` while a stream is open. */
 const STALE_CHECK_MS = 5_000;
 /** Show a sticky error only after several transient disconnects in a row. */
@@ -90,41 +83,27 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
     let reconnectTimer: number | undefined;
     let staleTimer: number | undefined;
     let abort: AbortController | undefined;
-    /** Snapshot GETs — never share the SSE AbortSignal (optics soft polls / catch-up). */
-    let snapshotAbort: AbortController | undefined;
-    /** Coalesce concurrent GET /view (ping gap + optics soft poll + soft-stale). */
-    let refreshInFlight: Promise<void> | null = null;
     /** Bumped on every new connect attempt so stale attempts never re-arm timers. */
     let generation = 0;
     let attempt = 0;
     let authInvalid = false;
     /** Last time we parsed a complete SSE event (`ping`, `state`, `connections`). */
     let lastEventAt = 0;
-    /**
-     * Last successful GET `/view`. Survives SSE reopen races so catch-up that
-     * finishes before `streamOpen=true` still counts as LIVE proof (#254 gap).
-     */
-    let lastViewAt = 0;
     /** When the current fetch stream became open (headers OK). */
     let streamOpenedAt = 0;
-    /** True once headers+body stream is open; LIVE also requires recent proof. */
+    /** True once headers+body stream is open; LIVE also requires a fresh event. */
     let streamOpen = false;
-    /** One soft `/view` per soft-stale episode — avoid a 5s poll storm. */
-    let softCatchUpAttempted = false;
 
     const setConnectedState = (value: boolean) => {
       setConnected(value);
     };
 
     const publishConnected = () => {
-      // LIVE while the EventSource is open and we have recent proof of a usable
-      // connection: parsed SSE (ping/state/connections) OR successful GET /view.
-      // RECONNECTING only when the stream is truly down (!streamOpen) or proof
-      // is older than the hard window — not during soft tunnel stalls where
-      // `/view` / gameplay still work (#254 counted /view but still force-closed
-      // at 25s of SSE silence).
-      const proofAt = Math.max(lastEventAt, lastViewAt);
-      const fresh = proofAt > 0 && Date.now() - proofAt < STALE_HARD_MS;
+      // LIVE only while the EventSource is open and we have recent proof of
+      // delivery (parsed SSE frame and/or successful GET /view while open).
+      // RECONNECTING is reserved for actual reconnect (!streamOpen) — not for
+      // "soft /view caught up the station but the indicator never cleared".
+      const fresh = lastEventAt > 0 && Date.now() - lastEventAt < STALE_AFTER_MS;
       setConnectedState(streamOpen && fresh);
     };
 
@@ -186,50 +165,27 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       setError(err instanceof Error ? err.message : 'SSE disconnected');
     };
 
-    /**
-     * GET /view on a dedicated AbortController — never the SSE `abort` signal.
-     * Optics soft polls (#250) and soft-stale catch-up must not share lifecycle
-     * with EventSource reopen (that was the #248-class thrash amplifier).
-     * Client-only: no server lastVersion hello / slim optics (#251/#252 stay out).
-     */
-    const snapshotRefresh = async () => {
-      if (cancelled || authInvalid) return;
-      if (refreshInFlight) {
-        try {
-          await refreshInFlight;
-        } catch {
-          /* coalesced caller notes errors */
-        }
-        return;
-      }
-      if (!snapshotAbort || snapshotAbort.signal.aborted) {
-        snapshotAbort = new AbortController();
-      }
-      const { signal } = snapshotAbort;
-      const run = (async () => {
-        const data = await api.view(gameId, token, { signal });
-        if (cancelled || signal.aborted) return;
-        lastVersionRef.current = data.stateVersion;
-        // Snapshot catch-up is urgent — do not defer behind optics transitions.
-        setStateVersion(data.stateVersion);
-        setView(data.view);
-        setError(null);
-        // Successful HTTP snapshot proves the origin is reachable. Always
-        // record view proof (even if SSE headers have not landed yet) so
-        // reconnect catch-up that races ahead of streamOpen still clears LIVE
-        // once open. While the stream is open, also refresh lastEventAt so a
-        // soft `/view` that keeps gameplay usable does not hard-kill SSE at 55s.
-        const now = Date.now();
-        lastViewAt = now;
-        if (streamOpen) lastEventAt = now;
-        softCatchUpAttempted = false;
+    const fullRefresh = async (signal?: AbortSignal) => {
+      const data = await api.view(gameId, token, { signal });
+      if (cancelled || signal?.aborted) return;
+      lastVersionRef.current = data.stateVersion;
+      // Snapshot catch-up is urgent — do not defer behind optics transitions.
+      setStateVersion(data.stateVersion);
+      setView(data.view);
+      setError(null);
+      // #250 soft `/view` polls (and reconnect catch-up) update the station
+      // without parsing an SSE frame. Count a successful snapshot while the
+      // stream is open as liveness so LIVE clears — otherwise the header can
+      // stay RECONNECTING forever even though peri/lookout/feather work.
+      // Does not open/close EventSource (no #248/#251 reconnect thrash).
+      if (streamOpen) {
+        lastEventAt = Date.now();
         publishConnected();
-      })();
-      refreshInFlight = run.finally(() => {
-        if (refreshInFlight === run) refreshInFlight = null;
-      });
+      }
+    };
+    refreshRef.current = async () => {
       try {
-        await refreshInFlight;
+        await fullRefresh(abort?.signal);
       } catch (err) {
         if (cancelled || (err instanceof DOMException && err.name === 'AbortError')) return;
         if (isAuthFailure(err)) {
@@ -239,8 +195,6 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
         setError(err instanceof Error ? err.message : 'Refresh failed');
       }
     };
-
-    refreshRef.current = () => snapshotRefresh();
 
     const applyState = (stateVersionNext: number, nextView: ClientView) => {
       lastVersionRef.current = stateVersionNext;
@@ -279,7 +233,6 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
 
     const noteEvent = () => {
       lastEventAt = Date.now();
-      softCatchUpAttempted = false;
       publishConnected();
     };
 
@@ -306,29 +259,19 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
         if (document.visibilityState === 'hidden') return;
         if (!streamOpen) return;
         const now = Date.now();
-        // Soft/hard clock: SSE frames or successful /view-while-open (lastEventAt).
-        // lastViewAt alone can clear LIVE across reopen races without delaying
-        // hard kill when the open stream has gone fully quiet and /view fails.
-        const silenceFrom =
-          lastEventAt > 0 ? lastEventAt : streamOpenedAt > 0 ? streamOpenedAt : 0;
-        if (silenceFrom <= 0) return;
-        const age = now - silenceFrom;
-        if (age < STALE_SOFT_MS) {
-          publishConnected();
-          return;
-        }
-        // Soft phase: one snapshot catch-up, leave EventSource open. Hard kill
-        // only after STALE_HARD_MS (above server drain) — avoids reconnect thrash
-        // when a large `state` briefly delays pings on the tunnel.
-        if (age < STALE_HARD_MS) {
-          publishConnected();
-          if (!softCatchUpAttempted) {
-            softCatchUpAttempted = true;
-            void snapshotRefresh();
+        if (lastEventAt > 0) {
+          if (now - lastEventAt < STALE_AFTER_MS) {
+            publishConnected();
+            return;
           }
+          forceStaleReconnect(fromGeneration);
           return;
         }
-        forceStaleReconnect(fromGeneration);
+        // Headers arrived but no parseable ping/state yet — same zombie path
+        // (buffered/stalled tunnel) as a stream that went quiet later.
+        if (streamOpenedAt > 0 && now - streamOpenedAt >= STALE_AFTER_MS) {
+          forceStaleReconnect(fromGeneration);
+        }
       }, STALE_CHECK_MS);
     };
 
@@ -418,30 +361,31 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       streamOpen = false;
       streamOpenedAt = 0;
       lastEventAt = 0;
-      softCatchUpAttempted = false;
-      // Keep lastViewAt — reconnect catch-up may finish before headers; LIVE
-      // should clear as soon as streamOpen flips if /view just succeeded.
       setConnectedState(false);
 
       const catchUp = opts?.catchUp === true || lastVersionRef.current > 0;
-      const knownVersion = lastVersionRef.current;
 
       try {
         // First paint: await snapshot so the station is not blank before SSE.
         // Reconnect / stale catch-up: refresh in parallel so we do not delay
         // opening the stream (and still recover if the tunnel SSE path is wedged).
-        // Snapshot uses its own abort — not `signal` — so optics polls and this
-        // catch-up are not cancelled by / do not cancel the EventSource lifecycle.
-        // Intentionally no lastVersion hello / sendFull skip (server #251 stayed reverted).
-        if (knownVersion === 0) {
+        if (lastVersionRef.current === 0) {
           try {
-            await snapshotRefresh();
-          } catch {
-            /* snapshotRefresh already notes errors */
+            await fullRefresh(signal);
+          } catch (err) {
+            if (signal.aborted || cancelled) return;
+            if (isAuthFailure(err)) {
+              handleAuthInvalid();
+              return;
+            }
+            setError(err instanceof Error ? err.message : 'Refresh failed');
           }
           if (signal.aborted || cancelled || myGeneration !== generation) return;
         } else if (catchUp) {
-          void snapshotRefresh();
+          void fullRefresh(signal).catch((err) => {
+            if (signal.aborted || cancelled || myGeneration !== generation) return;
+            if (isAuthFailure(err)) handleAuthInvalid();
+          });
         }
 
         // Token goes on the URL: native EventSource cannot set Authorization, and some
@@ -463,8 +407,7 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
 
         streamOpen = true;
         streamOpenedAt = Date.now();
-        // Headers alone are not enough; recent /view proof (catch-up) or the
-        // first ping/state frame clears LIVE via publishConnected.
+        // Headers alone are not "connected" for LIVE — wait for a ping/state frame.
         publishConnected();
         setError(null);
         attempt = 0;
@@ -478,7 +421,9 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
         // Server sendFull should arrive immediately; only GET if the stream is quiet.
         const fallbackTimer = window.setTimeout(() => {
           if (cancelled || signal.aborted || myGeneration !== generation || sawState) return;
-          void snapshotRefresh();
+          void fullRefresh(signal).catch((err) => {
+            if (isAuthFailure(err)) handleAuthInvalid();
+          });
         }, FIRST_STATE_FALLBACK_MS);
 
         try {
@@ -511,7 +456,12 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
                     typeof payload.stateVersion === 'number' &&
                     payload.stateVersion > lastVersionRef.current
                   ) {
-                    void snapshotRefresh();
+                    void fullRefresh(signal).catch((err) => {
+                      if (signal.aborted || cancelled || myGeneration !== generation) {
+                        return;
+                      }
+                      if (isAuthFailure(err)) handleAuthInvalid();
+                    });
                   }
                   continue;
                 }
@@ -591,7 +541,6 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       clearReconnect();
       clearStaleWatch();
       abort?.abort();
-      snapshotAbort?.abort();
       streamOpen = false;
       setConnectedState(false);
       document.removeEventListener('visibilitychange', onVisibility);
