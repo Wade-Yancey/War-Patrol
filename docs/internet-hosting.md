@@ -348,12 +348,9 @@ data/ (saves, scenarios) on local disk
   `/view`, and reopen SSE (no full page refresh needed). When pings still
   arrive but a large `state` was missed, a newer `stateVersion` on `ping`
   triggers the same GET `/view` catch-up (DD lookout feather / mid-turn FoW
-  without F5). Each full `state` broadcast also emits a **small versioned ping
-  before** the multi-KB frame so remotes learn the gap immediately instead of
-  waiting up to one heartbeat (~8s). Server-side, stuck write backpressure
-  drops the fan-out client after ~45s so dead tunnels do not sit in the
-  broadcast list forever. LAN and nearer remotes (e.g. STL) should still see
-  a steady LIVE when pings arrive.
+  without F5). Server-side, stuck write backpressure drops the fan-out client
+  after ~45s so dead tunnels do not sit in the broadcast list forever. LAN and
+  nearer remotes (e.g. STL) should still see a steady LIVE when pings arrive.
 - **Turn timer sync:** stations count down from the shared ISO
   `turn.timerDeadline` with local wall clocks. If one remote tablet lights the
   timer a second or two after another, that is delayed SSE delivery (tunnel /
@@ -375,14 +372,9 @@ data/ (saves, scenarios) on local disk
   `useDeferredValue`-deferred so a remote peri feather paints as soon as the
   view arrives (only streamed HDG stays deferred). **Other stations seeing
   your raised feather** still need the server picture: full `state` frames are
-  padded for proxy flush; a versioned `ping` goes out **before** each `state`
-  (and on the ~8s heartbeat) so a tunnel client that stays LIVE on small
-  frames but misses the large FoW payload catches up via GET `/view` for most
-  of the raise window without F5. Expect a few seconds of tunnel delay — missing
-  the whole raise, or only painting after refresh, is the failure mode.
-  **Sub peri raise UX:** while the first FoW after raise is in flight, the
-  viewer shows **Raising periscope…** (or the turn-scoped contact cache), never
-  a false **no contacts** flash.
+  padded for proxy flush, and heartbeat `ping` frames carry `stateVersion` so
+  a tunnel client that keeps LIVE (pings) but misses a large mid-turn `state`
+  catches up via GET `/view` without a browser refresh.
 - **Same-origin client:** build the client into the server's static bundle
   (`pnpm build` at the repo root builds `shared` → `client` → `server`, and
   `app.ts` auto-serves `packages/client/dist` when present) so there is no
