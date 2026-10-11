@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo, useMemo, type ReactNode } from 'react';
 import {
   DIVE_BAND_MARKS,
   FLEET_SUB_CRUSH_DEPTH_M,
@@ -10,21 +10,29 @@ import {
 } from '@war-patrol/shared';
 import { useTweenedDepth } from '../hooks/useTweenedDepth';
 
-/** Same viewBox footprint as helm / radar CRT dials. */
-export const DEPTH_GAUGE_SIZE = 320;
+/** Compact CRT dial footprint (smaller than helm / radar so dive fits one view). */
+export const DEPTH_GAUGE_SIZE = 280;
 export const DEPTH_GAUGE_CX = DEPTH_GAUGE_SIZE / 2;
 export const DEPTH_GAUGE_CY = DEPTH_GAUGE_SIZE / 2;
-export const DEPTH_GAUGE_R = 118;
+export const DEPTH_GAUGE_R = 102;
 
 /**
  * Classic analog sweep: surface at −135° (7:30), deeper clockwise to +135°
  * (4:30). Degrees are compass-style — 0 at 12 o'clock, clockwise positive.
+ * Linear in meters: angle = START + (depth / max) * SWEEP.
  */
 export const DEPTH_GAUGE_START_DEG = -135;
 export const DEPTH_GAUGE_SWEEP_DEG = 270;
 
-/** Major meter marks on the dial face (plus 0 / max). */
-const MAJOR_DEPTH_MARKS_M = [0, 30, 60, 90, 120, 150, 180] as const;
+/**
+ * Labeled major marks — uniform 30 m steps across 0…180 so spacing stays even
+ * on the 270° sweep (45° per major). Band depths (50 / 90 / 150) use colored
+ * ticks; 90 and 150 already land on majors.
+ */
+const LABELED_DEPTH_MARKS_M = [0, 30, 60, 90, 120, 150, 180] as const;
+
+/** Minor tick interval (m). */
+const MINOR_TICK_M = 10;
 
 export interface DepthGaugeProps {
   /** Actual keel depth (m) — needle + DEPTH readout tween toward this. */
@@ -34,6 +42,8 @@ export interface DepthGaugeProps {
   /** Draft depth on the control (pre-submit) — faint SET bug when ≠ ordered. */
   draftDepth?: number;
   maxDepthM?: number;
+  /** Side-panel actions (presets / dial / submit) — same aux column as helm. */
+  children?: ReactNode;
 }
 
 /** Map keel depth (m) → needle angle (deg from 12 o'clock, clockwise). */
@@ -44,6 +54,13 @@ export function depthToNeedleAngle(
   const max = Math.max(1, maxDepthM);
   const t = Math.min(1, Math.max(0, depthM / max));
   return DEPTH_GAUGE_START_DEG + t * DEPTH_GAUGE_SWEEP_DEG;
+}
+
+/** Digital keel readout that tracks the needle (nearest meter, not order grid). */
+export function formatGaugeDepthMeters(depthM: number): string {
+  const n = Math.round(Number.isFinite(depthM) ? depthM : 0);
+  const clamped = Math.max(0, n);
+  return `${String(clamped).padStart(3, '0')} m`;
 }
 
 function polar(deg: number, r: number): { x: number; y: number } {
@@ -73,6 +90,7 @@ function DepthGaugeInner({
   orderedDepth,
   draftDepth,
   maxDepthM = SUBMARINE_MAX_DEPTH_M,
+  children,
 }: DepthGaugeProps) {
   const displayDepth = useTweenedDepth(depth);
   const depthAngle = depthToNeedleAngle(displayDepth, maxDepthM);
@@ -85,7 +103,7 @@ function DepthGaugeInner({
       ? depthToNeedleAngle(draftDepth, maxDepthM)
       : null;
 
-  const depthLabel = formatCoarseDepthMeters(displayDepth);
+  const depthLabel = formatGaugeDepthMeters(displayDepth);
   const orderedLabel = formatCoarseDepthMeters(orderedDepth);
   const draftLabel =
     showDraft && draftDepth !== undefined
@@ -101,8 +119,9 @@ function DepthGaugeInner({
   const ticks = useMemo(() => {
     const marks: {
       depthM: number;
-      major: boolean;
+      kind: 'major' | 'minor' | 'band';
       band: 'patrol' | 'test' | 'crush' | null;
+      labeled: boolean;
       x1: number;
       y1: number;
       x2: number;
@@ -115,20 +134,38 @@ function DepthGaugeInner({
     const bandByDepth = new Map<number, 'patrol' | 'test' | 'crush'>(
       DIVE_BAND_MARKS.map((m) => [m.depthM, m.id]),
     );
+    const labeled = new Set<number>(
+      LABELED_DEPTH_MARKS_M.filter((d) => d <= maxDepthM),
+    );
+    if (!labeled.has(maxDepthM) && maxDepthM % 30 === 0) {
+      labeled.add(maxDepthM);
+    }
 
-    for (let d = 0; d <= maxDepthM; d += 10) {
-      const major =
-        (MAJOR_DEPTH_MARKS_M as readonly number[]).includes(d) ||
-        bandByDepth.has(d) ||
-        d === maxDepthM;
+    const depths = new Set<number>();
+    for (let d = 0; d <= maxDepthM; d += MINOR_TICK_M) depths.add(d);
+    for (const d of bandByDepth.keys()) {
+      if (d >= 0 && d <= maxDepthM) depths.add(d);
+    }
+    depths.add(maxDepthM);
+
+    for (const d of [...depths].sort((a, b) => a - b)) {
+      const band = bandByDepth.get(d) ?? null;
+      const isLabeled = labeled.has(d);
+      const kind: 'major' | 'minor' | 'band' = isLabeled
+        ? 'major'
+        : band
+          ? 'band'
+          : 'minor';
+      const tickLen = kind === 'major' ? 14 : kind === 'band' ? 11 : 7;
       const ang = depthToNeedleAngle(d, maxDepthM);
       const outer = polar(ang, DEPTH_GAUGE_R);
-      const inner = polar(ang, DEPTH_GAUGE_R - (major ? 14 : 8));
-      const labelPt = polar(ang, DEPTH_GAUGE_R - 30);
+      const inner = polar(ang, DEPTH_GAUGE_R - tickLen);
+      const labelPt = polar(ang, DEPTH_GAUGE_R - 28);
       marks.push({
         depthM: d,
-        major,
-        band: bandByDepth.get(d) ?? null,
+        kind,
+        band,
+        labeled: isLabeled,
         x1: inner.x,
         y1: inner.y,
         x2: outer.x,
@@ -146,10 +183,11 @@ function DepthGaugeInner({
   const maxAng = depthToNeedleAngle(maxDepthM, maxDepthM);
   const startAng = DEPTH_GAUGE_START_DEG;
 
-  const needleTip = polar(depthAngle, DEPTH_GAUGE_R - 18);
-  const needleTail = polar(depthAngle + 180, 22);
-  const orderedTip = polar(orderedAngle, DEPTH_GAUGE_R + 10);
-  const orderedInner = polar(orderedAngle, DEPTH_GAUGE_R - 4);
+  // Tip sits just inside the tick ring so it reads against the scale.
+  const needleTip = polar(depthAngle, DEPTH_GAUGE_R - 6);
+  const needleTail = polar(depthAngle + 180, 18);
+  const orderedTip = polar(orderedAngle, DEPTH_GAUGE_R + 8);
+  const orderedInner = polar(orderedAngle, DEPTH_GAUGE_R - 2);
 
   return (
     <div className="radar-scope radar-console crt-console depth-gauge">
@@ -163,14 +201,13 @@ function DepthGaugeInner({
             draftLabel ? `, set ${draftLabel}` : ''
           }.`}
         >
-          {/* Bezel */}
           <circle
             cx={DEPTH_GAUGE_CX}
             cy={DEPTH_GAUGE_CY}
-            r={DEPTH_GAUGE_R + 28}
+            r={DEPTH_GAUGE_R + 22}
             fill="#0a120c"
             stroke="#2a3830"
-            strokeWidth={8}
+            strokeWidth={7}
           />
           <circle
             cx={DEPTH_GAUGE_CX}
@@ -181,30 +218,28 @@ function DepthGaugeInner({
             strokeWidth={2}
           />
 
-          {/* Risk arc bands under the ticks */}
           <path
-            d={describeArc(startAng, safeEnd, DEPTH_GAUGE_R - 4)}
+            d={describeArc(startAng, safeEnd, DEPTH_GAUGE_R - 3)}
             fill="none"
             stroke="rgba(61,255,106,0.22)"
-            strokeWidth={6}
+            strokeWidth={5}
             strokeLinecap="butt"
           />
           <path
-            d={describeArc(safeEnd, crushStart, DEPTH_GAUGE_R - 4)}
+            d={describeArc(safeEnd, crushStart, DEPTH_GAUGE_R - 3)}
             fill="none"
             stroke="rgba(196,163,90,0.45)"
-            strokeWidth={6}
+            strokeWidth={5}
             strokeLinecap="butt"
           />
           <path
-            d={describeArc(crushStart, maxAng, DEPTH_GAUGE_R - 4)}
+            d={describeArc(crushStart, maxAng, DEPTH_GAUGE_R - 3)}
             fill="none"
             stroke="rgba(196,90,90,0.55)"
-            strokeWidth={6}
+            strokeWidth={5}
             strokeLinecap="butt"
           />
 
-          {/* Tick marks + labels */}
           {ticks.map((t) => {
             const stroke = t.band
               ? t.band === 'crush'
@@ -212,7 +247,7 @@ function DepthGaugeInner({
                 : t.band === 'test'
                   ? '#c4a35a'
                   : '#3dff6a'
-              : t.major
+              : t.kind === 'major'
                 ? '#3dff6a'
                 : 'rgba(61,255,106,0.4)';
             return (
@@ -223,9 +258,9 @@ function DepthGaugeInner({
                   x2={t.x2}
                   y2={t.y2}
                   stroke={stroke}
-                  strokeWidth={t.major ? 2 : 1}
+                  strokeWidth={t.kind === 'major' ? 2 : 1}
                 />
-                {t.major && (
+                {t.labeled && (
                   <text
                     x={t.tx}
                     y={t.ty}
@@ -241,19 +276,18 @@ function DepthGaugeInner({
             );
           })}
 
-          {/* Title plate */}
           <text
             x={DEPTH_GAUGE_CX}
-            y={DEPTH_GAUGE_CY - 36}
+            y={DEPTH_GAUGE_CY - 28}
             textAnchor="middle"
             className="depth-gauge-face-title"
             fill="rgba(125,255,154,0.55)"
           >
-            TIEFENMESSER
+            DEPTH
           </text>
           <text
             x={DEPTH_GAUGE_CX}
-            y={DEPTH_GAUGE_CY - 20}
+            y={DEPTH_GAUGE_CY - 14}
             textAnchor="middle"
             className="depth-gauge-face-unit"
             fill="rgba(90,154,104,0.7)"
@@ -261,7 +295,6 @@ function DepthGaugeInner({
             METERS
           </text>
 
-          {/* Ordered bug — live, dashed */}
           <g className="depth-gauge-bug depth-gauge-bug--ordered" aria-hidden>
             <line
               x1={orderedInner.x}
@@ -275,38 +308,36 @@ function DepthGaugeInner({
             />
             <polygon
               points={`${orderedTip.x},${orderedTip.y} ${
-                polar(orderedAngle - 8, DEPTH_GAUGE_R + 18).x
-              },${polar(orderedAngle - 8, DEPTH_GAUGE_R + 18).y} ${
-                polar(orderedAngle + 8, DEPTH_GAUGE_R + 18).x
-              },${polar(orderedAngle + 8, DEPTH_GAUGE_R + 18).y}`}
+                polar(orderedAngle - 8, DEPTH_GAUGE_R + 16).x
+              },${polar(orderedAngle - 8, DEPTH_GAUGE_R + 16).y} ${
+                polar(orderedAngle + 8, DEPTH_GAUGE_R + 16).x
+              },${polar(orderedAngle + 8, DEPTH_GAUGE_R + 16).y}`}
               fill="#7dff9a"
               opacity={0.75}
             />
           </g>
 
-          {/* Draft SET bug */}
           {draftAngle !== null && (
             <g className="depth-gauge-bug depth-gauge-bug--set" opacity={0.55}>
               <circle
-                cx={polar(draftAngle, DEPTH_GAUGE_R + 16).x}
-                cy={polar(draftAngle, DEPTH_GAUGE_R + 16).y}
-                r={5}
+                cx={polar(draftAngle, DEPTH_GAUGE_R + 14).x}
+                cy={polar(draftAngle, DEPTH_GAUGE_R + 14).y}
+                r={4}
                 fill="none"
                 stroke="#7dff9a"
                 strokeWidth={1.5}
               />
               <line
-                x1={polar(draftAngle, DEPTH_GAUGE_R - 6).x}
-                y1={polar(draftAngle, DEPTH_GAUGE_R - 6).y}
-                x2={polar(draftAngle, DEPTH_GAUGE_R + 8).x}
-                y2={polar(draftAngle, DEPTH_GAUGE_R + 8).y}
+                x1={polar(draftAngle, DEPTH_GAUGE_R - 4).x}
+                y1={polar(draftAngle, DEPTH_GAUGE_R - 4).y}
+                x2={polar(draftAngle, DEPTH_GAUGE_R + 6).x}
+                y2={polar(draftAngle, DEPTH_GAUGE_R + 6).y}
                 stroke="#7dff9a"
                 strokeWidth={1.5}
               />
             </g>
           )}
 
-          {/* Keel depth needle — tweened */}
           <g className="depth-gauge-needle">
             <line
               x1={needleTail.x}
@@ -326,12 +357,12 @@ function DepthGaugeInner({
             <circle
               cx={DEPTH_GAUGE_CX}
               cy={DEPTH_GAUGE_CY}
-              r={8}
+              r={7}
               fill="#0a120c"
               stroke="#3dff6a"
               strokeWidth={2}
             />
-            <circle cx={DEPTH_GAUGE_CX} cy={DEPTH_GAUGE_CY} r={3} fill="#7dff9a" />
+            <circle cx={DEPTH_GAUGE_CX} cy={DEPTH_GAUGE_CY} r={2.5} fill="#7dff9a" />
           </g>
         </svg>
       </div>
@@ -369,9 +400,11 @@ function DepthGaugeInner({
           )}
         </div>
 
+        {children && <div className="depth-gauge-actions">{children}</div>}
+
         <p className="crt-console-caption depth-gauge-caption muted mono">
-          Surface 0 · test {FLEET_SUB_TEST_DEPTH_M} · crush {FLEET_SUB_CRUSH_DEPTH_M} ·
-          max {maxDepthM} m
+          0 · patrol {DIVE_BAND_MARKS[0].depthM} · test {FLEET_SUB_TEST_DEPTH_M} · crush{' '}
+          {FLEET_SUB_CRUSH_DEPTH_M} · max {maxDepthM} m
         </p>
       </div>
     </div>

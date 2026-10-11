@@ -2655,46 +2655,59 @@ label {
   --peri-scale: 1;
 }
 
-/* Dive presets — large touch targets */
+/* Dive Plane — single CRT row (compact dial + aux controls), no vertical stack. */
 .dive-controls {
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
+  gap: 0;
   width: 100%;
   align-items: center;
+  max-width: 100%;
 }
 
-/* Analog Tiefenmesser — CRT console row (dial + aux), same footprint as helm. */
 .depth-gauge {
-  /* Layout from .crt-console / .radar-scope */
   align-self: center;
+  max-width: 100%;
+}
+
+/* Smaller dial than helm/radar so gauge + presets fit one viewport. */
+.depth-gauge.crt-console .radar-scope-svg {
+  width: min(calc(100vw - 17rem), calc(100dvh - 10.5rem), 15.5rem);
+  max-width: min(calc(100vw - 17rem), calc(100dvh - 10.5rem), 15.5rem);
+  max-height: min(calc(100vw - 17rem), calc(100dvh - 10.5rem), 15.5rem);
+}
+
+.depth-gauge.crt-console .radar-side-panel {
+  width: min(var(--crt-aux-w), 13.5rem);
+  max-width: min(var(--crt-aux-w), 13.5rem);
+  max-height: min(calc(100dvh - 8.5rem), 28rem);
+  gap: 0.35rem;
 }
 
 .depth-gauge-svg {
-  /* Sizing from .crt-console .radar-scope-svg */
   display: block;
 }
 
 .depth-gauge-tick-label {
   font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
+  font-size: 10px;
+  letter-spacing: 0.02em;
   pointer-events: none;
   user-select: none;
 }
 
 .depth-gauge-face-title {
   font-family: var(--font-display);
-  font-size: 11px;
-  letter-spacing: 0.22em;
+  font-size: 12px;
+  letter-spacing: 0.28em;
   pointer-events: none;
   user-select: none;
 }
 
 .depth-gauge-face-unit {
   font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.18em;
+  font-size: 8px;
+  letter-spacing: 0.16em;
   pointer-events: none;
   user-select: none;
 }
@@ -2706,17 +2719,17 @@ label {
 }
 
 .depth-gauge-key {
-  min-width: 4.4rem;
+  min-width: 4rem;
   opacity: 0.8;
 }
 
 .depth-gauge-ok {
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   letter-spacing: 0.08em;
   color: var(--accent-strong);
   border: 1px solid var(--accent-strong);
-  padding: 0.1rem 0.35rem;
+  padding: 0.05rem 0.3rem;
 }
 
 .depth-gauge-readout--draft .depth-gauge-val {
@@ -2726,9 +2739,9 @@ label {
 .depth-gauge-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.45rem 0.75rem;
+  gap: 0.3rem 0.55rem;
   font-family: var(--font-mono);
-  font-size: 0.62rem;
+  font-size: 0.58rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ink-muted);
@@ -2737,13 +2750,13 @@ label {
 .depth-gauge-legend span {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.25rem;
 }
 
 .depth-gauge-swatch {
   display: inline-block;
-  width: 0.85rem;
-  height: 0.2rem;
+  width: 0.75rem;
+  height: 0.18rem;
   border-radius: 0;
 }
 
@@ -2761,104 +2774,66 @@ label {
 }
 
 .depth-gauge-swatch--set {
-  width: 0.45rem;
-  height: 0.45rem;
+  width: 0.4rem;
+  height: 0.4rem;
   border: 1.5px solid #7dff9a;
   background: transparent;
   border-radius: 50%;
 }
 
-.depth-gauge-caption {
-  margin: 0.15rem 0 0;
-}
-
-.dive-bands {
-  width: 100%;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.45rem;
-  pointer-events: none;
-  user-select: none;
-}
-
-.dive-band-mark {
+.depth-gauge-actions {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 0.05rem;
-  padding: 0.2rem 0.15rem 0.35rem;
-  /* Readout strip — no button chrome (border box / hover / pointer). */
-  border: none;
-  border-radius: 0;
-  border-bottom: 2px solid var(--ink-muted);
-  background: transparent;
-  box-shadow: none;
-  cursor: default;
-  font-family: var(--font-mono);
-  color: var(--ink-muted);
+  gap: 0.35rem;
+  min-width: 0;
+  width: 100%;
 }
 
-.dive-band-mark--patrol {
-  border-bottom-color: color-mix(in srgb, var(--accent-strong, #3d9a5f) 70%, transparent);
-  color: color-mix(in srgb, var(--accent-strong, #3d9a5f) 85%, var(--ink-muted));
+.depth-gauge-actions .control-actions {
+  margin: 0;
 }
 
-.dive-band-mark--test {
-  border-bottom-color: color-mix(in srgb, #c4a35a 80%, transparent);
-  color: color-mix(in srgb, #c4a35a 90%, var(--ink-muted));
+.depth-gauge-actions .control-actions button {
+  min-height: 2.35rem;
+  width: 100%;
 }
 
-.dive-band-mark--crush {
-  border-bottom-color: color-mix(in srgb, #c45a5a 85%, transparent);
-  color: color-mix(in srgb, #c45a5a 90%, var(--ink-muted));
+/* Compact TouchNumber inside dive aux — keep dial + presets in one view. */
+.depth-gauge-actions .touch-num {
+  gap: 0.25rem;
 }
 
-.dive-band-mark--active {
-  color: var(--ink);
-  opacity: 1;
+.depth-gauge-actions .touch-num .hit-lg {
+  min-height: 2.35rem;
+  min-width: 2.35rem;
+  padding: 0.2rem;
 }
 
-.dive-band-mark--active .dive-band-depth {
-  color: var(--accent-strong);
+.depth-gauge-actions .touch-num-value {
+  min-height: 2.35rem;
+  font-size: 1rem;
 }
 
-.dive-band-kind {
-  font-size: 0.55rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  opacity: 0.55;
-  line-height: 1;
+.depth-gauge-actions .touch-num-hint {
+  margin: 0;
+  font-size: 0.58rem;
+  line-height: 1.2;
 }
 
-.dive-band-label {
-  font-family: var(--font-display);
-  font-size: 0.65rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  opacity: 0.95;
-}
-
-.dive-band-depth {
-  font-size: 0.78rem;
-  opacity: 0.9;
-}
-
-.dive-bands-caption {
-  margin: -0.15rem 0 0;
-  font-size: 0.62rem;
-  letter-spacing: 0.04em;
-  line-height: 1.3;
-  text-align: left;
+.depth-gauge-caption {
+  margin: 0.05rem 0 0;
+  font-size: 0.58rem;
+  line-height: 1.25;
 }
 
 .dive-risk {
   margin: 0;
-  text-align: center;
+  text-align: left;
   font-family: var(--font-mono);
-  font-size: 0.72rem;
-  letter-spacing: 0.04em;
-  line-height: 1.35;
-  padding: 0.4rem 0.5rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.03em;
+  line-height: 1.25;
+  padding: 0.25rem 0.35rem;
   border: 1px solid;
 }
 
@@ -2872,22 +2847,11 @@ label {
   border-color: color-mix(in srgb, #c45a5a 70%, transparent);
 }
 
+/* Compact preset grid inside the aux column. */
 .dive-presets {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.4rem;
-}
-
-@media (min-width: 560px) {
-  .dive-presets {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 780px) {
-  .dive-presets {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-  }
+  gap: 0.28rem;
 }
 
 .dive-preset {
@@ -2895,10 +2859,10 @@ label {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.15rem;
-  min-height: 3.25rem;
-  padding: 0.45rem 0.35rem;
-  font-size: 0.8rem;
+  gap: 0.05rem;
+  min-height: 2.35rem;
+  padding: 0.25rem 0.2rem;
+  font-size: 0.72rem;
   touch-action: manipulation;
 }
 
@@ -2914,14 +2878,45 @@ label {
 
 .dive-preset-label {
   font-family: var(--font-display);
-  font-size: 0.72rem;
-  letter-spacing: 0.06em;
+  font-size: 0.62rem;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
 .dive-preset-depth {
-  font-size: 0.75rem;
+  font-size: 0.65rem;
   opacity: 0.85;
+}
+
+/* Narrow phones: stack dial above controls, keep total height tight. */
+@media (max-width: 640px) {
+  .depth-gauge.crt-console.radar-scope {
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+  }
+
+  .depth-gauge.crt-console .radar-scope-svg {
+    width: min(72vw, 14rem);
+    max-width: min(72vw, 14rem);
+    max-height: min(42dvh, 14rem);
+  }
+
+  .depth-gauge.crt-console .radar-side-panel {
+    width: min(100%, 20rem);
+    max-width: min(100%, 20rem);
+    max-height: none;
+  }
+
+  .dive-presets {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .dive-preset,
+  .depth-gauge-actions .control-actions button,
+  .depth-gauge-actions .touch-num .hit-lg {
+    min-height: 2.5rem;
+  }
 }
 
 /* Caption type / alignment from .crt-console-caption */

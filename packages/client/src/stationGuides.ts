@@ -58,9 +58,9 @@ export const STATION_GUIDES: Record<StationGuideId, StationGuideBlurb> = {
     title: 'Controls · Dive Plane',
     purpose: 'Ordered keel depth.',
     bullets: [
-      'The Tiefenmesser (depth gauge) shows keel depth — the needle crawls between resolves as you dive or surface.',
+      'The DEPTH gauge shows keel depth — the needle crawls between resolves as you dive or surface (scale in meters).',
       'Presets (Surface, Periscope, Patrol, Test, Emergency blow) and the depth dial both place an order — they submit when you use them.',
-      'Patrol / Test / Crush band marks are readouts only (labeled REF) — not buttons. Use presets or the dial to order depth.',
+      'Colored arc bands on the dial mark safe / below-test / crush — use presets or the dial to order depth.',
       'Depth changes over turns (~15 m per in-game minute toward ordered).',
       'Emergency blow surfaces you via ballast (still works if dive planes are stuck).',
       'Watch risk banners past test / at crush — going deeper is dangerous.',

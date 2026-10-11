@@ -1,5 +1,4 @@
 import {
-  DIVE_BAND_MARKS,
   DIVE_PRESETS,
   FLEET_SUB_CRUSH_DEPTH_M,
   FLEET_SUB_TEST_DEPTH_M,
@@ -39,7 +38,7 @@ export interface DiveControlsProps {
 }
 
 /**
- * Submarine dive panel: analog depth gauge + preset buttons + coarse touch setter.
+ * Submarine dive panel: compact analog depth gauge + presets / dial in one view.
  * Ships never render this — depth is surface-only for them.
  */
 export function DiveControls({
@@ -54,8 +53,6 @@ export function DiveControls({
   onSubmit,
   writePending = false,
 }: DiveControlsProps) {
-  const coarseDepth = Math.round(depth / orderStepM) * orderStepM;
-  const coarseDraft = Math.round(draftDepth / orderStepM) * orderStepM;
   const ordinaryDisabled = disabled || divePlanesLocked;
 
   const draftRisk = submarineDepthRisk(draftDepth);
@@ -92,124 +89,88 @@ export function DiveControls({
         orderedDepth={orderedDepth}
         draftDepth={draftDepth}
         maxDepthM={maxDepthM}
-      />
-
-      <div
-        className="dive-bands"
-        role="status"
-        aria-label="Depth band reference marks — readout only, not buttons"
       >
-        {DIVE_BAND_MARKS.map((mark) => {
-          const active = coarseDraft === mark.depthM || coarseDepth === mark.depthM;
-          return (
-            <div
-              key={mark.id}
-              className={[
-                'dive-band-mark',
-                `dive-band-mark--${mark.id}`,
-                active ? 'dive-band-mark--active' : '',
-              ]
-                .filter(Boolean)
-                .join(' ')}
-              title={`${mark.label} band · ${mark.depthM} m (reference)`}
-              aria-current={active ? 'true' : undefined}
-            >
-              <span className="dive-band-kind">REF</span>
-              <span className="dive-band-label">{mark.label}</span>
-              <span className="dive-band-depth mono">{mark.depthM} m</span>
-            </div>
-          );
-        })}
-      </div>
-      <p className="dive-bands-caption muted mono">
-        Band marks are readouts — use presets or dial below to order depth
-      </p>
+        {riskBanner && (
+          <p
+            className={[
+              'dive-risk',
+              draftRisk === 'past_crush' || keelRisk === 'past_crush'
+                ? 'dive-risk--critical'
+                : 'dive-risk--warn',
+            ].join(' ')}
+            role="status"
+          >
+            {riskBanner}
+          </p>
+        )}
 
-      {riskBanner && (
-        <p
-          className={[
-            'dive-risk',
-            draftRisk === 'past_crush' || keelRisk === 'past_crush'
-              ? 'dive-risk--critical'
-              : 'dive-risk--warn',
-          ].join(' ')}
-          role="status"
-        >
-          {riskBanner}
-        </p>
-      )}
+        {divePlanesLocked && !disabled && (
+          <p className="dive-risk dive-risk--warn" role="status">
+            Dive planes jammed — ordinary depth orders blocked. Emergency Blow still
+            available.
+          </p>
+        )}
 
-      {divePlanesLocked && !disabled && (
-        <p className="dive-risk dive-risk--warn" role="status">
-          Dive planes jammed — ordinary depth orders blocked. Emergency Blow still
-          available.
-        </p>
-      )}
+        <div className="dive-presets" role="group" aria-label="Dive depth presets">
+          {DIVE_PRESETS.map((preset) => {
+            const active = Math.round(draftDepth) === preset.depthM;
+            const isEmergency = preset.id === 'emergency_blow';
+            const presetDisabled = disabled || (divePlanesLocked && !isEmergency);
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                className={[
+                  'dive-preset',
+                  active ? 'active' : '',
+                  isEmergency ? 'dive-preset--emergency' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                disabled={presetDisabled}
+                title={
+                  divePlanesLocked && !isEmergency
+                    ? 'Dive planes jammed — use Emergency Blow to surface'
+                    : `${preset.label}: ${preset.depthM} m — ${preset.rationale}`
+                }
+                onClick={() => applyPreset(preset.id)}
+              >
+                <span className="dive-preset-label">{preset.label}</span>
+                <span className="dive-preset-depth mono">{preset.depthM} m</span>
+              </button>
+            );
+          })}
+        </div>
 
-      <div className="dive-presets" role="group" aria-label="Dive depth presets">
-        {DIVE_PRESETS.map((preset) => {
-          const active = Math.round(draftDepth) === preset.depthM;
-          const isEmergency = preset.id === 'emergency_blow';
-          const presetDisabled = disabled || (divePlanesLocked && !isEmergency);
-          return (
-            <button
-              key={preset.id}
-              type="button"
-              className={[
-                'dive-preset',
-                active ? 'active' : '',
-                isEmergency ? 'dive-preset--emergency' : '',
-              ]
-                .filter(Boolean)
-                .join(' ')}
-              disabled={presetDisabled}
-              title={
-                divePlanesLocked && !isEmergency
-                  ? 'Dive planes jammed — use Emergency Blow to surface'
-                  : `${preset.label}: ${preset.depthM} m — ${preset.rationale}`
-              }
-              onClick={() => applyPreset(preset.id)}
-            >
-              <span className="dive-preset-label">{preset.label}</span>
-              <span className="dive-preset-depth mono">{preset.depthM} m</span>
-            </button>
-          );
-        })}
-      </div>
-
-      <TouchNumber
-        label="Ordered depth"
-        value={draftDepth}
-        onChange={onDraftDepthChange}
-        min={0}
-        max={maxDepthM}
-        step={orderStepM}
-        unit="m"
-        disabled={ordinaryDisabled}
-        format={(v) => formatCoarseDepthMeters(v)}
-        parse={(raw) => {
-          const n = Number(String(raw).replace(/[^\d.-]/g, ''));
-          return Number.isFinite(n) ? n : null;
-        }}
-        hint={`${orderStepM} m steps · 0–${maxDepthM} m`}
-      />
-
-      <div className="control-actions">
-        <button
-          className={['primary', writePending ? 'is-pending' : ''].filter(Boolean).join(' ')}
-          type="button"
+        <TouchNumber
+          label="Ordered depth"
+          value={draftDepth}
+          onChange={onDraftDepthChange}
+          min={0}
+          max={maxDepthM}
+          step={orderStepM}
+          unit="m"
           disabled={ordinaryDisabled}
-          aria-busy={writePending || undefined}
-          onClick={() => submitDepthOrder(draftDepth)}
-        >
-          {writePending ? 'Submitting…' : 'Submit depth'}
-        </button>
-      </div>
+          format={(v) => formatCoarseDepthMeters(v)}
+          parse={(raw) => {
+            const n = Number(String(raw).replace(/[^\d.-]/g, ''));
+            return Number.isFinite(n) ? n : null;
+          }}
+          hint={`${orderStepM} m steps · 0–${maxDepthM} m`}
+        />
 
-      <p className="crt-console-caption dive-caption muted mono">
-        Patrol {DIVE_BAND_MARKS[0].depthM} · test {DIVE_BAND_MARKS[1].depthM} · crush{' '}
-        {DIVE_BAND_MARKS[2].depthM} m · max {maxDepthM} m
-      </p>
+        <div className="control-actions">
+          <button
+            className={['primary', writePending ? 'is-pending' : ''].filter(Boolean).join(' ')}
+            type="button"
+            disabled={ordinaryDisabled}
+            aria-busy={writePending || undefined}
+            onClick={() => submitDepthOrder(draftDepth)}
+          >
+            {writePending ? 'Submitting…' : 'Submit depth'}
+          </button>
+        </div>
+      </DepthGauge>
     </div>
   );
 }
