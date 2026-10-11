@@ -2423,6 +2423,50 @@ async function main() {
     }),
   );
 
+  // Reconnect with lastVersion already current → padded ping hello, not another
+  // multi-KB state (tunnel thrash amplifier when stale watchdog reopened SSE).
+  {
+    const curView = await api('GET', `/api/games/${gameId}/view`, undefined, blueToken);
+    const curVersion = Number((curView.json as Json).stateVersion ?? 0);
+    const helloAbort = new AbortController();
+    const helloRes = await fetch(
+      `${base}/api/games/${gameId}/events?token=${encodeURIComponent(blueToken)}&lastVersion=${curVersion}`,
+      { signal: helloAbort.signal },
+    );
+    check('SSE lastVersion hello open', helloRes.status === 200 && Boolean(helloRes.body));
+    const reader = helloRes.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let sawPing = false;
+    let sawState = false;
+    const deadline = Date.now() + 3000;
+    while (!sawPing && !sawState && Date.now() < deadline) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop() ?? '';
+      for (const part of parts) {
+        const dataLine = part.split('\n').find((l) => l.startsWith('data: '));
+        if (!dataLine) continue;
+        try {
+          const payload = JSON.parse(dataLine.slice(6)) as { type?: string };
+          if (payload.type === 'ping') sawPing = true;
+          if (payload.type === 'state') sawState = true;
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    helloAbort.abort();
+    try {
+      await reader.cancel();
+    } catch {
+      /* ignore */
+    }
+    check('SSE lastVersion hello is ping (not state)', sawPing && !sawState);
+  }
+
   // 4. SSE: query-token auth (EventSource-safe) + wait for resolve push
   const sseUnauth = await fetch(`${base}/api/games/${gameId}/events`);
   check('SSE rejects missing token', sseUnauth.status === 401);
