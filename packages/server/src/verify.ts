@@ -1894,6 +1894,109 @@ async function main() {
     await api('POST', `/api/games/${gameId}/periscope`, { raised: false }, subSensorsToken);
   }
 
+  // Lock/Resolve must keep DD lookout peri feather when mast stays at PD.
+  // Isolated game so main-demo turn numbers stay intact for later checks.
+  // (Dive past PD auto-lowers mast — feather correctly clears; stay-at-PD must paint.)
+  {
+    const featherGame = await api('POST', '/api/games', {
+      scenarioId: 'destroyer-sub-demo',
+      name: 'feather-after-resolve',
+    });
+    check(
+      'feather-resolve game created',
+      featherGame.status === 200 && typeof featherGame.json.gameId === 'string',
+    );
+    const fgId = featherGame.json.gameId as string;
+    const fgUmp = await api('POST', `/api/games/${fgId}/auth/umpire`, { password: 'umpire' });
+    const fgUTok = fgUmp.json.token as string;
+    const fgDd = await api('POST', `/api/games/${fgId}/auth/vessel`, {
+      accessToken: 'porter-demo',
+      password: 'blue',
+      stationId: 'sensors',
+    });
+    const fgDdTok = fgDd.json.token as string;
+    const fgSubCtrl = await api('POST', `/api/games/${fgId}/auth/vessel`, {
+      accessToken: 'gato-demo',
+      password: 'red',
+      stationId: 'controls',
+    });
+    const fgSubCtrlTok = fgSubCtrl.json.token as string;
+    const fgSubSens = await api('POST', `/api/games/${fgId}/auth/vessel`, {
+      accessToken: 'gato-demo',
+      password: 'red',
+      stationId: 'sensors',
+    });
+    const fgSubSensTok = fgSubSens.json.token as string;
+
+    await api(
+      'PATCH',
+      `/api/games/${fgId}/units/ss-212`,
+      { position: { lat: 34.35, lon: -120.05, depth: 20 }, speed: 3 },
+      fgUTok,
+    );
+    await api(
+      'PATCH',
+      `/api/games/${fgId}/units/dd-101`,
+      { position: { lat: 34.35, lon: -120.1 }, speed: 12 },
+      fgUTok,
+    );
+    const raiseStay = await api(
+      'POST',
+      `/api/games/${fgId}/periscope`,
+      { raised: true, exposure: 1 },
+      fgSubSensTok,
+    );
+    check('raise before resolve stay-PD', raiseStay.status === 200);
+    const beforeResolve = await api('GET', `/api/games/${fgId}/view`, undefined, fgDdTok);
+    const beforeFeathers =
+      ((beforeResolve.json.view as Json).periscopeContacts as Array<Json>) ?? [];
+    check(
+      'DD lookout feather before Lock/Resolve',
+      beforeFeathers.some((c) => c.kind === 'periscope'),
+    );
+    await api('POST', `/api/games/${fgId}/turn/lock`, {}, fgUTok);
+    const resolvedStay = await api('POST', `/api/games/${fgId}/turn/resolve`, {}, fgUTok);
+    check('resolve stay-PD ok', resolvedStay.status === 200);
+    const subAfterView = await api('GET', `/api/games/${fgId}/view`, undefined, fgSubSensTok);
+    const subAfterUnit = (subAfterView.json.view as Json).unit as Json;
+    check(
+      'mast still raised after stay-PD resolve',
+      subAfterUnit.periscopeRaised === true && Number(subAfterUnit.periscopeExposure) > 0,
+    );
+    const afterResolve = await api('GET', `/api/games/${fgId}/view`, undefined, fgDdTok);
+    const afterFeathers =
+      ((afterResolve.json.view as Json).periscopeContacts as Array<Json>) ?? [];
+    check(
+      'DD lookout feather survives Lock/Resolve at PD',
+      afterFeathers.some((c) => c.kind === 'periscope'),
+    );
+
+    // Same-turn dive past PD: mast auto-lowers → feather clears (rules).
+    await api(
+      'POST',
+      `/api/games/${fgId}/periscope`,
+      { raised: true, exposure: 1 },
+      fgSubSensTok,
+    );
+    await api('POST', `/api/games/${fgId}/orders`, { depth: 50 }, fgSubCtrlTok);
+    await api('POST', `/api/games/${fgId}/turn/lock`, {}, fgUTok);
+    const resolvedDive = await api('POST', `/api/games/${fgId}/turn/resolve`, {}, fgUTok);
+    check('resolve dive-past-PD ok', resolvedDive.status === 200);
+    const subDiveView = await api('GET', `/api/games/${fgId}/view`, undefined, fgSubSensTok);
+    const subDiveUnit = (subDiveView.json.view as Json).unit as Json;
+    check(
+      'mast auto-lowered after dive past PD',
+      subDiveUnit.periscopeRaised === false && Number((subDiveUnit.position as Json).depth) > 20,
+    );
+    const diveView = await api('GET', `/api/games/${fgId}/view`, undefined, fgDdTok);
+    const diveFeathers =
+      ((diveView.json.view as Json).periscopeContacts as Array<Json>) ?? [];
+    check(
+      'no DD feather after dive past PD',
+      !diveFeathers.some((c) => c.kind === 'periscope'),
+    );
+  }
+
   // Wake Sightings: relativeBearing = LOS (compass); travelRelativeBearing = fish run.
   {
     const {
