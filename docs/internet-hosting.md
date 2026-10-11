@@ -356,7 +356,12 @@ data/ (saves, scenarios) on local disk
   that over-triggered `/view` catch-up through cloudflared and starved the
   stream until the stale watchdog flapped **LIVE↔RECONNECTING**. Prefer
   heartbeat version hints + bounded client `/view` polls after mast raise /
-  Lookout focus (snapshot only — no EventSource thrash).
+  Lookout focus (snapshot only — no EventSource thrash). Keep
+  [#250](https://github.com/Wade-Yancey/War-Patrol/pull/250) raise UX /
+  contact cache. Soft-stale/hard-reconnect ([#251](https://github.com/Wade-Yancey/War-Patrol/pull/251))
+  and slim lookout `optics` SSE ([#252](https://github.com/Wade-Yancey/War-Patrol/pull/252))
+  were reverted after tunnel remotes returned to constant **RECONNECTING** and
+  peri→feather needing refresh — tree matches post-#250 / pre-#251.
 - **Turn timer sync:** stations count down from the shared ISO
   `turn.timerDeadline` with local wall clocks. If one remote tablet lights the
   timer a second or two after another, that is delayed SSE delivery (tunnel /
