@@ -10,11 +10,11 @@ import {
 } from '@war-patrol/shared';
 import { useTweenedDepth } from '../hooks/useTweenedDepth';
 
-/** Compact CRT dial footprint (smaller than helm / radar so dive fits one view). */
-export const DEPTH_GAUGE_SIZE = 280;
+/** Full CRT dial footprint (same geometry family as helm / radar). */
+export const DEPTH_GAUGE_SIZE = 320;
 export const DEPTH_GAUGE_CX = DEPTH_GAUGE_SIZE / 2;
 export const DEPTH_GAUGE_CY = DEPTH_GAUGE_SIZE / 2;
-export const DEPTH_GAUGE_R = 102;
+export const DEPTH_GAUGE_R = 118;
 
 /**
  * Classic analog sweep: surface at −135° (7:30), deeper clockwise to +135°
@@ -26,8 +26,8 @@ export const DEPTH_GAUGE_SWEEP_DEG = 270;
 
 /**
  * Labeled major marks — uniform 30 m steps across 0…180 so spacing stays even
- * on the 270° sweep (45° per major). Band depths (50 / 90 / 150) use colored
- * ticks; 90 and 150 already land on majors.
+ * on the 270° sweep (45° per major). Unlabeled minors (incl. patrol 50 m) share
+ * one tick weight; test/crush accents only color the matching labeled majors.
  */
 const LABELED_DEPTH_MARKS_M = [0, 30, 60, 90, 120, 150, 180] as const;
 
@@ -119,9 +119,9 @@ function DepthGaugeInner({
   const ticks = useMemo(() => {
     const marks: {
       depthM: number;
-      kind: 'major' | 'minor' | 'band';
-      band: 'patrol' | 'test' | 'crush' | null;
-      labeled: boolean;
+      major: boolean;
+      /** Color accent only on labeled majors that coincide with test/crush. */
+      band: 'test' | 'crush' | null;
       x1: number;
       y1: number;
       x2: number;
@@ -131,9 +131,12 @@ function DepthGaugeInner({
       label: string;
     }[] = [];
 
-    const bandByDepth = new Map<number, 'patrol' | 'test' | 'crush'>(
-      DIVE_BAND_MARKS.map((m) => [m.depthM, m.id]),
-    );
+    // Patrol (50 m) is intentionally NOT a heavier tick — it sits between 30/60
+    // and read as a false major. Safe / test / crush are the colored arcs.
+    const accentByDepth = new Map<number, 'test' | 'crush'>([
+      [FLEET_SUB_TEST_DEPTH_M, 'test'],
+      [FLEET_SUB_CRUSH_DEPTH_M, 'crush'],
+    ]);
     const labeled = new Set<number>(
       LABELED_DEPTH_MARKS_M.filter((d) => d <= maxDepthM),
     );
@@ -141,31 +144,17 @@ function DepthGaugeInner({
       labeled.add(maxDepthM);
     }
 
-    const depths = new Set<number>();
-    for (let d = 0; d <= maxDepthM; d += MINOR_TICK_M) depths.add(d);
-    for (const d of bandByDepth.keys()) {
-      if (d >= 0 && d <= maxDepthM) depths.add(d);
-    }
-    depths.add(maxDepthM);
-
-    for (const d of [...depths].sort((a, b) => a - b)) {
-      const band = bandByDepth.get(d) ?? null;
-      const isLabeled = labeled.has(d);
-      const kind: 'major' | 'minor' | 'band' = isLabeled
-        ? 'major'
-        : band
-          ? 'band'
-          : 'minor';
-      const tickLen = kind === 'major' ? 14 : kind === 'band' ? 11 : 7;
+    for (let d = 0; d <= maxDepthM; d += MINOR_TICK_M) {
+      const major = labeled.has(d) || d === maxDepthM;
+      const tickLen = major ? 14 : 7;
       const ang = depthToNeedleAngle(d, maxDepthM);
       const outer = polar(ang, DEPTH_GAUGE_R);
       const inner = polar(ang, DEPTH_GAUGE_R - tickLen);
       const labelPt = polar(ang, DEPTH_GAUGE_R - 28);
       marks.push({
         depthM: d,
-        kind,
-        band,
-        labeled: isLabeled,
+        major,
+        band: major ? (accentByDepth.get(d) ?? null) : null,
         x1: inner.x,
         y1: inner.y,
         x2: outer.x,
@@ -204,10 +193,10 @@ function DepthGaugeInner({
           <circle
             cx={DEPTH_GAUGE_CX}
             cy={DEPTH_GAUGE_CY}
-            r={DEPTH_GAUGE_R + 22}
+            r={DEPTH_GAUGE_R + 28}
             fill="#0a120c"
             stroke="#2a3830"
-            strokeWidth={7}
+            strokeWidth={8}
           />
           <circle
             cx={DEPTH_GAUGE_CX}
@@ -219,24 +208,24 @@ function DepthGaugeInner({
           />
 
           <path
-            d={describeArc(startAng, safeEnd, DEPTH_GAUGE_R - 3)}
+            d={describeArc(startAng, safeEnd, DEPTH_GAUGE_R - 4)}
             fill="none"
             stroke="rgba(61,255,106,0.22)"
-            strokeWidth={5}
+            strokeWidth={6}
             strokeLinecap="butt"
           />
           <path
-            d={describeArc(safeEnd, crushStart, DEPTH_GAUGE_R - 3)}
+            d={describeArc(safeEnd, crushStart, DEPTH_GAUGE_R - 4)}
             fill="none"
             stroke="rgba(196,163,90,0.45)"
-            strokeWidth={5}
+            strokeWidth={6}
             strokeLinecap="butt"
           />
           <path
-            d={describeArc(crushStart, maxAng, DEPTH_GAUGE_R - 3)}
+            d={describeArc(crushStart, maxAng, DEPTH_GAUGE_R - 4)}
             fill="none"
             stroke="rgba(196,90,90,0.55)"
-            strokeWidth={5}
+            strokeWidth={6}
             strokeLinecap="butt"
           />
 
@@ -244,10 +233,8 @@ function DepthGaugeInner({
             const stroke = t.band
               ? t.band === 'crush'
                 ? '#c45a5a'
-                : t.band === 'test'
-                  ? '#c4a35a'
-                  : '#3dff6a'
-              : t.kind === 'major'
+                : '#c4a35a'
+              : t.major
                 ? '#3dff6a'
                 : 'rgba(61,255,106,0.4)';
             return (
@@ -258,9 +245,9 @@ function DepthGaugeInner({
                   x2={t.x2}
                   y2={t.y2}
                   stroke={stroke}
-                  strokeWidth={t.kind === 'major' ? 2 : 1}
+                  strokeWidth={t.major ? 2 : 1}
                 />
-                {t.labeled && (
+                {t.major && (
                   <text
                     x={t.tx}
                     y={t.ty}
