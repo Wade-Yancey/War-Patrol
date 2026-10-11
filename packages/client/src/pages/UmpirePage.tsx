@@ -115,7 +115,7 @@ export function UmpirePage() {
   const [gopherTargetId, setGopherTargetId] = useState<string>('');
   const [gopherText, setGopherText] = useState('');
 
-  const { view, stateVersion, connected, sseConnecting, error, refresh } = useGameStream({
+  const { view, stateVersion, connected, error, refresh } = useGameStream({
     gameId,
     token,
     enabled: Boolean(token),
@@ -509,7 +509,7 @@ export function UmpirePage() {
             <div className="row" style={{ alignItems: 'center' }}>
               <span className={`live-dot ${connected ? '' : 'off'}`} />
               <span className="mono muted">
-                {connected ? 'LIVE' : sseConnecting ? 'Connecting…' : 'RECONNECTING'}
+                {connected ? 'LIVE' : 'RECONNECTING'}
               </span>
               <span className="mono muted">v{stateVersion}</span>
             </div>

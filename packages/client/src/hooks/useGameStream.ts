@@ -1,54 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ClientView, UmpireView, VesselView } from '@war-patrol/shared';
 import { api } from '../api/client';
-import { isWpDebugEnabled, redactTokenQuery, wpDebug } from '../debug/wpDebug';
-
-/** How long EventSource may stay CONNECTING before we probe HTTP status (debug + auth). */
-const ES_CONNECT_STALL_MS = 8_000;
-/** Cap on the short-lived fetch probe used when EventSource fails before `open`. */
-const ES_PROBE_TIMEOUT_MS = 2_500;
-
-type EventsProbe = {
-  status?: number;
-  contentType?: string | null;
-  probeError?: string;
-};
-
-/**
- * EventSource cannot expose HTTP status. On pre-open failure (or CONNECTING stall),
- * briefly fetch the same URL, read status/content-type, then abort the body.
- */
-async function probeEventsStatus(eventsUrl: string): Promise<EventsProbe> {
-  const ac = new AbortController();
-  const timer = window.setTimeout(() => ac.abort(), ES_PROBE_TIMEOUT_MS);
-  try {
-    const res = await fetch(eventsUrl, {
-      signal: ac.signal,
-      cache: 'no-store',
-      headers: { Accept: 'text/event-stream' },
-    });
-    const status = res.status;
-    const contentType = res.headers.get('content-type');
-    try {
-      ac.abort();
-    } catch {
-      /* ignore */
-    }
-    try {
-      await res.body?.cancel();
-    } catch {
-      /* ignore */
-    }
-    return { status, contentType };
-  } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') {
-      return { probeError: 'probe aborted / timeout' };
-    }
-    return { probeError: err instanceof Error ? err.message : String(err) };
-  } finally {
-    window.clearTimeout(timer);
-  }
-}
+import { isWpDebugEnabled, wpDebug } from '../debug/wpDebug';
 
 interface Options {
   gameId: string;
@@ -89,7 +42,6 @@ function isTransientStreamError(err: unknown): boolean {
   const msg = err.message;
   return (
     msg === 'SSE stale timeout' ||
-    msg === 'SSE connect stall' ||
     msg === 'SSE disconnected' ||
     msg === 'SSE error' ||
     msg.startsWith('SSE failed (') ||
@@ -115,27 +67,39 @@ function isAuthFailure(err: unknown): boolean {
 }
 
 /**
+ * Parse one SSE block (`\n\n`-delimited). Named events carry JSON in `data:`.
+ * Comment-only blocks (padding / `: connected`) are ignored.
+ */
+function parseSseBlock(block: string): { event: string; data: string } | null {
+  let event = 'message';
+  const dataLines: string[] = [];
+  for (const line of block.split('\n')) {
+    if (line.startsWith('event:')) {
+      event = line.slice(6).trim();
+    } else if (line.startsWith('data:')) {
+      dataLines.push(line.slice(5).trimStart());
+    }
+  }
+  if (dataLines.length === 0) return null;
+  return { event, data: dataLines.join('\n') };
+}
+
+/**
  * SSE subscription with auto-reconnect and full refresh on version gaps (ARCH-SA-05–08).
  *
- * Uses native `EventSource` + `?token=` (Authorization cannot be set on EventSource).
- * Server frames are named (`state` / `ping` / `connections`) — listeners must match.
- * Snapshot `GET /view` uses a separate AbortController so soft/catch-up polls cannot
- * abort the live stream. Browser auto-reconnect is disabled (`close` on error); we
- * own backoff. Visibility/`online` must not reopen while EventSource is CONNECTING or
- * OPEN (LIVE/`connected` lags until the first frame). Pre-open failures probe HTTP
- * status (EventSource hides it) so 401/403 surfaces instead of looping. Aborted /
- * superseded attempts must not schedule a second reconnect.
+ * Uses `fetch` **POST** `/events` + `Authorization: Bearer` (not native EventSource).
+ * Cloudflare quick tunnels (`*.trycloudflare.com`) buffer GET streaming until the
+ * origin closes — EventSource can only GET, so it stayed CONNECTING forever while
+ * finite GET `/view` still worked (cloudflared#1449; Wade after #259–#261). POST
+ * streams live on the same path. Snapshot `GET /view` uses a separate AbortController
+ * so soft/catch-up polls cannot abort the live stream. Visibility/`online` must not
+ * reopen while a stream attempt is pending or open. Aborted/superseded attempts must
+ * not schedule a second reconnect.
  */
 export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: Options) {
   const [view, setView] = useState<ClientView | null>(null);
   const [stateVersion, setStateVersion] = useState(0);
   const [connected, setConnected] = useState(false);
-  /**
-   * EventSource is CONNECTING or OPEN but LIVE (`connected`) is still false —
-   * status chrome can say "Connecting…" instead of scary RECONNECTING while
-   * soft `/view` keeps the station usable (Wade post-#260 stall).
-   */
-  const [sseConnecting, setSseConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lastVersionRef = useRef(0);
   const refreshRef = useRef<(reason?: ViewRefreshReason) => Promise<void>>(
@@ -152,9 +116,12 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
     let reconnectTimer: number | undefined;
     let staleTimer: number | undefined;
     let firstStateTimer: number | undefined;
-    /** Snapshot `/view` only — must not share a signal with the EventSource lifecycle. */
+    /** Snapshot `/view` only — must not share a signal with the live stream. */
     let viewAbort: AbortController | undefined;
-    let eventSource: EventSource | null = null;
+    /** Live POST `/events` body only. */
+    let streamAbort: AbortController | undefined;
+    /** True from POST start until headers OK, error, or abort — kick must not tear this down. */
+    let streamPending = false;
     /** Bumped on every new connect attempt so stale attempts never re-arm timers. */
     let generation = 0;
     let attempt = 0;
@@ -171,13 +138,14 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
     let lastViewAt = 0;
     let lastConnectionsAt = 0;
     let staleForceCount = 0;
-    let debug = isWpDebugEnabled();
+    const debug = isWpDebugEnabled();
 
     const debugSnap = (extra?: Record<string, unknown>) => {
       const now = Date.now();
       return {
         gen: generation,
         streamOpen,
+        streamPending,
         connected: connectedRef.current,
         lastVersion: lastVersionRef.current,
         ageEventMs: lastEventAt ? now - lastEventAt : null,
@@ -197,7 +165,6 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       }
       connectedRef.current = value;
       setConnected(value);
-      if (value) setSseConnecting(false);
     };
 
     const publishConnected = () => {
@@ -221,6 +188,24 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       }
     };
 
+    const clearFirstState = () => {
+      if (firstStateTimer !== undefined) {
+        window.clearTimeout(firstStateTimer);
+        firstStateTimer = undefined;
+      }
+    };
+
+    const abortStream = () => {
+      clearFirstState();
+      streamPending = false;
+      try {
+        streamAbort?.abort();
+      } catch {
+        /* ignore */
+      }
+      streamAbort = undefined;
+    };
+
     const scheduleReconnect = (fromGeneration: number) => {
       if (cancelled || authInvalid || fromGeneration !== generation) return;
       clearReconnect();
@@ -241,6 +226,7 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       authInvalid = true;
       clearReconnect();
       clearStaleWatch();
+      abortStream();
       streamOpen = false;
       setConnectedState(false);
       setError('Session expired — sign in again');
@@ -331,31 +317,6 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       }
     };
 
-    let connectStallTimer: number | undefined;
-
-    const clearConnectStall = () => {
-      if (connectStallTimer !== undefined) {
-        window.clearTimeout(connectStallTimer);
-        connectStallTimer = undefined;
-      }
-    };
-
-    const closeEventSource = () => {
-      clearConnectStall();
-      if (firstStateTimer !== undefined) {
-        window.clearTimeout(firstStateTimer);
-        firstStateTimer = undefined;
-      }
-      if (!eventSource) return;
-      const es = eventSource;
-      eventSource = null;
-      try {
-        es.close();
-      } catch {
-        /* ignore */
-      }
-    };
-
     const applyState = (stateVersionNext: number, nextView: ClientView) => {
       lastVersionRef.current = stateVersionNext;
       lastStateAt = Date.now();
@@ -409,6 +370,68 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       publishConnected();
     };
 
+    const handlePayload = (
+      raw: string,
+      myGeneration: number,
+      viewSignal: AbortSignal,
+      markState: () => void,
+    ) => {
+      if (cancelled || myGeneration !== generation || authInvalid) return;
+      try {
+        const payload = JSON.parse(raw) as {
+          type: string;
+          stateVersion?: number;
+          view?: ClientView;
+          connections?: UmpireView['connections'];
+          stationConnections?: VesselView['stationConnections'];
+        };
+        // Count ping/state/connections — any parsed frame proves the
+        // live path is delivering (not a zombie OPEN).
+        noteEvent();
+        if (payload.type === 'ping') {
+          lastPingAt = Date.now();
+          // Small pings often still arrive through cloudflared when a
+          // multi-KB `state` frame was buffered/dropped. If the server
+          // is ahead, catch up with GET /view (same path as F5).
+          if (
+            typeof payload.stateVersion === 'number' &&
+            payload.stateVersion > lastVersionRef.current
+          ) {
+            if (debug) {
+              wpDebug(
+                'pingGap',
+                debugSnap({
+                  pingVersion: payload.stateVersion,
+                  localVersion: lastVersionRef.current,
+                }),
+              );
+            }
+            void fullRefresh(viewSignal, 'pingGap').catch((err) => {
+              if (viewSignal.aborted || cancelled || myGeneration !== generation) {
+                return;
+              }
+              if (isAuthFailure(err)) handleAuthInvalid();
+            });
+          }
+          return;
+        }
+        if (payload.type === 'connections') {
+          lastConnectionsAt = Date.now();
+          applyConnections(payload);
+          return;
+        }
+        if (payload.type !== 'state' || payload.view == null || payload.stateVersion == null) {
+          return;
+        }
+        markState();
+        // SSE state frames are full views — apply directly (including gaps /
+        // rollbacks). Avoid a second GET /view that stalls remote Controls.
+        applyState(payload.stateVersion, payload.view);
+      } catch {
+        /* ignore parse errors */
+      }
+    };
+
     const forceStaleReconnect = (fromGeneration: number) => {
       if (cancelled || authInvalid || fromGeneration !== generation) return;
       staleForceCount += 1;
@@ -452,7 +475,7 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
 
       clearReconnect();
       clearStaleWatch();
-      closeEventSource();
+      abortStream();
       try {
         viewAbort?.abort();
       } catch {
@@ -460,9 +483,12 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       }
       const myGeneration = ++generation;
       viewAbort = new AbortController();
-      const { signal } = viewAbort;
+      streamAbort = new AbortController();
+      const viewSignal = viewAbort.signal;
+      const streamSignal = streamAbort.signal;
 
       streamOpen = false;
+      streamPending = false;
       streamOpenedAt = 0;
       lastEventAt = 0;
       lastPingAt = 0;
@@ -472,7 +498,7 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
 
       const catchUp = opts?.catchUp === true || lastVersionRef.current > 0;
       if (debug) {
-        wpDebug('sseOpen', debugSnap({ catchUp, myGeneration }));
+        wpDebug('sseOpen', debugSnap({ catchUp, myGeneration, method: 'POST' }));
       }
 
       // First paint: await snapshot so the station is not blank before SSE.
@@ -480,207 +506,70 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       // opening the stream (and still recover if the tunnel SSE path is wedged).
       if (lastVersionRef.current === 0) {
         try {
-          await fullRefresh(signal, 'initial');
+          await fullRefresh(viewSignal, 'initial');
         } catch (err) {
-          if (signal.aborted || cancelled) return;
+          if (viewSignal.aborted || cancelled) return;
           if (isAuthFailure(err)) {
             handleAuthInvalid();
             return;
           }
           setError(err instanceof Error ? err.message : 'Refresh failed');
         }
-        if (signal.aborted || cancelled || myGeneration !== generation) return;
+        if (viewSignal.aborted || cancelled || myGeneration !== generation) return;
       } else if (catchUp) {
-        void fullRefresh(signal, 'catchUp').catch((err) => {
-          if (signal.aborted || cancelled || myGeneration !== generation) return;
+        void fullRefresh(viewSignal, 'catchUp').catch((err) => {
+          if (viewSignal.aborted || cancelled || myGeneration !== generation) return;
           if (isAuthFailure(err)) handleAuthInvalid();
         });
       }
 
       if (cancelled || authInvalid || myGeneration !== generation) return;
 
-      // Native EventSource: query token (no Authorization header). Server emits
-      // named events (`state` / `ping` / `connections`) — must listen by name;
-      // `onmessage` alone never fires for those and would leave ages null forever.
-      const eventsUrl = `/api/games/${gameId}/events?token=${encodeURIComponent(token)}`;
-      const eventsUrlRedacted = redactTokenQuery(eventsUrl);
-      let es: EventSource;
-      try {
-        es = new EventSource(eventsUrl);
-      } catch (err) {
-        attempt += 1;
-        if (debug) {
-          wpDebug(
-            'sseError',
-            debugSnap({
-              myGeneration,
-              url: eventsUrlRedacted,
-              error: err instanceof Error ? err.message : String(err),
-            }),
-          );
-        }
-        noteStreamFailure(err);
-        scheduleReconnect(myGeneration);
-        return;
-      }
-      eventSource = es;
-      let sawState = false;
-      let opened = false;
-      setSseConnecting(true);
+      // POST + Bearer: quick-tunnel GET buffering cannot apply; fetch can set
+      // Authorization (EventSource cannot). Relative same-origin URL.
+      const eventsUrl = `/api/games/${gameId}/events`;
+      streamPending = true;
       if (debug) {
-        wpDebug(
-          'esCreate',
-          debugSnap({
-            myGeneration,
-            url: eventsUrlRedacted,
-            readyState: es.readyState,
-          }),
-        );
+        wpDebug('esCreate', debugSnap({ myGeneration, method: 'POST', url: eventsUrl }));
       }
 
-      const handlePayload = (raw: string) => {
-        if (cancelled || myGeneration !== generation || authInvalid) return;
-        try {
-          const payload = JSON.parse(raw) as {
-            type: string;
-            stateVersion?: number;
-            view?: ClientView;
-            connections?: UmpireView['connections'];
-            stationConnections?: VesselView['stationConnections'];
-          };
-          // Count ping/state/connections — any parsed frame proves the
-          // live path is delivering (not a zombie OPEN).
-          noteEvent();
-          if (payload.type === 'ping') {
-            lastPingAt = Date.now();
-            // Small pings often still arrive through cloudflared when a
-            // multi-KB `state` frame was buffered/dropped. If the server
-            // is ahead, catch up with GET /view (same path as F5).
-            if (
-              typeof payload.stateVersion === 'number' &&
-              payload.stateVersion > lastVersionRef.current
-            ) {
-              if (debug) {
-                wpDebug(
-                  'pingGap',
-                  debugSnap({
-                    pingVersion: payload.stateVersion,
-                    localVersion: lastVersionRef.current,
-                  }),
-                );
-              }
-              void fullRefresh(signal, 'pingGap').catch((err) => {
-                if (signal.aborted || cancelled || myGeneration !== generation) {
-                  return;
-                }
-                if (isAuthFailure(err)) handleAuthInvalid();
-              });
-            }
-            return;
-          }
-          if (payload.type === 'connections') {
-            lastConnectionsAt = Date.now();
-            applyConnections(payload);
-            return;
-          }
-          if (payload.type !== 'state' || payload.view == null || payload.stateVersion == null) {
-            return;
-          }
-          sawState = true;
-          // SSE state frames are full views — apply directly (including gaps /
-          // rollbacks). Avoid a second GET /view that stalls remote Controls.
-          applyState(payload.stateVersion, payload.view);
-        } catch {
-          /* ignore parse errors */
-        }
-      };
+      try {
+        const res = await fetch(eventsUrl, {
+          method: 'POST',
+          signal: streamSignal,
+          cache: 'no-store',
+          headers: {
+            Accept: 'text/event-stream',
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (cancelled || authInvalid || myGeneration !== generation) return;
 
-      es.addEventListener('state', (ev) => {
-        handlePayload((ev as MessageEvent).data);
-      });
-      es.addEventListener('ping', (ev) => {
-        handlePayload((ev as MessageEvent).data);
-      });
-      es.addEventListener('connections', (ev) => {
-        handlePayload((ev as MessageEvent).data);
-      });
-      // Unnamed default events (if any) — named frames above are the live path.
-      es.onmessage = (ev) => {
-        handlePayload(ev.data);
-      };
-
-      clearConnectStall();
-      connectStallTimer = window.setTimeout(() => {
-        connectStallTimer = undefined;
-        if (cancelled || myGeneration !== generation || opened || authInvalid) return;
-        if (eventSource !== es) return;
-        void probeEventsStatus(eventsUrl).then((probe) => {
-          if (cancelled || myGeneration !== generation || opened || authInvalid) return;
-          if (eventSource !== es) return;
-          if (debug) {
-            wpDebug(
-              'esConnectStall',
-              debugSnap({
-                myGeneration,
-                url: eventsUrlRedacted,
-                readyState: es.readyState,
-                ...probe,
-              }),
-            );
-          }
-          if (probe.status === 401 || probe.status === 403) {
-            try {
-              es.close();
-            } catch {
-              /* ignore */
+        if (!res.ok || !res.body) {
+          streamPending = false;
+          if (res.status === 401 || res.status === 403) {
+            if (debug) {
+              wpDebug(
+                'sseAuthFail',
+                debugSnap({ myGeneration, status: res.status, method: 'POST' }),
+              );
             }
-            if (eventSource === es) eventSource = null;
-            setSseConnecting(false);
             handleAuthInvalid();
             return;
           }
-          // Still CONNECTING after stall — do not sit forever (Wade: no open/error).
-          // Close and let backoff retry; server hello pad should make open fast.
-          if (es.readyState === EventSource.CONNECTING) {
-            try {
-              es.close();
-            } catch {
-              /* ignore */
-            }
-            if (eventSource === es) eventSource = null;
-            setSseConnecting(false);
-            streamOpen = false;
-            clearStaleWatch();
-            setConnectedState(false);
-            attempt += 1;
-            noteStreamFailure(new Error('SSE connect stall'));
-            scheduleReconnect(myGeneration);
-          }
-        });
-      }, ES_CONNECT_STALL_MS);
-
-      es.onopen = () => {
-        if (cancelled || myGeneration !== generation || authInvalid) {
-          try {
-            es.close();
-          } catch {
-            /* ignore */
-          }
-          return;
+          throw new Error(`SSE failed (${res.status})`);
         }
-        clearConnectStall();
-        opened = true;
+
+        streamPending = false;
         streamOpen = true;
         streamOpenedAt = Date.now();
-        // Still waiting on first ping/state for LIVE; keep "Connecting…" chrome.
-        setSseConnecting(true);
         if (debug) {
           wpDebug(
             'streamOpen',
             debugSnap({
               myGeneration,
-              url: eventsUrlRedacted,
-              readyState: es.readyState,
+              method: 'POST',
+              contentType: res.headers.get('content-type'),
             }),
           );
         }
@@ -690,121 +579,133 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
         attempt = 0;
         armStaleWatch(myGeneration);
 
-        // Server sendFull should arrive immediately; only GET if the stream is quiet.
-        if (firstStateTimer !== undefined) {
-          window.clearTimeout(firstStateTimer);
-        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let sawState = false;
+
+        clearFirstState();
         firstStateTimer = window.setTimeout(() => {
           firstStateTimer = undefined;
-          if (cancelled || myGeneration !== generation || sawState) return;
+          if (cancelled || streamSignal.aborted || myGeneration !== generation || sawState) {
+            return;
+          }
           if (debug) {
             wpDebug('firstStateFallback', debugSnap({ myGeneration }));
           }
-          void fullRefresh(signal, 'firstStateFallback').catch((err) => {
+          void fullRefresh(viewSignal, 'firstStateFallback').catch((err) => {
             if (isAuthFailure(err)) handleAuthInvalid();
           });
         }, FIRST_STATE_FALLBACK_MS);
-      };
 
-      es.onerror = () => {
-        if (cancelled || myGeneration !== generation || authInvalid) return;
-        // Disable browser auto-reconnect — we own backoff via scheduleReconnect.
-        const readyState = es.readyState;
-        clearConnectStall();
         try {
-          es.close();
-        } catch {
-          /* ignore */
-        }
-        if (eventSource === es) eventSource = null;
-        if (firstStateTimer !== undefined) {
-          window.clearTimeout(firstStateTimer);
-          firstStateTimer = undefined;
-        }
-        streamOpen = false;
-        clearStaleWatch();
-        setConnectedState(false);
-        setSseConnecting(false);
-        attempt += 1;
-
-        // EventSource hides HTTP status; probe when we never reached open so
-        // permanent auth failures (401/403) surface instead of looping forever.
-        void (async () => {
-          if (cancelled || myGeneration !== generation || authInvalid) return;
-          let probe: EventsProbe | null = null;
-          if (!opened) {
-            probe = await probeEventsStatus(eventsUrl);
-            if (cancelled || myGeneration !== generation || authInvalid) return;
-            if (probe.status === 401 || probe.status === 403) {
+          while (!cancelled && !streamSignal.aborted && myGeneration === generation) {
+            const { done, value } = await reader.read();
+            if (done) {
               if (debug) {
-                wpDebug(
-                  'sseAuthFail',
-                  debugSnap({
-                    myGeneration,
-                    url: eventsUrlRedacted,
-                    readyState,
-                    opened,
-                    ...probe,
-                  }),
-                );
+                wpDebug('sseDone', debugSnap({ myGeneration }));
               }
-              handleAuthInvalid();
-              return;
+              break;
+            }
+            buffer += decoder.decode(value, { stream: true });
+            const chunks = buffer.split('\n\n');
+            buffer = chunks.pop() ?? '';
+            for (const chunk of chunks) {
+              const parsed = parseSseBlock(chunk);
+              if (!parsed) continue;
+              handlePayload(parsed.data, myGeneration, viewSignal, () => {
+                sawState = true;
+              });
             }
           }
-          if (debug) {
+        } finally {
+          clearFirstState();
+          try {
+            reader.releaseLock();
+          } catch {
+            /* already released */
+          }
+        }
+
+        if (cancelled || streamSignal.aborted || myGeneration !== generation || authInvalid) {
+          if (debug && (cancelled || streamSignal.aborted)) {
             wpDebug(
-              opened ? 'sseDisconnected' : 'sseError',
+              'sseClose',
               debugSnap({
                 myGeneration,
-                url: eventsUrlRedacted,
-                readyState,
-                opened,
-                ...(probe ?? {}),
+                cancelled,
+                aborted: streamSignal.aborted,
               }),
             );
           }
-          const failMsg = opened
-            ? 'SSE disconnected'
-            : typeof probe?.status === 'number'
-              ? `SSE failed (${probe.status})`
-              : 'SSE error';
-          noteStreamFailure(new Error(failMsg));
-          scheduleReconnect(myGeneration);
-        })();
-      };
+          return;
+        }
+
+        streamOpen = false;
+        streamPending = false;
+        clearStaleWatch();
+        setConnectedState(false);
+        attempt += 1;
+        if (debug) {
+          wpDebug('sseDisconnected', debugSnap({ myGeneration }));
+        }
+        noteStreamFailure(new Error('SSE disconnected'));
+        scheduleReconnect(myGeneration);
+      } catch (err) {
+        streamPending = false;
+        if (cancelled || streamSignal.aborted || myGeneration !== generation || authInvalid) {
+          if (debug && streamSignal.aborted) {
+            wpDebug('sseAbort', debugSnap({ myGeneration }));
+          }
+          return;
+        }
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          if (debug) {
+            wpDebug('sseAbort', debugSnap({ myGeneration }));
+          }
+          return;
+        }
+
+        streamOpen = false;
+        clearStaleWatch();
+        setConnectedState(false);
+        attempt += 1;
+        if (debug) {
+          wpDebug(
+            'sseError',
+            debugSnap({
+              myGeneration,
+              method: 'POST',
+              error: err instanceof Error ? err.message : String(err),
+            }),
+          );
+        }
+        noteStreamFailure(err);
+        scheduleReconnect(myGeneration);
+      }
     };
 
     const kickIfNeeded = () => {
       if (cancelled || authInvalid) return;
       if (document.visibilityState === 'hidden') return;
-      // Key off EventSource lifecycle — not the LIVE indicator. `connected` stays
-      // false until the first ping/state after open; treating that (or CONNECTING)
-      // as "down" called openSse → closeEventSource and aborted nascent streams
-      // (Wade #259 logs: kickReconnect gens while streamOpen stayed false).
-      const esState = eventSource?.readyState;
-      const esPendingOrOpen =
-        streamOpen ||
-        esState === EventSource.CONNECTING ||
-        esState === EventSource.OPEN;
-      if (!esPendingOrOpen) {
+      // Key off stream lifecycle — not the LIVE indicator. `connected` stays
+      // false until the first ping/state after open; treating that (or a pending
+      // POST) as "down" called openSse → abortStream and aborted nascent streams.
+      const streamPendingOrOpen = streamPending || streamOpen;
+      if (!streamPendingOrOpen) {
         if (debug) {
-          wpDebug(
-            'kickReconnect',
-            debugSnap({ why: 'noEventSource', readyState: esState ?? null }),
-          );
+          wpDebug('kickReconnect', debugSnap({ why: 'noStream' }));
         }
         attempt = 0;
         clearReconnect();
         void openSse({ catchUp: true });
       } else {
-        // Stream opening or open — snapshot catch-up only; do not tear down ES.
+        // Stream opening or open — snapshot catch-up only; do not tear down POST.
         if (debug) {
           wpDebug(
             'kickRefresh',
             debugSnap({
               why: connectedRef.current ? 'connected' : 'streamPendingOrOpen',
-              readyState: esState ?? null,
             }),
           );
         }
@@ -825,15 +726,15 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
       generation += 1;
       clearReconnect();
       clearStaleWatch();
-      closeEventSource();
+      abortStream();
       try {
         viewAbort?.abort();
       } catch {
         /* ignore */
       }
       streamOpen = false;
+      streamPending = false;
       setConnectedState(false);
-      setSseConnecting(false);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('online', kickIfNeeded);
     };
@@ -841,5 +742,5 @@ export function useGameStream({ gameId, token, enabled = true, onAuthInvalid }: 
 
   const refresh = (reason: ViewRefreshReason = 'manual') => refreshRef.current(reason);
 
-  return { view, stateVersion, connected, sseConnecting, error, setView, refresh };
+  return { view, stateVersion, connected, error, setView, refresh };
 }

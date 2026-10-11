@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type {
   AuthSession,
   DivePlanesState,
@@ -317,10 +317,20 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  app.get<{
-    Params: { gameId: string };
-    Querystring: { lastVersion?: string; token?: string };
-  }>('/api/games/:gameId/events', async (request, reply) => {
+  /**
+   * Live game stream (SSE body). GET remains for curl / named tunnels / legacy;
+   * the browser client uses POST because Cloudflare **quick tunnels**
+   * (`*.trycloudflare.com`) buffer GET streaming until the origin closes the
+   * response (cloudflared#1449). Native EventSource can only GET, so it stays
+   * CONNECTING forever while finite GET /view still works. POST streams live.
+   */
+  const handleGameEvents = async (
+    request: FastifyRequest<{
+      Params: { gameId: string };
+      Querystring: { lastVersion?: string; token?: string };
+    }>,
+    reply: FastifyReply,
+  ) => {
     try {
       const session = requireSseSession(request, request.params.gameId);
       const save = runtime.requireGame(session.gameId);
@@ -386,7 +396,17 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(e.statusCode).send({ error: e.message });
       }
     }
-  });
+  };
+
+  app.get<{
+    Params: { gameId: string };
+    Querystring: { lastVersion?: string; token?: string };
+  }>('/api/games/:gameId/events', handleGameEvents);
+
+  app.post<{
+    Params: { gameId: string };
+    Querystring: { lastVersion?: string; token?: string };
+  }>('/api/games/:gameId/events', handleGameEvents);
 
   app.post<{
     Params: { gameId: string };
