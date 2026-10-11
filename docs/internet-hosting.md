@@ -360,8 +360,13 @@ data/ (saves, scenarios) on local disk
   [#250](https://github.com/Wade-Yancey/War-Patrol/pull/250) raise UX /
   contact cache. Soft-stale/hard-reconnect ([#251](https://github.com/Wade-Yancey/War-Patrol/pull/251))
   and slim lookout `optics` SSE ([#252](https://github.com/Wade-Yancey/War-Patrol/pull/252))
-  were reverted after tunnel remotes returned to constant **RECONNECTING** and
-  peri→feather needing refresh — tree matches post-#250 / pre-#251.
+  were reverted by [#253](https://github.com/Wade-Yancey/War-Patrol/pull/253).
+  Follow-ups [#254](https://github.com/Wade-Yancey/War-Patrol/pull/254)
+  (liveness / soft `/view`), [#255](https://github.com/Wade-Yancey/War-Patrol/pull/255)
+  (feather-after-resolve), and [#256](https://github.com/Wade-Yancey/War-Patrol/pull/256)
+  (soft-stale / hard-reconnect again) were also emergency-reverted after tunnel
+  remotes returned to stuck **RECONNECTING** and peri contacts needing refresh —
+  tree matches post-#253 / #250 baseline.
 - **Turn timer sync:** stations count down from the shared ISO
   `turn.timerDeadline` with local wall clocks. If one remote tablet lights the
   timer a second or two after another, that is delayed SSE delivery (tunnel /
