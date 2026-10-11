@@ -2671,14 +2671,14 @@ label {
 }
 
 /*
- * Dominant dial — helm-scale footprint.
- * Wider aux (~17.5rem) for presets/dial; no max-height/scroll on controls.
- * Dial size is height-led so a wider aux does not shrink it on typical viewports.
+ * Dominant dial — larger than #265/#266, still short of helm/radar.
+ * Helm CRT uses ~78–84vh / uncapped rem; dive caps below that (~70vh / 32.5rem).
+ * Wider aux (~17.5rem) + no scrollbar from #266 unchanged.
  */
 .depth-gauge.crt-console .radar-scope-svg {
-  width: min(calc(100vw - 19.5rem), calc(100dvh - 6.75rem), 28rem);
-  max-width: min(calc(100vw - 19.5rem), calc(100dvh - 6.75rem), 28rem);
-  max-height: min(calc(100vw - 19.5rem), calc(100dvh - 6.75rem), 28rem);
+  width: min(calc(100vw - 19.5rem), calc(100dvh - 5.75rem), 70vh, 32.5rem);
+  max-width: min(calc(100vw - 19.5rem), calc(100dvh - 5.75rem), 70vh, 32.5rem);
+  max-height: min(calc(100vw - 19.5rem), calc(100dvh - 5.75rem), 70vh, 32.5rem);
 }
 
 .depth-gauge.crt-console .radar-side-panel {
