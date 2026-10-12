@@ -2,10 +2,11 @@
 export const TORPEDO_FIRE_SAMPLE_URL = '/audio/torpedo-tube-door.mp3';
 
 /**
- * Peak gain on Controls for the tube-door cue.
- * Audible on venue speakers; still well under deck-gun's own-ship report.
+ * Peak gain on Controls for the tube-door / launch cue.
+ * Half the prior venue level (0.4 → 0.2) so salvos sit quieter in the sub
+ * control room; still under deck-gun's own-ship report.
  */
-export const TORPEDO_FIRE_CONTROLS_PEAK_GAIN = 0.4;
+export const TORPEDO_FIRE_CONTROLS_PEAK_GAIN = 0.2;
 
 /**
  * Wall-clock gap (seconds) between tube-door onsets in a multi-fish salvo.
