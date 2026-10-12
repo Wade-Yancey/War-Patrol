@@ -30,8 +30,17 @@ export const SUB_AMBIENT_CRUSH_MIN_M = 150;
  */
 export const SUB_AMBIENT_CRUSH_MAX_M = 180;
 
-/** Bed gain — match destroyer facility-hum presence under combat one-shots. */
+/**
+ * Default bed gain for mid + crush bands — match destroyer facility-hum
+ * presence under combat one-shots.
+ */
 export const SUB_CONTROLS_AMBIENT_GAIN = 0.22;
+
+/**
+ * Shallow / exposition loop (&lt; 90 m) — louder than mid/crush so the quieter
+ * exposition bed reads clearly on Controls speakers.
+ */
+export const SUB_AMBIENT_SHALLOW_GAIN = 0.40;
 
 /** Crossfade when the keel crosses a band boundary (seconds). */
 export const SUB_AMBIENT_CROSSFADE_SEC = 1.0;
@@ -43,6 +52,17 @@ export const SUB_AMBIENT_URL_BY_BAND: Record<SubAmbientBand, string> = {
   deep: SUB_AMBIENT_DEEP_URL,
   crush: SUB_AMBIENT_CRUSH_URL,
 };
+
+/** Peak gain for each ambient band (shallow raised; deep/crush keep baseline). */
+export const SUB_AMBIENT_GAIN_BY_BAND: Record<SubAmbientBand, number> = {
+  shallow: SUB_AMBIENT_SHALLOW_GAIN,
+  deep: SUB_CONTROLS_AMBIENT_GAIN,
+  crush: SUB_CONTROLS_AMBIENT_GAIN,
+};
+
+export function subAmbientGainForBand(band: SubAmbientBand): number {
+  return SUB_AMBIENT_GAIN_BY_BAND[band];
+}
 
 /**
  * Map keel depth (m, positive-down) → ambient band.
