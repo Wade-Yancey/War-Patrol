@@ -81,6 +81,15 @@ import {
   startControlsAmbientLoop,
 } from '../audio/controlsAmbient';
 import {
+  SUB_AMBIENT_CROSSFADE_SEC,
+  SUB_CONTROLS_AMBIENT_GAIN,
+  crossfadeAmbientLoop,
+  loadSubAmbientBuffer,
+  stopAmbientLoopVoice,
+  subAmbientBandForDepth,
+  type SubAmbientBand,
+} from '../audio/subControlsAmbient';
+import {
   loadSonarPingBuffer,
   playSonarPingSample,
   SONAR_PING_CONTROLS_OWN_GAIN,
@@ -106,21 +115,11 @@ import {
   torpedoFireBatchWhenSecById,
 } from '../audio/torpedoFire';
 import {
-  SUBMARINE_CREAK_AMBIENT_DURATION_SEC,
-  SUBMARINE_CREAK_AMBIENT_GAIN,
   SUBMARINE_CREAK_DC_DURATION_SEC,
   SUBMARINE_CREAK_DC_GAIN,
-  creakIntervalMsForDepth,
-  jitterCreakIntervalMs,
   loadSubmarineCreakingBuffer,
   playSubmarineCreakSample,
 } from '../audio/submarineCreaking';
-import {
-  DEEP_HULL_CLANKING_GAIN,
-  isDeepHullClankingDepth,
-  loadDeepHullClankingBuffer,
-  startDeepHullClankingLoop,
-} from '../audio/deepHullClanking';
 import {
   TORPEDO_RELOAD_KNOCK_CONTROLS_PEAK_GAIN,
   loadTorpedoReloadKnockBuffer,
@@ -542,7 +541,7 @@ export function StationPage() {
       audioDelaySec?: number;
     }>
   >([]);
-  /** Latest sub keel depth for ambient creak scheduling + DC stress burst. */
+  /** Latest sub keel depth for ambient band selection + DC stress creak gate. */
   const subDepthRef = useRef(0);
   /**
    * Seed for depth-change SFX: play when turn advances, keel moved, and the
@@ -562,7 +561,6 @@ export function StationPage() {
    * the arm before the Emergency Blow submit is acknowledged.
    */
   const emergencyBlowOrderSeenRef = useRef(false);
-  const ambientCreakBusyRef = useRef(false);
   /** Own-ship reload knock burst: once per acoustic turn while cue is live. */
   const playedOwnReloadKnockTurnRef = useRef<number | null>(null);
   const bridgeAudioRef = useRef<{
@@ -575,14 +573,16 @@ export function StationPage() {
     torpedoFireBuffer: AudioBuffer | null;
     reloadKnockBuffer: AudioBuffer | null;
     creakBuffer: AudioBuffer | null;
-    deepClankBuffer: AudioBuffer | null;
     ventingBuffer: AudioBuffer | null;
+    /** Destroyer facility-hum buffer. */
     ambientBuffer: AudioBuffer | null;
+    /** Sub depth-banded ambient buffers (lazy). */
+    subAmbientBuffers: Partial<Record<SubAmbientBand, AudioBuffer>>;
+    /** Active sub ambient band (null until first loop starts). */
+    subAmbientBand: SubAmbientBand | null;
     sonarPingBuffer: AudioBuffer | null;
     ambientSource: AudioBufferSourceNode | null;
     ambientGain: GainNode | null;
-    deepClankSource: AudioBufferSourceNode | null;
-    deepClankGain: GainNode | null;
   }>({
     ctx: null,
     buffer: null,
@@ -592,14 +592,13 @@ export function StationPage() {
     torpedoFireBuffer: null,
     reloadKnockBuffer: null,
     creakBuffer: null,
-    deepClankBuffer: null,
     ventingBuffer: null,
     ambientBuffer: null,
+    subAmbientBuffers: {},
+    subAmbientBand: null,
     sonarPingBuffer: null,
     ambientSource: null,
     ambientGain: null,
-    deepClankSource: null,
-    deepClankGain: null,
   });
   /** Latest close-aboard enemy ping cues for the Controls hull-hear interval. */
   const bridgeSonarPingsRef = useRef<NonNullable<VesselView['bridgeActiveSonarPings']>>([]);
@@ -617,9 +616,10 @@ export function StationPage() {
       bridgeAudioRef.current.torpedoFireBuffer = null;
       bridgeAudioRef.current.reloadKnockBuffer = null;
       bridgeAudioRef.current.creakBuffer = null;
-      bridgeAudioRef.current.deepClankBuffer = null;
       bridgeAudioRef.current.ventingBuffer = null;
       bridgeAudioRef.current.ambientBuffer = null;
+      bridgeAudioRef.current.subAmbientBuffers = {};
+      bridgeAudioRef.current.subAmbientBand = null;
       bridgeAudioRef.current.sonarPingBuffer = null;
     }
     const ctx = bridgeAudioRef.current.ctx;
@@ -647,46 +647,10 @@ export function StationPage() {
     }
   };
 
-  const ensureDeepClankBuffer = async (ctx: AudioContext): Promise<AudioBuffer | null> => {
-    if (bridgeAudioRef.current.deepClankBuffer) return bridgeAudioRef.current.deepClankBuffer;
-    try {
-      bridgeAudioRef.current.deepClankBuffer = await loadDeepHullClankingBuffer(ctx);
-      return bridgeAudioRef.current.deepClankBuffer;
-    } catch {
-      return null;
-    }
-  };
-
-  const stopDeepClankLoop = () => {
-    const src = bridgeAudioRef.current.deepClankSource;
-    if (src) {
-      try {
-        src.stop();
-      } catch {
-        /* already stopped */
-      }
-      try {
-        src.disconnect();
-      } catch {
-        /* ignore */
-      }
-    }
-    bridgeAudioRef.current.deepClankSource = null;
-    const g = bridgeAudioRef.current.deepClankGain;
-    if (g) {
-      try {
-        g.disconnect();
-      } catch {
-        /* ignore */
-      }
-    }
-    bridgeAudioRef.current.deepClankGain = null;
-  };
-
   /**
    * Stress creak aligned with a nearby DC one-shot (may be delayed for pattern
-   * stagger). One call per charge — not once per pattern. Ambient creaks stay
-   * on their own depth-based timer.
+   * stagger). One call per charge — not once per pattern. Depth-banded ambient
+   * loops replace the old ambient creak / deep-clank beds.
    */
   const playDcStressCreak = (
     ctx: AudioContext,
@@ -881,29 +845,22 @@ export function StationPage() {
     pendingBridgeBlastRef.current = still;
   };
 
-  // Controls ambient bed: quiet looping facility hum (BT speakers). Stop on leave.
+  /**
+   * Destroyer Controls ambient bed: quiet looping facility hum.
+   * Submarine Controls use depth-banded loops below (not this hum).
+   */
   useEffect(() => {
-    if (!onControlsBridge) return;
+    if (!onControlsBridge || onSubCreakBridge) return;
     let cancelled = false;
     let starting = false;
 
     const stopAmbient = () => {
       const voice = bridgeAudioRef.current;
-      if (voice.ambientSource) {
-        try {
-          voice.ambientSource.stop();
-        } catch {
-          /* already stopped */
-        }
-        try {
-          voice.ambientSource.disconnect();
-          voice.ambientGain?.disconnect();
-        } catch {
-          /* ignore */
-        }
-        voice.ambientSource = null;
-        voice.ambientGain = null;
+      if (voice.ambientSource && voice.ambientGain) {
+        stopAmbientLoopVoice({ source: voice.ambientSource, gain: voice.ambientGain });
       }
+      voice.ambientSource = null;
+      voice.ambientGain = null;
     };
 
     const startAmbient = async () => {
@@ -924,7 +881,6 @@ export function StationPage() {
         );
         bridgeAudioRef.current.ambientSource = source;
         bridgeAudioRef.current.ambientGain = gain;
-        // Same gesture / unlock also drains pending DC one-shots.
         await flushBridgeBlastAudio();
         window.removeEventListener('pointerdown', unlock);
         window.removeEventListener('keydown', unlock);
@@ -949,7 +905,6 @@ export function StationPage() {
       window.removeEventListener('pointerdown', unlock);
       window.removeEventListener('keydown', unlock);
       stopAmbient();
-      stopDeepClankLoop();
       const ctx = bridgeAudioRef.current.ctx;
       bridgeAudioRef.current.ctx = null;
       bridgeAudioRef.current.buffer = null;
@@ -959,28 +914,22 @@ export function StationPage() {
       bridgeAudioRef.current.torpedoFireBuffer = null;
       bridgeAudioRef.current.reloadKnockBuffer = null;
       bridgeAudioRef.current.creakBuffer = null;
-      bridgeAudioRef.current.deepClankBuffer = null;
       bridgeAudioRef.current.ventingBuffer = null;
       bridgeAudioRef.current.ambientBuffer = null;
+      bridgeAudioRef.current.subAmbientBuffers = {};
+      bridgeAudioRef.current.subAmbientBand = null;
       bridgeAudioRef.current.sonarPingBuffer = null;
-      // Closed ctx → allow replay after remount (React Strict Mode / leave+rejoin).
       playedBridgeBlastRef.current.clear();
       playedOwnReloadKnockTurnRef.current = null;
       if (ctx && ctx.state !== 'closed') void ctx.close();
     };
-  }, [onControlsBridge]);
+  }, [onControlsBridge, onSubCreakBridge]);
 
   const surfaced = vessel ? isRadarSurfaced(vessel.unit.position) : true;
   const depthM = vessel?.unit.position.depth ?? 0;
   subDepthRef.current = depthM;
   const atPeriscopeDepth = depthM <= PERISCOPE_DEPTH_M;
-  const deepForClank = onSubCreakBridge && isDeepHullClankingDepth(depthM);
-  /**
-   * Ambient creak one-shots while submerged but shallower than crush depth.
-   * At ≥150 m the dramatic deep-clank loop takes over instead.
-   */
-  const submergedForCreak =
-    onSubCreakBridge && depthM > RADAR_SURFACE_DEPTH_M && !isDeepHullClankingDepth(depthM);
+  const subAmbientBand = onSubCreakBridge ? subAmbientBandForDepth(depthM) : null;
   bridgeSonarPingsRef.current = vessel?.bridgeActiveSonarPings ?? [];
   /** Hull-coupled enemy pings: submerged sub Controls with at least one close emitter. */
   const hearBridgeSonar =
@@ -1002,137 +951,84 @@ export function StationPage() {
     syncedDamage.condition !== 'sinking' &&
     presentationSubs.activeSonar !== 'disabled';
 
-  // Submarine Controls: occasional hull creaks while submerged (shallow of crush).
+  /**
+   * Submarine Controls ambient: depth-banded loops with crossfade on band change.
+   * Replaces facility hum + ambient creak one-shots + deep-hull clank loop.
+   */
   useEffect(() => {
-    if (!submergedForCreak) return;
+    if (!onSubCreakBridge || !subAmbientBand) return;
     let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
+    let switching = false;
 
-    const clearTimer = () => {
-      if (timer != null) {
-        clearTimeout(timer);
-        timer = null;
+    const ensureBandBuffer = async (
+      ctx: AudioContext,
+      band: SubAmbientBand,
+    ): Promise<AudioBuffer | null> => {
+      const cached = bridgeAudioRef.current.subAmbientBuffers[band];
+      if (cached) return cached;
+      try {
+        const buf = await loadSubAmbientBuffer(ctx, band);
+        bridgeAudioRef.current.subAmbientBuffers[band] = buf;
+        return buf;
+      } catch {
+        return null;
       }
     };
 
-    const scheduleNext = () => {
-      clearTimer();
-      if (cancelled) return;
-      const meanMs = creakIntervalMsForDepth(subDepthRef.current);
-      if (!Number.isFinite(meanMs)) return;
-      const wait = jitterCreakIntervalMs(meanMs);
-      timer = setTimeout(() => {
-        void (async () => {
-          if (cancelled) return;
-          // Skip if surfaced, deep (clank loop owns the bed), or a prior creak is ringing.
-          if (
-            subDepthRef.current <= RADAR_SURFACE_DEPTH_M ||
-            isDeepHullClankingDepth(subDepthRef.current)
-          ) {
-            return;
-          }
-          if (ambientCreakBusyRef.current) {
-            timer = setTimeout(() => {
-              void scheduleNext();
-            }, 800);
-            return;
-          }
-          try {
-            const ctx = await ensureBridgeAudioCtx();
-            if (cancelled || ctx.state !== 'running') {
-              scheduleNext();
-              return;
-            }
-            const creak = await ensureCreakBuffer(ctx);
-            if (cancelled || !creak) {
-              scheduleNext();
-              return;
-            }
-            if (ambientCreakBusyRef.current) {
-              timer = setTimeout(() => {
-                void scheduleNext();
-              }, 800);
-              return;
-            }
-            ambientCreakBusyRef.current = true;
-            const source = playSubmarineCreakSample(
-              ctx,
-              creak,
-              ctx.destination,
-              SUBMARINE_CREAK_AMBIENT_GAIN,
-              { durationSec: SUBMARINE_CREAK_AMBIENT_DURATION_SEC },
-            );
-            if (source) {
-              source.onended = () => {
-                ambientCreakBusyRef.current = false;
-              };
-              // Safety: clear busy if onended never fires (ctx closed).
-              window.setTimeout(() => {
-                ambientCreakBusyRef.current = false;
-              }, (SUBMARINE_CREAK_AMBIENT_DURATION_SEC + 0.5) * 1000);
-            } else {
-              ambientCreakBusyRef.current = false;
-            }
-          } catch {
-            ambientCreakBusyRef.current = false;
-          }
-          scheduleNext();
-        })();
-      }, wait);
-    };
-
-    const unlock = () => {
-      scheduleNext();
-    };
-
-    // Kick after gesture / ambient unlock so Autoplay policy is satisfied.
-    scheduleNext();
-    window.addEventListener('pointerdown', unlock);
-    window.addEventListener('keydown', unlock);
-
-    return () => {
-      cancelled = true;
-      clearTimer();
-      ambientCreakBusyRef.current = false;
-      window.removeEventListener('pointerdown', unlock);
-      window.removeEventListener('keydown', unlock);
-    };
-  }, [submergedForCreak]);
-
-  // Submarine Controls: dramatic deep-hull clank loop at crush depth and below.
-  useEffect(() => {
-    if (!deepForClank) {
-      stopDeepClankLoop();
-      return;
-    }
-    let cancelled = false;
-
-    const startLoop = async () => {
-      if (cancelled || bridgeAudioRef.current.deepClankSource) return;
+    const applyBand = async (band: SubAmbientBand, fadeSec: number) => {
+      if (cancelled || switching) return;
+      if (bridgeAudioRef.current.subAmbientBand === band && bridgeAudioRef.current.ambientSource) {
+        return;
+      }
+      switching = true;
       try {
         const ctx = await ensureBridgeAudioCtx();
-        if (cancelled || bridgeAudioRef.current.deepClankSource) return;
-        const buffer = await ensureDeepClankBuffer(ctx);
-        if (!buffer || cancelled || bridgeAudioRef.current.deepClankSource) return;
-        if (ctx.state !== 'running') return;
-        const { source, gain } = startDeepHullClankingLoop(
+        if (cancelled) return;
+        const buffer = await ensureBandBuffer(ctx, band);
+        if (!buffer || cancelled || ctx.state !== 'running') return;
+        // Re-check after await — a newer depth may have won.
+        if (subAmbientBandForDepth(subDepthRef.current) !== band) return;
+        const prev =
+          bridgeAudioRef.current.ambientSource && bridgeAudioRef.current.ambientGain
+            ? {
+                source: bridgeAudioRef.current.ambientSource,
+                gain: bridgeAudioRef.current.ambientGain,
+              }
+            : null;
+        const next = crossfadeAmbientLoop(
           ctx,
           buffer,
           ctx.destination,
-          DEEP_HULL_CLANKING_GAIN,
+          prev,
+          SUB_CONTROLS_AMBIENT_GAIN,
+          fadeSec,
         );
-        bridgeAudioRef.current.deepClankSource = source;
-        bridgeAudioRef.current.deepClankGain = gain;
+        bridgeAudioRef.current.ambientSource = next.source;
+        bridgeAudioRef.current.ambientGain = next.gain;
+        bridgeAudioRef.current.subAmbientBand = band;
+        await flushBridgeBlastAudio();
       } catch {
-        /* autoplay / sample — ignore; unlock may retry */
+        /* autoplay / sample — unlock may retry */
+      } finally {
+        switching = false;
+        if (!cancelled) {
+          const want = subAmbientBandForDepth(subDepthRef.current);
+          if (want !== bridgeAudioRef.current.subAmbientBand) {
+            void applyBand(want, SUB_AMBIENT_CROSSFADE_SEC);
+          }
+        }
       }
     };
 
     const unlock = () => {
-      void startLoop();
+      void applyBand(subAmbientBandForDepth(subDepthRef.current), SUB_AMBIENT_CROSSFADE_SEC);
+      void flushBridgeBlastAudio();
     };
 
-    void startLoop();
+    void applyBand(
+      subAmbientBand,
+      bridgeAudioRef.current.ambientSource ? SUB_AMBIENT_CROSSFADE_SEC : 0.35,
+    );
     window.addEventListener('pointerdown', unlock);
     window.addEventListener('keydown', unlock);
 
@@ -1140,9 +1036,39 @@ export function StationPage() {
       cancelled = true;
       window.removeEventListener('pointerdown', unlock);
       window.removeEventListener('keydown', unlock);
-      stopDeepClankLoop();
+      // Band changes re-run this effect; leave/teardown stops the voice below.
     };
-  }, [deepForClank]);
+  }, [onSubCreakBridge, subAmbientBand]);
+
+  // Tear down sub ambient + shared bridge ctx when leaving Controls.
+  useEffect(() => {
+    if (!onSubCreakBridge) return;
+    return () => {
+      const voice = bridgeAudioRef.current;
+      if (voice.ambientSource && voice.ambientGain) {
+        stopAmbientLoopVoice({ source: voice.ambientSource, gain: voice.ambientGain });
+      }
+      voice.ambientSource = null;
+      voice.ambientGain = null;
+      voice.subAmbientBand = null;
+      const ctx = bridgeAudioRef.current.ctx;
+      bridgeAudioRef.current.ctx = null;
+      bridgeAudioRef.current.buffer = null;
+      bridgeAudioRef.current.torpedoHitBuffer = null;
+      bridgeAudioRef.current.explosionBuffer = null;
+      bridgeAudioRef.current.deckGunFireBuffer = null;
+      bridgeAudioRef.current.torpedoFireBuffer = null;
+      bridgeAudioRef.current.reloadKnockBuffer = null;
+      bridgeAudioRef.current.creakBuffer = null;
+      bridgeAudioRef.current.ventingBuffer = null;
+      bridgeAudioRef.current.ambientBuffer = null;
+      bridgeAudioRef.current.subAmbientBuffers = {};
+      bridgeAudioRef.current.sonarPingBuffer = null;
+      playedBridgeBlastRef.current.clear();
+      playedOwnReloadKnockTurnRef.current = null;
+      if (ctx && ctx.state !== 'closed') void ctx.close();
+    };
+  }, [onSubCreakBridge]);
 
   // Submarine Controls: own-ship reload knock burst (start turn + linger).
   useEffect(() => {
