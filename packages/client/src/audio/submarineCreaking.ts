@@ -10,7 +10,10 @@ export const SUBMARINE_CREAKING_SAMPLE_URL = '/audio/submarine-creaking.wav';
 /** Quiet ambient one-shot — sits near the facility hum, below DC/torpedo peaks. */
 export const SUBMARINE_CREAK_AMBIENT_GAIN = 0.24;
 
-/** Stress burst when a nearby depth charge hits while submerged (still under DC peak). */
+/**
+ * Peak gain for remaining stress one-shots (Emergency Blow ascent).
+ * Named historically from the removed nearby-DC stress creak path.
+ */
 export const SUBMARINE_CREAK_DC_GAIN = 0.34;
 
 /**
@@ -37,16 +40,17 @@ export const SUBMARINE_CREAK_INTERVAL_PAST_CRUSH_SEC = 1.2;
 /** Play this many seconds of the sample per ambient creak (random offset). */
 export const SUBMARINE_CREAK_AMBIENT_DURATION_SEC = 3.2;
 
-/** Slightly longer window for a DC stress burst. */
+/** Duration window for Emergency Blow stress creak one-shots. */
 export const SUBMARINE_CREAK_DC_DURATION_SEC = 4.5;
 
 /**
  * Mean interval (ms) between ambient creaks for keel depth.
+ * Ambient creak scheduling was removed from Controls (depth-banded loops);
+ * helpers kept for any future callers / docs.
  * - Surfaced (≤ {@link RADAR_SURFACE_DEPTH_M}): no ambient creaks (Infinity).
  * - Surface band → test: linear 48 s → 10 s.
  * - Test → crush: **t³** blend 10 s → 2 s (stays quieter until near crush, then spikes).
  * - Past crush: 1.2 s mean (super frequent).
- * DC stress creaks remain separate (one per nearby Controls blast).
  */
 export function creakIntervalMsForDepth(depthM: number): number {
   if (!(depthM > RADAR_SURFACE_DEPTH_M)) return Number.POSITIVE_INFINITY;

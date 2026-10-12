@@ -73,10 +73,11 @@ Source: Stereotypical sinking submarine sound (NO REVERB) by Ubehag (Freesound #
 License: CC0 / public domain
 Original: https://freesound.org/people/Ubehag/sounds/232021/
 Local copy: submarine-creaking.wav
-Notes: Submarine Controls — combat/stress one-shots only (nearby DC hits,
-Emergency Blow ascent). Ambient ticking-at-depth creaks were removed in favor
-of depth-banded sub-ambience loops. Stereo 48 kHz PCM (front L/R only;
-former 6-channel silent-surround file downmixed).
+Notes: Submarine Controls — Emergency Blow ascent one-shot only. Nearby DC
+stress-creak ticks were removed (depth-charge explosion sample is unchanged).
+Ambient ticking-at-depth creaks were removed earlier in favor of depth-banded
+sub-ambience loops. Stereo 48 kHz PCM (front L/R only; former 6-channel
+silent-surround file downmixed).
 
 Source: Large Cannon Fire by raphavpires (Freesound #867030)
 License: as provided for War Patrol (user sample)
