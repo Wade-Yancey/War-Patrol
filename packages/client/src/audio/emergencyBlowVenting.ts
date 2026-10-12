@@ -10,7 +10,7 @@ export const EMERGENCY_BLOW_VENTING_PEAK_GAIN = 0.92;
 
 /**
  * Depth-change bed gain while an Emergency Blow ascent resolves.
- * Duck under venting so the 28 s underwater clip does not bury the hiss.
+ * Duck under venting so the ballast-blow one-shot stays clear on speakers.
  */
 export const SUB_DEPTH_CHANGE_EMERGENCY_BLOW_GAIN = 0.32;
 
