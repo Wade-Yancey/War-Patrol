@@ -13,7 +13,7 @@ import {
   playSonarPingSample,
   SONAR_PING_OWN_GAIN,
 } from '../audio/sonarPing';
-import { RadarAirBlip, RadarMotionChevron, RadarSurfaceBlip } from './ContactGlyphs';
+import { RadarMotionChevron, RadarSurfaceBlip } from './ContactGlyphs';
 import { useTweenedScopeContacts } from '../hooks/useTweenedScopeContacts';
 import { ScopeContactLabelLayer } from './ScopeContactLabelLayer';
 
@@ -295,11 +295,7 @@ function ActiveSonarScopeInner({
           {blips.map((b) => (
             <g key={b.id}>
               <g opacity={b.opacity}>
-                {b.domain === 'air' ? (
-                  <RadarAirBlip x={b.x} y={b.y} r={b.r} courseDeg={b.courseDeg} />
-                ) : (
-                  <RadarSurfaceBlip x={b.x} y={b.y} r={b.r} />
-                )}
+                <RadarSurfaceBlip x={b.x} y={b.y} r={b.r} />
                 {b.courseDeg != null && (
                   <RadarMotionChevron x={b.x} y={b.y} courseDeg={b.courseDeg} blipR={b.r} />
                 )}
