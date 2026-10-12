@@ -66,6 +66,9 @@ export function subAmbientGainForBand(band: SubAmbientBand): number {
 
 /**
  * Map keel depth (m, positive-down) → ambient band.
+ * Controls ambiance should pass the Dive DEPTH needle (tweened displayed
+ * depth), not resolve-jump sim keel, so the bed switches when the needle
+ * crosses the threshold.
  *
  * - `&lt; 90` → shallow (default / surface / patrol)
  * - `90 … &lt; 150` → deep (covers documented 90–140 plus the 141–149 gap)

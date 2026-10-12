@@ -546,7 +546,10 @@ export function StationPage() {
       audioDelaySec?: number;
     }>
   >([]);
-  /** Latest sub keel depth for ambient band selection + Emergency Blow creak gate. */
+  /**
+   * Latest Dive DEPTH needle depth (tweened) for ambient band selection.
+   * Band changes wait until the needle crosses the threshold — not resolve-jump keel.
+   */
   const subDepthRef = useRef(0);
   /**
    * Seed for depth-change SFX: play when turn advances, keel moved, and the
@@ -903,10 +906,17 @@ export function StationPage() {
   }, [onControlsBridge, onSubCreakBridge]);
 
   const surfaced = vessel ? isRadarSurfaced(vessel.unit.position) : true;
+  /** Resolve-truth keel — Sensors chrome / sonar hear gates (not ambient bands). */
   const depthM = vessel?.unit.position.depth ?? 0;
-  subDepthRef.current = depthM;
+  /**
+   * Ambient bands track the shared Dive needle ({@link displayedKeelDepthM}),
+   * same clock as crush-implosion reveal — not the resolve-jump sim keel.
+   */
+  subDepthRef.current = displayedKeelDepthM;
   const atPeriscopeDepth = depthM <= PERISCOPE_DEPTH_M;
-  const subAmbientBand = onSubCreakBridge ? subAmbientBandForDepth(depthM) : null;
+  const subAmbientBand = onSubCreakBridge
+    ? subAmbientBandForDepth(displayedKeelDepthM)
+    : null;
   bridgeSonarPingsRef.current = vessel?.bridgeActiveSonarPings ?? [];
   /** Hull-coupled enemy pings: submerged sub Controls with at least one close emitter. */
   const hearBridgeSonar =
@@ -930,6 +940,7 @@ export function StationPage() {
 
   /**
    * Submarine Controls ambient: depth-banded loops with crossfade on band change.
+   * Band follows Dive DEPTH needle ({@link subDepthRef} / displayedKeelDepthM).
    * Replaces facility hum + ambient creak one-shots + deep-hull clank loop.
    */
   useEffect(() => {
