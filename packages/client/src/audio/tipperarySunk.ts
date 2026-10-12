@@ -5,10 +5,11 @@
 export const TIPPERARY_SUNK_SAMPLE_URL = '/audio/long-way-to-tipperary.ogg';
 
 /**
- * Peak gain under remaining Controls / Sensors beds (~0.22–0.40 ambient).
- * Audible as music without clipping over the ambient bed.
+ * Peak gain under remaining Controls beds (~0.22–0.40 ambient).
+ * A notch above the prior 0.32 farewell so the disc reads clearly without
+ * clipping over the ambient bed.
  */
-export const TIPPERARY_SUNK_PEAK_GAIN = 0.32;
+export const TIPPERARY_SUNK_PEAK_GAIN = 0.40;
 
 /** Soft rise so the disc doesn’t slam in over residual ambience. */
 export const TIPPERARY_SUNK_FADE_IN_SEC = 0.6;
