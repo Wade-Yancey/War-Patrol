@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   defaultSubsystems,
+  isImplosionDepthRevealReady,
   presentationHealthFromUnrevealedDamage,
   presentationSubsystemsFromUnrevealed,
   type OwnDamageEvent,
@@ -38,10 +39,12 @@ export type SyncedDamagePresentation = {
  * mirrors those subsystems (hydrophone / radar / helm locks) should consume
  * `subsystems` / `condition` from this hook — not raw `vessel.unit` — so Sensors
  * do not go dark before the bang. Entries without a live `bridgeDetonations`
- * cue (or no `sourceDetonationId`) reveal immediately. DC cues use the pattern
- * stagger `whenSec`; torpedo-hit cues use `audioDelaySec` (arrival inside the
- * resolved turn) plus a short same-moment multi-hit stagger so bangs stay
- * countable. Umpire Action log is untouched.
+ * cue (or no `sourceDetonationId`) reveal immediately — except `hull_implosion`,
+ * which waits until the Dive Plane DEPTH needle has tweened to the resolved
+ * keel (same drama as blast sync). DC cues use the pattern stagger `whenSec`;
+ * torpedo-hit cues use `audioDelaySec` (arrival inside the resolved turn) plus
+ * a short same-moment multi-hit stagger so bangs stay countable. Umpire Action
+ * log is untouched.
  *
  * Reveals are scheduled from live `bridgeDetonations` (Sensors + Controls) and
  * again from Controls audio flush — first schedule wins (idempotent).
@@ -53,7 +56,14 @@ export function useAudioSyncedDamageReport(
     health: number;
     condition: UnitCondition;
     subsystems: UnitSubsystems;
+    /** Resolve-truth keel depth (m) — crush implode gate target. */
+    depth?: number;
   } | null,
+  /**
+   * Dive Plane displayed keel (tweened). When set with `unit.depth`, holds
+   * `hull_implosion` until the needle reaches the resolved depth.
+   */
+  displayedKeelDepthM?: number,
 ): SyncedDamagePresentation {
   const [revealedIds, setRevealedIds] = useState<Set<string>>(() => new Set());
   const [revealedDetonationIds, setRevealedDetonationIds] = useState<Set<string>>(
@@ -153,7 +163,14 @@ export function useAudioSyncedDamageReport(
     }
   }, [bridgeDetonations, scheduleRevealForDetonation]);
 
-  // Reveal anything not waiting on a live bridge cue (history, crush, expired cues).
+  const resolvedKeelDepthM = unit?.depth;
+  const implosionNeedleReady =
+    displayedKeelDepthM == null ||
+    resolvedKeelDepthM == null ||
+    isImplosionDepthRevealReady(displayedKeelDepthM, resolvedKeelDepthM);
+
+  // Reveal anything not waiting on a live bridge cue (history, expired cues).
+  // Crush `hull_implosion` waits on the Dive needle instead of a blast cue.
   useEffect(() => {
     const log = fullLog ?? [];
     const live = new Set((bridgeDetonations ?? []).map((d) => d.id));
@@ -168,6 +185,12 @@ export function useAudioSyncedDamageReport(
       }
       for (const e of log) {
         if (next.has(e.id)) continue;
+        if (e.kind === 'hull_implosion') {
+          if (!implosionNeedleReady) continue;
+          next.add(e.id);
+          changed = true;
+          continue;
+        }
         if (!e.sourceDetonationId || !live.has(e.sourceDetonationId)) {
           next.add(e.id);
           changed = true;
@@ -175,7 +198,7 @@ export function useAudioSyncedDamageReport(
       }
       return changed ? next : prev;
     });
-  }, [fullLog, bridgeDetonations]);
+  }, [fullLog, bridgeDetonations, implosionNeedleReady]);
 
   return useMemo(() => {
     const log = fullLog ?? [];
@@ -200,10 +223,18 @@ export function useAudioSyncedDamageReport(
     const health = presentationHealthFromUnrevealedDamage(unit.health, held);
 
     const heldFatal = held.some((e) => e.kind === 'unit_sunk' || e.kind === 'hull_implosion');
-    // Keep afloat while a linked fatal line is still waiting on its blast cue.
+    // Keep afloat while a linked fatal line is still waiting on its blast cue
+    // or (crush) Dive needle arrival.
     const condition: UnitCondition = heldFatal || health > 0 ? 'afloat' : 'sunk';
 
-    const subsystems = presentationSubsystemsFromUnrevealed(unit.subsystems, held);
+    const holdingHullImplosion = held.some((e) => e.kind === 'hull_implosion');
+    const revealedCasualtyEffects = damageLog
+      .filter((e) => e.kind === 'subsystem_casualty' && e.casualtyEffect)
+      .map((e) => e.casualtyEffect!);
+    const subsystems = presentationSubsystemsFromUnrevealed(unit.subsystems, held, {
+      holdingHullImplosion,
+      revealedCasualtyEffects,
+    });
 
     return {
       damageLog,

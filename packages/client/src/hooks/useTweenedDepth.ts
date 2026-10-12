@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { IMPLOSION_DEPTH_REVEAL_EPS_M } from '@war-patrol/shared';
 import { CONTACT_TWEEN_MS } from './useTweenedScopeContacts';
 
 /** Tick while a depth tween is active — same cadence as heading / contact crawl. */
@@ -6,7 +7,7 @@ const TWEEN_TICK_MS = 50;
 /** Idle tick when the needle is at rest. */
 const IDLE_TICK_MS = 200;
 /** Ignore sub-meter noise when deciding whether to restart a tween. */
-const DEPTH_EPS_M = 0.05;
+const DEPTH_EPS_M = IMPLOSION_DEPTH_REVEAL_EPS_M;
 
 function easeInOut(t: number): number {
   return t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
@@ -33,15 +34,24 @@ function isTweening(track: Track, now: number): boolean {
  * Animate displayed keel depth from previous → new over {@link CONTACT_TWEEN_MS}
  * (same wall-clock window and ease-in-out as helm HDG / sensor contact tween).
  * Mid-animation target updates restart from the current displayed depth.
+ * `null`/`undefined` clears the track so the first real keel snaps at rest
+ * (no entrance crawl from 0 when the vessel view first arrives).
  * Presentation only — does not affect order entry or server state.
  */
-export function useTweenedDepth(depthM: number): number {
-  const target = Number.isFinite(depthM) ? depthM : 0;
+export function useTweenedDepth(depthM: number | null | undefined): number {
+  const armed = depthM != null && Number.isFinite(depthM);
+  const target = armed ? (depthM as number) : 0;
   const [now, setNow] = useState(() => Date.now());
   const trackRef = useRef<Track | null>(null);
 
   useEffect(() => {
     const t = Date.now();
+    if (!armed) {
+      trackRef.current = null;
+      setNow(t);
+      return;
+    }
+
     const prev = trackRef.current;
     if (!prev) {
       trackRef.current = {
@@ -64,7 +74,7 @@ export function useTweenedDepth(depthM: number): number {
     } else {
       trackRef.current = { ...prev, to: target };
     }
-  }, [target]);
+  }, [armed, target]);
 
   useEffect(() => {
     let timer: number | null = null;
@@ -82,7 +92,7 @@ export function useTweenedDepth(depthM: number): number {
     return () => {
       if (timer != null) window.clearTimeout(timer);
     };
-  }, [target]);
+  }, [armed, target]);
 
   const track = trackRef.current;
   if (!track) return target;

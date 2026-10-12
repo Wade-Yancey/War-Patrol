@@ -116,6 +116,24 @@ export function isPastCrushDepth(
   return Number.isFinite(depthM) && depthM > crushM;
 }
 
+/** Sub-meter slack matching the Dive needle tween restart epsilon. */
+export const IMPLOSION_DEPTH_REVEAL_EPS_M = 0.05;
+
+/**
+ * True when the Dive Plane DEPTH needle has reached (or passed) the
+ * post-resolve keel — client holds crush-implosion sunk UI until then.
+ */
+export function isImplosionDepthRevealReady(
+  displayedDepthM: number,
+  resolvedDepthM: number,
+  epsM: number = IMPLOSION_DEPTH_REVEAL_EPS_M,
+): boolean {
+  if (!Number.isFinite(displayedDepthM) || !Number.isFinite(resolvedDepthM)) {
+    return true;
+  }
+  return displayedDepthM + epsM >= resolvedDepthM;
+}
+
 /** Risk band for keel or ordered depth relative to test / crush marks. */
 export function submarineDepthRisk(
   depthM: number,
@@ -181,6 +199,8 @@ export function applyCrushDepthImplosions(
     if (!isPastCrushDepth(unit.position.depth, crushM)) return unit;
     if (!rollSubmarineImplosion(rng, chance)) return unit;
 
+    // Capture pre-implosion HP for client Damage-report staging (needle gate).
+    const priorHealth = unit.health;
     const sunk = implodeSubmarine(unit);
     combatLogEntries.push({
       id: `cl-implode-${unit.id}-t${opts.turnNumber}`,
@@ -191,6 +211,7 @@ export function applyCrushDepthImplosions(
       summary: `${unit.name} IMPLODED — hull crushed past crush depth (${crushM} m)`,
       targetUnitId: unit.id,
       targetName: unit.name,
+      ...(priorHealth > 0 ? { damage: priorHealth } : {}),
     });
     return sunk;
   });

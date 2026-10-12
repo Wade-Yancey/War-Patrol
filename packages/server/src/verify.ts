@@ -84,6 +84,7 @@ import {
   formatContactDesignation,
   formatPeriscopeDesignation,
   formatWallDuration,
+  isImplosionDepthRevealReady,
   isPastCrushDepth,
   defaultTurnRateForClass,
   layoutScopeContactLabels,
@@ -896,6 +897,23 @@ async function main() {
         boom.units[0]!.sinkingTurnsRemaining === VESSEL_SINKING_TURNS,
     );
     check('implosion log kind', boom.combatLogEntries[0]?.kind === 'hull_implosion');
+    check(
+      'implosion log carries prior HP for presentation staging',
+      boom.combatLogEntries[0]?.damage === 100,
+      `damage=${boom.combatLogEntries[0]?.damage}`,
+    );
+    check(
+      'implosion needle not ready mid-crawl',
+      isImplosionDepthRevealReady(140, 160) === false,
+    );
+    check(
+      'implosion needle ready at resolved keel',
+      isImplosionDepthRevealReady(160, 160) === true,
+    );
+    check(
+      'implosion needle ready past resolved keel',
+      isImplosionDepthRevealReady(161, 160) === true,
+    );
     const safe = applyCrushDepthImplosions(units as never, {
       turnNumber: 3,
       gameTimeSeconds: 900,
@@ -4212,6 +4230,41 @@ async function main() {
         prev = nextHp;
       }
       check('staged overkill ends at 0', prev === 0);
+
+      // Crush implode stages prior HP until the Dive needle arrives.
+      const implodeHeld = [{ kind: 'hull_implosion' as const, damage: 100 }];
+      check(
+        'staged hull_implosion HP rewinds to prior',
+        presentationHealthFromUnrevealedDamage(0, implodeHeld) === 100,
+      );
+      check(
+        'revealed hull_implosion HP stays at 0',
+        presentationHealthFromUnrevealedDamage(0, []) === 0,
+      );
+      const implodeDisabled = resolveSubsystems({
+        propulsion: 'disabled',
+        radar: 'disabled',
+        hydrophone: 'disabled',
+        activeSonar: 'disabled',
+        lookout: 'disabled',
+        steering: 'disabled',
+        divePlanes: 'disabled',
+      });
+      const implodeHeldSubs = presentationSubsystemsFromUnrevealed(
+        implodeDisabled,
+        implodeHeld,
+        {
+          holdingHullImplosion: true,
+          revealedCasualtyEffects: [{ kind: 'hydrophone_disabled' }],
+        },
+      );
+      check(
+        'held hull_implosion rebuilds prior sensor chrome',
+        implodeHeldSubs.hydrophone === 'disabled' &&
+          implodeHeldSubs.radar === 'intact' &&
+          implodeHeldSubs.propulsion === 'intact',
+        `hydro=${implodeHeldSubs.hydrophone} radar=${implodeHeldSubs.radar} prop=${implodeHeldSubs.propulsion}`,
+      );
 
       // Subsystem casualties stage with the same held-blast clock as HP.
       const resolvedSubs = resolveSubsystems({ hydrophone: 'disabled', radar: 'intact' });

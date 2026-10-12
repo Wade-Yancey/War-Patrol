@@ -2828,7 +2828,10 @@ export function presentationHealthFromUnrevealedDamage(
       (e.kind === 'depth_charge_damage' ||
         e.kind === 'torpedo_hit' ||
         e.kind === 'aircraft_attack_damage' ||
-        e.kind === 'deck_gun_hit') &&
+        e.kind === 'deck_gun_hit' ||
+        // Crush implode stores prior HP on the line so the bar stays pre-bang
+        // until the Dive needle finishes its crawl (same clock as sunk modal).
+        e.kind === 'hull_implosion') &&
       e.damage != null &&
       e.damage > 0
     ) {

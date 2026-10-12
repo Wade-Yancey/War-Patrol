@@ -476,11 +476,81 @@ export function reverseCasualtyEffect(
   return next;
 }
 
+/**
+ * Apply one casualty for presentation rebuild (crush-implosion holdback).
+ * Best-effort mirror of {@link reverseCasualtyEffect}.
+ */
+export function applyCasualtyEffect(
+  subsystems: UnitSubsystems,
+  effect: CasualtyEffect,
+): UnitSubsystems {
+  const next = resolveSubsystems({ ...subsystems });
+  switch (effect.kind) {
+    case 'propulsion_damaged':
+      if (next.propulsion === 'intact') next.propulsion = 'damaged';
+      break;
+    case 'propulsion_disabled':
+      next.propulsion = 'disabled';
+      break;
+    case 'radar_disabled':
+      next.radar = 'disabled';
+      break;
+    case 'hydrophone_disabled':
+      next.hydrophone = 'disabled';
+      break;
+    case 'active_sonar_disabled':
+      next.activeSonar = 'disabled';
+      break;
+    case 'lookout_disabled':
+      next.lookout = 'disabled';
+      break;
+    case 'steering_disabled':
+      next.steering = 'disabled';
+      delete next.rudderStuckHeading;
+      break;
+    case 'rudder_stuck':
+      next.steering = 'stuck';
+      if (effect.stuckHeading != null) {
+        next.rudderStuckHeading = normalizeHeading(effect.stuckHeading);
+      }
+      break;
+    case 'dive_planes_stuck':
+      next.divePlanes = 'stuck';
+      if (effect.stuckDepthM != null) {
+        next.divePlanesStuckDepth = Math.max(0, effect.stuckDepthM);
+      }
+      break;
+    case 'dive_planes_disabled':
+      next.divePlanes = 'disabled';
+      if (effect.stuckDepthM != null) {
+        next.divePlanesStuckDepth = Math.max(0, effect.stuckDepthM);
+      }
+      break;
+  }
+  return next;
+}
+
 export function presentationSubsystemsFromUnrevealed(
   resolved: UnitSubsystems,
   unrevealed: ReadonlyArray<{ kind: string; casualtyEffect?: CasualtyEffect }>,
+  opts?: {
+    /**
+     * Crush implode forces `disabledAll` at resolve. While that line is still
+     * held for the Dive needle crawl, rebuild chrome from intact + already
+     * revealed casualties (resolved truth is unusable).
+     */
+    holdingHullImplosion?: boolean;
+    revealedCasualtyEffects?: ReadonlyArray<CasualtyEffect>;
+  },
 ): UnitSubsystems {
-  let next = resolveSubsystems(resolved);
+  let next = opts?.holdingHullImplosion
+    ? defaultSubsystems()
+    : resolveSubsystems(resolved);
+  if (opts?.holdingHullImplosion) {
+    for (const effect of opts.revealedCasualtyEffects ?? []) {
+      next = applyCasualtyEffect(next, effect);
+    }
+  }
   for (const e of unrevealed) {
     if (e.kind === 'subsystem_casualty' && e.casualtyEffect) {
       next = reverseCasualtyEffect(next, e.casualtyEffect);
