@@ -34,7 +34,8 @@ License: as provided for War Patrol (user sample)
 Local copy: sub-ambience-shallow-exposition.ogg
 Original filename: 13 - Deep Sea Exposition… (sub-ambience-shallow-exposition.mp3)
 Notes: Submarine Controls ambient — default / shallow keel (&lt; 90 m).
-Stereo Ogg Vorbis 44.1 kHz from the uploaded MP3.
+Stereo Ogg Vorbis 44.1 kHz from the uploaded MP3. Fade-in/out tails trimmed
+and circular-crossfaded (~1.5 s) for seamless Web Audio looping.
 
 Source: Submarine Internal Perspective During Deep Dive (user upload)
 License: as provided for War Patrol (user sample)
