@@ -1,11 +1,25 @@
-/** Torpedo-hit explosion sample (Controls bridge — firer + target). */
-export const TORPEDO_HIT_SAMPLE_URL = '/audio/explosion.wav';
+/** Torpedo-hit hull-impact sample (Controls bridge — firer + target). */
+export const TORPEDO_HIT_SAMPLE_URL = '/audio/torpedo-hit.wav';
 
 /**
- * Peak gain on Controls at zero range (before distance attenuation).
- * Raised for venue speakers; still under deck-gun / close DC peaks.
+ * Deck-gun hit / aircraft-bomb splash sample (Controls bridge).
+ * Kept separate from {@link TORPEDO_HIT_SAMPLE_URL} so torpedo collision
+ * swaps do not change other explosion cues.
  */
-export const TORPEDO_HIT_CONTROLS_PEAK_GAIN = 0.72;
+export const EXPLOSION_SAMPLE_URL = '/audio/explosion.wav';
+
+/**
+ * Peak gain on Controls for torpedo hits at zero range (before distance
+ * attenuation). Quieter than the shared explosion peak so the longer hull-ring
+ * sample does not dominate the bridge mix.
+ */
+export const TORPEDO_HIT_CONTROLS_PEAK_GAIN = 0.45;
+
+/**
+ * Peak gain on Controls for deck-gun hit / aircraft-bomb splash (uses
+ * {@link EXPLOSION_SAMPLE_URL}). Unchanged from the prior shared explosion peak.
+ */
+export const EXPLOSION_CONTROLS_PEAK_GAIN = 0.72;
 
 /**
  * Wall-clock gap (seconds) between explosion onsets when several torpedoes
@@ -20,6 +34,13 @@ export const TORPEDO_HIT_SAME_MOMENT_STAGGER_SEC = 0.45;
 export async function loadTorpedoHitBuffer(ctx: AudioContext): Promise<AudioBuffer> {
   const res = await fetch(TORPEDO_HIT_SAMPLE_URL);
   if (!res.ok) throw new Error(`Torpedo-hit sample fetch ${res.status}`);
+  const raw = await res.arrayBuffer();
+  return ctx.decodeAudioData(raw.slice(0));
+}
+
+export async function loadExplosionBuffer(ctx: AudioContext): Promise<AudioBuffer> {
+  const res = await fetch(EXPLOSION_SAMPLE_URL);
+  if (!res.ok) throw new Error(`Explosion sample fetch ${res.status}`);
   const raw = await res.arrayBuffer();
   return ctx.decodeAudioData(raw.slice(0));
 }
@@ -62,7 +83,7 @@ export function torpedoHitBatchWhenSecById(
   return out;
 }
 
-/** One-shot playback of the explosion sample into `destination`. */
+/** One-shot playback of a hit/explosion sample into `destination`. */
 export function playTorpedoHitSample(
   ctx: AudioContext,
   buffer: AudioBuffer,
