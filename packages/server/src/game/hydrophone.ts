@@ -10,6 +10,7 @@ import {
   hydrophoneSelfNoise,
   HYDROPHONE_RELOAD_RANGE_NM,
   HYDROPHONE_RELOAD_SOURCE_LEVEL,
+  HYDROPHONE_SINK_RANGE_NM,
   isActiveSonarPinging,
   isHydrophoneDepthOk,
   isHydrophoneEmitter,
@@ -44,6 +45,8 @@ export type HydrophonePicture = {
  * Depth-charge detonations: recent explosions within hearing range (one-shot WAV).
  * Torpedo reload: mechanical spike when a sub starts tube reload (FoW intensity) —
  *   not gated by {@link isHydrophoneEmitter}; STOP boats still clank.
+ * Vessel sunk: recent `unit_sunk` / `hull_implosion` combat-log lines within
+ *   hearing range (one-shot aftermath WAV) — waterborne hulls only.
  *
  * Own-ship self-noise from speed shrinks effective range and listen quality.
  * Fleet-sub hydrophone is submerged-only (depth > 5 m); DD hydro is always depth-ok.
@@ -164,6 +167,27 @@ export function buildHydrophoneContacts(own: UnitState, save: GameSave): Hydroph
       bearing: Math.round(bearing * 10) / 10,
       rangeNm: Math.round(rangeNm * 100) / 100,
       kind: 'depth_charge',
+    });
+  }
+
+  // Recent vessel sinks / hull implosions — one-shot aftermath at the wreck position.
+  // Same turn window as DC hydro cues (last resolve). Aircraft wrecks stay silent.
+  const sinkMax = Math.min(effectiveRangeNm, HYDROPHONE_SINK_RANGE_NM);
+  const unitsById = new Map(save.units.map((u) => [u.id, u]));
+  for (const entry of save.combatLog ?? []) {
+    if (entry.kind !== 'unit_sunk' && entry.kind !== 'hull_implosion') continue;
+    if (entry.turnNumber < save.turn.number - 1) continue;
+    const targetId = entry.targetUnitId;
+    if (!targetId || targetId === own.id) continue;
+    const wreck = unitsById.get(targetId);
+    if (!wreck || wreck.type === 'Aircraft') continue;
+    const { bearing, rangeNm } = bearingRangeNm(own.position, wreck.position);
+    if (rangeNm > sinkMax || rangeNm <= 0) continue;
+    contacts.push({
+      id: `h-sink-${entry.id}`,
+      bearing: Math.round(bearing * 10) / 10,
+      rangeNm: Math.round(rangeNm * 100) / 100,
+      kind: 'vessel_sunk',
     });
   }
 

@@ -133,3 +133,12 @@ Emergency Blow ascent is in progress (keel rising toward ordered 0 m);
 played on the Controls bridge AudioContext above a ducked depth-change bed
 (+ hull creak). Encoded from the uploaded MP3 to PCM 16-bit stereo 44.1 kHz
 WAV. Playback URL and peak gains unchanged.
+
+Source: Submarine Torpedo Aftermath Submarines (user upload)
+License: as provided for War Patrol (user sample)
+Local copy: ship-sink-aftermath.wav
+Original filename: 50 - Submarine Torpedo Aftermath Submarines.mp3
+Notes: Hydrophone — vessel-sunk / hull-implosion one-shot when a waterborne
+hull enters sinking / sunk within hearing range (combat log). Encoded from
+the uploaded MP3 to PCM 16-bit stereo 44.1 kHz WAV. Peak gain via
+hydrophoneShipSinkAftermathPeakGain (under DC detonation peaks).

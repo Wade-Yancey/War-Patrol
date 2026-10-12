@@ -1477,8 +1477,10 @@ export interface HydrophoneContact {
    * - `depth_charge` — one-shot detonation cue (recent DC explosion in hearing range)
    * - `torpedo_reload` — one-shot mechanical spike when a sub starts tube reload
    *   (FoW intensity only — no room / GT identity)
+   * - `vessel_sunk` — one-shot sink/breakup aftermath when a waterborne hull
+   *   enters sinking / sunk (combat log `unit_sunk` / `hull_implosion`)
    */
-  kind: 'propeller' | 'active_sonar_ping' | 'depth_charge' | 'torpedo_reload';
+  kind: 'propeller' | 'active_sonar_ping' | 'depth_charge' | 'torpedo_reload' | 'vessel_sunk';
   /**
    * Relative source loudness (default 1). Noisemakers use {@link NOISEMAKER_SOURCE_LEVEL};
    * underway hulls use speed/depth radiated level; reload cues use

@@ -156,6 +156,12 @@ export const HYDROPHONE_RELOAD_SOURCE_LEVEL = 1.4;
 export const HYDROPHONE_RELOAD_RANGE_NM = 8;
 
 /**
+ * Max range (nm) for a vessel-sunk / hull-implosion hydrophone one-shot
+ * (torpedo-aftermath / breakup bed). Same order as DC hydro hearing.
+ */
+export const HYDROPHONE_SINK_RANGE_NM = 12;
+
+/**
  * Destroyer active search sonar stub max range (nm).
  * Shorter than surface-search radar — forward cone only.
  */
