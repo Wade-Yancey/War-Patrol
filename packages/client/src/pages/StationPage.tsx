@@ -541,7 +541,7 @@ export function StationPage() {
       audioDelaySec?: number;
     }>
   >([]);
-  /** Latest sub keel depth for ambient band selection + DC stress creak gate. */
+  /** Latest sub keel depth for ambient band selection + Emergency Blow creak gate. */
   const subDepthRef = useRef(0);
   /**
    * Seed for depth-change SFX: play when turn advances, keel moved, and the
@@ -647,24 +647,6 @@ export function StationPage() {
     }
   };
 
-  /**
-   * Stress creak aligned with a nearby DC one-shot (may be delayed for pattern
-   * stagger). One call per charge — not once per pattern. Depth-banded ambient
-   * loops replace the old ambient creak / deep-clank beds.
-   */
-  const playDcStressCreak = (
-    ctx: AudioContext,
-    creak: AudioBuffer,
-    whenSec = 0,
-  ): void => {
-    if (subDepthRef.current <= RADAR_SURFACE_DEPTH_M) return;
-    if (ctx.state !== 'running') return;
-    playSubmarineCreakSample(ctx, creak, ctx.destination, SUBMARINE_CREAK_DC_GAIN, {
-      durationSec: SUBMARINE_CREAK_DC_DURATION_SEC,
-      whenSec,
-    });
-  };
-
   /** Play queued bridge blasts (close DC + torpedo/aircraft-bomb hits). */
   const flushBridgeBlastAudio = async (): Promise<void> => {
     const pending = pendingBridgeBlastRef.current;
@@ -720,17 +702,11 @@ export function StationPage() {
         /* keep pending tube doors; unlock may retry */
       }
     }
-    // Prefetch creak with DC so each staggered blast can schedule a stress burst.
-    if (needsDc && onSubCreakBridge) {
-      await ensureCreakBuffer(ctx);
-    }
-
     const dcBuffer = bridgeAudioRef.current.buffer;
     const torpedoHitBuffer = bridgeAudioRef.current.torpedoHitBuffer;
     const explosionBuffer = bridgeAudioRef.current.explosionBuffer;
     const gunFireBuffer = bridgeAudioRef.current.deckGunFireBuffer;
     const tubeDoorBuffer = bridgeAudioRef.current.torpedoFireBuffer;
-    const creakBuffer = bridgeAudioRef.current.creakBuffer;
     const still: Array<{
       id: string;
       rangeNm: number;
@@ -830,10 +806,6 @@ export function StationPage() {
             continue;
           }
           playDepthChargeSample(ctx, dcBuffer, ctx.destination, peak, { whenSec });
-          // Sub Controls: hull creak with *each* nearby charge (same schedule).
-          if (onSubCreakBridge && creakBuffer) {
-            playDcStressCreak(ctx, creakBuffer, whenSec);
-          }
           // Own-ship Damage report reveals with this charge's blast, not at resolve.
           scheduleDamageRevealRef.current(e.id, whenSec);
         }
