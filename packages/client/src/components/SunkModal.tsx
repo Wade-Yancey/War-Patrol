@@ -40,15 +40,27 @@ export type SunkModalProps = {
   vesselType: VesselType;
   cause: SunkCause;
   onAcknowledge: () => void;
+  /**
+   * When true (Controls station only), start Tipperary and show Stop music.
+   * Sensors still get the sunk popup — silent there so hydro/radar ops aren’t
+   * interrupted by the farewell disc.
+   */
+  playFarewellMusic?: boolean;
 };
 
 /**
  * CRT station popup when own-ship condition flips to sunk.
  * Ack-only (no typed token) — ConfirmAction chrome without the two-step confirm.
- * Starts Tipperary on mount (modal already waits for blast / Dive-needle sync);
- * “Stop music” fades playback out without closing the dialog.
+ * Optional Tipperary on Controls only (modal already waits for blast / Dive-needle
+ * sync); “Stop music” fades playback out without closing the dialog.
  */
-export function SunkModal({ vesselName, vesselType, cause, onAcknowledge }: SunkModalProps) {
+export function SunkModal({
+  vesselName,
+  vesselType,
+  cause,
+  onAcknowledge,
+  playFarewellMusic = false,
+}: SunkModalProps) {
   const title = sunkTitle(vesselType);
   const detail = sunkDetail(vesselType, cause);
   const playbackRef = useRef<TipperaryPlayback | null>(null);
@@ -61,6 +73,8 @@ export function SunkModal({ vesselName, vesselType, cause, onAcknowledge }: Sunk
   }, []);
 
   useEffect(() => {
+    if (!playFarewellMusic) return;
+
     let cancelled = false;
     const Ctx =
       window.AudioContext ||
@@ -94,7 +108,7 @@ export function SunkModal({ vesselName, vesselType, cause, onAcknowledge }: Sunk
       playbackRef.current = null;
       void ctx.close();
     };
-  }, []);
+  }, [playFarewellMusic]);
 
   const handleAcknowledge = () => {
     stopMusic();

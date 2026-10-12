@@ -1,6 +1,6 @@
 /**
  * Own-ship sunk farewell — “It's a Long, Long Way to Tipperary” (1915).
- * Starts with the player-facing sunk modal; stop via the modal control.
+ * Controls sunk modal only; Sensors stay silent. Stop via the modal control.
  */
 export const TIPPERARY_SUNK_SAMPLE_URL = '/audio/long-way-to-tipperary.ogg';
 
