@@ -394,6 +394,11 @@ label {
   letter-spacing: 0.1em !important;
 }
 
+.sunk-modal-actions {
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
 .confirm-warning p:last-child {
   margin-bottom: 0;
 }

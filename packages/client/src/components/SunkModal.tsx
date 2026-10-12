@@ -1,4 +1,10 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { OwnDamageEvent, VesselType } from '@war-patrol/shared';
+import {
+  loadTipperarySunkBuffer,
+  playTipperarySunk,
+  type TipperaryPlayback,
+} from '../audio/tipperarySunk';
 
 export type SunkCause = 'implosion' | 'combat' | 'unknown';
 
@@ -39,10 +45,61 @@ export type SunkModalProps = {
 /**
  * CRT station popup when own-ship condition flips to sunk.
  * Ack-only (no typed token) — ConfirmAction chrome without the two-step confirm.
+ * Starts Tipperary on mount (modal already waits for blast / Dive-needle sync);
+ * “Stop music” fades playback out without closing the dialog.
  */
 export function SunkModal({ vesselName, vesselType, cause, onAcknowledge }: SunkModalProps) {
   const title = sunkTitle(vesselType);
   const detail = sunkDetail(vesselType, cause);
+  const playbackRef = useRef<TipperaryPlayback | null>(null);
+  const [musicPlaying, setMusicPlaying] = useState(false);
+
+  const stopMusic = useCallback(() => {
+    playbackRef.current?.stop();
+    playbackRef.current = null;
+    setMusicPlaying(false);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const Ctx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const ctx = new Ctx();
+
+    void (async () => {
+      try {
+        if (ctx.state === 'suspended') await ctx.resume();
+        const buffer = await loadTipperarySunkBuffer(ctx);
+        if (cancelled) {
+          void ctx.close();
+          return;
+        }
+        playbackRef.current = playTipperarySunk(ctx, buffer, ctx.destination, {
+          onEnded: () => {
+            playbackRef.current = null;
+            setMusicPlaying(false);
+          },
+        });
+        setMusicPlaying(true);
+      } catch {
+        void ctx.close();
+        if (!cancelled) setMusicPlaying(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      playbackRef.current?.stop();
+      playbackRef.current = null;
+      void ctx.close();
+    };
+  }, []);
+
+  const handleAcknowledge = () => {
+    stopMusic();
+    onAcknowledge();
+  };
 
   return (
     <div className="sunk-modal-backdrop" role="presentation">
@@ -62,8 +119,13 @@ export function SunkModal({ vesselName, vesselType, cause, onAcknowledge }: Sunk
         <p id="sunk-modal-detail" className="confirm-warning" style={{ margin: 0 }}>
           {detail}
         </p>
-        <div className="control-actions">
-          <button type="button" className="primary hit-lg" onClick={onAcknowledge} autoFocus>
+        <div className="control-actions sunk-modal-actions">
+          {musicPlaying ? (
+            <button type="button" className="hit-lg" onClick={stopMusic}>
+              Stop music
+            </button>
+          ) : null}
+          <button type="button" className="primary hit-lg" onClick={handleAcknowledge} autoFocus>
             Acknowledge
           </button>
         </div>
