@@ -26,6 +26,30 @@ License: CC0 / public domain
 Original: https://freesound.org/people/asuperiorpotato/sounds/619320/
 Local copy: controls-ambient-hum.wav
 Original filename: 619320__asuperiorpotato__facility-hum-ambience-loopable.wav
+Notes: Destroyer Controls ambient bed only. Submarine Controls use the
+depth-banded sub-ambience-*.ogg loops instead.
+
+Source: Submarine Internal Ambience During Deep Sea Exposition (user upload)
+License: as provided for War Patrol (user sample)
+Local copy: sub-ambience-shallow-exposition.ogg
+Original filename: 13 - Deep Sea Exposition… (sub-ambience-shallow-exposition.mp3)
+Notes: Submarine Controls ambient — default / shallow keel (&lt; 90 m).
+Stereo Ogg Vorbis 44.1 kHz from the uploaded MP3.
+
+Source: Submarine Internal Perspective During Deep Dive (user upload)
+License: as provided for War Patrol (user sample)
+Local copy: sub-ambience-deep-dive.ogg
+Original filename: 10 - Deep Dive… (sub-ambience-deep-dive.mp3)
+Notes: Submarine Controls ambient — mid band (90–140 m; gap to 150 stays mid).
+Stereo Ogg Vorbis 44.1 kHz from the uploaded MP3.
+
+Source: WW2 Submarine Internal — Heavy Creaking… (user upload)
+License: as provided for War Patrol (user sample)
+Local copy: sub-ambience-crush-creaking.ogg
+Original filename: 02 - Heavy Creaking… (sub-ambience-crush-creaking.mp3)
+Notes: Submarine Controls ambient — crush band (≥ 150 m through 180 m+).
+Stereo Ogg Vorbis 44.1 kHz from the uploaded MP3. Crossfades with the other
+sub beds on band change (see packages/client/src/audio/subControlsAmbient.ts).
 
 Source: Submarine Underwater Impact — Metal Strike Against Hull Rings Out (user upload)
 License: as provided for War Patrol (user sample)
@@ -49,9 +73,10 @@ Source: Stereotypical sinking submarine sound (NO REVERB) by Ubehag (Freesound #
 License: CC0 / public domain
 Original: https://freesound.org/people/Ubehag/sounds/232021/
 Local copy: submarine-creaking.wav
-Notes: Submarine Controls only — occasional hull-pressure creaks while submerged
-(depth > radar surface band); more frequent with depth; also on nearby DC hits.
-Stereo 48 kHz PCM (front L/R only; former 6-channel silent-surround file downmixed).
+Notes: Submarine Controls — combat/stress one-shots only (nearby DC hits,
+Emergency Blow ascent). Ambient ticking-at-depth creaks were removed in favor
+of depth-banded sub-ambience loops. Stereo 48 kHz PCM (front L/R only;
+former 6-channel silent-surround file downmixed).
 
 Source: Large Cannon Fire by raphavpires (Freesound #867030)
 License: as provided for War Patrol (user sample)
@@ -94,15 +119,6 @@ Notes: Torpedo-room reload acoustic — burst (×3, ~1.35 s apart) on own submar
 Controls and on remote hydrophone listeners while the reload FoW spike is live
 (start turn + linger). Encoded from the uploaded MP3 to PCM 16-bit stereo
 44.1 kHz WAV. Shared URL for Controls + hydro paths; gains unchanged.
-
-Source: S21-24 Underwater metal clanking.wav by Craig Smith (Freesound #675196)
-License: CC0 / public domain
-Original: https://freesound.org/people/craigsmith/sounds/675196/
-Local copy: deep-hull-clanking.ogg
-Original filename: 675196__craigsmith__s21-24-underwater-metal-clanking.wav
-Notes: Submarine Controls — looping dramatic hull clank at keel depth ≥ 150 m
-(crush depth); replaces ambient creak one-shots while deep. Shallower submerged
-depths keep submarine-creaking.wav. Encoded lean mono Ogg Vorbis from the WAV.
 
 Source: Submarine Surfacing and Blowing Ballast's Tanks (user upload)
 License: as provided for War Patrol (user sample)
