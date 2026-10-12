@@ -19,7 +19,7 @@ Encoded from the uploaded MP3 to PCM 16-bit stereo 44.1 kHz WAV to match
 existing combat one-shot conventions. Gain curve
 (packages/client/src/audio/depthCharge.ts) is unchanged: damage-dealing
 close-range hits play near max gain, long-range detonations play much quieter.
-Torpedo / deck-gun hit splash still uses explosion.wav (separate sample).
+Deck-gun hit / aircraft-bomb splash still uses explosion.wav (separate sample).
 
 Source: Facility Hum Ambience Loopable by aSuperiorPotato (Freesound #619320)
 License: CC0 / public domain
@@ -27,13 +27,23 @@ Original: https://freesound.org/people/asuperiorpotato/sounds/619320/
 Local copy: controls-ambient-hum.wav
 Original filename: 619320__asuperiorpotato__facility-hum-ambience-loopable.wav
 
+Source: Submarine Underwater Impact — Metal Strike Against Hull Rings Out (user upload)
+License: as provided for War Patrol (user sample)
+Local copy: torpedo-hit.wav
+Original filename: 47 - Submarine Underwater Impact_ Metal Strike Against Hull Rings Out.mp3
+Notes: Controls bridge — torpedo-hit collision one-shots (firer + target),
+distance-attenuated; same-moment multi-fish stagger ~0.45 s. Encoded from the
+uploaded MP3 to PCM 16-bit stereo 44.1 kHz WAV. Controls peak gain is quieter
+than the shared explosion cue (see TORPEDO_HIT_CONTROLS_PEAK_GAIN).
+
 Source: nolonduoinuoc2 by sieuamthanh (Freesound #546958)
 License: as provided for War Patrol (user sample)
 Original: https://freesound.org/people/sieuamthanh/sounds/546958/
 Local copy: explosion.wav
 Original filename: 546958__sieuamthanh__nolonduoinuoc2.wav
-Notes: Controls bridge speakers — firer + target, distance-attenuated;
-hit SFX delay is compressed into ≤90 s (presentation only).
+Notes: Controls bridge — deck-gun hit splash + aircraft-bomb cues,
+distance-attenuated; hit SFX delay is compressed into ≤90 s (presentation only).
+Torpedo hits use torpedo-hit.wav instead.
 
 Source: Stereotypical sinking submarine sound (NO REVERB) by Ubehag (Freesound #232021)
 License: CC0 / public domain
@@ -49,7 +59,7 @@ Original: https://freesound.org/people/raphavpires/sounds/867030/
 Local copy: deck-gun-fire.wav
 Original filename: 867030__raphavpires__large-cannon-fire.wav
 Notes: Controls bridge — destroyer + fleet-sub deck-gun muzzle report (firer).
-Hit splash reuses explosion.wav (same as torpedo hit) after a short delay.
+Hit splash reuses explosion.wav after a short delay.
 
 Source: Ship Bell Single Ring by Sojan (Freesound #353233)
 License: CC0 / public domain

@@ -6903,7 +6903,7 @@ async function main() {
     }
 
     // Hit-audio path on a fresh game: park Porter dead ahead, stop both, one fish → hit.
-    // Firer + target Controls must get bridgeDetonations kind torpedo_hit (explosion.wav cue).
+    // Firer + target Controls must get bridgeDetonations kind torpedo_hit (torpedo-hit.wav cue).
     // Correct stationary solution (speed 0) → fire heading = aim → geometry hit.
     const hitGame = await api('POST', '/api/games', {
       scenarioId: 'torpedo-fire-test',

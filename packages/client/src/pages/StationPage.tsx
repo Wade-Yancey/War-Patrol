@@ -86,7 +86,9 @@ import {
   SONAR_PING_CONTROLS_OWN_GAIN,
 } from '../audio/sonarPing';
 import {
+  EXPLOSION_CONTROLS_PEAK_GAIN,
   TORPEDO_HIT_CONTROLS_PEAK_GAIN,
+  loadExplosionBuffer,
   loadTorpedoHitBuffer,
   playTorpedoHitSample,
   torpedoHitBatchWhenSecById,
@@ -567,6 +569,8 @@ export function StationPage() {
     ctx: AudioContext | null;
     buffer: AudioBuffer | null;
     torpedoHitBuffer: AudioBuffer | null;
+    /** Deck-gun hit / aircraft-bomb splash (`explosion.wav`). */
+    explosionBuffer: AudioBuffer | null;
     deckGunFireBuffer: AudioBuffer | null;
     torpedoFireBuffer: AudioBuffer | null;
     reloadKnockBuffer: AudioBuffer | null;
@@ -583,6 +587,7 @@ export function StationPage() {
     ctx: null,
     buffer: null,
     torpedoHitBuffer: null,
+    explosionBuffer: null,
     deckGunFireBuffer: null,
     torpedoFireBuffer: null,
     reloadKnockBuffer: null,
@@ -607,6 +612,7 @@ export function StationPage() {
       bridgeAudioRef.current.ctx = new Ctx();
       bridgeAudioRef.current.buffer = null;
       bridgeAudioRef.current.torpedoHitBuffer = null;
+      bridgeAudioRef.current.explosionBuffer = null;
       bridgeAudioRef.current.deckGunFireBuffer = null;
       bridgeAudioRef.current.torpedoFireBuffer = null;
       bridgeAudioRef.current.reloadKnockBuffer = null;
@@ -707,7 +713,10 @@ export function StationPage() {
       kind === 'aircraft_bomb' ||
       kind === 'deck_gun_hit';
     const needsDc = pending.some((e) => e.kind === 'depth_charge');
-    const needsHit = pending.some((e) => isExplosionCue(e.kind));
+    const needsTorpedoHit = pending.some((e) => e.kind === 'torpedo_hit');
+    const needsSharedExplosion = pending.some(
+      (e) => e.kind === 'aircraft_bomb' || e.kind === 'deck_gun_hit',
+    );
     const needsGunFire = pending.some((e) => e.kind === 'deck_gun_fire');
     const needsTubeDoor = pending.some((e) => e.kind === 'torpedo_fire');
     // Load samples independently — a DC fetch failure must not block torpedo hits
@@ -719,11 +728,18 @@ export function StationPage() {
         /* keep pending DC; unlock may retry */
       }
     }
-    if (needsHit && !bridgeAudioRef.current.torpedoHitBuffer) {
+    if (needsTorpedoHit && !bridgeAudioRef.current.torpedoHitBuffer) {
       try {
         bridgeAudioRef.current.torpedoHitBuffer = await loadTorpedoHitBuffer(ctx);
       } catch {
         /* keep pending hits; unlock may retry */
+      }
+    }
+    if (needsSharedExplosion && !bridgeAudioRef.current.explosionBuffer) {
+      try {
+        bridgeAudioRef.current.explosionBuffer = await loadExplosionBuffer(ctx);
+      } catch {
+        /* keep pending bomb/gun hits; unlock may retry */
       }
     }
     if (needsGunFire && !bridgeAudioRef.current.deckGunFireBuffer) {
@@ -746,7 +762,8 @@ export function StationPage() {
     }
 
     const dcBuffer = bridgeAudioRef.current.buffer;
-    const hitBuffer = bridgeAudioRef.current.torpedoHitBuffer;
+    const torpedoHitBuffer = bridgeAudioRef.current.torpedoHitBuffer;
+    const explosionBuffer = bridgeAudioRef.current.explosionBuffer;
     const gunFireBuffer = bridgeAudioRef.current.deckGunFireBuffer;
     const tubeDoorBuffer = bridgeAudioRef.current.torpedoFireBuffer;
     const creakBuffer = bridgeAudioRef.current.creakBuffer;
@@ -818,21 +835,22 @@ export function StationPage() {
             { whenSec: tubeDoorWhenById.get(e.id) ?? Math.max(0, e.audioDelaySec ?? 0) },
           );
         } else if (isExplosionCue(e.kind)) {
-          if (!hitBuffer) {
+          const isTorpedo = e.kind === 'torpedo_hit';
+          const sampleBuffer = isTorpedo ? torpedoHitBuffer : explosionBuffer;
+          if (!sampleBuffer) {
             still.push(e);
             continue;
           }
           // Floor so distant firer/target still hear a clear blast, not a tick.
-          const gain =
-            TORPEDO_HIT_CONTROLS_PEAK_GAIN *
-            Math.max(0.35, torpedoHitControlsGain(e.rangeNm));
+          // Torpedo uses a quieter peak; bomb / deck-gun keep the prior explosion peak.
+          const peak = isTorpedo ? TORPEDO_HIT_CONTROLS_PEAK_GAIN : EXPLOSION_CONTROLS_PEAK_GAIN;
+          const gain = peak * Math.max(0.35, torpedoHitControlsGain(e.rangeNm));
           // Torpedo: compressed turn delay + same-moment multi-hit stagger.
           // Aircraft bomb / deck-gun hit: compressed (or short fixed) delay only.
-          const whenSec =
-            e.kind === 'torpedo_hit'
-              ? (hitWhenById.get(e.id) ?? Math.max(0, e.audioDelaySec ?? 0))
-              : Math.max(0, e.audioDelaySec ?? 0);
-          playTorpedoHitSample(ctx, hitBuffer, ctx.destination, gain, { whenSec });
+          const whenSec = isTorpedo
+            ? (hitWhenById.get(e.id) ?? Math.max(0, e.audioDelaySec ?? 0))
+            : Math.max(0, e.audioDelaySec ?? 0);
+          playTorpedoHitSample(ctx, sampleBuffer, ctx.destination, gain, { whenSec });
           scheduleDamageRevealRef.current(e.id, whenSec);
         } else {
           if (!dcBuffer) {
@@ -936,6 +954,7 @@ export function StationPage() {
       bridgeAudioRef.current.ctx = null;
       bridgeAudioRef.current.buffer = null;
       bridgeAudioRef.current.torpedoHitBuffer = null;
+      bridgeAudioRef.current.explosionBuffer = null;
       bridgeAudioRef.current.deckGunFireBuffer = null;
       bridgeAudioRef.current.torpedoFireBuffer = null;
       bridgeAudioRef.current.reloadKnockBuffer = null;
