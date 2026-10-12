@@ -2,14 +2,14 @@
  * Torpedo-room reload mechanical knock (hydro listeners + own Controls).
  * Replaces the tube-door sample on the `torpedo_reload` cue path.
  */
-export const TORPEDO_RELOAD_KNOCK_SAMPLE_URL = '/audio/torpedo-reload-knock.mp3';
+export const TORPEDO_RELOAD_KNOCK_SAMPLE_URL = '/audio/torpedo-reload-knock.wav';
 
 /** How many knocks per acoustic reload turn (busy room, still not spam). */
 export const TORPEDO_RELOAD_KNOCK_COUNT = 3;
 
 /**
  * Wall-clock gap between knocks in a burst.
- * Sample is ~4.6 s; short overlap keeps the room busy without a long monologue.
+ * Sample is ~5.5 s; short overlap keeps the room busy without a long monologue.
  */
 export const TORPEDO_RELOAD_KNOCK_GAP_SEC = 1.35;
 
