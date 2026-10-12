@@ -9,16 +9,17 @@ Original: https://freesound.org/people/KIZILSUNGUR/sounds/70299/
 Local copy: sonar-ping.wav
 Original filename: 70299__kizilsungur__sonar.wav
 
-Source: 14010 Huge Detonation Explosion by robinhood76 (Freesound #855591)
+Source: Submarine Explosion — Heavy Low Implosion Underwater (user upload)
 License: as provided for War Patrol (user sample)
-Original: https://freesound.org/people/robinhood76/sounds/855591/
 Local copy: depth-charge.wav
-Original filename: 855591__robinhood76__14010-huge-detonation-explosion.wav
+Original filename: 31 - Submarine Explosion_ Heavy Low Implosion Underwater.mp3
 Notes: Controls bridge + hydrophone depth-charge detonation one-shots;
 multi-charge patterns stagger one play per charge across ~1.5 minutes.
-Gain curve (packages/client/src/audio/depthCharge.ts) is tuned for dynamic
-range: damage-dealing close-range hits play near max gain, long-range
-detonations play much quieter.
+Encoded from the uploaded MP3 to PCM 16-bit stereo 44.1 kHz WAV to match
+existing combat one-shot conventions. Gain curve
+(packages/client/src/audio/depthCharge.ts) is unchanged: damage-dealing
+close-range hits play near max gain, long-range detonations play much quieter.
+Torpedo / deck-gun hit splash still uses explosion.wav (separate sample).
 
 Source: Facility Hum Ambience Loopable by aSuperiorPotato (Freesound #619320)
 License: CC0 / public domain
