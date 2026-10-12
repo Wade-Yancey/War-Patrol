@@ -86,14 +86,14 @@ Original filename: 847442__mikiko850__industrial-sliding-door.mp3
 Notes: Submarine Controls bridge — one tube-door one-shot per fish in a salvo
 (firer only), staggered ~0.8 s so successive opens stay countable.
 
-Source: Knock on metal #5.wav by Arnaud Coutancier (Freesound #320161)
-License: CC BY-NC 3.0
-Original: https://freesound.org/people/arnaud%20coutancier/sounds/320161/
-Local copy: torpedo-reload-knock.mp3
-Original filename: 320161__arnaud-coutancier__knock-on-metal-5.wav
-Notes: Torpedo-room reload acoustic — couplet (×2, ~1.8 s apart) on own submarine
+Source: Reverberant Metallic Hits Inside of Empty Submarine (user upload)
+License: as provided for War Patrol (user sample)
+Local copy: torpedo-reload-knock.wav
+Original filename: 61 - Reverberant Metallic Hits Inside of Empty Submarine.mp3
+Notes: Torpedo-room reload acoustic — burst (×3, ~1.35 s apart) on own submarine
 Controls and on remote hydrophone listeners while the reload FoW spike is live
-(start turn + linger). Replaces tube-door on the torpedo_reload path only.
+(start turn + linger). Encoded from the uploaded MP3 to PCM 16-bit stereo
+44.1 kHz WAV. Shared URL for Controls + hydro paths; gains unchanged.
 
 Source: S21-24 Underwater metal clanking.wav by Craig Smith (Freesound #675196)
 License: CC0 / public domain
