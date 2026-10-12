@@ -42,15 +42,17 @@ License: as provided for War Patrol (user sample)
 Local copy: sub-ambience-deep-dive.ogg
 Original filename: 10 - Deep Dive… (sub-ambience-deep-dive.mp3)
 Notes: Submarine Controls ambient — mid band (90–140 m; gap to 150 stays mid).
-Stereo Ogg Vorbis 44.1 kHz from the uploaded MP3.
+Stereo Ogg Vorbis 44.1 kHz from the uploaded MP3. Fade-in/out tails trimmed
+and circular-crossfaded (~1.5 s) for seamless Web Audio looping.
 
 Source: WW2 Submarine Internal — Heavy Creaking… (user upload)
 License: as provided for War Patrol (user sample)
 Local copy: sub-ambience-crush-creaking.ogg
 Original filename: 02 - Heavy Creaking… (sub-ambience-crush-creaking.mp3)
 Notes: Submarine Controls ambient — crush band (≥ 150 m through 180 m+).
-Stereo Ogg Vorbis 44.1 kHz from the uploaded MP3. Crossfades with the other
-sub beds on band change (see packages/client/src/audio/subControlsAmbient.ts).
+Stereo Ogg Vorbis 44.1 kHz from the uploaded MP3. Fade-in/out tails trimmed
+and circular-crossfaded (~2.0 s) for seamless Web Audio looping. Band changes
+still crossfade beds (see packages/client/src/audio/subControlsAmbient.ts).
 
 Source: Submarine Underwater Impact — Metal Strike Against Hull Rings Out (user upload)
 License: as provided for War Patrol (user sample)
