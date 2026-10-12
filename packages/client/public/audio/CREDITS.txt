@@ -147,7 +147,8 @@ Source: It's a Long, Long Way to Tipperary (1915 recording) (user upload)
 License: as provided for War Patrol (user sample; 1915 recording — public domain)
 Local copy: long-way-to-tipperary.ogg
 Original filename: It's_a_Long,_Long_Way_to_Tipperary_(1915).ogg
-Notes: Own-ship sunk modal farewell music — starts when the player-facing
-sunk popup appears (after blast / Dive-needle sync). Stereo Ogg Vorbis
-44.1 kHz as provided. Peak gain TIPPERARY_SUNK_PEAK_GAIN (0.32) under
-remaining Controls ambient beds; Stop music on the popup fades playback.
+Notes: Own-ship sunk modal farewell music — Controls station only (Sensors
+popup stays silent). Starts when the Controls sunk popup appears (after
+blast / Dive-needle sync). Stereo Ogg Vorbis 44.1 kHz as provided. Peak
+gain TIPPERARY_SUNK_PEAK_GAIN (0.32) under remaining Controls ambient beds;
+Stop music on the popup fades playback.

@@ -1815,6 +1815,8 @@ export function StationPage() {
             vesselName={vessel.unit.name}
             vesselType={vessel.unit.type}
             cause={sunkCause}
+            // Tipperary only on Controls — Sensors (hydro/radar/sonar/optics) stay silent.
+            playFarewellMusic={isControls && !isSensors}
             onAcknowledge={() => {
               sunkModalAckedRef.current = true;
               setSunkModalOpen(false);
