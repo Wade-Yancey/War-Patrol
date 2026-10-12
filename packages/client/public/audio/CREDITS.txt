@@ -150,5 +150,5 @@ Original filename: It's_a_Long,_Long_Way_to_Tipperary_(1915).ogg
 Notes: Own-ship sunk modal farewell music — Controls station only (Sensors
 popup stays silent). Starts when the Controls sunk popup appears (after
 blast / Dive-needle sync). Stereo Ogg Vorbis 44.1 kHz as provided. Peak
-gain TIPPERARY_SUNK_PEAK_GAIN (0.32) under remaining Controls ambient beds;
+gain TIPPERARY_SUNK_PEAK_GAIN (0.40) under remaining Controls ambient beds;
 Stop music on the popup fades playback.
