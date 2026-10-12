@@ -12,7 +12,10 @@ import { DepthGauge } from './DepthGauge';
 import { TouchNumber } from './TouchNumber';
 
 export interface DiveControlsProps {
-  /** Actual keel depth (m). */
+  /**
+   * Displayed keel depth (m) — parent-tweened so the risk banner tracks the
+   * needle (and crush-implosion reveal can share that clock).
+   */
   depth: number;
   /** Standing ordered depth set-point (m). */
   orderedDepth: number;

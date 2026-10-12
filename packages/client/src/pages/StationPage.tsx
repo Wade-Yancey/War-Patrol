@@ -66,6 +66,7 @@ import { DamageReportPanel } from '../components/DamageReportPanel';
 import { MoveDistanceReadout } from '../components/MoveDistanceReadout';
 import { useAudioSyncedDamageReport } from '../hooks/useAudioSyncedDamageReport';
 import { usePresentationSensorStations } from '../hooks/usePresentationSensorStations';
+import { useTweenedDepth } from '../hooks/useTweenedDepth';
 import { resolveSunkCause, SunkModal } from '../components/SunkModal';
 import { StationInstrumentTitle } from '../components/StationInfoButton';
 import { stationGuideIdFor } from '../stationGuides';
@@ -389,6 +390,8 @@ export function StationPage() {
   const onSubCreakBridge =
     onControlsBridge && vessel?.unit.type === 'Submarine';
 
+  /** Shared Dive needle clock — also gates crush-implosion sunk reveal. */
+  const displayedKeelDepthM = useTweenedDepth(vessel?.unit.position.depth);
   const syncedDamage = useAudioSyncedDamageReport(
     vessel?.ownDamageLog,
     vessel?.bridgeDetonations,
@@ -397,8 +400,10 @@ export function StationPage() {
           health: vessel.unit.health,
           condition: vessel.unit.condition,
           subsystems: vessel.unit.subsystems,
+          depth: vessel.unit.position.depth,
         }
       : null,
+    vessel?.unit.type === 'Submarine' ? displayedKeelDepthM : undefined,
   );
   /** Presentation subsystems/condition for station chrome (matches blast reveal). */
   const presentationSubs = syncedDamage.subsystems;
@@ -2478,7 +2483,7 @@ export function StationPage() {
                   )}
                 </div>
                 <DiveControls
-                  depth={vessel.unit.position.depth}
+                  depth={displayedKeelDepthM}
                   orderedDepth={vessel.unit.orderedDepth ?? vessel.unit.position.depth}
                   draftDepth={depth}
                   onDraftDepthChange={(d) => setDepth(clampSubmarineDepth(d))}

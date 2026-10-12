@@ -8,7 +8,6 @@ import {
   formatCoarseDepthMeters,
   submarineDepthRisk,
 } from '@war-patrol/shared';
-import { useTweenedDepth } from '../hooks/useTweenedDepth';
 
 /** Full CRT dial footprint (same geometry family as helm / radar). */
 export const DEPTH_GAUGE_SIZE = 320;
@@ -35,7 +34,10 @@ const LABELED_DEPTH_MARKS_M = [0, 30, 60, 90, 120, 150, 180] as const;
 const MINOR_TICK_M = 10;
 
 export interface DepthGaugeProps {
-  /** Actual keel depth (m) — needle + DEPTH readout tween toward this. */
+  /**
+   * Displayed keel depth (m) — needle + DEPTH readout. Parent owns the
+   * useTweenedDepth crawl so crush-implosion reveal can share the clock.
+   */
   depth: number;
   /** Standing ordered depth set-point (m) — live bug, not tweened. */
   orderedDepth: number;
@@ -82,7 +84,7 @@ function describeArc(startDeg: number, endDeg: number, r: number): string {
 
 /**
  * WWII U-boat–inspired CRT depth gauge for Dive Plane.
- * Keel DEPTH needle + digital readout tween via {@link useTweenedDepth}
+ * Keel DEPTH needle + digital readout use the parent-tweened `depth`
  * (same CONTACT_TWEEN_MS window as helm HDG); ORDERED / SET bugs stay live.
  */
 function DepthGaugeInner({
@@ -92,7 +94,7 @@ function DepthGaugeInner({
   maxDepthM = SUBMARINE_MAX_DEPTH_M,
   children,
 }: DepthGaugeProps) {
-  const displayDepth = useTweenedDepth(depth);
+  const displayDepth = depth;
   const depthAngle = depthToNeedleAngle(displayDepth, maxDepthM);
   const orderedAngle = depthToNeedleAngle(orderedDepth, maxDepthM);
   const showDraft =
