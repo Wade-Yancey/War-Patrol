@@ -25,17 +25,22 @@ import {
   loadTorpedoReloadKnockBuffer,
   playTorpedoReloadKnockCouplet,
 } from '../audio/torpedoReloadKnock';
+import {
+  hydrophoneShipSinkAftermathPeakGain,
+  loadShipSinkAftermathBuffer,
+  playShipSinkAftermathSample,
+} from '../audio/shipSinkAftermath';
 import { useContinuousAngle } from '../hooks/useContinuousAngle';
 import { CrtTrainControl } from './CrtTrainControl';
 
 const PROP_SAMPLE_URL = '/audio/echo-propeller.wav';
 /** Bearing nudge step for ◀ / ▶ train buttons (degrees). */
 const BEARING_NUDGE_DEG = 1;
-/** Default hydro master gain (submarine Sensors). */
-export const HYDROPHONE_MASTER_GAIN_DEFAULT = 0.55;
+/** Default hydro master gain (submarine Sensors) — matched to DD mix. */
+export const HYDROPHONE_MASTER_GAIN_DEFAULT = 0.7;
 /**
- * Destroyer Sensors hydro master — modest bump over sub default.
- * Speaker-friendly: ~+25%, not crushing.
+ * Destroyer Sensors hydro master — same loudness as the default mix.
+ * Named constant kept for StationPage destroyer wiring.
  */
 export const HYDROPHONE_MASTER_GAIN_DESTROYER = 0.7;
 
@@ -56,8 +61,9 @@ interface Props {
    */
   turnNumber: number;
   /**
-   * Web Audio master gain for Listening playback (prop / ping / DC / reload).
-   * Destroyers pass a slightly higher value; subs keep the default.
+   * Web Audio master gain for Listening playback
+   * (prop / ping / DC / reload / vessel-sunk).
+   * Destroyers and subs share the same target loudness by default.
    */
   masterGain?: number;
 }
@@ -118,7 +124,8 @@ type ContactVoice = {
  * CRT hydrophone bearing dial — audio-first (passive listen ≠ own active sonar PPI).
  * Operator trains a listen needle; Web Audio mixes looping propeller samples
  * with per-contact gain from range × beam × sourceLevel × listenQuality.
- * Active-sonar ping / DC / reload contacts use one-shot samples. No visual contacts.
+ * Active-sonar ping / DC / reload / vessel-sunk contacts use one-shot samples.
+ * No visual contacts.
  */
 function HydrophoneScopeInner({
   contacts,
@@ -144,9 +151,12 @@ function HydrophoneScopeInner({
   const pingBufferRef = useRef<AudioBuffer | null>(null);
   const dcBufferRef = useRef<AudioBuffer | null>(null);
   const reloadBufferRef = useRef<AudioBuffer | null>(null);
+  const sinkBufferRef = useRef<AudioBuffer | null>(null);
   const playedDcIdsRef = useRef<Set<string>>(new Set());
   /** Keys: `${contactId}@${turnNumber}` — knock burst once per acoustic turn. */
   const playedReloadKeysRef = useRef<Set<string>>(new Set());
+  /** Played vessel-sunk contact ids — retain for component lifetime (like DC). */
+  const playedSinkIdsRef = useRef<Set<string>>(new Set());
   const masterGainRef = useRef<GainNode | null>(null);
   const masterGainLevelRef = useRef(masterGain);
   const voicesRef = useRef<Map<string, ContactVoice>>(new Map());
@@ -256,6 +266,9 @@ function HydrophoneScopeInner({
       if (!reloadBufferRef.current) {
         reloadBufferRef.current = await loadTorpedoReloadKnockBuffer(audioCtxRef.current);
       }
+      if (!sinkBufferRef.current) {
+        sinkBufferRef.current = await loadShipSinkAftermathBuffer(audioCtxRef.current);
+      }
       setAudioReady(true);
       setAudioError(null);
       return true;
@@ -289,7 +302,7 @@ function HydrophoneScopeInner({
     const master = masterGainRef.current;
     if (!ctx || !buffer || !master || ctx.state !== 'running') return;
 
-    // Propeller loops only — pings / depth charges / reload use one-shot samples.
+    // Propeller loops only — pings / DC / reload / sink use one-shot samples.
     const list = contactsRef.current.filter((c) => c.kind === 'propeller');
     const bearing = listenRef.current;
     const quality = listenQualityRef.current;
@@ -436,6 +449,32 @@ function HydrophoneScopeInner({
     }
   }, []);
 
+  /**
+   * One-shot vessel-sunk / hull-implosion aftermath when a new contact appears.
+   * Played ids are retained for the component lifetime (same as DC) so SSE
+   * flicker cannot re-trigger a long aftermath bed.
+   */
+  const playSinkSamples = useCallback(() => {
+    const ctx = audioCtxRef.current;
+    const master = masterGainRef.current;
+    const sinkBuffer = sinkBufferRef.current;
+    if (!ctx || !master || !sinkBuffer || ctx.state !== 'running') return;
+    const bearing = listenRef.current;
+    const quality = listenQualityRef.current;
+    const sinks = contactsRef.current.filter((c) => c.kind === 'vessel_sunk');
+    const fresh = sinks
+      .filter((c) => !playedSinkIdsRef.current.has(c.id))
+      .slice()
+      .sort((a, b) => a.id.localeCompare(b.id));
+    for (const c of fresh) {
+      const gainAmt = hydrophoneContactGain(c.rangeNm, bearing, c.bearing, 1, quality);
+      // Breakup bed is loud underwater — play even off-beam at reduced gain.
+      const peak = Math.max(0.04, hydrophoneShipSinkAftermathPeakGain(Math.max(gainAmt, 0.12)));
+      playShipSinkAftermathSample(ctx, sinkBuffer, master, peak);
+      playedSinkIdsRef.current.add(c.id);
+    }
+  }, []);
+
   // Propeller gain tracks listen bearing / contact list; never restart ping cadence here.
   useEffect(() => {
     if (!listening) {
@@ -445,6 +484,7 @@ function HydrophoneScopeInner({
     syncVoices();
     playDepthChargeSamples();
     playReloadSamples();
+    playSinkSamples();
   }, [
     listening,
     contacts,
@@ -455,6 +495,7 @@ function HydrophoneScopeInner({
     stopAllVoices,
     playDepthChargeSamples,
     playReloadSamples,
+    playSinkSamples,
   ]);
 
   // Active-sonar hear path: one emit cadence from the destroyer stub interval.
@@ -756,7 +797,7 @@ function HydrophoneScopeInner({
           {' · '}
           {contacts.length === 0
             ? 'no acoustic contacts in range'
-            : `${contacts.filter((c) => c.kind === 'propeller').length} prop · ${contacts.filter((c) => c.kind === 'active_sonar_ping').length} ping · ${contacts.filter((c) => c.kind === 'torpedo_reload').length} reload (audio only)`}
+            : `${contacts.filter((c) => c.kind === 'propeller').length} prop · ${contacts.filter((c) => c.kind === 'active_sonar_ping').length} ping · ${contacts.filter((c) => c.kind === 'torpedo_reload').length} reload · ${contacts.filter((c) => c.kind === 'vessel_sunk').length} sink (audio only)`}
           {listening && audioReady ? ' · LIVE' : ''}
         </p>
         {audioError && <p className="error">{audioError}</p>}
