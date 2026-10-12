@@ -104,12 +104,12 @@ Notes: Submarine Controls — looping dramatic hull clank at keel depth ≥ 150 
 (crush depth); replaces ambient creak one-shots while deep. Shallower submerged
 depths keep submarine-creaking.wav. Encoded lean mono Ogg Vorbis from the WAV.
 
-Source: Venting.wav by Sea Fury (Freesound #48710)
+Source: Submarine Surfacing and Blowing Ballast's Tanks (user upload)
 License: as provided for War Patrol (user sample)
-Original: https://freesound.org/people/Sea%20Fury/sounds/48710/
 Local copy: emergency-blow-venting.wav
-Original filename: 48710__sea-fury__venting.wav
-Notes: Submarine Controls — ballast-vent one-shot on turn resolve while an
+Original filename: 58 - Submarine Surfacing and Blowing Ballast's Tanks.mp3
+Notes: Submarine Controls — ballast-blow one-shot on turn resolve while an
 Emergency Blow ascent is in progress (keel rising toward ordered 0 m);
 played on the Controls bridge AudioContext above a ducked depth-change bed
-(+ hull creak) so the hiss stays audible on speakers.
+(+ hull creak). Encoded from the uploaded MP3 to PCM 16-bit stereo 44.1 kHz
+WAV. Playback URL and peak gains unchanged.
