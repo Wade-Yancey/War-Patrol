@@ -82,11 +82,11 @@ import {
 } from '../audio/controlsAmbient';
 import {
   SUB_AMBIENT_CROSSFADE_SEC,
-  SUB_CONTROLS_AMBIENT_GAIN,
   crossfadeAmbientLoop,
   loadSubAmbientBuffer,
   stopAmbientLoopVoice,
   subAmbientBandForDepth,
+  subAmbientGainForBand,
   type SubAmbientBand,
 } from '../audio/subControlsAmbient';
 import {
@@ -1000,7 +1000,7 @@ export function StationPage() {
           buffer,
           ctx.destination,
           prev,
-          SUB_CONTROLS_AMBIENT_GAIN,
+          subAmbientGainForBand(band),
           fadeSec,
         );
         bridgeAudioRef.current.ambientSource = next.source;
