@@ -15,20 +15,20 @@ export const DEPTH_CHARGE_SAMPLE_URL = '/audio/depth-charge.wav';
 
 /**
  * Peak gain on Controls when a charge detonates on top of own ship (range ≈ 0)
- * before the damage-band multiplier. Set to the max intentional ceiling (1.0)
- * so a point-blank, damage-dealing charge reads as loud as the engine allows —
- * dynamic range is carved out below this by quintic range falloff and the
- * damage-band multiplier, not by holding this peak back.
+ * before the damage-band multiplier. Above unity so Wade’s lower-RMS
+ * `depth-charge.wav` still reads as a hard near-sub hit over ambient/creak —
+ * dynamic range is carved out below this by range falloff and the damage-band
+ * multiplier, not by holding this peak back.
  */
-export const DEPTH_CHARGE_CONTROLS_GAIN = 1.0;
+export const DEPTH_CHARGE_CONTROLS_GAIN = 1.35;
 
 /**
  * Hard ceiling for Controls DC one-shot gain after the damage-band multiplier.
- * 1.0 — the max intentional gain — so a close, damage-dealing blast can sit
- * exactly at the top of the curve. Every other range/band sits strictly below
+ * Matches {@link DEPTH_CHARGE_CONTROLS_GAIN} so a close, damage-dealing blast
+ * can sit at the top of the curve. Every other range/band sits strictly below
  * this via {@link depthChargeControlsGain} and {@link DEPTH_CHARGE_DAMAGE_BAND_GAIN}.
  */
-export const DEPTH_CHARGE_CONTROLS_PEAK_CEILING = 1.0;
+export const DEPTH_CHARGE_CONTROLS_PEAK_CEILING = 1.35;
 
 /**
  * Gain multipliers from horizontal miss distance to the sim damage / stun
@@ -137,10 +137,10 @@ export function depthChargeDamageBandMultiplier(rangeNm: number): number {
 /**
  * Final Controls DC one-shot peak gain for a bridge cue.
  *
- * `DEPTH_CHARGE_CONTROLS_GAIN × quintic(range) × damageBand(range)`, clamped to
- * {@link DEPTH_CHARGE_CONTROLS_PEAK_CEILING} (1.0). A close, damage-dealing
- * charge lands at/near the ceiling; med/far near-misses and long-range blasts
- * fall well below it, for a dramatic near-vs-far dynamic range.
+ * `DEPTH_CHARGE_CONTROLS_GAIN × rangeFalloff(range) × damageBand(range)`, clamped
+ * to {@link DEPTH_CHARGE_CONTROLS_PEAK_CEILING}. A close, damage-dealing charge
+ * lands at/near the ceiling; med/far near-misses and long-range blasts fall
+ * well below it, for a dramatic near-vs-far dynamic range.
  */
 export function depthChargeControlsPeakGain(rangeNm: number): number {
   const base = DEPTH_CHARGE_CONTROLS_GAIN * depthChargeControlsGain(rangeNm);
@@ -151,9 +151,12 @@ export function depthChargeControlsPeakGain(rangeNm: number): number {
   );
 }
 
-/** Peak gain for hydrophone-heard detonation given range×beam gain in [0, 1]. */
+/**
+ * Peak gain for hydrophone-heard detonation given range×beam gain in [0, 1].
+ * Scaled with the Controls near-sub bump so Sensors DC one-shots stay audible.
+ */
 export function hydrophoneDepthChargePeakGain(contactGain: number): number {
-  return Math.min(0.85, 0.18 + contactGain * 0.78);
+  return Math.min(1.15, 0.24 + contactGain * 1.05);
 }
 
 export async function loadDepthChargeBuffer(ctx: AudioContext): Promise<AudioBuffer> {
