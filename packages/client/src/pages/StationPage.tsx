@@ -2047,9 +2047,7 @@ export function StationPage() {
                         </span>
                       </button>
                       <span className="mono muted station-latch-hint">
-                        {opticsMastRaised
-                          ? `Scope live · stamp ${vessel.unit.plotStampTurns ?? 0}`
-                          : 'Blind · not spottable'}
+                        {opticsMastRaised ? 'Scope live' : 'Blind · not spottable'}
                       </span>
                     </div>
                   </div>
@@ -2244,7 +2242,6 @@ export function StationPage() {
 
             <section className="panel stack station-turn-panel">
               <h2>Turn</h2>
-              <TurnStatus turn={vessel.turn} turnLengthSeconds={vessel.turnLengthSeconds} />
               {hasPendingOrders(displayOrders) ? (
                 <div className="orders-of-record" role="status">
                   <span
@@ -2252,11 +2249,7 @@ export function StationPage() {
                       orderWritePending || ordersOverlay ? 'pending' : 'open'
                     }`}
                   >
-                    {orderWritePending
-                      ? 'Sending'
-                      : ordersOverlay
-                        ? 'Acked'
-                        : 'Of record'}
+                    {orderWritePending || ordersOverlay ? 'Updating…' : 'Submitted'}
                   </span>
                   <span className="mono readout">
                     {formatPendingOrdersSummary(displayOrders)}
@@ -2769,7 +2762,6 @@ export function StationPage() {
 
             <section className="panel stack station-turn-panel">
               <h2>Turn</h2>
-              <TurnStatus turn={vessel.turn} turnLengthSeconds={vessel.turnLengthSeconds} />
               {hasPendingOrders(displayOrders) ? (
                 <div className="orders-of-record" role="status">
                   <span
@@ -2777,11 +2769,7 @@ export function StationPage() {
                       orderWritePending || ordersOverlay ? 'pending' : 'open'
                     }`}
                   >
-                    {orderWritePending
-                      ? 'Sending'
-                      : ordersOverlay
-                        ? 'Acked'
-                        : 'Of record'}
+                    {orderWritePending || ordersOverlay ? 'Updating…' : 'Submitted'}
                   </span>
                   <span className="mono readout">
                     {formatPendingOrdersSummary(displayOrders)}

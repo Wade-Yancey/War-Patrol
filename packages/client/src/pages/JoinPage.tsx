@@ -5,14 +5,21 @@ import { CrtShell } from '../components/CrtShell';
 /** Manual join helper when pasting a station path. */
 export function JoinPage() {
   const navigate = useNavigate();
-  const [path, setPath] = useState('/g/.../v/.../s/...');
+  const [path, setPath] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const go = (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+    const trimmed = path.trim();
+    if (!trimmed) {
+      setError('Paste a station path or URL');
+      return;
+    }
     try {
-      const url = path.startsWith('http') ? new URL(path) : new URL(path, window.location.origin);
+      const url = trimmed.startsWith('http')
+        ? new URL(trimmed)
+        : new URL(trimmed, window.location.origin);
       navigate(url.pathname);
     } catch {
       setError('Invalid path');
@@ -29,7 +36,12 @@ export function JoinPage() {
         <form className="panel stack" onSubmit={go} style={{ maxWidth: 520, marginTop: '1.5rem' }}>
           <label>
             Station path
-            <input value={path} onChange={(e) => setPath(e.target.value)} />
+            <input
+              value={path}
+              onChange={(e) => setPath(e.target.value)}
+              placeholder="/g/…/v/…/s/…"
+              autoComplete="off"
+            />
           </label>
           <button className="primary" type="submit">
             Open station

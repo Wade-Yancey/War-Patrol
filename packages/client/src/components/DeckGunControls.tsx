@@ -150,9 +150,8 @@ export function DeckGunControls({
           <h2>Guns</h2>
         )}
         <p className="muted station-instrument-blurb">
-          Deck gun · {magStatus} · max {maxShots}/turn (slow fire) · reload{' '}
-          {DECK_GUN_RELOAD_TURNS} turns (~{DECK_GUN_RELOAD_TURNS * 3} min) then mag
-          refills · max {DECK_GUN_MAX_RANGE_NM} nm · surface only
+          {magStatus} · max {maxShots}/turn · {DECK_GUN_MAX_RANGE_NM} nm · surface only ·
+          reload {DECK_GUN_RELOAD_TURNS} turns
         </p>
       </div>
 
@@ -284,7 +283,7 @@ export function DeckGunControls({
 
       {pending && (
         <p className="mono readout" style={{ margin: 0 }}>
-          Of record: {Math.max(1, Math.floor(Number(pending.shotCount) || 1))} rd
+          Submitted: {Math.max(1, Math.floor(Number(pending.shotCount) || 1))} rd
           {Math.max(1, Math.floor(Number(pending.shotCount) || 1)) === 1 ? '' : 's'} · aim{' '}
           {String(Math.round(pending.aimHeading)).padStart(3, '0')}° · CRS{' '}
           {String(Math.round(pending.estimatedCourse)).padStart(3, '0')}° ·{' '}

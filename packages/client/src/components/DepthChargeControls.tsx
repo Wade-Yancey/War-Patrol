@@ -81,8 +81,7 @@ export function DepthChargeControls({
       <div className="station-instrument-head">
         <StationInstrumentTitle title="Depth charges" guideId="dd/depth_charges" />
         <p className="muted station-instrument-blurb">
-          Rack {rackStatus} · reload {DEPTH_CHARGE_RELOAD_TURNS} turns (~
-          {DEPTH_CHARGE_RELOAD_TURNS * 3} min) then rack refills
+          Rack {rackStatus} · reload {DEPTH_CHARGE_RELOAD_TURNS} turns
         </p>
       </div>
 
@@ -143,7 +142,7 @@ export function DepthChargeControls({
 
       {pending && (
         <p className="mono readout" style={{ margin: 0 }}>
-          Of record: ×{depthChargeCountFromOrder(pending, DESTROYER_DEPTH_CHARGE_LOAD)} · set{' '}
+          Submitted: ×{depthChargeCountFromOrder(pending, DESTROYER_DEPTH_CHARGE_LOAD)} · set{' '}
           {pending.depthSettingM} m
         </p>
       )}

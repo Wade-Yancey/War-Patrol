@@ -58,7 +58,6 @@ function PendingOrdersPanelInner({ units }: { units: UnitState[] }) {
                 <div className="pending-order-main">
                   <div className="pending-order-id">
                     <span className="readout">{row.name}</span>
-                    <span className="mono muted">{row.unitId}</span>
                   </div>
                   <div className="pending-order-status">
                     <span

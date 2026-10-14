@@ -59,8 +59,8 @@ export function CountermeasuresControls({
       <div className="station-instrument-head">
         <StationInstrumentTitle title="Countermeasures" guideId="sub/countermeasures" />
         <p className="muted station-instrument-blurb">
-          Drifting noisemaker · cooldown {NOISEMAKER_COOLDOWN_TURNS} turns ·
-          active {NOISEMAKER_LIFETIME_TURNS} turns
+          Noisemaker · cooldown {NOISEMAKER_COOLDOWN_TURNS} · active{' '}
+          {NOISEMAKER_LIFETIME_TURNS} turns
         </p>
       </div>
 
