@@ -537,7 +537,12 @@ export function UmpirePage() {
                 <div className="umpire-gt-map-head">
                   <div className="umpire-gt-map-title">
                     <h2>Ground truth{mapFullscreen ? ' · AAR' : ''}</h2>
-                    <TurnStatus turn={umpire.turn} turnLengthSeconds={umpire.turnLengthSeconds} />
+                    {mapFullscreen && (
+                      <TurnStatus
+                        turn={umpire.turn}
+                        turnLengthSeconds={umpire.turnLengthSeconds}
+                      />
+                    )}
                     {gtDisplay?.reviewing && (
                       <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
                         AAR snapshot — read-only. Resolve still advances LIVE.
@@ -2071,7 +2076,7 @@ export function UmpirePage() {
             <section className="panel" style={{ marginTop: '1rem' }}>
               <h2>Connections</h2>
               {umpire.connections.length === 0 ? (
-                <p className="muted">No live SSE clients.</p>
+                <p className="muted">No connected stations.</p>
               ) : (
                 <ul className="mono" style={{ margin: 0, paddingLeft: '1.1rem' }}>
                   {umpire.connections.map((c, i) => (

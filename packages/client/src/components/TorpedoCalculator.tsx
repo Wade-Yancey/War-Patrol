@@ -219,8 +219,7 @@ export function TorpedoCalculator({
         <p className="muted station-instrument-blurb">
           {TORPEDO_SPEED_KN} kn · {TORPEDO_MAX_RUN_NM} nm · bow ±
           {TORPEDO_FORWARD_ARC_HALF_DEG}° / stern ±{TORPEDO_AFT_ARC_HALF_DEG}° · reload{' '}
-          {TORPEDO_RELOAD_TURNS} turns (~{TORPEDO_RELOAD_TURNS * 3} min) then tubes refill;
-          ready tubes stay live
+          {TORPEDO_RELOAD_TURNS} turns
         </p>
       </div>
 
@@ -473,7 +472,7 @@ export function TorpedoCalculator({
 
       {pending && (
         <p className="mono readout" style={{ margin: 0 }}>
-          Of record: {pending.room === 'aft' ? 'aft' : 'fwd'} · aim{' '}
+          Submitted: {pending.room === 'aft' ? 'aft' : 'fwd'} · aim{' '}
           {formatRelBearing(relativeBearingDeg(ownHeading, pending.aimHeading))} (true{' '}
           {String(Math.round(pending.aimHeading)).padStart(3, '0')}°)
           {pending.spreadCount && pending.spreadCount > 1

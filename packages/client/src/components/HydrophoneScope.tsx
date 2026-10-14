@@ -139,7 +139,6 @@ function HydrophoneScopeInner({
 }: Props) {
   const [listenBearing, setListenBearing] = useState(0);
   const [listening, setListening] = useState(false);
-  const [audioReady, setAudioReady] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   /** Session-local loudness prior for passive range band (not persisted). */
@@ -269,12 +268,10 @@ function HydrophoneScopeInner({
       if (!sinkBufferRef.current) {
         sinkBufferRef.current = await loadShipSinkAftermathBuffer(audioCtxRef.current);
       }
-      setAudioReady(true);
       setAudioError(null);
       return true;
     } catch (err) {
       setAudioError(err instanceof Error ? err.message : 'Audio init failed');
-      setAudioReady(false);
       return false;
     }
   }, []);
@@ -794,11 +791,6 @@ function HydrophoneScopeInner({
           {selfNoise > 0.05 ? ` · self-noise ${Math.round(selfNoise * 100)}%` : ' · quiet hull'}
           {' · '}
           assume {assumedSourceLabel(assumedSource).toLowerCase()}
-          {' · '}
-          {contacts.length === 0
-            ? 'no acoustic contacts in range'
-            : `${contacts.filter((c) => c.kind === 'propeller').length} prop · ${contacts.filter((c) => c.kind === 'active_sonar_ping').length} ping · ${contacts.filter((c) => c.kind === 'torpedo_reload').length} reload · ${contacts.filter((c) => c.kind === 'vessel_sunk').length} sink (audio only)`}
-          {listening && audioReady ? ' · LIVE' : ''}
         </p>
         {audioError && <p className="error">{audioError}</p>}
       </div>

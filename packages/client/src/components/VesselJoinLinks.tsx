@@ -108,27 +108,20 @@ export function VesselJoinLinks({ vesselLinks, units, busy, onRotateToken }: Pro
         )}
       </div>
       <p className="muted vessel-join-links-help">
-        <strong>Copy</strong> sends full station URLs
+        <strong>Copy</strong> gives players full station URLs
         {copyUsesPublic ? (
           <>
             {' '}
-            on the public origin (<span className="mono">{copyBase}</span>) for remote
-            players
+            on <span className="mono">{copyBase}</span>
           </>
-        ) : (
-          <> for players</>
-        )}
-        . <strong>Open</strong> stays on this browser origin — on the host machine,
-        keep umpire + your own stations on{' '}
-        <span className="mono">http://127.0.0.1:{hostInfo?.listenPort ?? 8787}</span>{' '}
-        so LIVE does not stick on RECONNECTING through the tunnel. Destroyer + Fleet
-        Submarine only; optional vessel password is set in Unit edit.
+        ) : null}
+        . <strong>Open</strong> uses this browser — for the host, prefer{' '}
+        <span className="mono">http://127.0.0.1:{hostInfo?.listenPort ?? 8787}</span> over
+        the tunnel.
       </p>
       {hostInfo?.internetMode && !copyBase && (
         <p className="muted vessel-join-links-help">
-          Waiting for a public URL (<span className="mono">WAR_PATROL_TUNNEL=cloudflared</span>{' '}
-          or <span className="mono">WAR_PATROL_PUBLIC_URL</span>)… Copy currently uses this
-          page&apos;s origin.
+          Waiting for a public URL… Copy uses this page&apos;s origin until one is ready.
         </p>
       )}
 
