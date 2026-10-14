@@ -13,10 +13,15 @@ import {
   AIRCRAFT_INTERCEPT_MAX_TARGET_DEPTH_M,
   AIRCRAFT_ATTACK_ALIGN_DEG,
   AIRCRAFT_ATTACK_HARD_TURN_DEG,
+  AIRCRAFT_ATTACK_TURN_RATE_MULT,
+  AIRCRAFT_LOITER_DEFAULT_RADIUS_M,
   resolveAircraftAttackEffect,
   aircraftAttackModesForClass,
   aircraftAttackPursuitEot,
+  effectiveAircraftTurnRateDegPerMin,
   formatAircraftAttackModeTag,
+  moveAlongHeading,
+  normalizeHeading,
   canOrderAircraftAttack,
   isAircraftAttackTarget,
   PERISCOPE_DEPTH_M,
@@ -715,7 +720,22 @@ async function main() {
       aircraftAttackPursuitEot(0, 0) === 'ahead_flank' &&
         aircraftAttackPursuitEot(0, AIRCRAFT_ATTACK_ALIGN_DEG + 1) ===
           'ahead_standard' &&
+        aircraftAttackPursuitEot(0, AIRCRAFT_ATTACK_HARD_TURN_DEG) === 'stop' &&
         aircraftAttackPursuitEot(0, AIRCRAFT_ATTACK_HARD_TURN_DEG + 1) === 'stop',
+    );
+    check(
+      'aircraft attack turn rate boosts while standing attack live',
+      effectiveAircraftTurnRateDegPerMin({
+        type: 'Aircraft',
+        turnRate: 12,
+        orders: { aircraftAttack: { mode: 'bombing_run', targetUnitId: 'x' } },
+      }) ===
+        12 * AIRCRAFT_ATTACK_TURN_RATE_MULT &&
+        effectiveAircraftTurnRateDegPerMin({
+          type: 'Aircraft',
+          turnRate: 12,
+          orders: {},
+        }) === 12,
     );
     const bombHit = resolveAircraftAttackEffect({
       mode: 'bombing_run',
@@ -8236,6 +8256,118 @@ async function main() {
         );
       } else {
         check('strafe still steers after clear loiter', false, 'missing units');
+      }
+
+      // CAP orbit (~2 nm tangential) + bombing a surface ship must release —
+      // not circle forever (Wade: bomb boat / cancel loiter still looked stuck).
+      {
+        const urakazePos = (
+          (
+            await api('GET', `/api/games/${airId}/view`, undefined, airTok)
+          ).json.view as {
+            units?: Array<{ id: string; position?: { lat: number; lon: number } }>;
+          }
+        ).units?.find((u) => u.id === 'dd-urakaze')?.position ?? {
+          lat: 34.4,
+          lon: -120.0,
+          depth: 0,
+        };
+        const center = {
+          lat: urakazePos.lat,
+          lon: urakazePos.lon,
+          depth: 0,
+        };
+        const orbitPos = moveAlongHeading(center, 0, AIRCRAFT_LOITER_DEFAULT_RADIUS_M);
+        const tangential = normalizeHeading(
+          bearingRangeNm(center, orbitPos).bearing + 90,
+        );
+        await api(
+          'PATCH',
+          `/api/games/${airId}/units/dd-urakaze`,
+          {
+            position: center,
+            heading: 90,
+            orderedCourse: 90,
+            speed: 8,
+            health: 100,
+          },
+          airTok,
+        );
+        await api(
+          'PATCH',
+          `/api/games/${airId}/units/ac-zeke-cap`,
+          {
+            position: orbitPos,
+            heading: tangential,
+            orderedCourse: tangential,
+            speed: 200,
+            bombLoad: 1,
+          },
+          airTok,
+        );
+        await api(
+          'POST',
+          `/api/games/${airId}/units/ac-zeke-cap/orders`,
+          { aircraftLoiter: { centerUnitId: 'dd-urakaze' } },
+          airTok,
+        );
+        const bombOrbit = await api(
+          'POST',
+          `/api/games/${airId}/units/ac-zeke-cap/orders`,
+          { aircraftAttack: { mode: 'bombing_run', targetUnitId: 'dd-urakaze' } },
+          airTok,
+        );
+        check('queue bombing from CAP orbit on surface ship', bombOrbit.status === 200);
+        // Cancel loiter while attack live — must still prosecute (not keep orbiting).
+        await api(
+          'POST',
+          `/api/games/${airId}/units/ac-zeke-cap/orders`,
+          { aircraftLoiter: null },
+          airTok,
+        );
+        let orbitBombReleased = false;
+        for (let i = 0; i < 6; i++) {
+          await api('POST', `/api/games/${airId}/turn/lock`, {}, airTok);
+          await api('POST', `/api/games/${airId}/turn/resolve`, {}, airTok);
+          const snap = await api('GET', `/api/games/${airId}/view`, undefined, airTok);
+          const uv = snap.json.view as {
+            combatLog?: Array<{ kind?: string; summary?: string; turnNumber?: number }>;
+            units?: Array<{
+              id: string;
+              aircraftLoiter?: unknown;
+              orders?: { aircraftAttack?: unknown };
+              bombLoad?: number;
+            }>;
+            turn?: { number?: number };
+          };
+          const z = uv.units?.find((u) => u.id === 'ac-zeke-cap');
+          const turnJustResolved = (uv.turn?.number ?? 1) - 1;
+          const lines = (uv.combatLog ?? []).filter(
+            (e) =>
+              e.turnNumber === turnJustResolved &&
+              (e.kind === 'aircraft_attack' ||
+                e.kind === 'aircraft_attack_damage' ||
+                e.kind === 'aircraft_attack_miss'),
+          );
+          if (
+            lines.some(
+              (e) =>
+                e.kind === 'aircraft_attack' && (e.summary ?? '').includes('bombing'),
+            )
+          ) {
+            orbitBombReleased = true;
+            check(
+              'CAP-orbit bombing clears attack after release',
+              !z?.orders?.aircraftAttack && !z?.aircraftLoiter,
+            );
+            break;
+          }
+          if (!z?.orders?.aircraftAttack) break;
+        }
+        check(
+          'CAP-orbit bombing surface ship releases (not endless circle)',
+          orbitBombReleased,
+        );
       }
     }
 
