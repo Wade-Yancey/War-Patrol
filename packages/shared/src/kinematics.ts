@@ -32,7 +32,10 @@ import {
   normalizePositionForType,
   resolveOrderedDepth,
 } from './vessel.js';
-import { applyAircraftStandingOrders } from './aircraft.js';
+import {
+  applyAircraftStandingOrders,
+  effectiveAircraftTurnRateDegPerMin,
+} from './aircraft.js';
 import { applyVesselStandingOrders } from './vesselStanding.js';
 /** Shortest-arc heading step toward desired, capped by maxDelta degrees. */
 export function turnToward(current: number, desired: number, maxDelta: number): number {
@@ -133,9 +136,12 @@ export function applyUnitKinematics(
   }
 
   // Turn toward ordered course (size-based turnRate deg/min × in-game minutes).
+  // Standing aircraft attack uses a higher effective yaw so break-from-CAP can
+  // face the target in one resolve (see AIRCRAFT_ATTACK_TURN_RATE_MULT).
   // Steering disabled → no yaw this resolve.
   if (subsystems.steering !== 'disabled') {
-    const maxDelta = unit.turnRate * (turnLengthSeconds / 60);
+    const maxDelta =
+      effectiveAircraftTurnRateDegPerMin(unit) * (turnLengthSeconds / 60);
     heading = turnToward(heading, orderedCourse, maxDelta);
   }
 

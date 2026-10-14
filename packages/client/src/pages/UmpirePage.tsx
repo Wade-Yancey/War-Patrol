@@ -1457,12 +1457,13 @@ export function UmpirePage() {
                         <div className="unit-edit-group">
                           <h3>Attack run</h3>
                           <p className="muted" style={{ margin: '0 0 0.5rem', fontSize: '0.75rem' }}>
-                            Standing multi-turn order — auto-steers toward the target at full band
-                            each resolve and auto-releases when CPA ≤ 2200 m (hit ≤ 280 m / near ≤
-                            900 m). Bombing consumes the single bomb on drop; intercept / strafe
-                            use guns. Clears when weapons release, target is gone, or you cancel.
-                            Fighters favor intercept; bombers favor bombing — all three modes
-                            available.
+                            Standing multi-turn order — auto-steers toward the target each resolve
+                            (pursuit speed: full when aligned, slower when breaking CAP) with a
+                            sharper attack turn so orbiting planes can cut in and auto-release when
+                            CPA ≤ 2200 m (hit ≤ 280 m / near ≤ 900 m). Bombing consumes the single
+                            bomb on drop; intercept / strafe use guns. Clears when weapons release,
+                            target is gone, or you cancel. Fighters favor intercept; bombers favor
+                            bombing — all three modes available.
                           </p>
                           <p className="mono muted" style={{ margin: '0 0 0.5rem', fontSize: '0.8rem' }}>
                             Bombs: {selectedUnit.bombLoad ?? 0}

@@ -151,10 +151,33 @@ export function aircraftAttackHeadingErrorDeg(
 export const AIRCRAFT_ATTACK_ALIGN_DEG = 45;
 
 /**
- * Large off-axis threshold (deg): above this, use loiter band (tightest museum
+ * Large off-axis threshold (deg): at/above this, use loiter band (tightest museum
  * turn geometry — turn rate is deg/min, not speed-dependent).
  */
 export const AIRCRAFT_ATTACK_HARD_TURN_DEG = 90;
+
+/**
+ * Standing-attack yaw multiplier vs class {@link UnitState.turnRate}.
+ * CAP orbits sit ~2 nm out with a tangential heading; museum airframe turn rates
+ * (~12°/min) only yaw ~36° per 3-min resolve, so pursuit-then-dash never reaches
+ * bomb/gun release CPA and the plane looks stuck loitering — even after Cancel
+ * loiter. Kinematics yaw then dash, so this multiplier lets the plane face the
+ * target in one resolve and cut across the orbit.
+ */
+export const AIRCRAFT_ATTACK_TURN_RATE_MULT = 5;
+
+/**
+ * Effective deg/min yaw while a standing aircraft attack is live (else class rate).
+ */
+export function effectiveAircraftTurnRateDegPerMin(
+  unit: Pick<UnitState, 'type' | 'turnRate' | 'orders'>,
+): number {
+  const base = Math.max(0, Number(unit.turnRate) || 0);
+  if (unit.type === 'Aircraft' && unit.orders.aircraftAttack) {
+    return base * AIRCRAFT_ATTACK_TURN_RATE_MULT;
+  }
+  return base;
+}
 
 /**
  * Pursuit EOT for a standing attack: full when roughly aligned, otherwise a
@@ -165,7 +188,7 @@ export function aircraftAttackPursuitEot(
   attackCourseDeg: number,
 ) {
   const err = aircraftAttackHeadingErrorDeg(headingDeg, attackCourseDeg);
-  if (err > AIRCRAFT_ATTACK_HARD_TURN_DEG) return AIRCRAFT_BAND_EOT.loiter;
+  if (err >= AIRCRAFT_ATTACK_HARD_TURN_DEG) return AIRCRAFT_BAND_EOT.loiter;
   if (err > AIRCRAFT_ATTACK_ALIGN_DEG) return AIRCRAFT_BAND_EOT.cruise;
   return AIRCRAFT_BAND_EOT.full;
 }
