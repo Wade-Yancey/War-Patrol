@@ -3,6 +3,7 @@ import type {
   BoundingBox,
   DepthChargeTrack,
   NoisemakerTrack,
+  SeaSurfaceMarker,
   SensorDef,
   TorpedoTrack,
   UnitState,
@@ -62,6 +63,11 @@ interface Props {
    * splash) for umpire GT aim lines — live resolve cues; pruned after a few turns.
    */
   detonations?: WeaponDetonationEvent[];
+  /**
+   * Sink-aftermath sea clutter (oil / debris / rafts / pilot) — permanent GT
+   * markers, drawn under hull wrecks. Same world state FoW Sightings read.
+   */
+  seaSurfaceMarkers?: SeaSurfaceMarker[];
   /**
    * In-game seconds per resolve — used for entire-turn move prediction.
    * Defaults to scenario default when omitted.
@@ -358,6 +364,80 @@ function weaponsSignature(
   return `${t}#${d}#${n}#${g}`;
 }
 
+function seaSurfaceMarkersSignature(markers: SeaSurfaceMarker[] | undefined): string {
+  if (!markers?.length) return '';
+  return markers
+    .map(
+      (m) =>
+        `${m.id}:${m.kind}:${m.createdTurn}:${m.position.lat.toFixed(5)},${m.position.lon.toFixed(5)}`,
+    )
+    .join('|');
+}
+
+/** Instrument GT glyph for a sink-aftermath marker (phosphor, under wrecks). */
+function SeaSurfaceMarkerGlyph({
+  kind,
+  x,
+  y,
+}: {
+  kind: SeaSurfaceMarker['kind'];
+  x: number;
+  y: number;
+}) {
+  if (kind === 'oil') {
+    return (
+      <g opacity={0.55} pointerEvents="none">
+        <ellipse
+          cx={x}
+          cy={y}
+          rx={16}
+          ry={9}
+          fill="#1a2e22"
+          fillOpacity={0.55}
+          stroke="#3a5a48"
+          strokeWidth={1}
+          strokeOpacity={0.7}
+          strokeDasharray="3 4"
+        />
+        <ellipse cx={x - 2} cy={y + 1} rx={9} ry={4.5} fill="#243830" fillOpacity={0.4} />
+      </g>
+    );
+  }
+  if (kind === 'debris') {
+    return (
+      <g opacity={0.8} pointerEvents="none" stroke="#7dff9a" strokeWidth={1.2} fill="none">
+        <line x1={x - 5} y1={y - 2} x2={x - 1} y2={y + 1} />
+        <line x1={x + 2} y1={y - 3} x2={x + 6} y2={y} />
+        <line x1={x - 2} y1={y + 3} x2={x + 3} y2={y + 4} />
+        <circle cx={x} cy={y} r={1.2} fill="#5a9a68" stroke="none" />
+      </g>
+    );
+  }
+  if (kind === 'life_rafts') {
+    return (
+      <g opacity={0.75} pointerEvents="none">
+        <ellipse
+          cx={x}
+          cy={y}
+          rx={5}
+          ry={2.5}
+          fill="none"
+          stroke="#8ec8a0"
+          strokeWidth={1.2}
+        />
+      </g>
+    );
+  }
+  // downed_pilot
+  return (
+    <g opacity={0.8} pointerEvents="none" stroke="#8ec8a0" strokeWidth={1.2}>
+      <line x1={x - 4} y1={y} x2={x + 4} y2={y} />
+      <line x1={x} y1={y - 4} x2={x} y2={y + 4} />
+      <circle cx={x} cy={y} r={2.5} fill="none" />
+    </g>
+  );
+}
+
 function areaSignature(area: BoundingBox): string {
   return `${area.minLat},${area.maxLat},${area.minLon},${area.maxLon}`;
 }
@@ -583,6 +663,7 @@ function GroundTruthMapInner({
   depthCharges = [],
   noisemakers = [],
   detonations = [],
+  seaSurfaceMarkers = [],
   turnLengthSeconds = DEFAULT_TURN_LENGTH_SECONDS,
   showMovePrediction = true,
 }: Props) {
@@ -1183,6 +1264,30 @@ function GroundTruthMapInner({
       }),
     [units, view, zoom, trailInboundDx, moveOutboundDx],
   );
+
+  /** Sink-aftermath clutter — oil under debris under rafts/pilot; under hull wrecks. */
+  const seaSurfaceGlyphs = useMemo(() => {
+    const kindRank: Record<SeaSurfaceMarker['kind'], number> = {
+      oil: 0,
+      debris: 1,
+      life_rafts: 2,
+      downed_pilot: 3,
+    };
+    return [...seaSurfaceMarkers]
+      .map((m) => {
+        const { u, v } = projectToUv(m.position.lat, m.position.lon, view);
+        return {
+          id: m.id,
+          kind: m.kind,
+          x: u * W,
+          y: v * H,
+          onPlot: uvHitsPlot(u, v),
+          rank: kindRank[m.kind],
+        };
+      })
+      .filter((g) => g.onPlot)
+      .sort((a, b) => a.rank - b.rank || a.id.localeCompare(b.id));
+  }, [seaSurfaceMarkers, view]);
 
   /**
    * Sensor detection radii — rings under trails; one stacked label block per unit
@@ -1995,6 +2100,10 @@ function GroundTruthMapInner({
             ))}
           </g>
 
+          {seaSurfaceGlyphs.map((g) => (
+            <SeaSurfaceMarkerGlyph key={g.id} kind={g.kind} x={g.x} y={g.y} />
+          ))}
+
           {markers
             .filter((m) => m.onPlot)
             .map((m) => (
@@ -2242,6 +2351,12 @@ export const GroundTruthMap = memo(GroundTruthMapInner, (prev, next) => {
   if (
     weaponsSignature(prev.torpedoes, prev.depthCharges, prev.detonations, prev.noisemakers) !==
     weaponsSignature(next.torpedoes, next.depthCharges, next.detonations, next.noisemakers)
+  ) {
+    return false;
+  }
+  if (
+    seaSurfaceMarkersSignature(prev.seaSurfaceMarkers) !==
+    seaSurfaceMarkersSignature(next.seaSurfaceMarkers)
   ) {
     return false;
   }

@@ -23,6 +23,11 @@ import {
   formatTrueBearing,
   OpticsBearingCompass,
 } from './OpticsBearingCompass';
+import {
+  isAftermathSightingKind,
+  OpticsAftermathFieldSvg,
+  type AftermathFieldKind,
+} from './OpticsAftermathFieldSvg';
 import { PeriscopeFeatherSvg } from './PeriscopeFeatherSvg';
 
 interface Props {
@@ -235,6 +240,19 @@ function PeriscopeScopeInner({
   const compassRel =
     selectedSighting?.relativeBearing ?? selected?.relativeBearing ?? null;
 
+  /** Sibling aftermath kinds on the same LOS (oil + debris at one wreck). */
+  const aftermathAlso: AftermathFieldKind[] =
+    selectedSighting && isAftermathSightingKind(selectedSighting.kind)
+      ? sortedSightings
+          .filter(
+            (s) =>
+              s.id !== selectedSighting.id &&
+              isAftermathSightingKind(s.kind) &&
+              s.relativeBearing === selectedSighting.relativeBearing,
+          )
+          .map((s) => s.kind as AftermathFieldKind)
+      : [];
+
   const viewportLabel =
     variant === 'lookout' ? 'Lookout visual contact' : 'Periscope visual contact';
   const isFeather = selected?.kind === 'periscope';
@@ -289,6 +307,13 @@ function PeriscopeScopeInner({
           <p className="periscope-empty mono muted">No visual contacts within {maxRangeNm} nm</p>
         ) : selectedSighting ? (
           <div className="periscope-selected periscope-selected--sighting">
+            {isAftermathSightingKind(selectedSighting.kind) && (
+              <OpticsAftermathFieldSvg
+                className="periscope-aftermath-field"
+                kind={selectedSighting.kind}
+                also={aftermathAlso}
+              />
+            )}
             <div className="periscope-readouts mono">
               <span className="readout">{opticsSightingLabel(selectedSighting.kind)}</span>
               {/*
