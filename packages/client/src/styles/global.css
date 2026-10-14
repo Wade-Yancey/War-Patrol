@@ -2656,8 +2656,57 @@ label {
 }
 
 .periscope-selected--sighting {
-  /* No plate scale — text-only wake cue in the viewer. */
+  /* Aftermath fields sit above readouts; wakes stay text-only. */
   --peri-scale: 1;
+}
+
+/* Sink-aftermath oil / debris field — seat on the sea plane below the horizon. */
+.periscope-aftermath-field {
+  display: block;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: min(88vw, 16rem);
+  max-width: 100%;
+  height: auto;
+  margin-top: 1.75rem;
+  overflow: visible;
+  user-select: none;
+  pointer-events: none;
+}
+
+.optics-aftermath-oil {
+  animation: optics-aftermath-sheen 7s ease-in-out infinite alternate;
+}
+
+.optics-aftermath-debris {
+  animation: optics-aftermath-drift 9s ease-in-out infinite alternate;
+}
+
+@keyframes optics-aftermath-sheen {
+  from {
+    opacity: 0.88;
+    transform: translate(0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate(1.5px, 0.5px);
+  }
+}
+
+@keyframes optics-aftermath-drift {
+  from {
+    transform: translate(0, 0);
+  }
+  to {
+    transform: translate(-1.5px, 0.75px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .optics-aftermath-oil,
+  .optics-aftermath-debris {
+    animation: none;
+  }
 }
 
 /* Dive Plane — single CRT row (compact dial + aux controls), no vertical stack. */

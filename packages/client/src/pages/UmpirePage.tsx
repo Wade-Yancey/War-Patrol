@@ -193,6 +193,7 @@ export function UmpirePage() {
         depthCharges: umpire.depthCharges,
         noisemakers: umpire.noisemakers,
         detonations: umpire.recentDetonations ?? [],
+        seaSurfaceMarkers: umpire.seaSurfaceMarkers ?? [],
         combatLog: umpire.combatLog ?? [],
         reviewing: false as const,
       };
@@ -209,6 +210,8 @@ export function UmpirePage() {
       noisemakers: reviewSnapshot.noisemakers ?? [],
       // Detonations are live-window only; for AAR scrub show cues from that turn.
       detonations: (umpire.recentDetonations ?? []).filter((d) => d.turnNumber === turnN),
+      // Markers are not snapshotted; filter live set by createdTurn for AAR scrub.
+      seaSurfaceMarkers: (umpire.seaSurfaceMarkers ?? []).filter((m) => m.createdTurn <= turnN),
       combatLog: (umpire.combatLog ?? []).filter((e) => e.turnNumber <= turnN),
       reviewing: true as const,
     };
@@ -612,6 +615,9 @@ export function UmpirePage() {
                   depthCharges={gtDisplay?.depthCharges ?? umpire.depthCharges}
                   noisemakers={gtDisplay?.noisemakers ?? umpire.noisemakers}
                   detonations={gtDisplay?.detonations ?? umpire.recentDetonations}
+                  seaSurfaceMarkers={
+                    gtDisplay?.seaSurfaceMarkers ?? umpire.seaSurfaceMarkers ?? []
+                  }
                   turnLengthSeconds={umpire.turnLengthSeconds}
                   showMovePrediction={!gtDisplay?.reviewing}
                 />

@@ -2060,6 +2060,37 @@ async function main() {
       }).length === 0,
     );
 
+    const liveSub = {
+      id: 'ss-gato-sink-1',
+      type: 'Submarine' as const,
+      class: 'Fleet Submarine',
+      condition: 'afloat' as const,
+      position: { lat: 34.41, lon: -120.02, depth: 80 },
+      heading: 270,
+    } as UnitState;
+    const sunkSub = { ...liveSub, condition: 'sinking' as const };
+    const subMarkers = createSinkAftermathMarkers({
+      priorUnits: [liveSub],
+      nextUnits: [sunkSub],
+      turnNumber: 7,
+      existing: [],
+    });
+    check(
+      'sub kill spawns debris+oil at surface sink pos',
+      subMarkers.length === 2 &&
+        subMarkers.every((m) => m.sourceUnitId === 'ss-gato-sink-1') &&
+        subMarkers.some((m) => m.kind === 'debris') &&
+        subMarkers.some((m) => m.kind === 'oil') &&
+        !subMarkers.some((m) => m.kind === 'life_rafts') &&
+        subMarkers.every(
+          (m) =>
+            m.position.lat === liveSub.position.lat &&
+            m.position.lon === liveSub.position.lon &&
+            m.position.depth === 0,
+        ),
+      `kinds=${subMarkers.map((m) => m.kind).join(',')}`,
+    );
+
     const plane = {
       id: 'ac-zeke-1',
       type: 'Aircraft' as const,
