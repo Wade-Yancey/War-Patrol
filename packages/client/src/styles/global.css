@@ -2322,17 +2322,138 @@ label {
   line-height: 1.3;
 }
 
-/* Helmsman gyro compass — CRT console language (same scale/layout as hydrophone) */
+/* Helmsman gyro compass — CRT console language; dial is 75% of shared CRT scale.
+   Radar / hydrophone keep .crt-console sizes; dive has its own .depth-gauge caps. */
 .helm-compass {
+  --helm-dial-scale: 0.75;
   /* Layout from .crt-console / .radar-scope */
   max-width: 100%;
   margin: 0 auto;
 }
 
 .helm-compass-svg {
-  /* Sizing from .crt-console .radar-scope-svg */
   touch-action: manipulation;
   user-select: none;
+}
+
+/* Base CRT console dial × 0.75 (matches .crt-console .radar-scope-svg). */
+.helm-compass.crt-console .radar-scope-svg {
+  width: min(
+    calc(var(--helm-dial-scale) * (100vw - 15rem)),
+    calc(var(--helm-dial-scale) * (100dvh - var(--crt-dial-chrome)))
+  );
+  max-width: min(
+    calc(var(--helm-dial-scale) * (100vw - 15rem)),
+    calc(var(--helm-dial-scale) * (100dvh - var(--crt-dial-chrome)))
+  );
+  max-height: min(
+    calc(var(--helm-dial-scale) * (100vw - 15rem)),
+    calc(var(--helm-dial-scale) * (100dvh - var(--crt-dial-chrome)))
+  );
+}
+
+.helm-compass.crt-console .radar-side-panel {
+  max-height: min(
+    calc(var(--helm-dial-scale) * (100vw - 15rem)),
+    calc(var(--helm-dial-scale) * (100dvh - var(--crt-dial-chrome)))
+  );
+}
+
+@media (max-width: 899px) {
+  .helm-compass.crt-console .radar-scope-svg {
+    width: min(
+      calc(var(--helm-dial-scale) * (100vw - 15.25rem)),
+      calc(var(--helm-dial-scale) * (100dvh - 4.75rem))
+    );
+    max-width: min(
+      calc(var(--helm-dial-scale) * (100vw - 15.25rem)),
+      calc(var(--helm-dial-scale) * (100dvh - 4.75rem))
+    );
+    max-height: min(
+      calc(var(--helm-dial-scale) * (100vw - 15.25rem)),
+      calc(var(--helm-dial-scale) * (100dvh - 4.75rem))
+    );
+  }
+
+  .helm-compass.crt-console .radar-side-panel {
+    max-height: min(
+      calc(var(--helm-dial-scale) * (100vw - 15.25rem)),
+      calc(var(--helm-dial-scale) * (100dvh - 4.75rem))
+    );
+  }
+}
+
+@media (min-width: 900px) {
+  .helm-compass.crt-console .radar-scope-svg {
+    /* Shared desktop: min(78vh, 820px, 100vw − 15.5rem) × 0.75 */
+    width: min(
+      calc(var(--helm-dial-scale) * 78vh),
+      calc(var(--helm-dial-scale) * 820px),
+      calc(var(--helm-dial-scale) * (100vw - 15.5rem))
+    );
+    max-width: min(
+      calc(var(--helm-dial-scale) * 78vh),
+      calc(var(--helm-dial-scale) * 820px),
+      calc(var(--helm-dial-scale) * (100vw - 15.5rem))
+    );
+    max-height: min(
+      calc(var(--helm-dial-scale) * 78vh),
+      calc(var(--helm-dial-scale) * 820px)
+    );
+  }
+
+  .helm-compass.crt-console .radar-side-panel {
+    max-height: min(
+      calc(var(--helm-dial-scale) * 78vh),
+      calc(var(--helm-dial-scale) * 820px)
+    );
+  }
+}
+
+@media (min-width: 1100px) {
+  .helm-compass.crt-console .radar-scope-svg {
+    /* Shared large-desktop: min(84vh, 920px, 100vw − 16.5rem) × 0.75 */
+    width: min(
+      calc(var(--helm-dial-scale) * 84vh),
+      calc(var(--helm-dial-scale) * 920px),
+      calc(var(--helm-dial-scale) * (100vw - 16.5rem))
+    );
+    max-width: min(
+      calc(var(--helm-dial-scale) * 84vh),
+      calc(var(--helm-dial-scale) * 920px),
+      calc(var(--helm-dial-scale) * (100vw - 16.5rem))
+    );
+    max-height: min(
+      calc(var(--helm-dial-scale) * 84vh),
+      calc(var(--helm-dial-scale) * 920px)
+    );
+  }
+
+  .helm-compass.crt-console .radar-side-panel {
+    max-height: min(
+      calc(var(--helm-dial-scale) * 84vh),
+      calc(var(--helm-dial-scale) * 920px)
+    );
+  }
+}
+
+@media (max-width: 520px) {
+  .helm-compass.crt-console .radar-scope-svg {
+    width: min(
+      calc(var(--helm-dial-scale) * 100%),
+      calc(var(--helm-dial-scale) * (100vw - var(--crt-dial-inset))),
+      calc(var(--helm-dial-scale) * (100dvh - 10rem))
+    );
+    max-width: min(
+      calc(var(--helm-dial-scale) * 100%),
+      calc(var(--helm-dial-scale) * (100vw - var(--crt-dial-inset))),
+      calc(var(--helm-dial-scale) * (100dvh - 10rem))
+    );
+    max-height: min(
+      calc(var(--helm-dial-scale) * (100vw - var(--crt-dial-inset))),
+      calc(var(--helm-dial-scale) * (100dvh - 10rem))
+    );
+  }
 }
 
 .helm-compass--interactive .helm-compass-svg {
@@ -2436,8 +2557,8 @@ label {
   margin: 0 auto;
 }
 
-/* Controls panel heads/blurbs use the shared .station-instrument-* chrome, and
-   Helm uses shared .crt-console dial dominance — no one-off size caps. */
+/* Controls panel heads/blurbs use the shared .station-instrument-* chrome.
+   Helm dial scale is overridden above (--helm-dial-scale: 0.75). */
 
 .controls-bridge-dc-alert {
   display: flex;
@@ -2725,9 +2846,9 @@ label {
 }
 
 /*
- * Dominant dial — larger than #265/#266, still short of helm/radar.
- * Helm CRT uses ~78–84vh / uncapped rem; dive caps below that (~70vh / 32.5rem).
- * Wider aux (~17.5rem) + no scrollbar from #266 unchanged.
+ * Dominant dial — dive-specific caps (independent of helm/radar).
+ * Shared CRT/radar desktop is ~78–84vh; helm is 75% of that (~58.5–63vh).
+ * Dive caps at ~70vh / 32.5rem. Wider aux (~17.5rem) + no scrollbar from #266.
  */
 .depth-gauge.crt-console .radar-scope-svg {
   width: min(calc(100vw - 19.5rem), calc(100dvh - 5.75rem), 70vh, 32.5rem);
