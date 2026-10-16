@@ -82,12 +82,13 @@ import {
   startControlsAmbientLoop,
 } from '../audio/controlsAmbient';
 import {
-  SUB_AMBIENT_CROSSFADE_SEC,
   crossfadeAmbientLoop,
   loadSubAmbientBuffer,
+  rampAmbientLoopGain,
   stopAmbientLoopVoice,
   subAmbientBandForDepth,
-  subAmbientGainForBand,
+  subAmbientCrossfadeSec,
+  subAmbientGainForDepth,
   type SubAmbientBand,
 } from '../audio/subControlsAmbient';
 import {
@@ -942,6 +943,7 @@ export function StationPage() {
    * Submarine Controls ambient: depth-banded loops with crossfade on band change.
    * Band follows Dive DEPTH needle ({@link subDepthRef} / displayedKeelDepthM).
    * Replaces facility hum + ambient creak one-shots + deep-hull clank loop.
+   * Deep-band gain also tracks the needle (90→140 m ramp); crush gain stays flat.
    */
   useEffect(() => {
     if (!onSubCreakBridge || !subAmbientBand) return;
@@ -988,7 +990,7 @@ export function StationPage() {
           buffer,
           ctx.destination,
           prev,
-          subAmbientGainForBand(band),
+          subAmbientGainForDepth(subDepthRef.current),
           fadeSec,
         );
         bridgeAudioRef.current.ambientSource = next.source;
@@ -1002,20 +1004,29 @@ export function StationPage() {
         if (!cancelled) {
           const want = subAmbientBandForDepth(subDepthRef.current);
           if (want !== bridgeAudioRef.current.subAmbientBand) {
-            void applyBand(want, SUB_AMBIENT_CROSSFADE_SEC);
+            void applyBand(
+              want,
+              subAmbientCrossfadeSec(bridgeAudioRef.current.subAmbientBand, want),
+            );
           }
         }
       }
     };
 
     const unlock = () => {
-      void applyBand(subAmbientBandForDepth(subDepthRef.current), SUB_AMBIENT_CROSSFADE_SEC);
+      const want = subAmbientBandForDepth(subDepthRef.current);
+      void applyBand(
+        want,
+        subAmbientCrossfadeSec(bridgeAudioRef.current.subAmbientBand, want),
+      );
       void flushBridgeBlastAudio();
     };
 
     void applyBand(
       subAmbientBand,
-      bridgeAudioRef.current.ambientSource ? SUB_AMBIENT_CROSSFADE_SEC : 0.35,
+      bridgeAudioRef.current.ambientSource
+        ? subAmbientCrossfadeSec(bridgeAudioRef.current.subAmbientBand, subAmbientBand)
+        : 0.35,
     );
     window.addEventListener('pointerdown', unlock);
     window.addEventListener('keydown', unlock);
@@ -1027,6 +1038,28 @@ export function StationPage() {
       // Band changes re-run this effect; leave/teardown stops the voice below.
     };
   }, [onSubCreakBridge, subAmbientBand]);
+
+  /**
+   * Within the deep band, ramp ambient gain with the Dive needle (deeper → louder).
+   * Shallow / crush gains are constant; this effect is a no-op-ish ramp to the same peak.
+   */
+  useEffect(() => {
+    if (!onSubCreakBridge) return;
+    const ctx = bridgeAudioRef.current.ctx;
+    const gainNode = bridgeAudioRef.current.ambientGain;
+    const source = bridgeAudioRef.current.ambientSource;
+    if (!ctx || !gainNode || !source || ctx.state !== 'running') return;
+    // Avoid fighting an in-progress band crossfade (gain is under linearRamp there).
+    if (bridgeAudioRef.current.subAmbientBand !== subAmbientBandForDepth(displayedKeelDepthM)) {
+      return;
+    }
+    rampAmbientLoopGain(
+      ctx,
+      { source, gain: gainNode },
+      subAmbientGainForDepth(displayedKeelDepthM),
+      0.25,
+    );
+  }, [onSubCreakBridge, displayedKeelDepthM]);
 
   // Tear down sub ambient + shared bridge ctx when leaving Controls.
   useEffect(() => {

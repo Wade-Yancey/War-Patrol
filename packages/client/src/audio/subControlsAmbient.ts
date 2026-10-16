@@ -18,6 +18,7 @@ export const SUB_AMBIENT_DEEP_MIN_M = 90;
 /**
  * Documented upper bound for the mid band (m). Keel past this but still below
  * crush keeps the mid loop until {@link SUB_AMBIENT_CRUSH_MIN_M}.
+ * Deep-band gain also reaches its peak here and holds through the gap.
  */
 export const SUB_AMBIENT_DEEP_MAX_M = 140;
 
@@ -31,19 +32,37 @@ export const SUB_AMBIENT_CRUSH_MIN_M = 150;
 export const SUB_AMBIENT_CRUSH_MAX_M = 180;
 
 /**
- * Default bed gain for mid + crush bands — match destroyer facility-hum
- * presence under combat one-shots.
+ * Crush bed gain (150–180 m+) — keep at the destroyer-hum baseline; do not
+ * raise with the shallow / deep mix pass.
  */
 export const SUB_CONTROLS_AMBIENT_GAIN = 0.22;
 
 /**
- * Shallow / exposition loop (&lt; 90 m) — louder than mid/crush so the quieter
+ * Shallow / exposition loop (&lt; 90 m) — raised overall so the quieter
  * exposition bed reads clearly on Controls speakers.
  */
-export const SUB_AMBIENT_SHALLOW_GAIN = 0.40;
+export const SUB_AMBIENT_SHALLOW_GAIN = 0.55;
 
-/** Crossfade when the keel crosses a band boundary (seconds). */
+/**
+ * Deep-band gain at {@link SUB_AMBIENT_DEEP_MIN_M} m — same as prior flat deep
+ * gain; ramps up toward {@link SUB_AMBIENT_DEEP_GAIN_AT_MAX} as the needle deepens.
+ */
+export const SUB_AMBIENT_DEEP_GAIN_AT_MIN = 0.22;
+
+/**
+ * Deep-band gain at {@link SUB_AMBIENT_DEEP_MAX_M} m and through the 140–149 m
+ * gap — progressive pressure build before the crush bed.
+ */
+export const SUB_AMBIENT_DEEP_GAIN_AT_MAX = 0.40;
+
+/** Default crossfade when the keel crosses a band boundary (seconds). */
 export const SUB_AMBIENT_CROSSFADE_SEC = 1.0;
+
+/**
+ * Longer crossfade for deep ↔ crush (needle ~140–150 m) so the crush bed
+ * does not slam in when the Dive needle crosses {@link SUB_AMBIENT_CRUSH_MIN_M}.
+ */
+export const SUB_AMBIENT_CRUSH_CROSSFADE_SEC = 3.0;
 
 export type SubAmbientBand = 'shallow' | 'deep' | 'crush';
 
@@ -53,15 +72,56 @@ export const SUB_AMBIENT_URL_BY_BAND: Record<SubAmbientBand, string> = {
   crush: SUB_AMBIENT_CRUSH_URL,
 };
 
-/** Peak gain for each ambient band (shallow raised; deep/crush keep baseline). */
+/**
+ * Peak gain for constant bands (shallow / crush). Deep uses
+ * {@link subAmbientGainForDepth} instead of a flat table entry.
+ */
 export const SUB_AMBIENT_GAIN_BY_BAND: Record<SubAmbientBand, number> = {
   shallow: SUB_AMBIENT_SHALLOW_GAIN,
-  deep: SUB_CONTROLS_AMBIENT_GAIN,
+  deep: SUB_AMBIENT_DEEP_GAIN_AT_MIN,
   crush: SUB_CONTROLS_AMBIENT_GAIN,
 };
 
+/** @deprecated Prefer {@link subAmbientGainForDepth} — deep gain is depth-ramped. */
 export function subAmbientGainForBand(band: SubAmbientBand): number {
   return SUB_AMBIENT_GAIN_BY_BAND[band];
+}
+
+/**
+ * Ambient bed gain for the Dive needle depth (m, positive-down).
+ * - shallow (&lt; 90): {@link SUB_AMBIENT_SHALLOW_GAIN}
+ * - deep (90 … &lt; 150): linear ramp {@link SUB_AMBIENT_DEEP_GAIN_AT_MIN} @ 90 →
+ *   {@link SUB_AMBIENT_DEEP_GAIN_AT_MAX} @ 140, then hold through the gap
+ * - crush (≥ 150): {@link SUB_CONTROLS_AMBIENT_GAIN} (unchanged)
+ */
+export function subAmbientGainForDepth(depthM: number): number {
+  const d = Math.max(0, depthM);
+  const band = subAmbientBandForDepth(d);
+  if (band === 'shallow') return SUB_AMBIENT_SHALLOW_GAIN;
+  if (band === 'crush') return SUB_CONTROLS_AMBIENT_GAIN;
+  const span = SUB_AMBIENT_DEEP_MAX_M - SUB_AMBIENT_DEEP_MIN_M;
+  const t = Math.min(1, Math.max(0, (d - SUB_AMBIENT_DEEP_MIN_M) / span));
+  return (
+    SUB_AMBIENT_DEEP_GAIN_AT_MIN +
+    t * (SUB_AMBIENT_DEEP_GAIN_AT_MAX - SUB_AMBIENT_DEEP_GAIN_AT_MIN)
+  );
+}
+
+/**
+ * Crossfade duration when switching beds. Deep ↔ crush uses the longer
+ * crush window; all other band changes keep the default.
+ */
+export function subAmbientCrossfadeSec(
+  from: SubAmbientBand | null,
+  to: SubAmbientBand,
+): number {
+  if (
+    (from === 'deep' && to === 'crush') ||
+    (from === 'crush' && to === 'deep')
+  ) {
+    return SUB_AMBIENT_CRUSH_CROSSFADE_SEC;
+  }
+  return SUB_AMBIENT_CROSSFADE_SEC;
 }
 
 /**
@@ -148,6 +208,27 @@ export function crossfadeAmbientLoop(
 
   nextSource.start(0);
   return { source: nextSource, gain: nextGain };
+}
+
+/**
+ * Smoothly move an active ambient voice toward `peakGain` (deep-band depth ramp).
+ * No-op when there is no voice. Skips if already within a tiny epsilon.
+ */
+export function rampAmbientLoopGain(
+  ctx: AudioContext,
+  voice: AmbientLoopVoice | null,
+  peakGain: number,
+  rampSec: number = 0.2,
+): void {
+  if (!voice) return;
+  const now = ctx.currentTime;
+  const param = voice.gain.gain;
+  const cur = param.value;
+  if (Math.abs(cur - peakGain) < 0.002) return;
+  const ramp = Math.max(0.05, rampSec);
+  param.cancelScheduledValues(now);
+  param.setValueAtTime(cur, now);
+  param.linearRampToValueAtTime(peakGain, now + ramp);
 }
 
 /** Hard-stop an ambient voice (leave / teardown). */
