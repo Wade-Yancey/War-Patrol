@@ -31,6 +31,46 @@ function normalizeBaseUrl(url: string): string {
 }
 
 /**
+ * True when `url` is safe to advertise as a remote join base.
+ * Rejects loopback (remotes cannot use it) and Cloudflare's control-plane
+ * host `api.trycloudflare.com` (appears in cloudflared stderr before the
+ * allocated quick-tunnel URL).
+ */
+export function isUsablePublicJoinBase(url: string): boolean {
+  try {
+    const u = new URL(normalizeBaseUrl(url));
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+    const host = u.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return false;
+    if (host === 'api.trycloudflare.com') return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** cloudflared quick-tunnel origins (global for multi-match scrape). */
+const CLOUDFLARED_QUICK_TUNNEL_URL = /https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/g;
+
+/**
+ * Pull the first usable `*.trycloudflare.com` origin out of cloudflared
+ * stdout/stderr. Skips `https://api.trycloudflare.com` control-plane noise.
+ */
+export function extractQuickTunnelUrl(text: string): string | null {
+  const matches = text.match(CLOUDFLARED_QUICK_TUNNEL_URL) ?? [];
+  for (const m of matches) {
+    if (isUsablePublicJoinBase(m)) return m;
+  }
+  return null;
+}
+
+function isTunnelOrPublicHostname(hostname: string): boolean {
+  const host = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  if (!host || host === 'api.trycloudflare.com') return false;
+  return host.endsWith('.trycloudflare.com') || host.endsWith('.cfargotunnel.com');
+}
+
+/**
  * Public join base for remote players (tunnel / reverse-proxy HTTPS origin).
  * Set from `WAR_PATROL_PUBLIC_URL`, or auto-filled when a cloudflared quick
  * tunnel allocates its `*.trycloudflare.com` URL. Used by `/api/host-info` so
@@ -42,6 +82,7 @@ let publicBaseUrl: string | null = null;
 let listenPort: number | null = null;
 /** True when publicBaseUrl came from WAR_PATROL_PUBLIC_URL (do not overwrite with tunnel). */
 let publicBaseUrlFromEnv = false;
+let loggedLearnedPublicBase = false;
 
 export function getPublicBaseUrl(): string | null {
   return publicBaseUrl;
@@ -61,7 +102,16 @@ export function setPublicBaseUrl(url: string | null, opts?: { fromEnv?: boolean 
     publicBaseUrlFromEnv = false;
     return;
   }
-  publicBaseUrl = normalizeBaseUrl(url);
+  const normalized = normalizeBaseUrl(url);
+  if (!isUsablePublicJoinBase(normalized)) {
+    if (opts?.fromEnv) {
+      console.log(
+        `[war-patrol] Ignoring WAR_PATROL_PUBLIC_URL=${normalized} (not a usable remote join base; need a non-loopback http(s) origin).`,
+      );
+    }
+    return;
+  }
+  publicBaseUrl = normalized;
   publicBaseUrlFromEnv = Boolean(opts?.fromEnv);
 }
 
@@ -69,6 +119,52 @@ export function setPublicBaseUrl(url: string | null, opts?: { fromEnv?: boolean 
 export function resolvePublicBaseUrlFromEnv(): void {
   const fromEnv = process.env.WAR_PATROL_PUBLIC_URL?.trim();
   if (fromEnv) setPublicBaseUrl(fromEnv, { fromEnv: true });
+}
+
+function headerValue(value: string | string[] | undefined): string | undefined {
+  if (Array.isArray(value)) return value[0];
+  return value;
+}
+
+/**
+ * When internet hosting is on and no public base is known yet, learn it from
+ * an inbound request that arrived via the tunnel / public hostname (Host or
+ * X-Forwarded-Host). Covers external `cloudflared` (not spawned by us) and
+ * recovers if the quick-tunnel scrape missed the URL.
+ *
+ * Never overwrites `WAR_PATROL_PUBLIC_URL`. First usable learned/scraped base wins.
+ */
+export function maybeLearnPublicBaseFromRequest(headers: {
+  host?: string | string[];
+  'x-forwarded-host'?: string | string[];
+  'x-forwarded-proto'?: string | string[];
+}): void {
+  if (publicBaseUrlFromEnv || publicBaseUrl) return;
+  if (!isInternetMode() && !process.env.WAR_PATROL_TUNNEL?.trim()) return;
+
+  const forwardedHost = headerValue(headers['x-forwarded-host'])?.split(',')[0]?.trim();
+  const hostHeader = headerValue(headers.host)?.split(',')[0]?.trim();
+  const hostname = (forwardedHost ?? hostHeader ?? '').replace(/:\d+$/, '');
+  if (!hostname || !isTunnelOrPublicHostname(hostname)) return;
+
+  const forwardedProto = headerValue(headers['x-forwarded-proto'])?.split(',')[0]?.trim();
+  const proto =
+    forwardedProto === 'http' || forwardedProto === 'https'
+      ? forwardedProto
+      : hostname.endsWith('.trycloudflare.com') || hostname.endsWith('.cfargotunnel.com')
+        ? 'https'
+        : 'https';
+  const candidate = `${proto}://${hostname}`;
+  if (!isUsablePublicJoinBase(candidate)) return;
+
+  setPublicBaseUrl(candidate);
+  if (!loggedLearnedPublicBase) {
+    loggedLearnedPublicBase = true;
+    console.log(`[war-patrol] Public join base (from request Host): ${candidate}`);
+    console.log(
+      '[war-patrol] Umpire Copy will use this origin for remote station links.',
+    );
+  }
 }
 
 function adminTokenFile(): string {
@@ -185,8 +281,6 @@ export function printStartupBanner(opts: {
   console.log('');
 }
 
-const CLOUDFLARED_QUICK_TUNNEL_URL = /https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/;
-
 /**
  * Optional one-command tunnel: `WAR_PATROL_TUNNEL=cloudflared` spawns
  * `cloudflared tunnel --url http://localhost:<port>` (must already be
@@ -216,41 +310,44 @@ export function maybeStartTunnel(port: number): void {
   }
 
   let printed = false;
+  /** Accumulate chunks — URL may be split across writes; skip api. control-plane hits. */
+  let scrapeBuf = '';
   const onData = (buf: Buffer) => {
     if (printed) return;
-    const match = buf.toString().match(CLOUDFLARED_QUICK_TUNNEL_URL);
-    if (match) {
-      printed = true;
-      // Env override wins; otherwise publish the allocated quick-tunnel origin
-      // so umpire Copy can hand remotes a working HTTPS join link.
-      if (!publicBaseUrlFromEnv) {
-        setPublicBaseUrl(match[0]);
-      }
-      const token = process.env.WAR_PATROL_ADMIN_TOKEN;
-      const publicOrigin = getPublicBaseUrl() ?? match[0];
-      console.log('');
-      console.log(`[war-patrol] Public tunnel URL: ${match[0]}`);
-      if (token) {
-        console.log(`[war-patrol] Join-ready (admin):  ${publicOrigin}/?admin=${token}`);
-      }
-      console.log(
-        `[war-patrol] Host UI (this machine):     http://127.0.0.1:${port}/` +
-          (token ? `?admin=${token}` : ''),
-      );
-      console.log(
-        '[war-patrol] Remotes: copy station links from the umpire Player join URLs panel',
-      );
-      console.log(
-        '[war-patrol] (uses this public origin). Keep your own station tabs on 127.0.0.1.',
-      );
-      console.log(
-        '[war-patrol] Quick tunnels are unauthenticated and anyone with the URL can reach',
-      );
-      console.log(
-        '[war-patrol] this server — fine for a short beta window, not for long-term hosting.',
-      );
-      console.log('');
+    scrapeBuf = (scrapeBuf + buf.toString()).slice(-64_000);
+    const tunnelUrl = extractQuickTunnelUrl(scrapeBuf);
+    if (!tunnelUrl) return;
+    printed = true;
+    scrapeBuf = '';
+    // Env override wins; otherwise publish the allocated quick-tunnel origin
+    // so umpire Copy can hand remotes a working HTTPS join link.
+    if (!publicBaseUrlFromEnv) {
+      setPublicBaseUrl(tunnelUrl);
     }
+    const token = process.env.WAR_PATROL_ADMIN_TOKEN;
+    const publicOrigin = getPublicBaseUrl() ?? tunnelUrl;
+    console.log('');
+    console.log(`[war-patrol] Public tunnel URL: ${tunnelUrl}`);
+    if (token) {
+      console.log(`[war-patrol] Join-ready (admin):  ${publicOrigin}/?admin=${token}`);
+    }
+    console.log(
+      `[war-patrol] Host UI (this machine):     http://127.0.0.1:${port}/` +
+        (token ? `?admin=${token}` : ''),
+    );
+    console.log(
+      '[war-patrol] Remotes: copy station links from the umpire Player join URLs panel',
+    );
+    console.log(
+      '[war-patrol] (uses this public origin). Keep your own station tabs on 127.0.0.1.',
+    );
+    console.log(
+      '[war-patrol] Quick tunnels are unauthenticated and anyone with the URL can reach',
+    );
+    console.log(
+      '[war-patrol] this server — fine for a short beta window, not for long-term hosting.',
+    );
+    console.log('');
   };
   child.stdout?.on('data', onData);
   child.stderr?.on('data', onData);

@@ -96,11 +96,21 @@ What the UI does now:
 - Startup / tunnel logs print a **Host UI (this machine)** loopback link and
   tell you to keep local stations on `127.0.0.1`.
 - `GET /api/host-info` exposes `{ publicBaseUrl, listenPort, internetMode }`
-  (no admin token). `WAR_PATROL_PUBLIC_URL` or an allocated cloudflared URL
-  fills `publicBaseUrl`.
+  (no admin token). `publicBaseUrl` is filled from, in order:
+  1. `WAR_PATROL_PUBLIC_URL` (explicit; wins),
+  2. the allocated cloudflared quick-tunnel URL when
+     `WAR_PATROL_TUNNEL=cloudflared` (scrapes stderr; ignores the
+     `api.trycloudflare.com` control-plane host),
+  3. the first inbound request whose `Host` / `X-Forwarded-Host` is a tunnel
+     hostname (`*.trycloudflare.com` / `*.cfargotunnel.com`) — so an external
+     `cloudflared` (not spawned by us) still teaches the server the public
+     origin after you open the tunnel join-ready link once.
 - Umpire **Copy** uses `publicBaseUrl` when set (remote-ready HTTPS links)
-  even if your umpire tab is on loopback. **Open** stays on the current
-  browser origin (relative SPA path) so host tabs do not jump onto the tunnel.
+  even if your umpire tab is on loopback. While internet hosting is on and
+  the umpire tab is still on `127.0.0.1`, **Copy stays disabled** until a
+  public base is known — it will not hand remotes loopback URLs. **Open**
+  stays on the current browser origin (relative SPA path) so host tabs do
+  not jump onto the tunnel.
 - If you open the **umpire** UI on a tunnel/public origin, a banner offers a
   one-click `http://127.0.0.1:<port>` equivalent. Station pages never show that
   banner (remotes share the public origin; use **Open** / loopback for host
@@ -275,15 +285,16 @@ places, and pasting the token into the browser:
   `cloudflared tunnel --url http://localhost:<port>` (the binary must already
   be on `PATH` — this repo does not depend on or bundle it), scrapes its
   stdout/stderr for the `https://<random>.trycloudflare.com` URL Cloudflare's
-  free quick-tunnel service allocates, publishes that origin as
-  `publicBaseUrl` for `/api/host-info` (unless `WAR_PATROL_PUBLIC_URL` is
-  already set), and prints it plus a join-ready link with the admin token
-  appended **and** a loopback Host UI reminder. If `cloudflared` isn't
-  installed, the spawn fails with `ENOENT`, which is caught and logged (an
-  install-link pointer) — the server keeps running on LAN/loopback either
-  way; a missing/failed tunnel is never fatal.
+  free quick-tunnel service allocates (skipping `api.trycloudflare.com`),
+  publishes that origin as `publicBaseUrl` for `/api/host-info` (unless
+  `WAR_PATROL_PUBLIC_URL` is already set), and prints it plus a join-ready
+  link with the admin token appended **and** a loopback Host UI reminder. If
+  `cloudflared` isn't installed, the spawn fails with `ENOENT`, which is
+  caught and logged (an install-link pointer) — the server keeps running on
+  LAN/loopback either way; a missing/failed tunnel is never fatal.
 - `WAR_PATROL_PUBLIC_URL`: optional explicit public origin for Copy (named
   tunnel / reverse proxy). Takes priority over the quick-tunnel scrape.
+  Loopback values are ignored (they are not remote-reachable).
 - Client (`LandingPage.tsx`): on mount, reads `?admin=<token>` from the URL
   query string, stores it exactly like manual entry (`localStorage` +
   `sessionStorage`, mirroring `authStorage.ts`), then calls
