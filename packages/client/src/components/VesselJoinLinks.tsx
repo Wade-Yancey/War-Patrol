@@ -54,7 +54,8 @@ function isLoopbackOrigin(origin: string): boolean {
   }
 }
 
-function formatVesselBlock(v: VesselLink, copyBase: string | null): string {
+function formatVesselBlock(v: VesselLink, copyBase: string | null): string | null {
+  if (!copyBase) return null;
   const lines = [`${v.name}`];
   for (const s of v.stations) {
     lines.push(`${s.name}: ${absoluteUrl(s.path, copyBase)}`);
@@ -85,23 +86,28 @@ export function VesselJoinLinks({ vesselLinks, units, busy, onRotateToken }: Pro
   /**
    * Prefer the server-advertised public/tunnel origin for Copy so remotes get
    * a working HTTPS link even when the host umpire tab is on 127.0.0.1.
-   * Otherwise use the current page origin (works when the umpire tab is
-   * already on the tunnel URL). Never disable Copy / wait forever.
+   * While internet hosting is on and the umpire tab is loopback, do **not**
+   * fall back to 127.0.0.1 — wait for publicBaseUrl (tunnel scrape / Host
+   * learn / WAR_PATROL_PUBLIC_URL). LAN (no internetMode) still uses page origin.
+   * Open stays same-origin (host loopback tabs stay useful).
    */
-  const publicBase = hostInfo?.publicBaseUrl?.replace(/\/+$/, '') || null;
   const pageOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-  const copyBase = publicBase;
   const onLoopback = Boolean(pageOrigin) && isLoopbackOrigin(pageOrigin);
   const internetMode = Boolean(hostInfo?.internetMode);
+  const publicBase = hostInfo?.publicBaseUrl?.replace(/\/+$/, '') || null;
+  const copyBase =
+    publicBase ?? (internetMode && onLoopback ? null : pageOrigin || null);
+  const waitingForPublic = internetMode && onLoopback && !publicBase;
   const copyUsesPublic =
     Boolean(publicBase) && publicBase !== pageOrigin.replace(/\/+$/, '');
-  /** Soft hint only — Copy still uses page origin via absoluteUrl fallback. */
-  const copyIsLoopbackFallback = internetMode && onLoopback && !publicBase;
 
-  const allPlayerText = useMemo(
-    () => playerLinks.map((v) => formatVesselBlock(v, copyBase)).join('\n\n'),
-    [playerLinks, copyBase],
-  );
+  const allPlayerText = useMemo(() => {
+    if (!copyBase) return null;
+    const blocks = playerLinks
+      .map((v) => formatVesselBlock(v, copyBase))
+      .filter((b): b is string => Boolean(b));
+    return blocks.length > 0 ? blocks.join('\n\n') : null;
+  }, [playerLinks, copyBase]);
 
   const copyLabel = (key: string, idle: string) =>
     copiedKey === key ? 'Copied' : idle;
@@ -114,8 +120,10 @@ export function VesselJoinLinks({ vesselLinks, units, busy, onRotateToken }: Pro
           <button
             type="button"
             className="ghost"
-            disabled={busy}
-            onClick={() => void copy('all', allPlayerText)}
+            disabled={busy || !allPlayerText}
+            onClick={() => {
+              if (allPlayerText) void copy('all', allPlayerText);
+            }}
           >
             {copyLabel('all', 'Copy all')}
           </button>
@@ -133,13 +141,12 @@ export function VesselJoinLinks({ vesselLinks, units, busy, onRotateToken }: Pro
         <span className="mono">http://127.0.0.1:{hostInfo?.listenPort ?? 8787}</span> over
         the tunnel.
       </p>
-      {copyIsLoopbackFallback && (
+      {waitingForPublic && (
         <p className="muted vessel-join-links-help">
-          No public/tunnel base yet — Copy currently uses this tab&apos;s origin (
-          <span className="mono">127.0.0.1</span>). For remotes, use the{' '}
-          <span className="mono">Public tunnel URL</span> from the server console, set{' '}
-          <span className="mono">WAR_PATROL_PUBLIC_URL</span>, or open the tunnel
-          join-ready link once so Copy switches to HTTPS.
+          Waiting for a public/tunnel URL… Copy stays disabled until one is ready
+          (so remotes do not get <span className="mono">127.0.0.1</span>). Check the
+          server console for <span className="mono">PUBLIC TUNNEL URL</span>, or set{' '}
+          <span className="mono">WAR_PATROL_PUBLIC_URL</span>.
         </p>
       )}
 
@@ -177,8 +184,11 @@ export function VesselJoinLinks({ vesselLinks, units, busy, onRotateToken }: Pro
                     <button
                       type="button"
                       className="ghost"
-                      disabled={busy}
-                      onClick={() => void copy(vesselCopyKey, formatVesselBlock(v, copyBase))}
+                      disabled={busy || !copyBase}
+                      onClick={() => {
+                        const text = formatVesselBlock(v, copyBase);
+                        if (text) void copy(vesselCopyKey, text);
+                      }}
                     >
                       {copyLabel(vesselCopyKey, 'Copy vessel')}
                     </button>
@@ -200,7 +210,7 @@ export function VesselJoinLinks({ vesselLinks, units, busy, onRotateToken }: Pro
               ) : (
                 <ul className="vessel-join-stations">
                   {v.stations.map((s) => {
-                    const remoteUrl = absoluteUrl(s.path, copyBase);
+                    const remoteUrl = copyBase ? absoluteUrl(s.path, copyBase) : null;
                     const localUrl = absoluteUrl(s.path, pageOrigin);
                     const stationKey = `station:${v.unitId}:${s.stationId}`;
                     return (
@@ -210,15 +220,20 @@ export function VesselJoinLinks({ vesselLinks, units, busy, onRotateToken }: Pro
                           <span className="muted mono vessel-join-station-id">{s.stationId}</span>
                         </div>
                         <div className="vessel-join-url-row">
-                          <code className="mono vessel-join-url" title={remoteUrl}>
-                            {remoteUrl}
+                          <code
+                            className="mono vessel-join-url"
+                            title={remoteUrl ?? 'Waiting for public/tunnel URL'}
+                          >
+                            {remoteUrl ?? 'Waiting for public/tunnel URL…'}
                           </code>
                           <div className="vessel-join-station-actions">
                             <button
                               type="button"
                               className="primary"
-                              disabled={busy}
-                              onClick={() => void copy(stationKey, remoteUrl)}
+                              disabled={busy || !remoteUrl}
+                              onClick={() => {
+                                if (remoteUrl) void copy(stationKey, remoteUrl);
+                              }}
                             >
                               {copyLabel(stationKey, 'Copy')}
                             </button>

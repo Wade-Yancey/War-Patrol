@@ -46,28 +46,34 @@ there's no CORS to configure for gameplay traffic) and starts the server with
   auth/token friction, not networking. For that, either:
   - Bring your own reverse proxy (Caddy/nginx/Cloudflare named tunnel), same
     as the manual path below, or
-  - Use the optional built-in **quick tunnel** integration — no reverse proxy
-    config, no DNS, no signup, one extra env var:
+  - Use the built-in **quick tunnel** integration — no reverse proxy
+    config, no DNS, no signup. **`pnpm host` defaults this on**
+    (`WAR_PATROL_TUNNEL=cloudflared`). Opt out with
+    `WAR_PATROL_TUNNEL=0 pnpm host` if you already have HTTPS in front /
+    `WAR_PATROL_PUBLIC_URL`.
 
     ```bash
-    WAR_PATROL_TUNNEL=cloudflared pnpm host
+    pnpm host
+    # equivalent: WAR_PATROL_TUNNEL=cloudflared pnpm host
     ```
 
     This shells out to a `cloudflared` binary you already have on `PATH`
     (install it yourself — [Cloudflare's downloads
     page](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/);
     no new npm dependency was added for this) and runs `cloudflared tunnel
-    --url http://localhost:<port>`. When cloudflared allocates its random
-    `https://<random>.trycloudflare.com` HTTPS URL, the server prints it
-    plus a join-ready link with the admin token pre-filled. If `cloudflared`
-    isn't installed, the server logs the install link and keeps running
-    normally (LAN/loopback access still works) — it never crashes the
-    process. **Quick tunnels have no auth of their own** — anyone with the
-    URL can reach the server, same trust model as sharing an unlisted link;
-    fine for a short beta window, not for standing infrastructure. There's
-    no custom hostname (you get a random `trycloudflare.com` subdomain each
-    run) and no guaranteed uptime SLA — good enough to get a beta test
-    started in minutes, not a permanent deployment.
+    --url http://127.0.0.1:<port>`. When cloudflared allocates its random
+    `https://<random>.trycloudflare.com` HTTPS URL, the server prints a clear
+    **PUBLIC TUNNEL URL** banner plus a join-ready link with the admin token
+    pre-filled, and publishes that origin as `publicBaseUrl` for umpire
+    **Copy**. If `cloudflared` isn't installed, the server logs the install
+    link and keeps running normally (LAN/loopback access still works) — it
+    never crashes the process. **Quick tunnels have no auth of their own** —
+    anyone with the URL can reach the server, same trust model as sharing an
+    unlisted link; fine for a short beta window, not for standing
+    infrastructure. There's no custom hostname (you get a random
+    `trycloudflare.com` subdomain each run) and no guaranteed uptime SLA —
+    good enough to get a beta test started in minutes, not a permanent
+    deployment.
 
 5. Copy the per-station join links (`/g/:gameId/v/:accessToken/s/:stationId`)
    from the umpire's **Player join URLs** panel and send them to testers.
@@ -105,13 +111,15 @@ What the UI does now (keep it simple):
   3. the first inbound request whose `Host` / `X-Forwarded-Host` is a tunnel
      hostname (`*.trycloudflare.com` / `*.cfargotunnel.com`) — opening the
      tunnel join-ready link once also teaches the server.
-- Umpire **Copy** prefers `publicBaseUrl` when known; otherwise it uses this
-  tab’s origin (so if you already opened umpire via the tunnel URL, Copy
-  works immediately). Copy is **never** disabled waiting for a tunnel —
-  if you are still on loopback before the public base lands, Copy uses
-  `127.0.0.1` and a short hint points at the console tunnel URL /
-  `WAR_PATROL_PUBLIC_URL` / open-tunnel-once. **Open** stays same-origin
-  (host tabs on loopback stay on loopback).
+- Umpire **Copy** / displayed station URLs use `publicBaseUrl` when known.
+  While internet mode is on and the umpire tab is still on loopback with no
+  public base yet, Copy stays disabled and the panel shows “Waiting for
+  public/tunnel URL…” — it will **not** hand remotes `127.0.0.1`. Once the
+  tunnel scrape (or Host learn / `WAR_PATROL_PUBLIC_URL`) fills
+  `publicBaseUrl`, the panel flips to `https://….trycloudflare.com/…`
+  without a reload. If the umpire tab is already on the tunnel origin, that
+  page origin is used immediately. **Open** stays same-origin (host tabs on
+  loopback stay on loopback).
 - If you open the **umpire** UI on a tunnel/public origin, a banner offers a
   one-click `http://127.0.0.1:<port>` equivalent. Station pages never show that
   banner (remotes share the public origin; use **Open** / loopback for host
@@ -279,20 +287,23 @@ places, and pasting the token into the browser:
     (`War Patrol server listening on http://<host>:<port>`, the same single
     line as before this change) — nothing here touches default LAN behavior.
 - `pnpm host` (`scripts/host.mjs`, also aliased as `pnpm expose`): runs
-  `pnpm build` then `pnpm start` with `WAR_PATROL_INTERNET=1` in the child's
-  env (unless already set otherwise). Pure convenience wrapper — equivalent
-  to running `pnpm build && WAR_PATROL_INTERNET=1 pnpm start` by hand.
-- `WAR_PATROL_TUNNEL=cloudflared`: when set, `hostInfo.ts` spawns
-  `cloudflared tunnel --url http://localhost:<port>` (the binary must already
-  be on `PATH` — this repo does not depend on or bundle it), scrapes its
-  stdout/stderr for the `https://<random>.trycloudflare.com` URL Cloudflare's
-  free quick-tunnel service allocates (skipping `api.trycloudflare.com`),
+  `pnpm build` then `pnpm start` with `WAR_PATROL_INTERNET=1` **and**
+  `WAR_PATROL_TUNNEL=cloudflared` in the child's env (unless already set).
+  Opt out of the tunnel with `WAR_PATROL_TUNNEL=0 pnpm host`. Equivalent to
+  `pnpm build && WAR_PATROL_INTERNET=1 WAR_PATROL_TUNNEL=cloudflared pnpm start`.
+- `WAR_PATROL_TUNNEL=cloudflared`: when set (default under `pnpm host`),
+  `hostInfo.ts` spawns `cloudflared tunnel --url http://127.0.0.1:<port>`
+  (the binary must already be on `PATH` — this repo does not depend on or
+  bundle it), scrapes its stdout/stderr for the
+  `https://<random>.trycloudflare.com` URL Cloudflare's free quick-tunnel
+  service allocates (skipping `api.trycloudflare.com`, stripping ANSI),
   publishes that origin as `publicBaseUrl` for `/api/host-info` (unless
-  `WAR_PATROL_PUBLIC_URL` is already set), and prints it plus a join-ready
-  link with the admin token appended **and** a loopback Host UI reminder. If
-  `cloudflared` isn't installed, the spawn fails with `ENOENT`, which is
-  caught and logged (an install-link pointer) — the server keeps running on
-  LAN/loopback either way; a missing/failed tunnel is never fatal.
+  `WAR_PATROL_PUBLIC_URL` is already set), and prints a clear
+  **PUBLIC TUNNEL URL** banner plus a join-ready link with the admin token
+  appended **and** a loopback Host UI reminder. If `cloudflared` isn't
+  installed, the spawn fails with `ENOENT`, which is caught and logged (an
+  install-link pointer) — the server keeps running on LAN/loopback either
+  way; a missing/failed tunnel is never fatal.
 - `WAR_PATROL_PUBLIC_URL`: optional explicit public origin for Copy (named
   tunnel / reverse proxy). Takes priority over the quick-tunnel scrape.
   Loopback values are ignored (they are not remote-reachable).
