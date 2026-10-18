@@ -91,10 +91,11 @@ the same machine), while remotes on those same links stay healthy. #232 already
 clears stale session tokens after a server restart (401 → password form); that
 does **not** fix the host-on-tunnel case.
 
-What the UI does now:
+What the UI does now (keep it simple):
 
-- Startup / tunnel logs print a **Host UI (this machine)** loopback link and
-  tell you to keep local stations on `127.0.0.1`.
+- Startup / tunnel logs print **Public tunnel URL** plus a **Host UI (this
+  machine)** loopback link. Keep your own umpire + station tabs on
+  `127.0.0.1`; send remotes the tunnel HTTPS links.
 - `GET /api/host-info` exposes `{ publicBaseUrl, listenPort, internetMode }`
   (no admin token). `publicBaseUrl` is filled from, in order:
   1. `WAR_PATROL_PUBLIC_URL` (explicit; wins),
@@ -102,15 +103,15 @@ What the UI does now:
      `WAR_PATROL_TUNNEL=cloudflared` (scrapes stderr; ignores the
      `api.trycloudflare.com` control-plane host),
   3. the first inbound request whose `Host` / `X-Forwarded-Host` is a tunnel
-     hostname (`*.trycloudflare.com` / `*.cfargotunnel.com`) — so an external
-     `cloudflared` (not spawned by us) still teaches the server the public
-     origin after you open the tunnel join-ready link once.
-- Umpire **Copy** uses `publicBaseUrl` when set (remote-ready HTTPS links)
-  even if your umpire tab is on loopback. While internet hosting is on and
-  the umpire tab is still on `127.0.0.1`, **Copy stays disabled** until a
-  public base is known — it will not hand remotes loopback URLs. **Open**
-  stays on the current browser origin (relative SPA path) so host tabs do
-  not jump onto the tunnel.
+     hostname (`*.trycloudflare.com` / `*.cfargotunnel.com`) — opening the
+     tunnel join-ready link once also teaches the server.
+- Umpire **Copy** prefers `publicBaseUrl` when known; otherwise it uses this
+  tab’s origin (so if you already opened umpire via the tunnel URL, Copy
+  works immediately). Copy is **never** disabled waiting for a tunnel —
+  if you are still on loopback before the public base lands, Copy uses
+  `127.0.0.1` and a short hint points at the console tunnel URL /
+  `WAR_PATROL_PUBLIC_URL` / open-tunnel-once. **Open** stays same-origin
+  (host tabs on loopback stay on loopback).
 - If you open the **umpire** UI on a tunnel/public origin, a banner offers a
   one-click `http://127.0.0.1:<port>` equivalent. Station pages never show that
   banner (remotes share the public origin; use **Open** / loopback for host
