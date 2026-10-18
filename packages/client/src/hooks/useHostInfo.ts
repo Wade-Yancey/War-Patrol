@@ -8,16 +8,19 @@ export type HostInfo = {
 };
 
 /**
- * Hosting hints from `/api/host-info`. Polls briefly so a late cloudflared
- * quick-tunnel URL still lands in the umpire Copy panel after page load.
+ * Hosting hints from `/api/host-info`.
+ *
+ * When internet mode is on and `publicBaseUrl` is still null (cloudflared still
+ * allocating, or Host-header learn not yet hit), keep polling so the umpire
+ * Copy panel flips to `https://….trycloudflare.com` without a reload.
+ * Once a public base lands — or we are not in internet mode — stop.
  */
 export function useHostInfo(): HostInfo | null {
   const [info, setInfo] = useState<HostInfo | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    let attempts = 0;
-    const maxAttempts = 30;
+    let timer: number | undefined;
 
     const load = async () => {
       try {
@@ -30,26 +33,32 @@ export function useHostInfo(): HostInfo | null {
       }
     };
 
-    let timer: number | undefined;
+    const stop = () => {
+      if (timer !== undefined) {
+        window.clearInterval(timer);
+        timer = undefined;
+      }
+    };
+
+    const shouldKeepPolling = (next: HostInfo | null) =>
+      Boolean(next?.internetMode && !next.publicBaseUrl);
 
     void (async () => {
       const first = await load();
-      if (cancelled || first?.publicBaseUrl) return;
+      if (cancelled) return;
+      if (!shouldKeepPolling(first)) return;
       timer = window.setInterval(() => {
         void (async () => {
-          attempts += 1;
           const next = await load();
           if (cancelled) return;
-          if (next?.publicBaseUrl || attempts >= maxAttempts) {
-            if (timer !== undefined) window.clearInterval(timer);
-          }
+          if (!shouldKeepPolling(next)) stop();
         })();
-      }, 2_000);
+      }, 1_500);
     })();
 
     return () => {
       cancelled = true;
-      if (timer !== undefined) window.clearInterval(timer);
+      stop();
     };
   }, []);
 

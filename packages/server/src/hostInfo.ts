@@ -50,15 +50,24 @@ export function isUsablePublicJoinBase(url: string): boolean {
 }
 
 /** cloudflared quick-tunnel origins (global for multi-match scrape). */
-const CLOUDFLARED_QUICK_TUNNEL_URL = /https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/g;
+const CLOUDFLARED_QUICK_TUNNEL_URL = /https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/gi;
+
+/** Strip ANSI / CSI sequences so piped or pseudo-TTY cloudflared logs still match. */
+function stripAnsi(text: string): string {
+  return text.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '');
+}
 
 /**
  * Pull the first usable `*.trycloudflare.com` origin out of cloudflared
  * stdout/stderr. Skips `https://api.trycloudflare.com` control-plane noise.
+ * Tolerates ANSI color and trailing box-padding whitespace in recent
+ * cloudflared banners.
  */
 export function extractQuickTunnelUrl(text: string): string | null {
-  const matches = text.match(CLOUDFLARED_QUICK_TUNNEL_URL) ?? [];
-  for (const m of matches) {
+  const cleaned = stripAnsi(text);
+  const matches = cleaned.match(CLOUDFLARED_QUICK_TUNNEL_URL) ?? [];
+  for (const raw of matches) {
+    const m = raw.trim().replace(/\/+$/, '');
     if (isUsablePublicJoinBase(m)) return m;
   }
   return null;
@@ -281,16 +290,66 @@ export function printStartupBanner(opts: {
   console.log('');
 }
 
+function printPublicTunnelBanner(opts: {
+  tunnelUrl: string;
+  publicOrigin: string;
+  port: number;
+  token: string | undefined;
+}): void {
+  const { tunnelUrl, publicOrigin, port, token } = opts;
+  console.log('');
+  console.log('================================================================');
+  console.log('  PUBLIC TUNNEL URL — send this origin to remote players');
+  console.log(`  ${tunnelUrl}`);
+  console.log('================================================================');
+  if (token) {
+    console.log(`[war-patrol] Join-ready (admin):  ${publicOrigin}/?admin=${token}`);
+  }
+  console.log(
+    `[war-patrol] Host UI (this machine):     http://127.0.0.1:${port}/` +
+      (token ? `?admin=${token}` : ''),
+  );
+  console.log(
+    '[war-patrol] Remotes: Copy station links from umpire Player join URLs',
+  );
+  console.log(
+    '[war-patrol] (panel uses this public origin). Keep your own tabs on 127.0.0.1.',
+  );
+  console.log(
+    '[war-patrol] Quick tunnels are unauthenticated — anyone with the URL can reach',
+  );
+  console.log(
+    '[war-patrol] this server. Fine for a short beta window, not long-term hosting.',
+  );
+  console.log('');
+}
+
 /**
  * Optional one-command tunnel: `WAR_PATROL_TUNNEL=cloudflared` spawns
- * `cloudflared tunnel --url http://localhost:<port>` (must already be
+ * `cloudflared tunnel --url http://127.0.0.1:<port>` (must already be
  * installed — no new dependency added to this repo) and prints the public
  * HTTPS URL it allocates, plus a join-ready link with the admin token
- * pre-filled. No-op unless the var is set; failures are logged, never fatal.
+ * pre-filled. `pnpm host` defaults this on. Failures are logged, never fatal.
  */
 export function maybeStartTunnel(port: number): void {
   const mode = process.env.WAR_PATROL_TUNNEL?.trim().toLowerCase();
-  if (!mode || !truthyFlag(mode)) return;
+  if (!mode || !truthyFlag(mode)) {
+    if (isInternetMode() && !getPublicBaseUrl()) {
+      console.log('');
+      console.log(
+        '[war-patrol] No quick tunnel (WAR_PATROL_TUNNEL off) and no WAR_PATROL_PUBLIC_URL.',
+      );
+      console.log(
+        '[war-patrol] Umpire Copy will not have a public base — remotes cannot use 127.0.0.1.',
+      );
+      console.log(
+        '[war-patrol] Fix: pnpm host (defaults tunnel), or WAR_PATROL_TUNNEL=cloudflared, or',
+      );
+      console.log('[war-patrol]   WAR_PATROL_PUBLIC_URL=https://your.public.host');
+      console.log('');
+    }
+    return;
+  }
   if (mode !== 'cloudflared' && mode !== '1' && mode !== 'true') {
     console.log(
       `[war-patrol] Unknown WAR_PATROL_TUNNEL=${mode} (supported: "cloudflared"). Skipping tunnel.`,
@@ -299,10 +358,16 @@ export function maybeStartTunnel(port: number): void {
   }
 
   console.log('[war-patrol] Starting cloudflared quick tunnel...');
+  console.log(
+    `[war-patrol] Watching cloudflared output for https://*.trycloudflare.com …`,
+  );
   let child: ReturnType<typeof spawn>;
   try {
-    child = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${port}`], {
+    // Prefer 127.0.0.1 over localhost so cloudflared hits our IPv4 listener
+    // even when "localhost" resolves to ::1 first.
+    child = spawn('cloudflared', ['tunnel', '--url', `http://127.0.0.1:${port}`], {
       stdio: ['ignore', 'pipe', 'pipe'],
+      env: process.env,
     });
   } catch (err) {
     console.log(`[war-patrol] Could not start cloudflared: ${(err as Error).message}`);
@@ -312,11 +377,11 @@ export function maybeStartTunnel(port: number): void {
   let printed = false;
   /** Accumulate chunks — URL may be split across writes; skip api. control-plane hits. */
   let scrapeBuf = '';
-  const onData = (buf: Buffer) => {
+  const scrapeStartedAt = Date.now();
+  let warnedSlow = false;
+
+  const publishTunnelUrl = (tunnelUrl: string) => {
     if (printed) return;
-    scrapeBuf = (scrapeBuf + buf.toString()).slice(-64_000);
-    const tunnelUrl = extractQuickTunnelUrl(scrapeBuf);
-    if (!tunnelUrl) return;
     printed = true;
     scrapeBuf = '';
     // Env override wins; otherwise publish the allocated quick-tunnel origin
@@ -326,28 +391,26 @@ export function maybeStartTunnel(port: number): void {
     }
     const token = process.env.WAR_PATROL_ADMIN_TOKEN;
     const publicOrigin = getPublicBaseUrl() ?? tunnelUrl;
-    console.log('');
-    console.log(`[war-patrol] Public tunnel URL: ${tunnelUrl}`);
-    if (token) {
-      console.log(`[war-patrol] Join-ready (admin):  ${publicOrigin}/?admin=${token}`);
+    printPublicTunnelBanner({ tunnelUrl, publicOrigin, port, token });
+  };
+
+  const onData = (buf: Buffer) => {
+    if (printed) return;
+    scrapeBuf = (scrapeBuf + buf.toString('utf8')).slice(-64_000);
+    const tunnelUrl = extractQuickTunnelUrl(scrapeBuf);
+    if (!tunnelUrl) {
+      if (!warnedSlow && Date.now() - scrapeStartedAt > 20_000) {
+        warnedSlow = true;
+        console.log(
+          '[war-patrol] Still waiting for cloudflared to print a trycloudflare.com URL…',
+        );
+        console.log(
+          '[war-patrol] (scrape has not matched yet; check cloudflared output above)',
+        );
+      }
+      return;
     }
-    console.log(
-      `[war-patrol] Host UI (this machine):     http://127.0.0.1:${port}/` +
-        (token ? `?admin=${token}` : ''),
-    );
-    console.log(
-      '[war-patrol] Remotes: copy station links from the umpire Player join URLs panel',
-    );
-    console.log(
-      '[war-patrol] (uses this public origin). Keep your own station tabs on 127.0.0.1.',
-    );
-    console.log(
-      '[war-patrol] Quick tunnels are unauthenticated and anyone with the URL can reach',
-    );
-    console.log(
-      '[war-patrol] this server — fine for a short beta window, not for long-term hosting.',
-    );
-    console.log('');
+    publishTunnelUrl(tunnelUrl);
   };
   child.stdout?.on('data', onData);
   child.stderr?.on('data', onData);
@@ -357,15 +420,33 @@ export function maybeStartTunnel(port: number): void {
       console.log(
         '[war-patrol]   https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/',
       );
+      console.log(
+        '[war-patrol] Or set WAR_PATROL_PUBLIC_URL=https://… so Copy has a public base.',
+      );
     } else {
       console.log(`[war-patrol] cloudflared error: ${err.message}`);
     }
   });
   child.on('exit', (code) => {
+    if (!printed) {
+      console.log(
+        '[war-patrol] cloudflared exited before a trycloudflare.com URL was scraped.',
+      );
+      console.log(
+        '[war-patrol] publicBaseUrl is still unset — umpire Copy will not share 127.0.0.1.',
+      );
+    }
     if (code !== 0 && code !== null) {
       console.log(`[war-patrol] cloudflared exited with code ${code}`);
     }
   });
+  // Safety net: re-scan buffer once more after a delay in case the URL
+  // arrived split weirdly and a later chunk never came.
+  setTimeout(() => {
+    if (printed || !scrapeBuf) return;
+    const tunnelUrl = extractQuickTunnelUrl(scrapeBuf);
+    if (tunnelUrl) publishTunnelUrl(tunnelUrl);
+  }, 8_000);
   process.once('exit', () => {
     try {
       child.kill();
