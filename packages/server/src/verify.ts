@@ -3927,11 +3927,14 @@ async function main() {
       canFireDeckGun,
       resolveDeckGunShot,
       deckGunImpactFromSolution,
+      deckGunDesignatePoint,
+      acquireDeckGunContactNearDesignate,
       deckGunHitGateM,
       deckGunHitChance,
       deckGunMissBand,
       weaponRng01,
       RADAR_SURFACE_DEPTH_M,
+      DECK_GUN_ACQUIRE_RADIUS_NM,
     } = await import('@war-patrol/shared');
     check('beam aspect dud ~2%', Math.abs(torpedoDudPctFromAspect(90) - 2) < 0.01);
     check('end-on dud ~10%', Math.abs(torpedoDudPctFromAspect(0) - 10) < 0.01);
@@ -4156,6 +4159,80 @@ async function main() {
       );
       check('near miss band at 80 m', deckGunMissBand(80) === 'near');
       check('far miss band above 80 m', deckGunMissBand(81) === 'far');
+      check('deck gun acquire radius 0.75 nm', DECK_GUN_ACQUIRE_RADIUS_NM === 0.75);
+      {
+        const designate = deckGunDesignatePoint({
+          firerPosition: firer.position,
+          aimHeading: 0,
+          estimatedRangeNm: 1.5,
+        });
+        const acq = acquireDeckGunContactNearDesignate({
+          designate,
+          firerId: firer.id,
+          contacts: [firer as never, target as never],
+        });
+        check('deck gun acquire finds surface contact near designate', Boolean(acq?.contact.id === 'tgt'));
+      }
+      // Moving target: wrong player course/speed must be ignored — crew lead from truth.
+      {
+        const mover = {
+          ...target,
+          id: 'mover',
+          name: 'Mover',
+          heading: 90,
+          speed: 18,
+        };
+        const withWrongPlayer = resolveDeckGunShot({
+          firer: firer as never,
+          fire: {
+            aimHeading: 0,
+            estimatedCourse: 0,
+            estimatedSpeedKn: 0,
+            estimatedRangeNm: 1.5,
+          },
+          contacts: [firer as never, mover as never],
+          turnLengthSeconds: 180,
+          seed: 'deckgun-crew-lead',
+        });
+        const withTruthInOrder = resolveDeckGunShot({
+          firer: firer as never,
+          fire: {
+            aimHeading: 0,
+            estimatedCourse: 90,
+            estimatedSpeedKn: 18,
+            estimatedRangeNm: 1.5,
+          },
+          contacts: [firer as never, mover as never],
+          turnLengthSeconds: 180,
+          seed: 'deckgun-crew-lead',
+        });
+        check(
+          'deck gun crew lead ignores wrong player course/speed',
+          Math.abs(withWrongPlayer.fireHeading - withTruthInOrder.fireHeading) < 0.01 &&
+            withWrongPlayer.outcome === withTruthInOrder.outcome,
+          `wrong fire=${withWrongPlayer.fireHeading} truthOrder fire=${withTruthInOrder.fireHeading}`,
+        );
+        check(
+          'deck gun crew lead is off pure aim for a mover',
+          Math.abs(withWrongPlayer.fireHeading - 0) > 0.5,
+          `fire=${withWrongPlayer.fireHeading}`,
+        );
+        const noTarget = resolveDeckGunShot({
+          firer: firer as never,
+          fire: {
+            aimHeading: 0,
+            estimatedRangeNm: 1.5,
+          },
+          contacts: [firer as never],
+          turnLengthSeconds: 180,
+          seed: 'deckgun-no-acq',
+        });
+        check(
+          'deck gun with no acquire still fires along aim (miss)',
+          noTarget.outcome === 'miss' && Math.abs(noTarget.fireHeading - 0) < 0.01,
+          `got ${noTarget.outcome} fire=${noTarget.fireHeading}`,
+        );
+      }
       check(
         'canFireDeckGun requires ammo',
         !canFireDeckGun({

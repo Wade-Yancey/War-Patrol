@@ -2635,6 +2635,13 @@ export function StationPage() {
                 disabled={!vessel.canSubmitOrders}
                 reloadBusy={weaponReloadBusy}
                 writePending={orderWritePending}
+                opticsContacts={opticsContacts
+                  .filter((c) => c.kind !== 'periscope')
+                  .map((c) => ({
+                    labelN: c.labelN,
+                    relativeBearing: c.relativeBearing,
+                    rangeNm: c.rangeNm,
+                  }))}
                 onSubmit={(fireDeckGun) => void submit({ fireDeckGun })}
                 onClear={() => void submit({ fireDeckGun: null })}
                 onReload={() => void reloadDeckGun()}

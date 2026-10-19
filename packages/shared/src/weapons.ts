@@ -7,9 +7,11 @@
  * adds a small warhead dud chance — not the old 5–50% “did you hit” RNG table.
  * Fire headings come from the player's entered TDC solution (aim + course /
  * speed / range intercept) — never auto-filled from sim truth.
- * Deck guns mirror that calculator language for surface engagement (DD +
- * fleet sub when surfaced): same-turn shell impact from the entered solution,
- * surface targets only, finite magazines per hull class.
+ * Deck guns use a slim designate + fire model (DD + fleet sub when surfaced):
+ * player aim/LOS + rough range; resolve acquires the nearest surface contact
+ * near that point and applies crew lead from truth course/speed. Same-turn
+ * shell impact, surface targets only, finite magazines per hull class.
+ * Torpedoes keep the full player TDC solution.
  * Aircraft attacks are umpire-ordered intercept / strafe / bombing runs that resolve
  * on turn advance from CPA geometry (depth-charge-like bands).
  * See docs/simulation-physics.md in the project store.
@@ -488,6 +490,13 @@ export const DECK_GUN_SCATTER_BEARING_DEG = 1.5;
  * Controls — keeps the muzzle report leading the blast for firer/target.
  */
 export const DECK_GUN_HIT_AUDIO_DELAY_SEC = 0.85;
+
+/**
+ * Max horizontal distance (nm) from the player designate point to acquire a
+ * surface contact for crew lead. Outside this band → no acquire (fire along
+ * aim with zero lead using the rough range).
+ */
+export const DECK_GUN_ACQUIRE_RADIUS_NM = 0.75;
 
 /**
  * Along-track release fractions in [0, 1] from move start→end for N charges.
@@ -2335,13 +2344,60 @@ export function normalizeDeckGunFireOrder(raw: DeckGunFireOrder): DeckGunFireOrd
     shotRaw === undefined || shotRaw === null
       ? undefined
       : Math.max(1, Math.floor(Number(shotRaw) || 1));
+  // Course/speed are optional legacy fields — resolve ignores them for lead.
+  const hasCourse = raw.estimatedCourse !== undefined && raw.estimatedCourse !== null;
+  const hasSpeed = raw.estimatedSpeedKn !== undefined && raw.estimatedSpeedKn !== null;
   return {
     aimHeading: normalizeHeading(raw.aimHeading),
-    estimatedCourse: normalizeHeading(raw.estimatedCourse),
-    estimatedSpeedKn: Math.max(0, Number(raw.estimatedSpeedKn) || 0),
+    ...(hasCourse ? { estimatedCourse: normalizeHeading(Number(raw.estimatedCourse) || 0) } : {}),
+    ...(hasSpeed
+      ? { estimatedSpeedKn: Math.max(0, Number(raw.estimatedSpeedKn) || 0) }
+      : {}),
     estimatedRangeNm: Math.max(0, Number(raw.estimatedRangeNm) || 0),
     ...(shotCount !== undefined ? { shotCount } : {}),
   };
+}
+
+/**
+ * Player designate point: firer → along aim LOS by clamped rough range.
+ */
+export function deckGunDesignatePoint(opts: {
+  firerPosition: LatLonDepth;
+  aimHeading: number;
+  estimatedRangeNm: number;
+}): LatLonDepth {
+  const rangeNm = clampDeckGunRangeNm(opts.estimatedRangeNm);
+  const point = moveAlongHeading(
+    { ...opts.firerPosition, depth: 0 },
+    normalizeHeading(opts.aimHeading),
+    rangeNm * METERS_PER_NM,
+  );
+  return { ...point, depth: 0 };
+}
+
+/**
+ * Nearest surface-eligible contact within {@link DECK_GUN_ACQUIRE_RADIUS_NM}
+ * of the designate point (crew spotter acquisition for lead).
+ */
+export function acquireDeckGunContactNearDesignate(opts: {
+  designate: LatLonDepth;
+  firerId: string;
+  contacts: readonly UnitState[];
+}): { contact: UnitState; missM: number } | null {
+  const maxM = DECK_GUN_ACQUIRE_RADIUS_NM * METERS_PER_NM;
+  let best: UnitState | undefined;
+  let bestMiss = Number.POSITIVE_INFINITY;
+  for (const contact of opts.contacts) {
+    if (contact.id === opts.firerId) continue;
+    if (!isDeckGunTarget(contact)) continue;
+    const miss = horizontalMissMeters(opts.designate, contact.position);
+    if (miss < bestMiss) {
+      bestMiss = miss;
+      best = contact;
+    }
+  }
+  if (!best || !(bestMiss <= maxM)) return null;
+  return { contact: best, missM: bestMiss };
 }
 
 export function buildDeckGunFireBlock(
@@ -2487,18 +2543,33 @@ export type DeckGunResolveResult = {
 };
 
 /**
- * Same-turn deck-gun resolution: impact from solution vs surface contacts.
- * Nearest eligible contact within its aspect gate must also pass a museum-fun
- * hit roll (center ~85%, edge ~50%). Failures and out-of-gate land as misses;
- * miss splash positions get a small seeded scatter for umpire GT / AAR.
+ * Same-turn deck-gun resolution: crew lead from acquired surface contact near
+ * the player designate (aim + rough range), then impact vs surface contacts.
+ * Player-entered course/speed are ignored. Nearest eligible contact within its
+ * aspect gate must also pass a museum-fun hit roll (center ~85%, edge ~50%).
+ * Failures and out-of-gate land as misses; miss splash positions get a small
+ * seeded scatter for umpire GT / AAR.
  */
 export function resolveDeckGunShot(input: DeckGunResolveInput): DeckGunResolveResult {
   const fire = normalizeDeckGunFireOrder(input.fire);
+  const designate = deckGunDesignatePoint({
+    firerPosition: input.firer.position,
+    aimHeading: fire.aimHeading,
+    estimatedRangeNm: fire.estimatedRangeNm,
+  });
+  const acquired = acquireDeckGunContactNearDesignate({
+    designate,
+    firerId: input.firer.id,
+    contacts: input.contacts,
+  });
+  // Crew solution: truth course/speed from acquired contact; else stationary.
+  const estimatedCourse = acquired ? normalizeHeading(acquired.contact.heading) : 0;
+  const estimatedSpeedKn = acquired ? Math.abs(Number(acquired.contact.speed) || 0) : 0;
   const ballistics = deckGunImpactFromSolution({
     firerPosition: input.firer.position,
     aimHeading: fire.aimHeading,
-    estimatedCourse: fire.estimatedCourse,
-    estimatedSpeedKn: fire.estimatedSpeedKn,
+    estimatedCourse,
+    estimatedSpeedKn,
     estimatedRangeNm: fire.estimatedRangeNm,
   });
 

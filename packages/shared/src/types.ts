@@ -271,8 +271,10 @@ export interface DepthChargeDropOrder {
 
 /**
  * Pending deck-gun salvo for the current turn (destroyer + fleet-sub Controls).
- * Mirror of the torpedo calculator language: aim LOS + estimated course/speed/range
- * drive a same-turn fire solution — never auto-filled from sim truth.
+ * Player **designates** with aim LOS + rough range (+ optional Contact N fill);
+ * resolve acquires the nearest surface contact near that point and applies crew
+ * lead from **truth** course/speed. Player course/speed fields are optional /
+ * ignored at resolve (kept for older orders / standing-order payloads).
  * `shotCount` is how many rounds to fire this turn (1 shell each; class-capped).
  */
 export interface DeckGunFireOrder {
@@ -281,11 +283,17 @@ export interface DeckGunFireOrder {
    * Client UI enters optics-style **relative** bearing and converts via own heading.
    */
   aimHeading: number;
-  /** Player-entered estimated target **true course** (degrees). */
-  estimatedCourse: number;
-  /** Player-entered target speed estimate (knots). */
-  estimatedSpeedKn: number;
-  /** Player-entered estimated range to target (nautical miles). */
+  /**
+   * @deprecated Ignored at resolve — crew lead uses acquired contact truth.
+   * Optional for backward-compatible orders; defaults to 0 when omitted.
+   */
+  estimatedCourse?: number;
+  /**
+   * @deprecated Ignored at resolve — crew lead uses acquired contact truth.
+   * Optional for backward-compatible orders; defaults to 0 when omitted.
+   */
+  estimatedSpeedKn?: number;
+  /** Player-entered rough range to designate point (nautical miles). */
   estimatedRangeNm: number;
   /**
    * Rounds to fire this turn (1 shell each). Clamped to class max shots/turn

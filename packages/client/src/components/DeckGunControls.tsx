@@ -5,6 +5,7 @@ import {
   DECK_GUN_SHELL_SPEED_KN,
   RADAR_SURFACE_DEPTH_M,
   defaultDeckGunLoad,
+  formatContactDesignation,
   formatDeckGunFireBlockNotice,
   maxDeckGunShotsPerTurn,
   relativeBearingDeg,
@@ -20,6 +21,13 @@ import { StationInstrumentTitle } from './StationInfoButton';
 import { stationGuideIdFor } from '../stationGuides';
 import { TouchNumber } from './TouchNumber';
 
+/** Optics / lookout contact that can prefill designate aim + range. */
+export type DeckGunOpticsContact = {
+  labelN: number;
+  relativeBearing: number;
+  rangeNm: number;
+};
+
 interface Props {
   ownHeading: number;
   vesselType: VesselType;
@@ -34,6 +42,8 @@ interface Props {
   reloadBusy?: boolean;
   /** Order write in flight — pressed chrome; still allows latest-wins resubmit. */
   writePending?: boolean;
+  /** Optional Contact N list from lookout / periscope to fill aim + rough range. */
+  opticsContacts?: DeckGunOpticsContact[];
   onSubmit: (order: DeckGunFireOrder) => void;
   onClear?: () => void;
   onReload?: () => void;
@@ -61,9 +71,11 @@ function parseRelAim(raw: string): number | null {
 
 /**
  * Deck-gun firing panel — destroyer + fleet-sub surface engagement.
- * Same calculator language as torpedoes (relative aim → range → course → speed
- * solution). Never auto-fills from sim truth. Sub fire requires surfaced/awash.
- * Shot count (1…class max) fires a multi-round salvo — 1 shell each.
+ * Designate + fire: relative aim / LOS, rough range, rounds. Optional Contact N
+ * from optics prefills aim + range. Resolve acquires nearest surface contact
+ * near the designate and applies crew lead from truth course/speed.
+ * Sub fire requires surfaced/awash. Shot count (1…class max) fires a multi-round
+ * salvo — 1 shell each.
  */
 export function DeckGunControls({
   ownHeading,
@@ -78,6 +90,7 @@ export function DeckGunControls({
   disabled,
   reloadBusy,
   writePending = false,
+  opticsContacts = [],
   onSubmit,
   onClear,
   onReload,
@@ -87,12 +100,6 @@ export function DeckGunControls({
   const [aimRelative, setAimRelative] = useState(() =>
     pending ? Math.round(relativeBearingDeg(ownHeading, pending.aimHeading)) : 0,
   );
-  const [estimatedCourse, setEstimatedCourse] = useState(
-    () => Math.round(pending?.estimatedCourse ?? 0),
-  );
-  const [estimatedSpeedKn, setEstimatedSpeedKn] = useState(
-    () => pending?.estimatedSpeedKn ?? 0,
-  );
   const [estimatedRangeNm, setEstimatedRangeNm] = useState(
     () => pending?.estimatedRangeNm ?? 0,
   );
@@ -101,17 +108,19 @@ export function DeckGunControls({
     const cap = Math.max(1, Math.min(maxShots, Math.max(1, deckGunLoad || 1)));
     return Math.min(cap, Math.max(1, pendingN));
   });
+  const [opticsPick, setOpticsPick] = useState('');
 
   const aimTrue = trueBearingFromRelative(ownHeading, aimRelative);
+  // Preview only — resolve uses acquired-contact truth for lead; show stationary
+  // fire = aim so the panel does not invent a player course/speed solution.
   const solution = torpedoFireHeadingFromSolution({
     aimHeading: aimTrue,
-    estimatedCourse,
-    estimatedSpeedKn,
+    estimatedCourse: 0,
+    estimatedSpeedKn: 0,
     estimatedRangeNm,
     torpedoSpeedKn: DECK_GUN_SHELL_SPEED_KN,
   });
   const fireHeading = solution.fireHeading;
-  const lead = ((fireHeading - aimTrue + 540) % 360) - 180;
 
   const submerged =
     vesselType === 'Submarine' && keelDepthM > RADAR_SURFACE_DEPTH_M;
@@ -141,6 +150,18 @@ export function DeckGunControls({
 
   const gunsGuideId = stationGuideIdFor(hullClass, 'guns');
 
+  const applyOpticsContact = (labelKey: string) => {
+    setOpticsPick(labelKey);
+    if (!labelKey) return;
+    const n = Number(labelKey);
+    const c = opticsContacts.find((x) => x.labelN === n);
+    if (!c) return;
+    setAimRelative(Math.round(foldRelativeBearing(c.relativeBearing)));
+    setEstimatedRangeNm(
+      Math.min(DECK_GUN_MAX_RANGE_NM, Math.max(0, Math.round(c.rangeNm * 100) / 100)),
+    );
+  };
+
   return (
     <section className="panel stack controls-weapons-panel station-instrument-panel">
       <div className="station-instrument-head">
@@ -151,7 +172,7 @@ export function DeckGunControls({
         )}
         <p className="muted station-instrument-blurb">
           {magStatus} · max {maxShots}/turn · {DECK_GUN_MAX_RANGE_NM} nm · surface only ·
-          reload {DECK_GUN_RELOAD_TURNS} turns
+          reload {DECK_GUN_RELOAD_TURNS} turns · crew lead
         </p>
       </div>
 
@@ -183,6 +204,28 @@ export function DeckGunControls({
         </div>
       )}
 
+      {opticsContacts.length > 0 && (
+        <label className="stack" style={{ gap: '0.25rem' }}>
+          <span className="muted" style={{ fontSize: '0.85rem' }}>
+            From optics (optional)
+          </span>
+          <select
+            value={opticsPick}
+            disabled={inputsDisabled}
+            onChange={(e) => applyOpticsContact(e.target.value)}
+            aria-label="Fill designate from optics Contact N"
+          >
+            <option value="">— Contact N —</option>
+            {opticsContacts.map((c) => (
+              <option key={c.labelN} value={String(c.labelN)}>
+                {formatContactDesignation(c.labelN)} · {formatRelBearing(c.relativeBearing)} ·{' '}
+                {c.rangeNm.toFixed(2)} nm
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
       <TouchNumber
         label="Aim / LOS (relative)"
         value={aimRelative}
@@ -200,42 +243,18 @@ export function DeckGunControls({
         True LOS {String(Math.round(aimTrue)).padStart(3, '0')}° (own HDG{' '}
         {String(Math.round(ownHeading)).padStart(3, '0')}° + {formatRelBearing(aimRelative)})
         {' · '}
-        Fire HDG {String(Math.round(fireHeading)).padStart(3, '0')}°
-        {solution.solvable
-          ? ` · lead ${lead >= 0 ? '+' : ''}${Math.round(lead)}°`
-          : ' · no intercept (aim)'}
+        Designate along LOS · Fire HDG preview {String(Math.round(fireHeading)).padStart(3, '0')}°
+        (crew lead at resolve)
       </p>
 
-      {/* Same fire-control order as optics viewer meta + torpedo: bearing → range → course → speed. */}
       <TouchNumber
-        label="Est. range"
+        label="Rough range"
         value={estimatedRangeNm}
         onChange={setEstimatedRangeNm}
         min={0}
         max={DECK_GUN_MAX_RANGE_NM}
         step={0.01}
         unit="nm"
-        disabled={inputsDisabled}
-      />
-      <TouchNumber
-        label="Est. target course (true °)"
-        value={estimatedCourse}
-        onChange={(v) => setEstimatedCourse(((Math.round(v) % 360) + 360) % 360)}
-        min={0}
-        max={359}
-        step={1}
-        wrap
-        unit="°"
-        disabled={inputsDisabled}
-      />
-      <TouchNumber
-        label="Est. target speed"
-        value={estimatedSpeedKn}
-        onChange={setEstimatedSpeedKn}
-        min={0}
-        max={50}
-        step={0.1}
-        unit="kn"
         disabled={inputsDisabled}
       />
       <TouchNumber
@@ -263,8 +282,6 @@ export function DeckGunControls({
           onClick={() =>
             onSubmit({
               aimHeading: aimTrue,
-              estimatedCourse,
-              estimatedSpeedKn,
               estimatedRangeNm,
               shotCount: effectiveShots,
             })
@@ -285,9 +302,8 @@ export function DeckGunControls({
         <p className="mono readout" style={{ margin: 0 }}>
           Submitted: {Math.max(1, Math.floor(Number(pending.shotCount) || 1))} rd
           {Math.max(1, Math.floor(Number(pending.shotCount) || 1)) === 1 ? '' : 's'} · aim{' '}
-          {String(Math.round(pending.aimHeading)).padStart(3, '0')}° · CRS{' '}
-          {String(Math.round(pending.estimatedCourse)).padStart(3, '0')}° ·{' '}
-          {pending.estimatedSpeedKn.toFixed(1)} kn · {pending.estimatedRangeNm.toFixed(2)} nm
+          {String(Math.round(pending.aimHeading)).padStart(3, '0')}° ·{' '}
+          {pending.estimatedRangeNm.toFixed(2)} nm (crew lead)
         </p>
       )}
     </section>
