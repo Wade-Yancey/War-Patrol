@@ -40,6 +40,7 @@ import { playEngineOrderBell } from '../audio/engineOrderBell';
 import { isWpDebugEnabled, wpDebug } from '../debug/wpDebug';
 import { useGameStream, type ViewRefreshReason } from '../hooks/useGameStream';
 import {
+  buildContinueStandingOrdersPatch,
   mergeOrdersOptimistic,
   ordersContentEqual,
   type StationOrdersPatch,
@@ -1488,6 +1489,42 @@ export function StationPage() {
     }
   };
 
+  /** One-tap re-file standing helm / EOT / dive as this turn's of-record ORD. */
+  const continueStandingOrdersPatch = vessel
+    ? buildContinueStandingOrdersPatch({
+        unitType: vessel.unit.type,
+        orderedCourse: vessel.unit.orderedCourse,
+        standingEot: vessel.unit.eot,
+        orderedDepth: vessel.unit.orderedDepth,
+        keelDepth: vessel.unit.position.depth,
+        pending: displayOrders,
+        canHelm,
+        canEot,
+        steeringBlocked:
+          presentationSubs.steering === 'stuck' ||
+          presentationSubs.steering === 'disabled',
+        propulsionDisabled: presentationSubs.propulsion === 'disabled',
+        divePlanesLocked:
+          presentationSubs.divePlanes === 'stuck' ||
+          presentationSubs.divePlanes === 'disabled',
+      })
+    : null;
+
+  const continueStandingOrders = () => {
+    if (!continueStandingOrdersPatch) return;
+    // Keep local dials aligned with what we just affirmed of-record.
+    if (continueStandingOrdersPatch.course !== undefined) {
+      setCourse(Math.round(continueStandingOrdersPatch.course));
+    }
+    if (continueStandingOrdersPatch.eot !== undefined) {
+      setEot(continueStandingOrdersPatch.eot);
+    }
+    if (continueStandingOrdersPatch.depth !== undefined) {
+      setDepth(continueStandingOrdersPatch.depth);
+    }
+    void submit(continueStandingOrdersPatch);
+  };
+
   /**
    * Local-first sonar latch: paint immediately so the toggle is not dead for a
    * full RTT. Busy briefly gates double-fire; SSE reconcile clears the overlay.
@@ -2816,6 +2853,17 @@ export function StationPage() {
                   No pending orders.
                 </p>
               )}
+              <div className="control-actions continue-standing-actions">
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={!vessel.canSubmitOrders || !continueStandingOrdersPatch}
+                  title="Re-file standing helm / engine orders / dive for this turn"
+                  onClick={continueStandingOrders}
+                >
+                  Continue standing orders
+                </button>
+              </div>
               {!vessel.canSubmitOrders && (
                 <p className="muted" style={{ margin: 0 }}>
                   Ordering closed.
