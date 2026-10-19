@@ -27,7 +27,10 @@ Original: https://freesound.org/people/asuperiorpotato/sounds/619320/
 Local copy: controls-ambient-hum.wav
 Original filename: 619320__asuperiorpotato__facility-hum-ambience-loopable.wav
 Notes: Destroyer Controls ambient bed only. Submarine Controls use the
-depth-banded sub-ambience-*.ogg loops instead.
+depth-banded sub-ambience-*.ogg loops instead. PCM 16-bit stereo 44.1 kHz
+WAV; equal-power circular self-crossfade (~1.0 s) applied so Web Audio
+`loop=true` has no seam click (same class of fix as sub-ambience OGGs).
+Gain curve unchanged (CONTROLS_AMBIENT_GAIN).
 
 Source: Submarine Internal Ambience During Deep Sea Exposition (user upload)
 License: as provided for War Patrol (user sample)
