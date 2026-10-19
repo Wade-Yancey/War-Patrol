@@ -961,6 +961,13 @@ export interface TurnSnapshot {
   /** Noisemaker decoys as of end-of-resolve (umpire AAR scrubber). */
   noisemakers?: NoisemakerTrack[];
   /**
+   * Instant weapon cues from this resolve for umpire AAR GT scrubber
+   * (deck-gun fire/hit/miss + aircraft bomb splash). Live `recentDetonations`
+   * are pruned after a few turns — AAR must read these snapshotted cues.
+   * Older saves may omit; treat missing as [].
+   */
+  detonations?: WeaponDetonationEvent[];
+  /**
    * Umpire-authored note for this turn, shown alongside the resolve in the
    * After-Action Report. One note per turn (edit overwrites); optional.
    */

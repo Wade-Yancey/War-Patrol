@@ -208,8 +208,12 @@ export function UmpirePage() {
       torpedoes: reviewSnapshot.torpedoes ?? [],
       depthCharges: reviewSnapshot.depthCharges ?? [],
       noisemakers: reviewSnapshot.noisemakers ?? [],
-      // Detonations are live-window only; for AAR scrub show cues from that turn.
-      detonations: (umpire.recentDetonations ?? []).filter((d) => d.turnNumber === turnN),
+      // Prefer snapshotted cues (deck gun / bomb); live recentDetonations prune after ~2 turns.
+      // undefined = pre-snapshot save → fall back to live window; [] = this turn had none.
+      detonations:
+        reviewSnapshot.detonations != null
+          ? reviewSnapshot.detonations
+          : (umpire.recentDetonations ?? []).filter((d) => d.turnNumber === turnN),
       // Markers are not snapshotted; filter live set by createdTurn for AAR scrub.
       seaSurfaceMarkers: (umpire.seaSurfaceMarkers ?? []).filter((m) => m.createdTurn <= turnN),
       combatLog: (umpire.combatLog ?? []).filter((e) => e.turnNumber <= turnN),

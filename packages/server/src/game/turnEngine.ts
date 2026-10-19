@@ -185,6 +185,10 @@ export function resolveTurn(save: GameSave): GameSave {
     torpedoes: structuredClone(weapons.torpedoes),
     depthCharges: structuredClone(weapons.depthCharges),
     noisemakers: structuredClone(noisemakers.noisemakers),
+    // Instant cues (deck gun / bomb splash) for AAR — live recentDetonations prune.
+    detonations: structuredClone(
+      (weapons.recentDetonations ?? []).filter((d) => d.turnNumber === resolveTurnNumber),
+    ),
   };
 
   // Sink aftermath Sightings: spawn debris/oil/(life rafts|pilot) when a hull
