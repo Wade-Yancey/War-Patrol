@@ -69,6 +69,58 @@ export function mergeOrdersOptimistic(
   return next;
 }
 
+/**
+ * Build a Controls POST patch that re-files standing helm / EOT / dive for this
+ * turn without re-entering dials. Prefers already-pending of-record values when
+ * present so a prior submit this turn is not overwritten by older unit.eot.
+ * Omits fields blocked by station caps or jammed subsystems. Returns null when
+ * nothing can be filed (button should stay disabled).
+ */
+export function buildContinueStandingOrdersPatch(input: {
+  unitType: string;
+  orderedCourse: number;
+  standingEot: EotSetting;
+  orderedDepth?: number;
+  keelDepth?: number;
+  pending: UnitOrders;
+  canHelm: boolean;
+  canEot: boolean;
+  steeringBlocked: boolean;
+  propulsionDisabled: boolean;
+  divePlanesLocked: boolean;
+}): StationOrdersPatch | null {
+  const patch: StationOrdersPatch = {};
+  if (input.canHelm && !input.steeringBlocked) {
+    patch.course = normalizeHeading(
+      input.pending.course ?? input.orderedCourse,
+    );
+  }
+  if (input.canEot && !input.propulsionDisabled) {
+    patch.eot = input.pending.eot ?? input.standingEot;
+  }
+  if (input.canHelm && input.unitType === 'Submarine') {
+    const pendingBlow =
+      Boolean(input.pending.emergencyBlow) && input.pending.depth !== undefined;
+    if (!input.divePlanesLocked || pendingBlow) {
+      patch.depth = clampSubmarineDepth(
+        input.pending.depth ??
+          input.orderedDepth ??
+          input.keelDepth ??
+          0,
+      );
+      if (pendingBlow) patch.emergencyBlow = true;
+    }
+  }
+  if (
+    patch.course === undefined &&
+    patch.eot === undefined &&
+    patch.depth === undefined
+  ) {
+    return null;
+  }
+  return patch;
+}
+
 /** Compare standing-order content (ignore timestamps / writer metadata). */
 export function ordersContentEqual(a: UnitOrders, b: UnitOrders): boolean {
   return ordersContentKey(a) === ordersContentKey(b);

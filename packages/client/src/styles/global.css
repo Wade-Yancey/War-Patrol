@@ -1091,6 +1091,15 @@ label {
   margin-top: 0.65rem;
 }
 
+.continue-standing-actions {
+  margin-top: 0.15rem;
+}
+
+.continue-standing-actions button {
+  width: 100%;
+  max-width: 22rem;
+}
+
 .radar-scope {
   /* CRT console cluster: dominant scope + controls hugging beside / below. */
   display: flex;
