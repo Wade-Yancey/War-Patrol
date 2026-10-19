@@ -9214,12 +9214,18 @@ async function main() {
     await api('POST', `/api/games/${gunId}/turn/resolve`, {}, gunUTok);
     const afterSalvoUmp = await api('GET', `/api/games/${gunId}/view`, undefined, gunUTok);
     const afterSalvoUmpView = afterSalvoUmp.json.view as {
+      turn?: { number: number };
       combatLog?: Array<{ kind: string; summary: string }>;
       recentDetonations?: Array<{
         kind: string;
         firerUnitId?: string;
         targetUnitId?: string;
         aimHeading?: number;
+        turnNumber?: number;
+      }>;
+      historySnapshots?: Array<{
+        turnNumber: number;
+        detonations?: Array<{ kind: string; turnNumber: number; aimHeading?: number }>;
       }>;
       units: Array<{ id: string; deckGunLoad?: number; deckGunAwaitingReload?: boolean }>;
     };
@@ -9276,6 +9282,58 @@ async function main() {
       'umpire sees hit or miss splash for salvo',
       gunDets.some((d) => d.kind === 'deck_gun_hit' || d.kind === 'deck_gun_miss'),
       `dets=${JSON.stringify(gunDets.map((d) => d.kind))}`,
+    );
+    // AAR: deck-gun cues must live on the history snapshot (live recentDetonations
+    // prune after DETONATION_RETENTION_TURNS = 2). Salvo just resolved → end of T(n-1).
+    const salvoResolvedTurn = (afterSalvoUmpView.turn?.number ?? 1) - 1;
+    const salvoSnap = (afterSalvoUmpView.historySnapshots ?? []).find(
+      (h) => h.turnNumber === salvoResolvedTurn,
+    );
+    const snapGunDets = (salvoSnap?.detonations ?? []).filter((d) =>
+      String(d.kind).startsWith('deck_gun'),
+    );
+    check(
+      'history snapshot includes deck-gun cues for AAR',
+      snapGunDets.length >= 2 && snapGunDets.some((d) => d.kind === 'deck_gun_fire'),
+      `turn=${salvoResolvedTurn} snapDets=${JSON.stringify(snapGunDets.map((d) => d.kind))} snaps=${(afterSalvoUmpView.historySnapshots ?? []).map((h) => h.turnNumber).join(',')}`,
+    );
+    for (let i = 0; i < 3; i++) {
+      await api('POST', `/api/games/${gunId}/turn/lock`, {}, gunUTok);
+      await api('POST', `/api/games/${gunId}/turn/resolve`, {}, gunUTok);
+    }
+    const afterPruneUmp = await api('GET', `/api/games/${gunId}/view`, undefined, gunUTok);
+    const afterPruneView = afterPruneUmp.json.view as {
+      recentDetonations?: Array<{ kind: string; turnNumber?: number }>;
+      historySnapshots?: Array<{
+        turnNumber: number;
+        detonations?: Array<{ kind: string }>;
+      }>;
+      combatLog?: Array<{ kind: string; turnNumber?: number }>;
+    };
+    const liveSalvoGuns = (afterPruneView.recentDetonations ?? []).filter(
+      (d) => d.turnNumber === salvoResolvedTurn && String(d.kind).startsWith('deck_gun'),
+    );
+    check(
+      'live recentDetonations prune old deck-gun cues',
+      liveSalvoGuns.length === 0,
+      `live=${JSON.stringify(liveSalvoGuns)}`,
+    );
+    const snapAfterPrune = (afterPruneView.historySnapshots ?? []).find(
+      (h) => h.turnNumber === salvoResolvedTurn,
+    );
+    const snapGunAfterPrune = (snapAfterPrune?.detonations ?? []).filter((d) =>
+      String(d.kind).startsWith('deck_gun'),
+    );
+    check(
+      'AAR snapshot keeps deck-gun cues after prune',
+      snapGunAfterPrune.length >= 2 && snapGunAfterPrune.some((d) => d.kind === 'deck_gun_fire'),
+      `dets=${JSON.stringify(snapGunAfterPrune.map((d) => d.kind))}`,
+    );
+    check(
+      'AAR combat log still has deck_gun_fire for salvo turn',
+      (afterPruneView.combatLog ?? []).some(
+        (e) => e.kind === 'deck_gun_fire' && e.turnNumber === salvoResolvedTurn,
+      ),
     );
 
     // Destroyer fire vs submerged contact → miss (no useful surface engagement).

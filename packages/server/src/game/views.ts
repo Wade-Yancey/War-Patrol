@@ -219,6 +219,8 @@ export function buildUmpireView(save: GameSave, sse: SseHub): UmpireView {
       torpedoes: h.torpedoes ?? [],
       depthCharges: h.depthCharges ?? [],
       noisemakers: h.noisemakers ?? [],
+      // Omit when absent so AAR client can fall back to live recentDetonations (old saves).
+      ...(Array.isArray(h.detonations) ? { detonations: h.detonations } : {}),
       ...(h.umpireNote ? { umpireNote: h.umpireNote } : {}),
     })),
     vesselLinks: save.units.map((u) => vesselLinkForUnit(save, u)),

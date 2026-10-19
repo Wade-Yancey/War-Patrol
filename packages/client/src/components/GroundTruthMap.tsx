@@ -59,8 +59,9 @@ interface Props {
    */
   noisemakers?: NoisemakerTrack[];
   /**
-   * Recent weapon detonations (deck-gun fire / hit / miss + aircraft bomb
-   * splash) for umpire GT aim lines — live resolve cues; pruned after a few turns.
+   * Weapon detonations (deck-gun fire / hit / miss + aircraft bomb splash)
+   * for umpire GT aim lines. Live umpire view uses `recentDetonations` (pruned
+   * after a few turns); AAR scrub passes snapshotted cues from that turn.
    */
   detonations?: WeaponDetonationEvent[];
   /**
