@@ -36,7 +36,7 @@ export function ScopeContactLabelLayer({ placements }: Props) {
             strokeWidth={3}
             paintOrder="stroke"
             fontSize={p.fontSize}
-            fontFamily="VT323, Share Tech Mono, IBM Plex Mono, monospace"
+            fontFamily="Space Mono, ui-monospace, monospace"
           >
             {p.text}
           </text>

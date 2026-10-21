@@ -125,7 +125,7 @@ function CrtCompassRoseFaceInner({ intensity = 'full', children }: RoseFaceProps
               dominantBaseline="middle"
               fill={full ? '#7dff9a' : 'rgba(125,255,154,0.5)'}
               fontSize={18}
-              fontFamily="VT323, Share Tech Mono, IBM Plex Mono, monospace"
+              fontFamily="Space Mono, ui-monospace, monospace"
               fontWeight={700}
             >
               {t.cardinal}
@@ -139,7 +139,7 @@ function CrtCompassRoseFaceInner({ intensity = 'full', children }: RoseFaceProps
               dominantBaseline="middle"
               fill={full ? '#5a9a68' : 'rgba(90,154,104,0.45)'}
               fontSize={11}
-              fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
+              fontFamily="Space Mono, ui-monospace, monospace"
             >
               {String(t.deg).padStart(3, '0')}
             </text>

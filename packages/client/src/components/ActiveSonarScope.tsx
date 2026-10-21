@@ -283,7 +283,7 @@ function ActiveSonarScopeInner({
             y={tip.y}
             fill="#7dff9a"
             fontSize={18}
-            fontFamily="VT323, Share Tech Mono, IBM Plex Mono, monospace"
+            fontFamily="Space Mono, ui-monospace, monospace"
             textAnchor="middle"
             dominantBaseline="middle"
           >

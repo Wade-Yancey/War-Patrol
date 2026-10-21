@@ -179,8 +179,7 @@ function sightingsKey(sightings: OpticsSighting[]): string {
  * Used for fleet-sub periscope and surface-ship lookout. Destroyer / ship
  * contacts → `destroyer.png`; Fleet Submarine hull contacts → `submarine.png`.
  * DD lookout periscope feathers (`kind: 'periscope'`) → stick/feather SVG (not a hull plate).
- * Unknown classes fall back to the destroyer plate. CRT grain/scanline overlay
- * sits above the optics without hiding alpha.
+ * Unknown classes fall back to the destroyer plate.
  *
  * Layout/silhouette rendering stays on the pre-#186 flex-centered plate model
  * (no plate-wrap waterline seating, sink-clip/list, or scar/smoke overlays).
@@ -420,14 +419,6 @@ function PeriscopeScopeInner({
           </div>
         ) : null}
 
-        {/* Subtle CRT grain + scanlines — above optics, pointer-events none, low opacity.
-            Hidden when blind so the viewer stays solid black (no sky/sea / stale picture). */}
-        {!blind && (
-          <div className="periscope-crt-overlay" aria-hidden>
-            <div className="periscope-scanlines" />
-            <div className="periscope-grain" />
-          </div>
-        )}
       </div>
 
       <aside className="radar-side-panel periscope-side-panel">
