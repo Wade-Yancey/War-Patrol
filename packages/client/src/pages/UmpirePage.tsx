@@ -569,12 +569,6 @@ export function UmpirePage() {
                         AAR snapshot — read-only. Resolve still advances LIVE.
                       </p>
                     )}
-                    {mapFullscreen && (
-                      <p className="muted" style={{ margin: 0, fontSize: '0.75rem' }}>
-                        Fullscreen map — pan/zoom, Ranges, Air trails, turn scrubber. Esc or Exit
-                        to leave.
-                      </p>
-                    )}
                   </div>
                   <div className="umpire-gt-map-actions" role="group" aria-label="Turn advance">
                     <button
