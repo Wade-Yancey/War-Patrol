@@ -119,9 +119,12 @@ export const api = {
       } | null;
       fireDeckGun?: {
         aimHeading: number;
-        estimatedCourse: number;
-        estimatedSpeedKn: number;
         estimatedRangeNm: number;
+        shotCount?: number;
+        /** @deprecated Ignored at resolve — optional for older clients. */
+        estimatedCourse?: number;
+        /** @deprecated Ignored at resolve — optional for older clients. */
+        estimatedSpeedKn?: number;
       } | null;
       deployNoisemaker?: {
         depthM: number;

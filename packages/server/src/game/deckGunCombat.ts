@@ -110,7 +110,7 @@ export function resolveDeckGunsForTurn(opts: {
               turnNumber,
               gameTimeSeconds,
               actor: unit,
-              summary: `${unit.name} fired deck gun${salvoLabel} · aim ${aimLabel}° · est ${fire.estimatedRangeNm.toFixed(2)} nm · CRS ${String(Math.round(normalizeHeading(fire.estimatedCourse))).padStart(3, '0')}° · ${fire.estimatedSpeedKn.toFixed(1)} kn`,
+              summary: `${unit.name} fired deck gun${salvoLabel} · aim ${aimLabel}° · est ${fire.estimatedRangeNm.toFixed(2)} nm (crew lead)`,
             }),
           );
           // One muzzle report per round (cannon WAV), staggered for counting.

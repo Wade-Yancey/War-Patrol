@@ -62,7 +62,7 @@ function formatDeckGunOrderSummary(
 ): string {
   const n = Math.max(1, Math.floor(Number(fire.shotCount) || 1));
   const salvo = n > 1 ? ` ×${n}` : '';
-  return `GUN${salvo} aim ${formatCourseDegrees(fire.aimHeading)} · CRS ${formatCourseDegrees(fire.estimatedCourse)} · ${fire.estimatedSpeedKn.toFixed(1)}kn · ${fire.estimatedRangeNm.toFixed(2)}nm`;
+  return `GUN${salvo} aim ${formatCourseDegrees(fire.aimHeading)} · ${fire.estimatedRangeNm.toFixed(2)}nm (crew lead)`;
 }
 
 function formatNoisemakerOrderSummary(
