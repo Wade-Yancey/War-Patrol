@@ -204,7 +204,7 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
               y={CY - ring.r + 14}
               fill="#5a9a68"
               fontSize={14}
-              fontFamily="IBM Plex Mono, monospace"
+              fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
             >
               {ring.label}
             </text>
@@ -229,7 +229,7 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
                 dominantBaseline="middle"
                 fill={b.major ? '#7dff9a' : '#5a9a68'}
                 fontSize={b.major ? 16 : 11}
-                fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
+                fontFamily="VT323, Share Tech Mono, IBM Plex Mono, monospace"
               >
                 {String(b.deg).padStart(3, '0')}
               </text>

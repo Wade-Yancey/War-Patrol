@@ -313,7 +313,7 @@ export function TorpedoCalculator({
           : ''}
         {' · '}
         {arcBlocked ? (
-          <span style={{ color: 'var(--warn, #c45c26)' }}>
+          <span style={{ color: 'var(--warn)' }}>
             OUT OF ARC ({formatTorpedoArcRejectMessage(arcCheck)})
           </span>
         ) : (
@@ -516,14 +516,14 @@ export function TorpedoCalculator({
       )}
 
       {pendingArcCheck && !pendingArcCheck.ok && (
-        <p className="mono" style={{ margin: 0, color: 'var(--warn, #c45c26)' }}>
+        <p className="mono" style={{ margin: 0, color: 'var(--warn)' }}>
           Order of record OUT OF ARC ({formatTorpedoArcRejectMessage(pendingArcCheck)}) — will not
           launch
         </p>
       )}
 
       {arcBlock && (
-        <p className="mono" style={{ margin: 0, color: 'var(--warn, #c45c26)' }}>
+        <p className="mono" style={{ margin: 0, color: 'var(--warn)' }}>
           {formatTorpedoArcBlockNotice(arcBlock)}
         </p>
       )}
