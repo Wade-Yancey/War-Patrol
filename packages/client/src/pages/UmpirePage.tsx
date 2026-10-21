@@ -563,11 +563,6 @@ export function UmpirePage() {
                         turnLengthSeconds={umpire.turnLengthSeconds}
                       />
                     )}
-                    {gtDisplay?.reviewing && (
-                      <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-                        AAR snapshot — read-only. Resolve still advances LIVE.
-                      </p>
-                    )}
                   </div>
                   <div className="umpire-gt-map-actions" role="group" aria-label="Turn advance">
                     <button
