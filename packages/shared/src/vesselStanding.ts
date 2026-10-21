@@ -21,7 +21,8 @@ import {
   isDeckGunTarget,
   isDestroyerDcHull,
   isFleetSubTorpedoHull,
-  maxDeckGunShotsPerTurn,
+  clampDeckGunVolleyCount,
+  maxDeckGunVolleysPerTurn,
   segmentClosestPoint,
   TORPEDO_MAX_RUN_NM,
   torpedoFireHeadingFromSolution,
@@ -301,15 +302,15 @@ function buildTruthDeckGunOrder(
   if (rangeNm > VESSEL_ATTACK_GUN_RANGE_NM || rangeNm > DECK_GUN_MAX_RANGE_NM) {
     return null;
   }
-  const maxShots = maxDeckGunShotsPerTurn(firer);
-  const load = Math.max(0, Math.floor(Number(firer.deckGunLoad) || 0));
-  const shotCount = Math.max(1, Math.min(maxShots, load));
+  // Standing Attack (guns): one volley when ammo allows (not dump the mag).
+  const volleyCount = clampDeckGunVolleyCount(1, firer);
+  if (volleyCount <= 0 || maxDeckGunVolleysPerTurn(firer) <= 0) return null;
   return {
     aimHeading: bearing,
     estimatedCourse: normalizeHeading(target.heading),
     estimatedSpeedKn: Math.abs(target.speed),
     estimatedRangeNm: rangeNm,
-    shotCount,
+    volleyCount,
   };
 }
 

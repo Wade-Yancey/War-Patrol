@@ -80,7 +80,7 @@ export const STATION_GUIDES: Record<StationGuideId, StationGuideBlurb> = {
     title: 'Controls · Guns',
     purpose: 'Deck gun (surfaced / shallow enough to use).',
     bullets: [
-      'Aim, load state, submit salvo or clear pending.',
+      'Aim, volleys, load state, submit fire or clear pending.',
       'Too deep → gun won’t fire; surface or climb first.',
       'Reload on this tab when the magazine says so.',
     ],
@@ -155,7 +155,7 @@ export const STATION_GUIDES: Record<StationGuideId, StationGuideBlurb> = {
     title: 'Controls · Guns',
     purpose: 'Deck-gun fire.',
     bullets: [
-      'Aim, submit salvo or clear; reload here when empty/awaiting.',
+      'Aim, volleys, submit fire or clear; reload here when empty/awaiting.',
       'Magazine count is on this tab only — not under Engine orders.',
     ],
   },

@@ -60,9 +60,10 @@ function formatDepthChargeOrderSummary(
 function formatDeckGunOrderSummary(
   fire: NonNullable<UnitOrders['fireDeckGun']>,
 ): string {
-  const n = Math.max(1, Math.floor(Number(fire.shotCount) || 1));
-  const salvo = n > 1 ? ` ×${n}` : '';
-  return `GUN${salvo} aim ${formatCourseDegrees(fire.aimHeading)} · ${fire.estimatedRangeNm.toFixed(2)}nm (crew lead)`;
+  const raw = fire.volleyCount ?? fire.shotCount;
+  const n = Math.max(1, Math.floor(Number(raw) || 1));
+  const volleys = n > 1 ? ` ×${n}v` : ' ×1v';
+  return `GUN${volleys} aim ${formatCourseDegrees(fire.aimHeading)} · ${fire.estimatedRangeNm.toFixed(2)}nm (crew lead)`;
 }
 
 function formatNoisemakerOrderSummary(

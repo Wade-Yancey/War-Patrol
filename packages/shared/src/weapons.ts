@@ -8,9 +8,10 @@
  * Fire headings come from the player's entered TDC solution (aim + course /
  * speed / range intercept) — never auto-filled from sim truth.
  * Deck guns use a slim designate + fire model (DD + fleet sub when surfaced):
- * player aim/LOS + rough range; resolve acquires the nearest surface contact
- * near that point and applies crew lead from truth course/speed. Same-turn
- * shell impact, surface targets only, finite magazines per hull class.
+ * player aim/LOS + rough range + volley count (1–3); resolve acquires the
+ * nearest surface contact near that point and applies crew lead from truth
+ * course/speed. Each volley is **15 shells/min** resolved as one AOE beaten
+ * zone (not per-shell markers). Surface targets only; finite magazines.
  * Torpedoes keep the full player TDC solution.
  * Aircraft attacks are umpire-ordered intercept / strafe / bombing runs that resolve
  * on turn advance from CPA geometry (depth-charge-like bands).
@@ -393,33 +394,46 @@ export const DECK_GUN_SHELL_SPEED_KN = 800;
  */
 export const DECK_GUN_MAX_RANGE_NM = 8;
 
-/** Fletcher / Kagerō ready magazine (finite; depletes one shell per shot). */
-export const DESTROYER_DECK_GUN_LOAD = 40;
-
-/** Gato / fleet-sub ready magazine (smaller than DD). */
-export const FLEET_SUB_DECK_GUN_LOAD = 20;
-
 /**
- * Max rounds a destroyer may fire in one 3-min turn (slow-firing museum pace).
- * Fletcher 5"/38 cyclic ~15–22 rpm is not the design target — Wade asked for a
- * deliberate slow gun. Cap at **3** (~1 rpm averaged over the turn) so each
- * report is an event, the 40-shell mag lasts many engagements, and salvos do
- * not feel like a 3-minute machine-gun.
+ * Fletcher / Kagerō ready magazine (finite). Sized for full volleys:
+ * {@link DECK_GUN_SHELLS_PER_VOLLEY} × {@link DECK_GUN_MAX_VOLLEYS_PER_TURN}.
  */
-export const DESTROYER_DECK_GUN_MAX_SHOTS_PER_TURN = 3;
+export const DESTROYER_DECK_GUN_LOAD = 45;
 
 /**
- * Max rounds a fleet-sub deck gun may fire in one 3-min turn.
- * Gato 4"/50 on a wet casing with a small exposed crew is slower still —
- * **2** rounds (~0.7 rpm) keeps the boat's 20-shell mag meaningful.
+ * Gato / fleet-sub ready magazine (smaller than DD). Two full volleys
+ * ({@link DECK_GUN_SHELLS_PER_VOLLEY} × 2).
  */
-export const FLEET_SUB_DECK_GUN_MAX_SHOTS_PER_TURN = 2;
+export const FLEET_SUB_DECK_GUN_LOAD = 30;
 
 /**
- * Wall-clock gap (seconds) between cannon-fire onsets for a multi-shot salvo
- * on Controls. Spaced so reports are clearly separated (not a rapid volley) and
- * match the slow ROF feel. Physics still spaces shots across the turn
- * timeline; this is presentation only.
+ * Shells modeled in one volley — historical ~15 rpm abstracted as one AOE
+ * beaten zone (not 15 individual GT markers).
+ */
+export const DECK_GUN_SHELLS_PER_VOLLEY = 15;
+
+/**
+ * Max volleys a deck-gun hull may fire in one 3-min turn.
+ * 1 volley ≈ 1 minute of fire at {@link DECK_GUN_SHELLS_PER_VOLLEY} spm.
+ */
+export const DECK_GUN_MAX_VOLLEYS_PER_TURN = 3;
+
+/**
+ * @deprecated Use {@link DECK_GUN_MAX_VOLLEYS_PER_TURN}. Kept as an alias so
+ * older call sites / docs that said “shots” still compile.
+ */
+export const DESTROYER_DECK_GUN_MAX_SHOTS_PER_TURN = DECK_GUN_MAX_VOLLEYS_PER_TURN;
+
+/**
+ * @deprecated Fleet-sub shares the same 1–3 volley cap (ammo clamps).
+ * Alias of {@link DECK_GUN_MAX_VOLLEYS_PER_TURN}.
+ */
+export const FLEET_SUB_DECK_GUN_MAX_SHOTS_PER_TURN = DECK_GUN_MAX_VOLLEYS_PER_TURN;
+
+/**
+ * Wall-clock gap (seconds) between cannon-fire onsets for multi-volley fire
+ * on Controls. One report per volley (not per shell). Physics spaces volleys
+ * across the turn timeline; this is presentation only.
  */
 export const DECK_GUN_FIRE_STAGGER_SEC = 2;
 
@@ -434,21 +448,35 @@ export const TORPEDO_FIRE_STAGGER_SEC = 0.8;
 /**
  * Resolved turns after Reload before the deck gun magazine refills to capacity.
  * Faster than tube/rack reload ({@link TORPEDO_RELOAD_TURNS}) — gun crew pace.
- * Applies once per **salvo** (not per individual round).
+ * Applies once per **fire order** (after the volleys away), not per volley.
  */
 export const DECK_GUN_RELOAD_TURNS = 2;
 
 /**
- * Horizontal miss pad (m) added to projected half-breadth for a geometric hit.
- * Slightly more forgiving than torpedo pad — gun splash / spotting feel.
+ * Horizontal miss pad (m) added to projected half-breadth for legacy
+ * single-shell gate helpers. Volley resolve uses {@link DECK_GUN_VOLLEY_RADIUS_M}.
  */
 export const DECK_GUN_HIT_GATE_PAD_M = 12;
 
 /** Upper clamp on deck-gun hit gate (m) — same wide ceiling as torpedo. */
 export const DECK_GUN_HIT_GATE_MAX_M = 90;
 
-/** Base HP applied on a successful deck-gun hit (museum-scale; below torpedo). */
-export const DECK_GUN_HIT_DAMAGE = 14;
+/**
+ * Beaten-zone radius (m) for one volley on the GT / AAR plot and AOE resolve.
+ * Contacts inside this circle of the impact center are eligible for volley damage.
+ */
+export const DECK_GUN_VOLLEY_RADIUS_M = 150;
+
+/**
+ * HP applied to each surface contact that a volley hits inside the AOE.
+ * One application per target per volley (not ×15 shells).
+ */
+export const DECK_GUN_VOLLEY_DAMAGE = 24;
+
+/**
+ * @deprecated Alias of {@link DECK_GUN_VOLLEY_DAMAGE} for older verify / docs.
+ */
+export const DECK_GUN_HIT_DAMAGE = DECK_GUN_VOLLEY_DAMAGE;
 
 /** Umpire / crew near-miss band for shell CPA (m). */
 export const DECK_GUN_NEAR_MISS_M = 80;
@@ -958,24 +986,50 @@ export function defaultDeckGunLoad(unit: Pick<UnitState, 'class' | 'type'>): num
   return 0;
 }
 
-/** Class max rounds per turn (0 if the hull has no deck gun). */
-export function maxDeckGunShotsPerTurn(unit: Pick<UnitState, 'class' | 'type'>): number {
-  if (unit.class === 'Destroyer') return DESTROYER_DECK_GUN_MAX_SHOTS_PER_TURN;
-  if (isFleetSubTorpedoHull(unit)) return FLEET_SUB_DECK_GUN_MAX_SHOTS_PER_TURN;
+/** Shells consumed by `volleyCount` full volleys. */
+export function deckGunShellsForVolleys(volleyCount: number): number {
+  const n = Math.max(0, Math.floor(Number(volleyCount) || 0));
+  return n * DECK_GUN_SHELLS_PER_VOLLEY;
+}
+
+/** How many full volleys the ready magazine can afford (0 if empty). */
+export function deckGunVolleysFromAmmo(
+  unit: Pick<UnitState, 'deckGunLoad'>,
+): number {
+  const ammo = Math.max(0, Math.floor(Number(unit.deckGunLoad) || 0));
+  return Math.floor(ammo / DECK_GUN_SHELLS_PER_VOLLEY);
+}
+
+/**
+ * Max volleys per turn for a deck-gun hull (0 if no gun).
+ * Shared 1–3 cap; ammo further clamps via {@link clampDeckGunVolleyCount}.
+ */
+export function maxDeckGunVolleysPerTurn(unit: Pick<UnitState, 'class' | 'type'>): number {
+  if (unit.class === 'Destroyer' || isFleetSubTorpedoHull(unit)) {
+    return DECK_GUN_MAX_VOLLEYS_PER_TURN;
+  }
   return 0;
 }
 
 /**
- * Clamp ordered shot count to [1, min(class max, ready ammo)].
- * Legacy / missing `shotCount` → 1. Empty mag → 0 (caller should not fire).
+ * @deprecated Prefer {@link maxDeckGunVolleysPerTurn}.
+ * Alias kept for standing-order / older call sites.
  */
-export function clampDeckGunShotCount(
+export function maxDeckGunShotsPerTurn(unit: Pick<UnitState, 'class' | 'type'>): number {
+  return maxDeckGunVolleysPerTurn(unit);
+}
+
+/**
+ * Clamp ordered volley count to [1, min(max volleys, affordable full volleys)].
+ * Missing / invalid → 1 when ammo allows a volley; empty mag → 0.
+ */
+export function clampDeckGunVolleyCount(
   raw: number | undefined,
   unit: Pick<UnitState, 'class' | 'type' | 'deckGunLoad'>,
 ): number {
-  const ammo = Math.max(0, Math.floor(Number(unit.deckGunLoad) || 0));
-  if (ammo <= 0) return 0;
-  const cap = Math.min(maxDeckGunShotsPerTurn(unit), ammo);
+  const affordable = deckGunVolleysFromAmmo(unit);
+  if (affordable <= 0) return 0;
+  const cap = Math.min(maxDeckGunVolleysPerTurn(unit), affordable);
   if (cap <= 0) return 0;
   const n = Math.floor(Number(raw));
   if (!Number.isFinite(n) || n < 1) return 1;
@@ -983,13 +1037,31 @@ export function clampDeckGunShotCount(
 }
 
 /**
- * Even fire fractions across the turn for a multi-shot salvo.
- * Single shot → [0] (legacy: impact uses shell TOF only). Multi → 0 … 1 inclusive.
+ * @deprecated Prefer {@link clampDeckGunVolleyCount}.
+ * Treats the raw value as a volley count (not shell count).
  */
-export function deckGunSalvoFireFractions(shotCount: number): number[] {
-  const n = Math.max(1, Math.floor(shotCount));
+export function clampDeckGunShotCount(
+  raw: number | undefined,
+  unit: Pick<UnitState, 'class' | 'type' | 'deckGunLoad'>,
+): number {
+  return clampDeckGunVolleyCount(raw, unit);
+}
+
+/**
+ * Even fire fractions across the turn for multi-volley fire.
+ * Single volley → [0]. Multi → 0 … 1 inclusive.
+ */
+export function deckGunVolleyFireFractions(volleyCount: number): number[] {
+  const n = Math.max(1, Math.floor(volleyCount));
   if (n === 1) return [0];
   return Array.from({ length: n }, (_, i) => i / (n - 1));
+}
+
+/**
+ * @deprecated Prefer {@link deckGunVolleyFireFractions}.
+ */
+export function deckGunSalvoFireFractions(shotCount: number): number[] {
+  return deckGunVolleyFireFractions(shotCount);
 }
 
 export function torpedoRoomReady(
@@ -2339,11 +2411,15 @@ export function clampDeckGunRangeNm(rangeNm: number): number {
 }
 
 export function normalizeDeckGunFireOrder(raw: DeckGunFireOrder): DeckGunFireOrder {
-  const shotRaw = raw.shotCount;
-  const shotCount =
-    shotRaw === undefined || shotRaw === null
+  // Prefer volleyCount; fall back to legacy shotCount (treated as volleys).
+  const volleyRaw =
+    raw.volleyCount !== undefined && raw.volleyCount !== null
+      ? raw.volleyCount
+      : raw.shotCount;
+  const volleyCount =
+    volleyRaw === undefined || volleyRaw === null
       ? undefined
-      : Math.max(1, Math.floor(Number(shotRaw) || 1));
+      : Math.max(1, Math.floor(Number(volleyRaw) || 1));
   // Course/speed are optional legacy fields — resolve ignores them for lead.
   const hasCourse = raw.estimatedCourse !== undefined && raw.estimatedCourse !== null;
   const hasSpeed = raw.estimatedSpeedKn !== undefined && raw.estimatedSpeedKn !== null;
@@ -2354,7 +2430,7 @@ export function normalizeDeckGunFireOrder(raw: DeckGunFireOrder): DeckGunFireOrd
       ? { estimatedSpeedKn: Math.max(0, Number(raw.estimatedSpeedKn) || 0) }
       : {}),
     estimatedRangeNm: Math.max(0, Number(raw.estimatedRangeNm) || 0),
-    ...(shotCount !== undefined ? { shotCount } : {}),
+    ...(volleyCount !== undefined ? { volleyCount } : {}),
   };
 }
 
@@ -2524,10 +2600,17 @@ export type DeckGunResolveInput = {
   turnLengthSeconds: number;
   seed: string;
   /**
-   * Fraction of the turn [0, 1] when this round leaves the muzzle.
+   * Fraction of the turn [0, 1] when this volley leaves the muzzle.
    * Contact interpolation uses fireFrac + shell-TOF/turn (clamped). Default 0.
    */
   fireTurnFraction?: number;
+};
+
+export type DeckGunVolleyHit = {
+  unitId: string;
+  unitName: string;
+  damage: number;
+  missDistanceM: number;
 };
 
 export type DeckGunResolveResult = {
@@ -2535,22 +2618,27 @@ export type DeckGunResolveResult = {
   fireHeading: number;
   impact: LatLonDepth;
   rangeNm: number;
+  /** AOE beaten-zone radius (m) drawn on umpire GT / AAR. */
+  radiusM: number;
+  /** Primary-target damage (first hit); 0 on miss. Prefer {@link hits}. */
   damage: number;
   missDistanceM: number;
   hitUnitId?: string;
+  /** All surface contacts damaged by this volley’s AOE. */
+  hits: DeckGunVolleyHit[];
   closestApproachUnitId?: string;
   closestApproachUnitName?: string;
 };
 
 /**
- * Same-turn deck-gun resolution: crew lead from acquired surface contact near
- * the player designate (aim + rough range), then impact vs surface contacts.
- * Player-entered course/speed are ignored. Nearest eligible contact within its
- * aspect gate must also pass a museum-fun hit roll (center ~85%, edge ~50%).
- * Failures and out-of-gate land as misses; miss splash positions get a small
- * seeded scatter for umpire GT / AAR.
+ * Same-turn deck-gun **volley** resolution: crew lead from acquired surface
+ * contact near the player designate (aim + rough range), then one AOE beaten
+ * zone of {@link DECK_GUN_VOLLEY_RADIUS_M} around the impact. Every surface
+ * contact inside the radius rolls museum hit chance (center ~85%, edge ~50%;
+ * bullseye auto-hit). Player course/speed ignored. Miss splash gets seeded
+ * scatter for umpire GT / AAR — still one circle, not per-shell markers.
  */
-export function resolveDeckGunShot(input: DeckGunResolveInput): DeckGunResolveResult {
+export function resolveDeckGunVolley(input: DeckGunResolveInput): DeckGunResolveResult {
   const fire = normalizeDeckGunFireOrder(input.fire);
   const designate = deckGunDesignatePoint({
     firerPosition: input.firer.position,
@@ -2572,6 +2660,7 @@ export function resolveDeckGunShot(input: DeckGunResolveInput): DeckGunResolveRe
     estimatedSpeedKn,
     estimatedRangeNm: fire.estimatedRangeNm,
   });
+  const radiusM = DECK_GUN_VOLLEY_RADIUS_M;
 
   if (!(fire.estimatedRangeNm > 0)) {
     return {
@@ -2579,8 +2668,10 @@ export function resolveDeckGunShot(input: DeckGunResolveInput): DeckGunResolveRe
       fireHeading: ballistics.fireHeading,
       impact: ballistics.impact,
       rangeNm: ballistics.rangeNm,
+      radiusM,
       damage: 0,
       missDistanceM: Number.POSITIVE_INFINITY,
+      hits: [],
     };
   }
 
@@ -2591,9 +2682,7 @@ export function resolveDeckGunShot(input: DeckGunResolveInput): DeckGunResolveRe
   let bestMiss = Number.POSITIVE_INFINITY;
   let bestId: string | undefined;
   let bestName: string | undefined;
-  let candId: string | undefined;
-  let candMiss = Number.POSITIVE_INFINITY;
-  let candGate = 0;
+  const hits: DeckGunVolleyHit[] = [];
 
   for (const contact of input.contacts) {
     if (contact.id === input.firer.id) continue;
@@ -2607,32 +2696,37 @@ export function resolveDeckGunShot(input: DeckGunResolveInput): DeckGunResolveRe
       bestId = contact.id;
       bestName = contact.name;
     }
-    const { lengthM, beamM } = unitLengthBeam(contact);
-    const aspect = torpedoAspectAngleDeg(ballistics.fireHeading, contact.heading);
-    const gate = deckGunHitGateM(lengthM, beamM, aspect);
-    if (miss <= gate && miss < candMiss) {
-      candMiss = miss;
-      candId = contact.id;
-      candGate = gate;
+    if (miss > radiusM) continue;
+    const pHit = deckGunHitChance(miss, radiusM);
+    const roll = weaponRng01(`${input.seed}|${contact.id}`);
+    if (roll < pHit) {
+      hits.push({
+        unitId: contact.id,
+        unitName: contact.name,
+        damage: DECK_GUN_VOLLEY_DAMAGE,
+        missDistanceM: miss,
+      });
     }
   }
 
-  if (candId) {
-    const pHit = deckGunHitChance(candMiss, candGate);
-    const roll = weaponRng01(input.seed);
-    if (roll < pHit) {
-      return {
-        outcome: 'hit',
-        fireHeading: ballistics.fireHeading,
-        impact: ballistics.impact,
-        rangeNm: ballistics.rangeNm,
-        damage: DECK_GUN_HIT_DAMAGE,
-        missDistanceM: candMiss,
-        hitUnitId: candId,
-        closestApproachUnitId: bestId,
-        closestApproachUnitName: bestName,
-      };
-    }
+  // Prefer closest hit as the primary label target.
+  hits.sort((a, b) => a.missDistanceM - b.missDistanceM);
+
+  if (hits.length > 0) {
+    const primary = hits[0]!;
+    return {
+      outcome: 'hit',
+      fireHeading: ballistics.fireHeading,
+      impact: ballistics.impact,
+      rangeNm: ballistics.rangeNm,
+      radiusM,
+      damage: primary.damage,
+      missDistanceM: primary.missDistanceM,
+      hitUnitId: primary.unitId,
+      hits,
+      closestApproachUnitId: bestId,
+      closestApproachUnitName: bestName,
+    };
   }
 
   const splash = deckGunScatterImpact({
@@ -2647,11 +2741,21 @@ export function resolveDeckGunShot(input: DeckGunResolveInput): DeckGunResolveRe
     fireHeading: ballistics.fireHeading,
     impact: splash,
     rangeNm: ballistics.rangeNm,
+    radiusM,
     damage: 0,
     missDistanceM: Number.isFinite(bestMiss) ? bestMiss : Number.POSITIVE_INFINITY,
+    hits: [],
     closestApproachUnitId: bestId,
     closestApproachUnitName: bestName,
   };
+}
+
+/**
+ * @deprecated Prefer {@link resolveDeckGunVolley}. Same AOE volley resolve —
+ * kept so older verify / imports keep compiling.
+ */
+export function resolveDeckGunShot(input: DeckGunResolveInput): DeckGunResolveResult {
+  return resolveDeckGunVolley(input);
 }
 
 // --- Aircraft attack runs (umpire intercept / strafe / bombing) ---
@@ -3032,10 +3136,12 @@ export function makeDetonationEvent(opts: {
   firerUnitId: string;
   targetUnitId?: string;
   aimHeading?: number;
+  radiusM?: number;
   audioDelaySec?: number;
 }): WeaponDetonationEvent {
   const delay = opts.audioDelaySec;
   const aim = opts.aimHeading;
+  const radius = opts.radiusM;
   return {
     id: opts.id,
     kind: opts.kind ?? 'depth_charge',
@@ -3044,6 +3150,7 @@ export function makeDetonationEvent(opts: {
     firerUnitId: opts.firerUnitId,
     ...(opts.targetUnitId ? { targetUnitId: opts.targetUnitId } : {}),
     ...(aim != null && Number.isFinite(aim) ? { aimHeading: normalizeHeading(aim) } : {}),
+    ...(radius != null && Number.isFinite(radius) && radius > 0 ? { radiusM: radius } : {}),
     ...(delay != null && delay > 0 ? { audioDelaySec: delay } : {}),
   };
 }

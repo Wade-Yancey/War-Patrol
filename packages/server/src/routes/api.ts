@@ -446,9 +446,11 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       } | null;
       fireDeckGun?: {
         aimHeading: number;
-        estimatedCourse: number;
-        estimatedSpeedKn: number;
+        estimatedCourse?: number;
+        estimatedSpeedKn?: number;
         estimatedRangeNm: number;
+        volleyCount?: number;
+        /** @deprecated Prefer volleyCount. */
         shotCount?: number;
       } | null;
       deployNoisemaker?: {

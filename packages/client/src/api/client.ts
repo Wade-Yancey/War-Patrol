@@ -120,6 +120,8 @@ export const api = {
       fireDeckGun?: {
         aimHeading: number;
         estimatedRangeNm: number;
+        volleyCount?: number;
+        /** @deprecated Prefer volleyCount — treated as volleys when volleyCount absent. */
         shotCount?: number;
         /** @deprecated Ignored at resolve — optional for older clients. */
         estimatedCourse?: number;
