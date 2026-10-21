@@ -632,7 +632,7 @@ function HydrophoneScopeInner({
                     dominantBaseline="middle"
                     fill="#7dff9a"
                     fontSize={18}
-                    fontFamily="VT323, Share Tech Mono, IBM Plex Mono, monospace"
+                    fontFamily="Space Mono, ui-monospace, monospace"
                     fontWeight={700}
                   >
                     {t.cardinal}
@@ -646,7 +646,7 @@ function HydrophoneScopeInner({
                     dominantBaseline="middle"
                     fill="#5a9a68"
                     fontSize={11}
-                    fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
+                    fontFamily="Space Mono, ui-monospace, monospace"
                   >
                     {String(t.deg).padStart(3, '0')}
                   </text>

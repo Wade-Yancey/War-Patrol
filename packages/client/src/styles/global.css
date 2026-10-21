@@ -1,50 +1,49 @@
 :root {
-  /* 1980s green-phosphor CRT — flat paints, no heavy blur/filters (venue tablets) */
-  --phosphor: #3dff6a;
+  /* Flat green phosphor — no glow/scanline tokens (venue tablet perf) */
+  --phosphor: #2ee66a;
   --phosphor-dim: #1a8f3c;
-  --phosphor-deep: #0a3d1c;
-  --phosphor-glow: rgba(61, 255, 106, 0.32);
-  --bg-void: #010805;
-  --bg-crt: #041208;
-  --bg-panel: #0a1a10;
-  --bg-elevated: #0f2416;
-  --ink: #c8ffd4;
-  /* Slightly brighter muted for venue distance (keys/captions) */
-  --ink-muted: #6aad78;
+  --phosphor-deep: #0a3a1c;
+  --bg-void: #020805;
+  --bg-crt: #06140c;
+  --bg-panel: #0b1a12;
+  --bg-elevated: #102418;
+  --ink: #c6f5d4;
+  --ink-muted: #5f9f70;
   --accent: var(--phosphor);
   --accent-strong: #7dff9a;
   --danger: #e07050;
-  --ok: #3dff6a;
+  --ok: #2ee66a;
   --warn: #e0a050;
-  --line: rgba(61, 255, 106, 0.22);
+  --line: rgba(46, 230, 106, 0.24);
   /* Aliases used by station panels — keep one coherent token set */
   --border: color-mix(in srgb, var(--phosphor-dim) 70%, transparent);
   --muted: var(--ink-muted);
   --panel: var(--bg-panel);
   --map-water: #061a0e;
-  --map-grid: rgba(61, 255, 106, 0.16);
-  --bezel: #121a14;
+  --map-grid: rgba(46, 230, 106, 0.14);
+  --bezel: #101810;
   --bezel-edge: #2a3830;
-  --bezel-inset: #060d08;
+  --bezel-inset: #050c08;
   --side-blue: #4a9fd4;
   --side-red: #d45a4a;
   /* Civilian accent — purple stripe/badge only; CRT stays green */
   --side-civilian: #a56de8;
   --hit: 2.75rem;
-  /* VT323 = chunky 80s terminal display; Share Tech Mono = body/UI terminal */
-  --font-display: 'VT323', 'Share Tech Mono', 'IBM Plex Mono', ui-monospace, monospace;
-  --font-mono: 'Share Tech Mono', 'IBM Plex Mono', ui-monospace, monospace;
+  /* One family for UI + readouts (Wade: no VT323 / Share Tech Mono) */
+  --font-ui: 'Space Mono', ui-monospace, monospace;
+  --font-display: var(--font-ui);
+  --font-mono: var(--font-ui);
   /* Shared CRT console dial (radar / hydrophone / helm) — viewport-dominant square */
   --crt-aux-w: 12.5rem;
   --crt-aux-gap: 0.65rem;
   --crt-dial-inset: 1.25rem;
   --crt-dial-chrome: 5.25rem;
   --crt-console-key-size: 0.7rem;
-  --crt-console-val-size: 1.2rem;
+  --crt-console-val-size: 1.15rem;
   --crt-console-caption-size: 0.7rem;
   color: var(--ink);
   background: var(--bg-void);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   line-height: 1.45;
   font-weight: 400;
   font-synthesis: none;
@@ -95,7 +94,8 @@ button {
   border-radius: 2px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
+  font-family: var(--font-ui);
   touch-action: manipulation;
   user-select: none;
 }
@@ -103,26 +103,49 @@ button {
 button:hover:not(:disabled) {
   border-color: var(--phosphor);
   background: var(--phosphor-deep);
+  color: var(--accent-strong);
 }
 
 button:active:not(:disabled) {
-  background: var(--bg-panel);
+  background: var(--bg-void);
+  border-color: var(--phosphor-dim);
+  color: var(--ink);
+  box-shadow: inset 0 2px 0 rgba(0, 0, 0, 0.45);
+  transform: translateY(1px);
 }
 
 button:disabled {
-  opacity: 0.4;
+  opacity: 0.38;
   cursor: not-allowed;
+  color: var(--ink-muted);
+  border-color: color-mix(in srgb, var(--line) 70%, transparent);
+  background: var(--bg-panel);
+  box-shadow: none;
+  transform: none;
 }
 
 button.primary {
   background: var(--phosphor-deep);
   color: var(--accent-strong);
   border-color: var(--phosphor);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 button.primary:hover:not(:disabled) {
   background: #0f4a24;
+}
+
+button.primary:active:not(:disabled) {
+  background: var(--bg-void);
+  border-color: var(--phosphor);
+  box-shadow: inset 0 2px 0 rgba(0, 0, 0, 0.5);
+}
+
+button[aria-pressed='true']:not(:disabled) {
+  border-color: var(--phosphor);
+  background: var(--phosphor-deep);
+  color: var(--accent-strong);
+  box-shadow: inset 0 2px 0 rgba(0, 0, 0, 0.35);
 }
 
 /** Remote input: keep a pressed look while POST is in flight (not a hard lock). */
@@ -182,7 +205,7 @@ label {
   color: var(--ink-muted);
 }
 
-/* Industrial CRT bezel — cheap CSS scanline/glow only (no blur filters) */
+/* Industrial CRT bezel — flat paints only (no scanlines / glow overlays) */
 .crt-bezel {
   position: relative;
   min-height: 100vh;
@@ -190,33 +213,6 @@ label {
   padding: clamp(0.5rem, 1.5vw, 1rem);
   background: var(--bezel);
   border: 1px solid var(--bezel-edge);
-  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.55);
-}
-
-/* Scanlines on the non-scrolling bezel so they stay put over .crt-screen scroll */
-.crt-bezel::after {
-  content: '';
-  position: absolute;
-  top: clamp(0.5rem, 1.5vw, 1rem);
-  right: clamp(0.5rem, 1.5vw, 1rem);
-  bottom: clamp(0.5rem, 1.5vw, 1rem);
-  left: clamp(0.5rem, 1.5vw, 1rem);
-  z-index: 40;
-  pointer-events: none;
-  background: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent 2px,
-    rgba(0, 0, 0, 0.055) 2px,
-    rgba(0, 0, 0, 0.055) 3px
-  );
-  opacity: 0.65;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .crt-bezel::after {
-    opacity: 0.35;
-  }
 }
 
 .crt-screen {
@@ -227,13 +223,10 @@ label {
   background: var(--bg-crt);
   border: 3px solid var(--bezel-edge);
   overflow: auto;
-  box-shadow:
-    inset 0 0 28px rgba(61, 255, 106, 0.04),
-    inset 0 0 80px rgba(0, 0, 0, 0.35);
 }
 
 ::selection {
-  background: rgba(61, 255, 106, 0.35);
+  background: color-mix(in srgb, var(--phosphor) 35%, transparent);
   color: var(--accent-strong);
 }
 
@@ -250,10 +243,9 @@ label {
   font-weight: 400;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  font-size: clamp(2rem, 5.5vw, 3.1rem);
+  font-size: clamp(1.65rem, 4.5vw, 2.5rem);
   color: var(--accent-strong);
   margin: 0;
-  text-shadow: 0 0 10px var(--phosphor-glow);
 }
 
 .brand-mark {
@@ -286,11 +278,10 @@ label {
 .panel h3 {
   margin: 0 0 0.85rem;
   font-family: var(--font-display);
-  font-size: 1.15rem;
-  letter-spacing: 0.12em;
+  font-size: 0.95rem;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--phosphor);
-  text-shadow: 0 0 6px var(--phosphor-glow);
 }
 
 .row {
@@ -322,7 +313,6 @@ label {
   color: var(--accent-strong);
   letter-spacing: 0.06em;
   font-size: 1.05em;
-  text-shadow: 0 0 6px var(--phosphor-glow);
 }
 
 .muted {
@@ -556,8 +546,8 @@ label {
 }
 
 .touch-num-slider::-webkit-slider-runnable-track {
-  height: 0.55rem;
-  background: var(--phosphor-deep);
+  height: 0.5rem;
+  background: var(--bezel-inset);
   border: 1px solid var(--line);
   border-radius: 1px;
 }
@@ -565,27 +555,47 @@ label {
 .touch-num-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 1.75rem;
-  height: 1.75rem;
-  margin-top: -0.65rem;
+  width: 1.65rem;
+  height: 1.65rem;
+  margin-top: -0.6rem;
   background: var(--phosphor);
   border: 2px solid var(--bg-void);
   border-radius: 2px;
+  box-shadow: none;
+}
+
+.touch-num-slider:active::-webkit-slider-thumb {
+  background: var(--accent-strong);
+}
+
+.touch-num-slider:disabled::-webkit-slider-thumb {
+  background: var(--ink-muted);
+  border-color: var(--bg-panel);
 }
 
 .touch-num-slider::-moz-range-track {
-  height: 0.55rem;
-  background: var(--phosphor-deep);
+  height: 0.5rem;
+  background: var(--bezel-inset);
   border: 1px solid var(--line);
   border-radius: 1px;
 }
 
 .touch-num-slider::-moz-range-thumb {
-  width: 1.75rem;
-  height: 1.75rem;
+  width: 1.65rem;
+  height: 1.65rem;
   background: var(--phosphor);
   border: 2px solid var(--bg-void);
   border-radius: 2px;
+  box-shadow: none;
+}
+
+.touch-num-slider:active::-moz-range-thumb {
+  background: var(--accent-strong);
+}
+
+.touch-num-slider:disabled::-moz-range-thumb {
+  background: var(--ink-muted);
+  border-color: var(--bg-panel);
 }
 
 .touch-num-hint {
@@ -637,8 +647,8 @@ label {
 }
 
 /*
- * Umpire console: single vertical scan order (join → map → unit edit → chrome).
- * No side rail — wide screens stay one column so unit controls sit under the map.
+ * Umpire console: join → timer → map → ORD → unit edit → chrome.
+ * No side rail — wide screens stay one column.
  */
 .umpire-stack {
   display: flex;
@@ -2124,7 +2134,7 @@ label {
   border-bottom: 1px solid var(--line);
   background: var(--bg-crt);
   /* Keep sticky bar readable over scrolling phosphor panels */
-  box-shadow: 0 8px 16px -12px rgba(0, 0, 0, 0.85);
+  box-shadow: none;
 }
 
 .header-bar .turn-status {
@@ -2167,9 +2177,6 @@ label {
   padding: 0.35rem 0.85rem 0.45rem;
   border: 1px solid var(--phosphor);
   background: var(--bezel-inset);
-  box-shadow:
-    inset 0 0 0 1px rgba(61, 255, 106, 0.12),
-    0 0 14px var(--phosphor-glow);
 }
 
 .turn-chronometer-label {
@@ -2186,7 +2193,6 @@ label {
   line-height: 1;
   letter-spacing: 0.1em;
   color: var(--accent-strong);
-  text-shadow: 0 0 12px var(--phosphor-glow);
   font-variant-numeric: tabular-nums;
 }
 
@@ -2203,9 +2209,7 @@ label {
 
 .turn-chronometer.is-urgent {
   border-color: #e0a050;
-  box-shadow:
-    inset 0 0 0 1px rgba(224, 160, 80, 0.18),
-    0 0 14px rgba(224, 160, 80, 0.18);
+  background: rgba(224, 160, 80, 0.08);
 }
 
 .turn-chronometer.is-urgent .turn-chronometer-label {
@@ -2214,7 +2218,6 @@ label {
 
 .turn-chronometer.is-urgent .turn-chronometer-digits {
   color: #ffd090;
-  text-shadow: 0 0 12px rgba(224, 160, 80, 0.45);
 }
 
 .turn-chronometer.is-critical {
@@ -2228,7 +2231,6 @@ label {
 
 .turn-chronometer.is-critical .turn-chronometer-digits {
   color: #ffb4a8;
-  text-shadow: 0 0 14px rgba(224, 112, 80, 0.55);
 }
 
 .turn-chronometer.is-expired {
@@ -2242,7 +2244,6 @@ label {
 
 .turn-chronometer.is-expired .turn-chronometer-digits {
   color: #ffb4a8;
-  text-shadow: 0 0 14px rgba(224, 112, 80, 0.45);
 }
 
 .umpire-timer-actions button {
@@ -3067,7 +3068,6 @@ label {
 
 .depth-gauge-swatch--keel {
   background: #e8ffe8;
-  box-shadow: 0 0 4px rgba(232, 255, 232, 0.45);
 }
 
 .depth-gauge-swatch--ord {
@@ -3855,59 +3855,6 @@ label {
     transparent 50%
   );
   pointer-events: none;
-}
-
-/* Subtle CRT grain + horizontal scanlines over the optics plane only.
-   Low opacity / overlay blend so the PNG silhouette alpha still reads. */
-.periscope-crt-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 5;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-.periscope-scanlines {
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent 2px,
-    rgba(8, 16, 28, 0.07) 2px,
-    rgba(8, 16, 28, 0.07) 3px
-  );
-  opacity: 0.7;
-}
-
-.periscope-grain {
-  position: absolute;
-  inset: -20%;
-  width: 140%;
-  height: 140%;
-  opacity: 0.18;
-  mix-blend-mode: soft-light;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.05 0 0 0 0 0.08 0 0 0 0 0.12 0 0 0 0.55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-size: 160px 160px;
-  animation: periscope-grain-drift 1.8s steps(2) infinite;
-}
-
-@keyframes periscope-grain-drift {
-  0% {
-    transform: translate(0, 0);
-  }
-  50% {
-    transform: translate(-1.5%, 1%);
-  }
-  100% {
-    transform: translate(1%, -0.5%);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .periscope-grain {
-    animation: none;
-  }
 }
 
 .periscope-empty {

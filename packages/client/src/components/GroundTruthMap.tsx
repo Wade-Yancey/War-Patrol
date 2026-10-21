@@ -1604,7 +1604,7 @@ function GroundTruthMapInner({
                   y={clamp(p.y - 4, 12, H - 6)}
                   fill="#5a9a68"
                   fontSize={10}
-                  fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
+                  fontFamily="Space Mono, ui-monospace, monospace"
                 >
                   {p.label}
                 </text>
@@ -1622,7 +1622,7 @@ function GroundTruthMapInner({
                   y={H - 8}
                   fill="#5a9a68"
                   fontSize={10}
-                  fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
+                  fontFamily="Space Mono, ui-monospace, monospace"
                 >
                   {m.label}
                 </text>
@@ -1646,7 +1646,7 @@ function GroundTruthMapInner({
             <path d={`M${W - 8} ${H - 8} H${W - 28} M${W - 8} ${H - 8} V${H - 28}`} fill="none" />
           </g>
 
-          <text x={12} y={18} fill="#5a9a68" fontSize={10} fontFamily="Share Tech Mono, IBM Plex Mono, monospace">
+          <text x={12} y={18} fill="#5a9a68" fontSize={10} fontFamily="Space Mono, ui-monospace, monospace">
             GROUND TRUTH · LAT/LON · {GRID_STEP_DEG}° GRID · TRAILS · INTENDED MOVE · WEAPONS · TRUE N
             {showSensorRanges ? ' · RANGES · CONES/ARCS' : ''}
           </text>
@@ -1801,7 +1801,7 @@ function GroundTruthMapInner({
                   fill={a.color}
                   fillOpacity={0.95}
                   fontSize={9}
-                  fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
+                  fontFamily="Space Mono, ui-monospace, monospace"
                 >
                   {`${a.modeTag} → ${a.targetName}`}
                 </text>
@@ -1876,7 +1876,7 @@ function GroundTruthMapInner({
                         y={f.tip.y - 6}
                         fill="#ffc857"
                         fontSize={8}
-                        fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
+                        fontFamily="Space Mono, ui-monospace, monospace"
                       >
                         {f.label}
                       </text>
@@ -1963,7 +1963,7 @@ function GroundTruthMapInner({
                       y={c.tip.y + (c.detonated ? 14 : 4)}
                       fill="#7ec8ff"
                       fontSize={8}
-                      fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
+                      fontFamily="Space Mono, ui-monospace, monospace"
                     >
                       {c.label}
                     </text>
@@ -2007,7 +2007,7 @@ function GroundTruthMapInner({
                           y={g.origin.y - 8}
                           fill="#e8c07a"
                           fontSize={8}
-                          fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
+                          fontFamily="Space Mono, ui-monospace, monospace"
                         >
                           {g.label}
                         </text>
@@ -2045,7 +2045,7 @@ function GroundTruthMapInner({
                         y={g.tip.y - 6}
                         fill="#e8c07a"
                         fontSize={8}
-                        fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
+                        fontFamily="Space Mono, ui-monospace, monospace"
                       >
                         {g.label}
                       </text>
@@ -2097,7 +2097,7 @@ function GroundTruthMapInner({
                         y={b.tip.y - 6}
                         fill="#ff9a5a"
                         fontSize={8}
-                        fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
+                        fontFamily="Space Mono, ui-monospace, monospace"
                       >
                         {b.label}
                       </text>
@@ -2121,7 +2121,7 @@ function GroundTruthMapInner({
                     fill={g.color}
                     fillOpacity={0.92}
                     fontSize={9}
-                    fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
+                    fontFamily="Space Mono, ui-monospace, monospace"
                   >
                     {line}
                   </text>
@@ -2177,7 +2177,7 @@ function GroundTruthMapInner({
                   textAnchor={m.labelAnchor}
                   fill="#7dff9a"
                   fontSize={11}
-                  fontFamily="VT323, Share Tech Mono, IBM Plex Mono, monospace"
+                  fontFamily="Space Mono, ui-monospace, monospace"
                 >
                   {m.name}
                 </text>
@@ -2188,7 +2188,7 @@ function GroundTruthMapInner({
                   textAnchor={m.labelAnchor}
                   fill="#5a9a68"
                   fontSize={9}
-                  fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
+                  fontFamily="Space Mono, ui-monospace, monospace"
                 >
                   {m.identity}
                 </text>
@@ -2199,7 +2199,7 @@ function GroundTruthMapInner({
                   textAnchor={m.labelAnchor}
                   fill="#5a9a68"
                   fontSize={10}
-                  fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
+                  fontFamily="Space Mono, ui-monospace, monospace"
                 >
                   {m.label}
                 </text>
@@ -2272,7 +2272,7 @@ function GroundTruthMapInner({
                       y={d.tip.y + 4}
                       fill={d.color}
                       fontSize={9}
-                      fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
+                      fontFamily="Space Mono, ui-monospace, monospace"
                     >
                       {d.label}
                     </text>
@@ -2335,7 +2335,7 @@ function GroundTruthMapInner({
                     dominantBaseline="middle"
                     fill={t.deg === 0 ? '#7dff9a' : '#5a9a68'}
                     fontSize={t.deg % 90 === 0 ? 11 : 8}
-                    fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
+                    fontFamily="Space Mono, ui-monospace, monospace"
                     fontWeight={t.deg === 0 ? 700 : 400}
                   >
                     {t.label}
@@ -2355,7 +2355,7 @@ function GroundTruthMapInner({
               textAnchor="middle"
               fill="#5a9a68"
               fontSize={8}
-              fontFamily="Share Tech Mono, IBM Plex Mono, monospace"
+              fontFamily="Space Mono, ui-monospace, monospace"
             >
               TRUE °
             </text>
