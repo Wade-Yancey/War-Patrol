@@ -611,20 +611,32 @@ export function UmpirePage() {
                   reviewTurn={reviewTurn}
                   onReviewTurn={setReviewTurn}
                 />
-                <GroundTruthMap
-                  area={umpire.operatingArea}
-                  units={gtDisplay?.units ?? umpire.units}
-                  trails={gtDisplay?.trails ?? umpire.trails}
-                  torpedoes={gtDisplay?.torpedoes ?? umpire.torpedoes}
-                  depthCharges={gtDisplay?.depthCharges ?? umpire.depthCharges}
-                  noisemakers={gtDisplay?.noisemakers ?? umpire.noisemakers}
-                  detonations={gtDisplay?.detonations ?? umpire.recentDetonations}
-                  seaSurfaceMarkers={
-                    gtDisplay?.seaSurfaceMarkers ?? umpire.seaSurfaceMarkers ?? []
-                  }
-                  turnLengthSeconds={umpire.turnLengthSeconds}
-                  showMovePrediction={!gtDisplay?.reviewing}
-                />
+                <div className={mapFullscreen ? 'umpire-gt-fullscreen-body' : undefined}>
+                  <GroundTruthMap
+                    area={umpire.operatingArea}
+                    units={gtDisplay?.units ?? umpire.units}
+                    trails={gtDisplay?.trails ?? umpire.trails}
+                    torpedoes={gtDisplay?.torpedoes ?? umpire.torpedoes}
+                    depthCharges={gtDisplay?.depthCharges ?? umpire.depthCharges}
+                    noisemakers={gtDisplay?.noisemakers ?? umpire.noisemakers}
+                    detonations={gtDisplay?.detonations ?? umpire.recentDetonations}
+                    seaSurfaceMarkers={
+                      gtDisplay?.seaSurfaceMarkers ?? umpire.seaSurfaceMarkers ?? []
+                    }
+                    turnLengthSeconds={umpire.turnLengthSeconds}
+                    showMovePrediction={!gtDisplay?.reviewing}
+                  />
+                  {mapFullscreen && (
+                    <aside
+                      className="umpire-gt-fullscreen-log"
+                      aria-label="Fullscreen action log"
+                    >
+                      <CombatLogPanel
+                        entries={gtDisplay?.combatLog ?? umpire.combatLog ?? []}
+                      />
+                    </aside>
+                  )}
+                </div>
                 {reviewTurn != null && (
                   <div className="aar-turn-note" aria-label="AAR turn note">
                     <label htmlFor="aar-turn-note-input">

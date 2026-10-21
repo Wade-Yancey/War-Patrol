@@ -54,7 +54,8 @@ function kindLabel(kind: CombatLogEntry['kind']): string {
 
 /**
  * Compact umpire CRT action / damage log — chronological, newest at bottom.
- * Rendered below the full-width GT map (not beside it).
+ * Normally below the full-width GT map; also shown beside the map in GT
+ * Fullscreen / AAR debrief (same AAR-filtered entries).
  */
 export function CombatLogPanel({ entries }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
