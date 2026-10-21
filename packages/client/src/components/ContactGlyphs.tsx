@@ -28,9 +28,9 @@ interface RadarAirBlipProps extends RadarBlipProps {
 export function RadarSurfaceBlip({ x, y, r }: RadarBlipProps) {
   return (
     <>
-      <circle cx={x} cy={y} r={r + 2} fill="none" stroke="#7dff9a" strokeWidth={1.5} />
-      <circle cx={x} cy={y} r={r} fill="#b8ffc8" />
-      <circle cx={x} cy={y} r={Math.max(2, r * 0.45)} fill="#e8ffe8" />
+      <circle cx={x} cy={y} r={r + 2} fill="none" stroke="#ffd070" strokeWidth={1.5} />
+      <circle cx={x} cy={y} r={r} fill="#ffe0a0" />
+      <circle cx={x} cy={y} r={Math.max(2, r * 0.45)} fill="#fff4d8" />
     </>
   );
 }
@@ -48,12 +48,12 @@ export function RadarAirBlip({ x, y, r, courseDeg }: RadarAirBlipProps) {
     <g transform={`translate(${x} ${y})${facing} scale(${scale})`} aria-label="Air contact">
       <path
         d={AIRCRAFT_TOPDOWN_PATH}
-        fill="#b8ffc8"
-        stroke="#7dff9a"
+        fill="#ffe0a0"
+        stroke="#ffd070"
         strokeWidth={1.15 / scale}
         strokeLinejoin="round"
       />
-      <circle cx={0} cy={-1.2} r={1.15} fill="#e8ffe8" />
+      <circle cx={0} cy={-1.2} r={1.15} fill="#fff4d8" />
     </g>
   );
 }
@@ -125,7 +125,7 @@ export function RadarMotionChevron({ x, y, courseDeg, blipR }: MotionChevronProp
       <path
         d={`M -4.5,${-tip} L 0,${-(tip + 9)} L 4.5,${-tip}`}
         fill="none"
-        stroke="#b8ffc8"
+        stroke="#ffe0a0"
         strokeWidth={1.75}
         strokeLinejoin="round"
         strokeLinecap="round"
