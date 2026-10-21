@@ -204,15 +204,15 @@ function DepthGaugeInner({
             cx={DEPTH_GAUGE_CX}
             cy={DEPTH_GAUGE_CY}
             r={DEPTH_GAUGE_R}
-            fill="#030a08"
-            stroke="#1a9a68"
+            fill="#010504"
+            stroke="#147a52"
             strokeWidth={2}
           />
 
           <path
             d={describeArc(startAng, safeEnd, DEPTH_GAUGE_R - 4)}
             fill="none"
-            stroke="rgba(77,255,176,0.22)"
+            stroke="rgba(46,207,138,0.22)"
             strokeWidth={6}
             strokeLinecap="butt"
           />
@@ -237,8 +237,8 @@ function DepthGaugeInner({
                 ? '#c45a5a'
                 : '#c4a35a'
               : t.major
-                ? '#4dffb0'
-                : 'rgba(77,255,176,0.4)';
+                ? '#2ecf8a'
+                : 'rgba(46,207,138,0.4)';
             return (
               <g key={t.depthM}>
                 <line
@@ -270,7 +270,7 @@ function DepthGaugeInner({
             y={DEPTH_GAUGE_CY - 28}
             textAnchor="middle"
             className="depth-gauge-face-title"
-            fill="rgba(154,255,208,0.55)"
+            fill="rgba(94,224,168,0.55)"
           >
             DEPTH
           </text>
@@ -279,7 +279,7 @@ function DepthGaugeInner({
             y={DEPTH_GAUGE_CY - 14}
             textAnchor="middle"
             className="depth-gauge-face-unit"
-            fill="rgba(74,154,114,0.7)"
+            fill="rgba(58,122,88,0.7)"
           >
             METERS
           </text>
@@ -290,7 +290,7 @@ function DepthGaugeInner({
               y1={orderedInner.y}
               x2={orderedTip.x}
               y2={orderedTip.y}
-              stroke="#9affd0"
+              stroke="#5ee0a8"
               strokeWidth={2}
               strokeDasharray="4 3"
               opacity={0.85}
@@ -301,7 +301,7 @@ function DepthGaugeInner({
               },${polar(orderedAngle - 8, DEPTH_GAUGE_R + 16).y} ${
                 polar(orderedAngle + 8, DEPTH_GAUGE_R + 16).x
               },${polar(orderedAngle + 8, DEPTH_GAUGE_R + 16).y}`}
-              fill="#9affd0"
+              fill="#5ee0a8"
               opacity={0.75}
             />
           </g>
@@ -313,7 +313,7 @@ function DepthGaugeInner({
                 cy={polar(draftAngle, DEPTH_GAUGE_R + 14).y}
                 r={4}
                 fill="none"
-                stroke="#9affd0"
+                stroke="#5ee0a8"
                 strokeWidth={1.5}
               />
               <line
@@ -321,7 +321,7 @@ function DepthGaugeInner({
                 y1={polar(draftAngle, DEPTH_GAUGE_R - 4).y}
                 x2={polar(draftAngle, DEPTH_GAUGE_R + 6).x}
                 y2={polar(draftAngle, DEPTH_GAUGE_R + 6).y}
-                stroke="#9affd0"
+                stroke="#5ee0a8"
                 strokeWidth={1.5}
               />
             </g>
@@ -338,7 +338,7 @@ function DepthGaugeInner({
                   ? '#ff8a6a'
                   : keelRisk === 'below_test'
                     ? '#d4b56a'
-                    : '#e8fff4'
+                    : '#b0dcc8'
               }
               strokeWidth={2.5}
               strokeLinecap="round"
@@ -348,10 +348,10 @@ function DepthGaugeInner({
               cy={DEPTH_GAUGE_CY}
               r={7}
               fill="#0a120c"
-              stroke="#4dffb0"
+              stroke="#2ecf8a"
               strokeWidth={2}
             />
-            <circle cx={DEPTH_GAUGE_CX} cy={DEPTH_GAUGE_CY} r={2.5} fill="#9affd0" />
+            <circle cx={DEPTH_GAUGE_CX} cy={DEPTH_GAUGE_CY} r={2.5} fill="#5ee0a8" />
           </g>
         </svg>
       </div>

@@ -1,32 +1,32 @@
 :root {
-  /* Cool mint CRT phosphor — distinct from #303/#304 lime greens; venue contrast, no glow/scanlines */
-  --phosphor: #4dffb0;
-  --phosphor-dim: #1a9a68;
-  --phosphor-deep: #0a3a2a;
-  --bg-void: #030a08;
-  --bg-crt: #071611;
-  --bg-panel: #0c1f18;
-  --bg-elevated: #132c22;
-  --ink: #d4fff0;
-  --ink-muted: #6aad90;
+  /* Dark moody mint CRT — subdued phosphor on near-black voids; venue contrast, no glow/scanlines */
+  --phosphor: #2ecf8a;
+  --phosphor-dim: #147a52;
+  --phosphor-deep: #06241a;
+  --bg-void: #010504;
+  --bg-crt: #040e0b;
+  --bg-panel: #071410;
+  --bg-elevated: #0b1c16;
+  --ink: #9edcc4;
+  --ink-muted: #4a7a64;
   --accent: var(--phosphor);
-  --accent-strong: #9affd0;
+  --accent-strong: #5ee0a8;
   --danger: #e07050;
-  --ok: #4dffb0;
+  --ok: #2ecf8a;
   --warn: #e0a050;
-  --line: rgba(77, 255, 176, 0.26);
+  --line: rgba(46, 207, 138, 0.20);
   /* Aliases used by station panels — keep one coherent token set */
   --border: color-mix(in srgb, var(--phosphor-dim) 70%, transparent);
   --muted: var(--ink-muted);
   --panel: var(--bg-panel);
-  --map-water: #051812;
-  --map-grid: rgba(77, 255, 176, 0.14);
-  --bezel: #101c18;
-  --bezel-edge: #2a4038;
-  --bezel-inset: #040c0a;
+  --map-water: #030f0c;
+  --map-grid: rgba(46, 207, 138, 0.10);
+  --bezel: #0a1410;
+  --bezel-edge: #1e3028;
+  --bezel-inset: #020806;
   --side-blue: #4a9fd4;
   --side-red: #d45a4a;
-  /* Civilian accent — purple stripe/badge only; CRT stays mint */
+  /* Civilian accent — purple stripe/badge only; CRT stays dark mint */
   --side-civilian: #a56de8;
   --hit: 2.75rem;
   /* One family everywhere — Courier Prime: typewriter/instrument, venue-readable */
@@ -1008,7 +1008,7 @@ label {
   min-height: 2rem;
   min-width: 2rem;
   padding: 0.2rem 0.45rem;
-  border-color: rgba(77, 255, 176, 0.14);
+  border-color: rgba(46, 207, 138, 0.14);
   background: transparent;
   color: var(--ink-muted);
   text-transform: none;
@@ -1017,7 +1017,7 @@ label {
 }
 
 .station-info-btn:hover:not(:disabled) {
-  border-color: rgba(77, 255, 176, 0.35);
+  border-color: rgba(46, 207, 138, 0.35);
   background: rgba(10, 26, 16, 0.65);
   color: var(--ink);
 }
@@ -1061,7 +1061,7 @@ label {
   max-height: min(78dvh, 34rem);
   margin: 0;
   overflow: auto;
-  box-shadow: 0 0 0 1px rgba(77, 255, 176, 0.18);
+  box-shadow: 0 0 0 1px rgba(46, 207, 138, 0.18);
 }
 
 .station-info-dialog-head {
@@ -1686,7 +1686,7 @@ label {
 
 .aar-mode-pill--live {
   color: var(--ok);
-  border-color: rgba(77, 255, 176, 0.45);
+  border-color: rgba(46, 207, 138, 0.45);
 }
 
 .aar-mode-pill--review {
@@ -1896,7 +1896,7 @@ body.umpire-map-fs .umpire-stack > :not(.umpire-gt-map--fullscreen) {
 
 /* Dark CRT halo so unit/sensor labels stay readable over trails & rings */
 .umpire-gt-map .map-plot-label {
-  stroke: #051812;
+  stroke: #030f0c;
   stroke-width: 3.5px;
   stroke-linejoin: round;
   paint-order: stroke fill;
@@ -2644,7 +2644,7 @@ body.umpire-map-fs .umpire-stack > :not(.umpire-gt-map--fullscreen) {
 }
 
 .helm-compass-swatch--hdg {
-  background: #9affd0;
+  background: #5ee0a8;
   clip-path: polygon(50% 0, 100% 100%, 0 100%);
 }
 
@@ -2653,12 +2653,12 @@ body.umpire-map-fs .umpire-stack > :not(.umpire-gt-map--fullscreen) {
   height: 0;
   border-left: 0.4rem solid transparent;
   border-right: 0.4rem solid transparent;
-  border-bottom: 0.7rem solid #4dffb0;
+  border-bottom: 0.7rem solid #2ecf8a;
   background: none;
 }
 
 .helm-compass-swatch--set {
-  border: 1.5px solid #9affd0;
+  border: 1.5px solid #5ee0a8;
   border-radius: 50%;
   background: transparent;
 }
@@ -3081,13 +3081,13 @@ body.umpire-map-fs .umpire-stack > :not(.umpire-gt-map--fullscreen) {
 }
 
 .depth-gauge-swatch--keel {
-  background: #e8fff4;
+  background: #b0dcc8;
 }
 
 .depth-gauge-swatch--ord {
   background: repeating-linear-gradient(
     90deg,
-    #9affd0 0 3px,
+    #5ee0a8 0 3px,
     transparent 3px 6px
   );
 }
@@ -3095,7 +3095,7 @@ body.umpire-map-fs .umpire-stack > :not(.umpire-gt-map--fullscreen) {
 .depth-gauge-swatch--set {
   width: 0.4rem;
   height: 0.4rem;
-  border: 1.5px solid #9affd0;
+  border: 1.5px solid #5ee0a8;
   background: transparent;
   border-radius: 50%;
 }
@@ -3298,7 +3298,7 @@ body.umpire-map-fs .umpire-stack > :not(.umpire-gt-map--fullscreen) {
 .hydrophone-assume-btn--active {
   color: var(--phosphor);
   border-color: var(--phosphor);
-  background: color-mix(in srgb, var(--phosphor) 12%, #030a08);
+  background: color-mix(in srgb, var(--phosphor) 12%, #010504);
 }
 
 .hydrophone-assume-btn:focus-visible {
@@ -3310,7 +3310,7 @@ body.umpire-map-fs .umpire-stack > :not(.umpire-gt-map--fullscreen) {
   width: 100%;
   height: 0.4rem;
   border: 1px solid color-mix(in srgb, var(--phosphor) 40%, transparent);
-  background: #030a08;
+  background: #010504;
   overflow: hidden;
 }
 
@@ -3503,7 +3503,7 @@ body.umpire-map-fs .umpire-stack > :not(.umpire-gt-map--fullscreen) {
   margin: 0 0 0.85rem;
   padding: 0.65rem 0.75rem;
   border: 1px solid var(--accent-strong);
-  background: rgba(77, 255, 176, 0.08);
+  background: rgba(46, 207, 138, 0.08);
 }
 
 .damage-gopher-task-key {
@@ -3537,7 +3537,7 @@ body.umpire-map-fs .umpire-stack > :not(.umpire-gt-map--fullscreen) {
   margin: 0 0 0.75rem;
   padding: 0.5rem 0.7rem;
   border: 1px solid var(--accent-strong);
-  background: rgba(77, 255, 176, 0.08);
+  background: rgba(46, 207, 138, 0.08);
   font-size: 0.85rem;
 }
 
@@ -4211,7 +4211,7 @@ body.umpire-map-fs .umpire-stack > :not(.umpire-gt-map--fullscreen) {
 }
 
 .optics-bearing-compass-swatch--hdg {
-  background: #9affd0;
+  background: #5ee0a8;
   clip-path: polygon(50% 0, 100% 100%, 0 100%);
 }
 
@@ -4220,7 +4220,7 @@ body.umpire-map-fs .umpire-stack > :not(.umpire-gt-map--fullscreen) {
   height: 0;
   border-left: 0.4rem solid transparent;
   border-right: 0.4rem solid transparent;
-  border-bottom: 0.7rem solid #4dffb0;
+  border-bottom: 0.7rem solid #2ecf8a;
   background: none;
 }
 

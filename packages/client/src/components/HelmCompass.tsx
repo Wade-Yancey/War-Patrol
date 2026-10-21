@@ -155,7 +155,7 @@ function HelmCompassInner({
                   cy={COMPASS_CY - (COMPASS_R + 16)}
                   r={5}
                   fill="none"
-                  stroke="#9affd0"
+                  stroke="#5ee0a8"
                   strokeWidth={1.5}
                 />
                 <line
@@ -163,7 +163,7 @@ function HelmCompassInner({
                   y1={COMPASS_CY - (COMPASS_R - 6)}
                   x2={COMPASS_CX}
                   y2={COMPASS_CY - (COMPASS_R + 8)}
-                  stroke="#9affd0"
+                  stroke="#5ee0a8"
                   strokeWidth={1.5}
                 />
               </g>
