@@ -113,22 +113,24 @@ export function VesselJoinLinks({ vesselLinks, units, busy, onRotateToken }: Pro
     copiedKey === key ? 'Copied' : idle;
 
   return (
-    <section className="panel vessel-join-links">
-      <div className="vessel-join-links-header">
-        <h2>Player join URLs</h2>
+    <details className="panel vessel-join-links">
+      <summary className="vessel-join-links-summary">
+        <span className="vessel-join-links-summary-title">Player join URLs</span>
         {playerLinks.length > 0 && (
           <button
             type="button"
             className="ghost"
             disabled={busy || !allPlayerText}
-            onClick={() => {
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
               if (allPlayerText) void copy('all', allPlayerText);
             }}
           >
             {copyLabel('all', 'Copy all')}
           </button>
         )}
-      </div>
+      </summary>
       <p className="muted vessel-join-links-help">
         <strong>Copy</strong> gives players full station URLs
         {copyUsesPublic ? (
@@ -251,6 +253,6 @@ export function VesselJoinLinks({ vesselLinks, units, busy, onRotateToken }: Pro
           );
         })}
       </div>
-    </section>
+    </details>
   );
 }
