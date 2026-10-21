@@ -191,13 +191,13 @@ export function DeckGunControls({
       </div>
 
       {fireBlock && (
-        <p className="mono readout" style={{ margin: 0, color: 'var(--warn, #c90)' }}>
+        <p className="mono readout" style={{ margin: 0, color: 'var(--warn)' }}>
           {formatDeckGunFireBlockNotice(fireBlock)}
         </p>
       )}
 
       {submerged && (
-        <p className="mono readout" style={{ margin: 0, color: 'var(--warn, #c90)' }}>
+        <p className="mono readout" style={{ margin: 0, color: 'var(--warn)' }}>
           Surfaced / awash required (keel ≤ {RADAR_SURFACE_DEPTH_M} m) — now{' '}
           {Math.round(keelDepthM)} m
         </p>

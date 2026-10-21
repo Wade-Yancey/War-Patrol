@@ -1,19 +1,26 @@
 :root {
-  /* Classic CRT / sonar green — flatter/cheaper paints for tablet snappiness */
+  /* 1980s green-phosphor CRT — flat paints, no heavy blur/filters (venue tablets) */
   --phosphor: #3dff6a;
   --phosphor-dim: #1a8f3c;
   --phosphor-deep: #0a3d1c;
+  --phosphor-glow: rgba(61, 255, 106, 0.32);
   --bg-void: #010805;
   --bg-crt: #041208;
   --bg-panel: #0a1a10;
   --bg-elevated: #0f2416;
   --ink: #c8ffd4;
-  --ink-muted: #5a9a68;
+  /* Slightly brighter muted for venue distance (keys/captions) */
+  --ink-muted: #6aad78;
   --accent: var(--phosphor);
   --accent-strong: #7dff9a;
   --danger: #e07050;
   --ok: #3dff6a;
+  --warn: #e0a050;
   --line: rgba(61, 255, 106, 0.22);
+  /* Aliases used by station panels — keep one coherent token set */
+  --border: color-mix(in srgb, var(--phosphor-dim) 70%, transparent);
+  --muted: var(--ink-muted);
+  --panel: var(--bg-panel);
   --map-water: #061a0e;
   --map-grid: rgba(61, 255, 106, 0.16);
   --bezel: #121a14;
@@ -24,16 +31,17 @@
   /* Civilian accent — purple stripe/badge only; CRT stays green */
   --side-civilian: #a56de8;
   --hit: 2.75rem;
-  --font-display: 'Share Tech Mono', 'IBM Plex Mono', ui-monospace, monospace;
-  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  /* VT323 = chunky 80s terminal display; Share Tech Mono = body/UI terminal */
+  --font-display: 'VT323', 'Share Tech Mono', 'IBM Plex Mono', ui-monospace, monospace;
+  --font-mono: 'Share Tech Mono', 'IBM Plex Mono', ui-monospace, monospace;
   /* Shared CRT console dial (radar / hydrophone / helm) — viewport-dominant square */
   --crt-aux-w: 12.5rem;
   --crt-aux-gap: 0.65rem;
   --crt-dial-inset: 1.25rem;
   --crt-dial-chrome: 5.25rem;
-  --crt-console-key-size: 0.65rem;
-  --crt-console-val-size: 1.15rem;
-  --crt-console-caption-size: 0.65rem;
+  --crt-console-key-size: 0.7rem;
+  --crt-console-val-size: 1.2rem;
+  --crt-console-caption-size: 0.7rem;
   color: var(--ink);
   background: var(--bg-void);
   font-family: var(--font-mono);
@@ -43,6 +51,7 @@
   text-rendering: optimizeSpeed;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
+  scrollbar-color: var(--phosphor-dim) var(--bezel-inset);
 }
 
 * {
@@ -173,7 +182,7 @@ label {
   color: var(--ink-muted);
 }
 
-/* Industrial CRT bezel — no full-viewport overlays / scanlines */
+/* Industrial CRT bezel — cheap CSS scanline/glow only (no blur filters) */
 .crt-bezel {
   position: relative;
   min-height: 100vh;
@@ -181,6 +190,33 @@ label {
   padding: clamp(0.5rem, 1.5vw, 1rem);
   background: var(--bezel);
   border: 1px solid var(--bezel-edge);
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.55);
+}
+
+/* Scanlines on the non-scrolling bezel so they stay put over .crt-screen scroll */
+.crt-bezel::after {
+  content: '';
+  position: absolute;
+  top: clamp(0.5rem, 1.5vw, 1rem);
+  right: clamp(0.5rem, 1.5vw, 1rem);
+  bottom: clamp(0.5rem, 1.5vw, 1rem);
+  left: clamp(0.5rem, 1.5vw, 1rem);
+  z-index: 40;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 2px,
+    rgba(0, 0, 0, 0.055) 2px,
+    rgba(0, 0, 0, 0.055) 3px
+  );
+  opacity: 0.65;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .crt-bezel::after {
+    opacity: 0.35;
+  }
 }
 
 .crt-screen {
@@ -191,6 +227,14 @@ label {
   background: var(--bg-crt);
   border: 3px solid var(--bezel-edge);
   overflow: auto;
+  box-shadow:
+    inset 0 0 28px rgba(61, 255, 106, 0.04),
+    inset 0 0 80px rgba(0, 0, 0, 0.35);
+}
+
+::selection {
+  background: rgba(61, 255, 106, 0.35);
+  color: var(--accent-strong);
 }
 
 .app-shell {
@@ -204,11 +248,12 @@ label {
 .brand {
   font-family: var(--font-display);
   font-weight: 400;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  font-size: clamp(1.75rem, 5vw, 2.75rem);
+  font-size: clamp(2rem, 5.5vw, 3.1rem);
   color: var(--accent-strong);
   margin: 0;
+  text-shadow: 0 0 10px var(--phosphor-glow);
 }
 
 .brand-mark {
@@ -241,10 +286,11 @@ label {
 .panel h3 {
   margin: 0 0 0.85rem;
   font-family: var(--font-display);
-  font-size: 0.85rem;
-  letter-spacing: 0.14em;
+  font-size: 1.15rem;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--phosphor);
+  text-shadow: 0 0 6px var(--phosphor-glow);
 }
 
 .row {
@@ -275,6 +321,8 @@ label {
   font-family: var(--font-display);
   color: var(--accent-strong);
   letter-spacing: 0.06em;
+  font-size: 1.05em;
+  text-shadow: 0 0 6px var(--phosphor-glow);
 }
 
 .muted {
@@ -2121,7 +2169,7 @@ label {
   background: var(--bezel-inset);
   box-shadow:
     inset 0 0 0 1px rgba(61, 255, 106, 0.12),
-    0 0 12px rgba(61, 255, 106, 0.08);
+    0 0 14px var(--phosphor-glow);
 }
 
 .turn-chronometer-label {
@@ -2134,11 +2182,11 @@ label {
 
 .turn-chronometer-digits {
   font-family: var(--font-display);
-  font-size: clamp(1.85rem, 5vw, 2.45rem);
+  font-size: clamp(2.1rem, 5.5vw, 2.75rem);
   line-height: 1;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   color: var(--accent-strong);
-  text-shadow: 0 0 10px rgba(61, 255, 106, 0.35);
+  text-shadow: 0 0 12px var(--phosphor-glow);
   font-variant-numeric: tabular-nums;
 }
 
@@ -2649,7 +2697,7 @@ label {
 
 .controls-bridge-dc-alert-key {
   color: #ff8a6a;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.72rem;
   letter-spacing: 0.06em;
 }
@@ -2732,14 +2780,14 @@ label {
 }
 
 .weapons-plot-fieldset {
-  border: 1px solid var(--border, #1a4a28);
+  border: 1px solid var(--border);
   padding: 0.55rem 0.65rem 0.7rem;
   margin: 0;
 }
 
 .weapons-plot-fieldset legend {
   padding: 0 0.35rem;
-  color: var(--muted, #5a9a68);
+  color: var(--muted);
   font-size: 0.8rem;
 }
 
@@ -2772,14 +2820,14 @@ label {
 .recognition-manual-toggle {
   align-self: stretch;
   text-align: left;
-  font-family: var(--font-display, inherit);
-  font-size: 0.78rem;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   padding: 0.55rem 0.7rem;
   background: transparent;
-  border: 1px dashed var(--border, #1a4a28);
-  color: var(--phosphor, #3dff7a);
+  border: 1px dashed var(--border);
+  color: var(--phosphor);
   cursor: pointer;
 }
 
@@ -2793,8 +2841,8 @@ label {
   flex-direction: column;
   gap: 0.45rem;
   padding: 0.55rem 0.65rem 0.7rem;
-  border: 1px solid var(--border, #1a4a28);
-  background: color-mix(in srgb, var(--panel, #04140a) 88%, #000);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel) 88%, #000);
 }
 
 .recognition-manual-list {
@@ -2815,19 +2863,19 @@ label {
   gap: 0.35rem 0.85rem;
   text-align: left;
   padding: 0.45rem 0.55rem;
-  border: 1px solid var(--border, #1a4a28);
+  border: 1px solid var(--border);
   background: transparent;
   color: inherit;
   cursor: pointer;
 }
 
 .recognition-manual-row:hover:not(:disabled) {
-  border-color: var(--phosphor, #3dff7a);
+  border-color: var(--phosphor);
 }
 
 .recognition-manual-row.is-selected {
-  border-color: var(--phosphor, #3dff7a);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--phosphor, #3dff7a) 45%, transparent);
+  border-color: var(--phosphor);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--phosphor) 45%, transparent);
 }
 
 .recognition-manual-row:disabled {
@@ -2848,7 +2896,7 @@ label {
 .periscope-sightings-list {
   margin-top: 0.65rem;
   padding-top: 0.5rem;
-  border-top: 1px dashed var(--border, #1a4a28);
+  border-top: 1px dashed var(--border);
 }
 
 .periscope-selected--sighting {
@@ -3226,9 +3274,9 @@ label {
   font-size: 0.72rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  font-family: 'Share Tech Mono', 'IBM Plex Mono', monospace;
+  font-family: var(--font-mono);
   color: var(--ink-muted);
-  background: #041208;
+  background: var(--bg-crt);
   border: 1px solid color-mix(in srgb, var(--phosphor) 35%, transparent);
   cursor: pointer;
 }
@@ -3373,11 +3421,12 @@ label {
 .umpire-combat-log-list {
   flex: 1 1 auto;
   overflow: auto;
-  border: 1px solid var(--border, #1a4a28);
+  border: 1px solid var(--border);
   background: rgba(0, 0, 0, 0.25);
   padding: 0.45rem 0.55rem;
   font-size: 0.78rem;
   line-height: 1.35;
+  font-family: var(--font-mono);
 }
 
 .umpire-combat-log-list ul {
@@ -3403,7 +3452,7 @@ label {
 }
 
 .combat-log-meta {
-  color: var(--muted, #5a9a68);
+  color: var(--muted);
   font-size: 0.72rem;
   letter-spacing: 0.02em;
 }
@@ -3411,7 +3460,7 @@ label {
 .combat-log-line--torpedo_hit .combat-log-summary,
 .combat-log-line--depth_charge_damage .combat-log-summary,
 .combat-log-line--aircraft_attack_damage .combat-log-summary {
-  color: var(--accent-strong, #3dff6a);
+  color: var(--accent-strong);
 }
 
 .combat-log-line--torpedo_miss .combat-log-summary,
@@ -3445,7 +3494,7 @@ label {
 
 .damage-gopher-task-key {
   color: var(--accent-strong);
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.72rem;
   letter-spacing: 0.08em;
 }
@@ -3480,7 +3529,7 @@ label {
 
 .gopher-cue-key {
   color: var(--accent-strong);
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.72rem;
   letter-spacing: 0.08em;
 }
@@ -3510,18 +3559,18 @@ label {
 .damage-health-bar {
   height: 0.45rem;
   background: rgba(0, 0, 0, 0.35);
-  border: 1px solid var(--border, #1a4a28);
+  border: 1px solid var(--border);
   overflow: hidden;
 }
 
 .damage-health-fill {
   height: 100%;
-  background: var(--accent-strong, #3dff6a);
+  background: var(--accent-strong);
   transition: width 0.2s ease;
 }
 
 .damage-health-fill--warn {
-  background: #ffc857;
+  background: var(--warn);
 }
 
 .damage-health-fill--bad {
@@ -3544,18 +3593,20 @@ label {
 
 .damage-log-title {
   margin: 0;
-  font-size: 0.9rem;
-  color: var(--accent-strong, #3dff6a);
+  font-size: 1.05rem;
+  font-family: var(--font-display);
+  color: var(--accent-strong);
 }
 
 .damage-log-list {
   max-height: min(220px, 40vh);
   overflow: auto;
-  border: 1px solid var(--border, #1a4a28);
+  border: 1px solid var(--border);
   background: rgba(0, 0, 0, 0.25);
   padding: 0.45rem 0.55rem;
   font-size: 0.78rem;
   line-height: 1.35;
+  font-family: var(--font-mono);
 }
 
 .damage-log-list ul {
