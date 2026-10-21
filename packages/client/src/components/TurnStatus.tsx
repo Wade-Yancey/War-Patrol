@@ -1,4 +1,4 @@
-import type { TurnState } from '@war-patrol/shared';
+import type { TurnPhase, TurnState } from '@war-patrol/shared';
 import { formatGameClock } from '@war-patrol/shared';
 import { memo, useEffect, useState } from 'react';
 
@@ -16,6 +16,41 @@ function formatMmSs(totalSeconds: number): string {
   return `${mm}:${ss}`;
 }
 
+function phaseLabel(phase: TurnPhase): string {
+  if (phase === 'awaiting_resolution') return 'resolve ready';
+  return phase;
+}
+
+/**
+ * Chronometer modes for umpire + stations:
+ * - running: open + future deadline
+ * - expired: open + deadline in the past (auto-lock in flight)
+ * - paused: open + no deadline (manual lock / Stop)
+ * - closed: locked or awaiting_resolution
+ */
+function chronometerMode(
+  turn: TurnState,
+  secsLeft: number | null,
+): 'running' | 'expired' | 'paused' | 'closed' {
+  if (turn.phase !== 'open') return 'closed';
+  if (!turn.timerDeadline) return 'paused';
+  if (secsLeft != null && secsLeft <= 0) return 'expired';
+  return 'running';
+}
+
+function chronometerLabel(mode: ReturnType<typeof chronometerMode>): string {
+  switch (mode) {
+    case 'running':
+      return 'Order time';
+    case 'expired':
+      return 'Expired';
+    case 'paused':
+      return 'No timer';
+    case 'closed':
+      return 'Orders closed';
+  }
+}
+
 function TurnStatusInner({
   turn,
   turnLengthSeconds,
@@ -23,20 +58,21 @@ function TurnStatusInner({
   turn: TurnState;
   turnLengthSeconds?: number;
 }) {
-  const active = Boolean(turn.timerDeadline && turn.phase === 'open');
+  const hasDeadline = Boolean(turn.timerDeadline && turn.phase === 'open');
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    if (!active) return;
+    if (!hasDeadline) return;
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
-  }, [active, turn.timerDeadline]);
+  }, [hasDeadline, turn.timerDeadline]);
 
   const secsLeft =
-    active && turn.timerDeadline ? remainingSeconds(turn.timerDeadline, now) : null;
+    hasDeadline && turn.timerDeadline ? remainingSeconds(turn.timerDeadline, now) : null;
+  const mode = chronometerMode(turn, secsLeft);
   const remaining = secsLeft != null ? formatMmSs(secsLeft) : null;
   const urgency =
-    secsLeft == null
+    mode !== 'running' || secsLeft == null
       ? null
       : secsLeft <= CRITICAL_SECONDS
         ? 'critical'
@@ -51,12 +87,20 @@ function TurnStatusInner({
       ? turnLengthSeconds / 60
       : null;
 
+  const digits =
+    mode === 'running' || mode === 'expired'
+      ? (remaining ?? '00:00')
+      : mode === 'paused'
+        ? '--:--'
+        : '——';
+
   return (
     <div className="turn-status" role="group" aria-label="Turn status">
       <div
         className={[
           'turn-chronometer',
-          active ? 'is-running' : 'is-idle',
+          mode === 'running' ? 'is-running' : 'is-idle',
+          mode === 'expired' ? 'is-expired' : '',
           urgency ? `is-${urgency}` : '',
         ]
           .filter(Boolean)
@@ -64,12 +108,8 @@ function TurnStatusInner({
         aria-live="polite"
         aria-atomic="true"
       >
-        <span className="turn-chronometer-label">
-          {active ? 'Order time' : turn.phase === 'open' ? 'No timer' : 'Orders closed'}
-        </span>
-        <span className="turn-chronometer-digits mono">
-          {remaining ?? (turn.phase === 'open' ? '--:--' : '——')}
-        </span>
+        <span className="turn-chronometer-label">{chronometerLabel(mode)}</span>
+        <span className="turn-chronometer-digits mono">{digits}</span>
       </div>
 
       <div className="turn-status-meta">
@@ -84,7 +124,7 @@ function TurnStatusInner({
             +{Number.isInteger(lengthMin) ? lengthMin : lengthMin.toFixed(1)} min/turn
           </span>
         )}
-        <span className={`status-pill ${turn.phase}`}>{turn.phase.replace('_', ' ')}</span>
+        <span className={`status-pill ${turn.phase}`}>{phaseLabel(turn.phase)}</span>
       </div>
     </div>
   );

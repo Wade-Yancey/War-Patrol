@@ -854,6 +854,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       try {
         requireUmpire(request, request.params.gameId);
         const seconds = Number(request.body?.seconds ?? 60);
+        if (!Number.isFinite(seconds) || seconds <= 0) {
+          return reply.code(400).send({ error: 'seconds must be positive' });
+        }
         const save = await runtime.extendTimer(request.params.gameId, seconds);
         return { turn: save.turn, stateVersion: save.stateVersion };
       } catch (err) {

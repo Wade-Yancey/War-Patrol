@@ -2188,6 +2188,24 @@ label {
   text-shadow: 0 0 14px rgba(224, 112, 80, 0.55);
 }
 
+.turn-chronometer.is-expired {
+  border-color: var(--danger);
+  background: rgba(224, 112, 80, 0.1);
+}
+
+.turn-chronometer.is-expired .turn-chronometer-label {
+  color: #ffc8b8;
+}
+
+.turn-chronometer.is-expired .turn-chronometer-digits {
+  color: #ffb4a8;
+  text-shadow: 0 0 14px rgba(224, 112, 80, 0.45);
+}
+
+.umpire-timer-actions button {
+  min-width: 6.5rem;
+}
+
 @keyframes chronometer-pulse {
   50% {
     background: rgba(224, 112, 80, 0.16);
