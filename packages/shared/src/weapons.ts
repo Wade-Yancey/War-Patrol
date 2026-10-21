@@ -7,12 +7,13 @@
  * adds a small warhead dud chance — not the old 5–50% “did you hit” RNG table.
  * Fire headings come from the player's entered TDC solution (aim + course /
  * speed / range intercept) — never auto-filled from sim truth.
- * Deck guns use a slim designate + fire model (DD + fleet sub when surfaced):
- * player aim/LOS + rough range + volley count (1–3); resolve acquires the
- * nearest surface contact near that point and applies crew lead from truth
- * course/speed. Each volley is **15 shells/min** resolved as one AOE beaten
- * zone (not per-shell markers). Surface targets only; finite magazines.
- * Torpedoes keep the full player TDC solution.
+ * Deck guns use optics-contact targeting (DD + fleet sub when surfaced):
+ * player picks a Contact N from the current lookout / periscope picture and
+ * volley count (1–3); resolve aims at that booked target with crew RNG
+ * dispersion from true range + target speed (no player aim/lead). Each volley
+ * is **15 shells/min** resolved as one AOE beaten zone (not per-shell markers).
+ * Surface targets only; finite magazines. Torpedoes keep the full player TDC
+ * solution.
  * Aircraft attacks are umpire-ordered intercept / strafe / bombing runs that resolve
  * on turn advance from CPA geometry (depth-charge-like bands).
  * See docs/simulation-physics.md in the project store.
@@ -26,11 +27,13 @@ import {
 import {
   bearingRangeNm,
   clamp,
+  displaceMeters,
   eastNorthMeters,
   lerpLatLonDepth,
   moveAlongHeading,
   normalizeHeading,
 } from './geo.js';
+import { targetIdForContactLabel } from './contactBook.js';
 import { shortestBearingDelta } from './hydrophone.js';
 import {
   advanceMagazineReload,
@@ -520,11 +523,22 @@ export const DECK_GUN_SCATTER_BEARING_DEG = 1.5;
 export const DECK_GUN_HIT_AUDIO_DELAY_SEC = 0.85;
 
 /**
- * Max horizontal distance (nm) from the player designate point to acquire a
- * surface contact for crew lead. Outside this band → no acquire (fire along
- * aim with zero lead using the rough range).
+ * @deprecated Optics contact selection replaced designate-acquire. Kept so
+ * older verify / docs imports keep compiling.
  */
 export const DECK_GUN_ACQUIRE_RADIUS_NM = 0.75;
+
+/**
+ * Crew aim dispersion half-width (m) at point-blank / stationary — base CEP
+ * before range and target-speed terms.
+ */
+export const DECK_GUN_CREW_DISP_BASE_M = 25;
+
+/** Extra crew-aim dispersion (m) per nautical mile of true range. */
+export const DECK_GUN_CREW_DISP_PER_NM_M = 40;
+
+/** Extra crew-aim dispersion (m) per knot of absolute target speed. */
+export const DECK_GUN_CREW_DISP_PER_KN_M = 3.5;
 
 /**
  * Along-track release fractions in [0, 1] from move start→end for N charges.
@@ -2420,17 +2434,78 @@ export function normalizeDeckGunFireOrder(raw: DeckGunFireOrder): DeckGunFireOrd
     volleyRaw === undefined || volleyRaw === null
       ? undefined
       : Math.max(1, Math.floor(Number(volleyRaw) || 1));
-  // Course/speed are optional legacy fields — resolve ignores them for lead.
+  const targetLabelN = Math.max(1, Math.floor(Number(raw.targetLabelN) || 0));
+  // Legacy aim/range/course/speed kept optionally for older snapshots — resolve
+  // ignores them when targetLabelN is set.
+  const hasAim = raw.aimHeading !== undefined && raw.aimHeading !== null;
+  const hasRange = raw.estimatedRangeNm !== undefined && raw.estimatedRangeNm !== null;
   const hasCourse = raw.estimatedCourse !== undefined && raw.estimatedCourse !== null;
   const hasSpeed = raw.estimatedSpeedKn !== undefined && raw.estimatedSpeedKn !== null;
   return {
-    aimHeading: normalizeHeading(raw.aimHeading),
+    targetLabelN,
+    ...(hasAim ? { aimHeading: normalizeHeading(Number(raw.aimHeading) || 0) } : {}),
     ...(hasCourse ? { estimatedCourse: normalizeHeading(Number(raw.estimatedCourse) || 0) } : {}),
     ...(hasSpeed
       ? { estimatedSpeedKn: Math.max(0, Number(raw.estimatedSpeedKn) || 0) }
       : {}),
-    estimatedRangeNm: Math.max(0, Number(raw.estimatedRangeNm) || 0),
+    ...(hasRange ? { estimatedRangeNm: Math.max(0, Number(raw.estimatedRangeNm) || 0) } : {}),
     ...(volleyCount !== undefined ? { volleyCount } : {}),
+  };
+}
+
+/**
+ * Crew-aim dispersion radius (m) from true engagement range and target speed.
+ * Wider at long range / fast movers — feeds the RNG aim-point offset.
+ */
+export function deckGunCrewDispersionM(rangeNm: number, speedKn: number): number {
+  const r = Math.max(0, Number(rangeNm) || 0);
+  const s = Math.abs(Number(speedKn) || 0);
+  return (
+    DECK_GUN_CREW_DISP_BASE_M +
+    DECK_GUN_CREW_DISP_PER_NM_M * r +
+    DECK_GUN_CREW_DISP_PER_KN_M * s
+  );
+}
+
+/**
+ * Seeded crew aim point around a designated contact. Uniform-in-area disk of
+ * radius {@link deckGunCrewDispersionM}; fire heading is firer → aim point.
+ */
+export function deckGunCrewAimPoint(opts: {
+  firerPosition: LatLonDepth;
+  targetPosition: LatLonDepth;
+  targetSpeedKn: number;
+  seed: string;
+}): {
+  aimPoint: LatLonDepth;
+  fireHeading: number;
+  rangeNm: number;
+  dispersionM: number;
+  offsetM: number;
+  interceptSec: number;
+} {
+  const { bearing, rangeNm } = bearingRangeNm(opts.firerPosition, opts.targetPosition);
+  const clampedRange = clampDeckGunRangeNm(rangeNm);
+  const dispersionM = deckGunCrewDispersionM(clampedRange, opts.targetSpeedKn);
+  // Area-uniform disk: angle ∈ [0, 2π), radius ∈ [0, σ] with √u.
+  const ang = weaponRng01(`${opts.seed}|ang`) * Math.PI * 2;
+  const rad = Math.sqrt(weaponRng01(`${opts.seed}|rad`)) * dispersionM;
+  const eastM = Math.sin(ang) * rad;
+  const northM = Math.cos(ang) * rad;
+  const aimPoint = {
+    ...displaceMeters({ ...opts.targetPosition, depth: 0 }, eastM, northM),
+    depth: 0,
+  };
+  const toAim = bearingRangeNm(opts.firerPosition, aimPoint);
+  const interceptSec =
+    DECK_GUN_SHELL_SPEED_KN > 0 ? (toAim.rangeNm / DECK_GUN_SHELL_SPEED_KN) * 3600 : 0;
+  return {
+    aimPoint,
+    fireHeading: normalizeHeading(toAim.bearing || bearing),
+    rangeNm: clampedRange,
+    dispersionM,
+    offsetM: rad,
+    interceptSec,
   };
 }
 
@@ -2631,43 +2706,29 @@ export type DeckGunResolveResult = {
 };
 
 /**
- * Same-turn deck-gun **volley** resolution: crew lead from acquired surface
- * contact near the player designate (aim + rough range), then one AOE beaten
- * zone of {@link DECK_GUN_VOLLEY_RADIUS_M} around the impact. Every surface
+ * Same-turn deck-gun **volley** resolution: look up optics Contact N on the
+ * firer's contact book, place a crew RNG aim point around that target from
+ * true range + speed ({@link deckGunCrewAimPoint}), then one AOE beaten zone
+ * of {@link DECK_GUN_VOLLEY_RADIUS_M} around the aim point. Every surface
  * contact inside the radius rolls museum hit chance (center ~85%, edge ~50%;
- * bullseye auto-hit). Player course/speed ignored. Miss splash gets seeded
- * scatter for umpire GT / AAR — still one circle, not per-shell markers.
+ * bullseye auto-hit). Miss splash gets seeded scatter for umpire GT / AAR —
+ * still one circle, not per-shell markers.
  */
 export function resolveDeckGunVolley(input: DeckGunResolveInput): DeckGunResolveResult {
   const fire = normalizeDeckGunFireOrder(input.fire);
-  const designate = deckGunDesignatePoint({
-    firerPosition: input.firer.position,
-    aimHeading: fire.aimHeading,
-    estimatedRangeNm: fire.estimatedRangeNm,
-  });
-  const acquired = acquireDeckGunContactNearDesignate({
-    designate,
-    firerId: input.firer.id,
-    contacts: input.contacts,
-  });
-  // Crew solution: truth course/speed from acquired contact; else stationary.
-  const estimatedCourse = acquired ? normalizeHeading(acquired.contact.heading) : 0;
-  const estimatedSpeedKn = acquired ? Math.abs(Number(acquired.contact.speed) || 0) : 0;
-  const ballistics = deckGunImpactFromSolution({
-    firerPosition: input.firer.position,
-    aimHeading: fire.aimHeading,
-    estimatedCourse,
-    estimatedSpeedKn,
-    estimatedRangeNm: fire.estimatedRangeNm,
-  });
   const radiusM = DECK_GUN_VOLLEY_RADIUS_M;
+  const targetId = targetIdForContactLabel(input.firer, fire.targetLabelN);
+  const designated = targetId
+    ? input.contacts.find((c) => c.id === targetId)
+    : undefined;
 
-  if (!(fire.estimatedRangeNm > 0)) {
+  if (!designated || !isDeckGunTarget(designated)) {
+    const fallbackHdg = normalizeHeading(Number(fire.aimHeading) || input.firer.heading || 0);
     return {
       outcome: 'out_of_range',
-      fireHeading: ballistics.fireHeading,
-      impact: ballistics.impact,
-      rangeNm: ballistics.rangeNm,
+      fireHeading: fallbackHdg,
+      impact: { ...input.firer.position, depth: 0 },
+      rangeNm: 0,
       radiusM,
       damage: 0,
       missDistanceM: Number.POSITIVE_INFINITY,
@@ -2677,7 +2738,37 @@ export function resolveDeckGunVolley(input: DeckGunResolveInput): DeckGunResolve
 
   const turnSec = Math.max(1, Number(input.turnLengthSeconds) || 180);
   const fireFrac = clamp(Number(input.fireTurnFraction) || 0, 0, 1);
-  const flightT = clamp(fireFrac + ballistics.interceptSec / turnSec, 0, 1);
+  // Approximate shell TOF from current true range so contact interpolation
+  // lands near impact time (crew aim uses the same TOF after offset).
+  const prelim = bearingRangeNm(input.firer.position, designated.position);
+  const prelimTofSec =
+    DECK_GUN_SHELL_SPEED_KN > 0 ? (prelim.rangeNm / DECK_GUN_SHELL_SPEED_KN) * 3600 : 0;
+  const flightT = clamp(fireFrac + prelimTofSec / turnSec, 0, 1);
+  const tgtStart = input.startPositions?.get(designated.id) ?? designated.position;
+  const tgtAtFlight = lerpLatLonDepth(tgtStart, designated.position, flightT);
+
+  const trueRangeNm = bearingRangeNm(input.firer.position, tgtAtFlight).rangeNm;
+  if (!(trueRangeNm > 0) || trueRangeNm > DECK_GUN_MAX_RANGE_NM) {
+    return {
+      outcome: 'out_of_range',
+      fireHeading: normalizeHeading(prelim.bearing),
+      impact: { ...tgtAtFlight, depth: 0 },
+      rangeNm: clampDeckGunRangeNm(trueRangeNm),
+      radiusM,
+      damage: 0,
+      missDistanceM: Number.POSITIVE_INFINITY,
+      hits: [],
+      closestApproachUnitId: designated.id,
+      closestApproachUnitName: designated.name,
+    };
+  }
+
+  const crew = deckGunCrewAimPoint({
+    firerPosition: input.firer.position,
+    targetPosition: tgtAtFlight,
+    targetSpeedKn: Math.abs(Number(designated.speed) || 0),
+    seed: input.seed,
+  });
 
   let bestMiss = Number.POSITIVE_INFINITY;
   let bestId: string | undefined;
@@ -2690,7 +2781,7 @@ export function resolveDeckGunVolley(input: DeckGunResolveInput): DeckGunResolve
     const start = input.startPositions?.get(contact.id) ?? contact.position;
     const end = contact.position;
     const atFlight = lerpLatLonDepth(start, end, flightT);
-    const miss = horizontalMissMeters(ballistics.impact, atFlight);
+    const miss = horizontalMissMeters(crew.aimPoint, atFlight);
     if (miss < bestMiss) {
       bestMiss = miss;
       bestId = contact.id;
@@ -2716,9 +2807,9 @@ export function resolveDeckGunVolley(input: DeckGunResolveInput): DeckGunResolve
     const primary = hits[0]!;
     return {
       outcome: 'hit',
-      fireHeading: ballistics.fireHeading,
-      impact: ballistics.impact,
-      rangeNm: ballistics.rangeNm,
+      fireHeading: crew.fireHeading,
+      impact: crew.aimPoint,
+      rangeNm: crew.rangeNm,
       radiusM,
       damage: primary.damage,
       missDistanceM: primary.missDistanceM,
@@ -2731,16 +2822,16 @@ export function resolveDeckGunVolley(input: DeckGunResolveInput): DeckGunResolve
 
   const splash = deckGunScatterImpact({
     firerPosition: input.firer.position,
-    fireHeading: ballistics.fireHeading,
-    rangeNm: ballistics.rangeNm,
+    fireHeading: crew.fireHeading,
+    rangeNm: crew.rangeNm,
     seed: input.seed,
   });
 
   return {
     outcome: 'miss',
-    fireHeading: ballistics.fireHeading,
+    fireHeading: crew.fireHeading,
     impact: splash,
-    rangeNm: ballistics.rangeNm,
+    rangeNm: crew.rangeNm,
     radiusM,
     damage: 0,
     missDistanceM: Number.isFinite(bestMiss) ? bestMiss : Number.POSITIVE_INFINITY,

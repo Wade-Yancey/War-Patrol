@@ -9,6 +9,7 @@ import {
   RADAR_SURFACE_DEPTH_M,
 } from './constants.js';
 import { bearingRangeNm, clamp, moveAlongHeading, normalizeHeading } from './geo.js';
+import { ensureContactLabel } from './contactBook.js';
 import {
   canDropDepthCharges,
   canFireDeckGun,
@@ -298,7 +299,7 @@ function buildTruthDeckGunOrder(
   target: UnitState,
 ): DeckGunFireOrder | null {
   if (!canFireDeckGun(firer) || !isDeckGunTarget(target)) return null;
-  const { bearing, rangeNm } = bearingRangeNm(firer.position, target.position);
+  const { rangeNm } = bearingRangeNm(firer.position, target.position);
   if (rangeNm > VESSEL_ATTACK_GUN_RANGE_NM || rangeNm > DECK_GUN_MAX_RANGE_NM) {
     return null;
   }
@@ -306,10 +307,7 @@ function buildTruthDeckGunOrder(
   const volleyCount = clampDeckGunVolleyCount(1, firer);
   if (volleyCount <= 0 || maxDeckGunVolleysPerTurn(firer) <= 0) return null;
   return {
-    aimHeading: bearing,
-    estimatedCourse: normalizeHeading(target.heading),
-    estimatedSpeedKn: Math.abs(target.speed),
-    estimatedRangeNm: rangeNm,
+    targetLabelN: ensureContactLabel(firer, target.id),
     volleyCount,
   };
 }

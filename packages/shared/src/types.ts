@@ -271,30 +271,38 @@ export interface DepthChargeDropOrder {
 
 /**
  * Pending deck-gun fire for the current turn (destroyer + fleet-sub Controls).
- * Player **designates** with aim LOS + rough range (+ optional Contact N fill)
- * and selects **1–3 volleys**. Resolve acquires the nearest surface contact
- * near that point and applies crew lead from **truth** course/speed. Player
- * course/speed fields are optional / ignored at resolve (kept for older orders
- * / standing-order payloads). Each volley is 15 shells modeled as one AOE.
+ * Player **selects an optics Contact N** (hull contacts the lookout / periscope
+ * currently reports — not radar/sonar omniscience) and **1–3 volleys**. Resolve
+ * aims at that booked target with crew RNG dispersion from **true range +
+ * target speed**; no player aim/lead/bearing math. Each volley is 15 shells
+ * modeled as one AOE around the resolved aim point.
  */
 export interface DeckGunFireOrder {
   /**
-   * Player LOS / aim bearing to the estimated present target (**true** °).
-   * Client UI enters optics-style **relative** bearing and converts via own heading.
+   * Optics Contact N to engage (stable FoW designation from the own-ship
+   * contact book). Server maps label → unit id; clients never send unit ids.
    */
-  aimHeading: number;
+  targetLabelN: number;
   /**
-   * @deprecated Ignored at resolve — crew lead uses acquired contact truth.
-   * Optional for backward-compatible orders; defaults to 0 when omitted.
+   * @deprecated Ignored — optics contact selection replaced player LOS.
+   * Optional for older orders / snapshots.
+   */
+  aimHeading?: number;
+  /**
+   * @deprecated Ignored at resolve.
+   * Optional for backward-compatible orders.
    */
   estimatedCourse?: number;
   /**
-   * @deprecated Ignored at resolve — crew lead uses acquired contact truth.
-   * Optional for backward-compatible orders; defaults to 0 when omitted.
+   * @deprecated Ignored at resolve.
+   * Optional for backward-compatible orders.
    */
   estimatedSpeedKn?: number;
-  /** Player-entered rough range to designate point (nautical miles). */
-  estimatedRangeNm: number;
+  /**
+   * @deprecated Ignored — range comes from the selected contact at resolve.
+   * Optional for older orders / snapshots.
+   */
+  estimatedRangeNm?: number;
   /**
    * Volleys to fire this turn (1–3). Each volley costs
    * {@link DECK_GUN_SHELLS_PER_VOLLEY} shells and resolves as one AOE.

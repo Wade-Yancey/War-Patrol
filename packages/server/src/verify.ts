@@ -86,6 +86,7 @@ import {
   effectiveMaxSpeed,
   expectedMoveThisTurn,
   ensureContactLabel,
+  targetIdForContactLabel,
   formatContactDesignation,
   formatPeriscopeDesignation,
   formatWallDuration,
@@ -512,7 +513,7 @@ async function main() {
     const gunDd = gunsApplied.find((u) => u.id === 'dd-gun');
     check(
       'applyVesselStandingOrders attack_guns queues deck gun vs surface target',
-      Boolean(gunDd?.orders.fireDeckGun),
+      Boolean(gunDd?.orders.fireDeckGun?.targetLabelN),
       `orders=${JSON.stringify(gunDd?.orders)}`,
     );
     check(
@@ -791,6 +792,8 @@ async function main() {
       normalizeContactBook(host.contactBook)?.byTargetId['t-b'] === 2 &&
         normalizeContactBook(host.contactBook)?.nextLabel === 3,
     );
+    check('targetIdForContactLabel finds C2', targetIdForContactLabel(host, 2) === 't-b');
+    check('targetIdForContactLabel unknown is undefined', targetIdForContactLabel(host, 99) === undefined);
   }
 
   check('class max Destroyer 36', CLASS_MAX_SPEED_KNOTS.Destroyer === 36);
@@ -1734,9 +1737,16 @@ async function main() {
     assertSilhouettePng('kagero.png', 1000);
     assertSilhouettePng('zeke.png', 1000);
   }
+  // Controls · Guns gets a read-only optics contact list (deck-gun targeting);
+  // full lookout chrome / sightings stay on Sensors.
   check(
-    'controls has no periscope picture',
-    !('periscopeContacts' in bv) || bv.periscopeContacts === undefined,
+    'controls has optics contacts for deck-gun targeting',
+    Array.isArray(bv.periscopeContacts),
+    `contacts=${JSON.stringify(bv.periscopeContacts)?.slice(0, 80)}`,
+  );
+  check(
+    'controls optics picture has no sightings chrome',
+    !('opticsSightings' in bv) || bv.opticsSightings === undefined,
   );
 
   await api(
@@ -4009,14 +4019,15 @@ async function main() {
       canFireDeckGun,
       resolveDeckGunVolley,
       deckGunImpactFromSolution,
-      deckGunDesignatePoint,
-      acquireDeckGunContactNearDesignate,
+      deckGunCrewDispersionM,
+      deckGunCrewAimPoint,
       deckGunHitGateM,
       deckGunHitChance,
       deckGunMissBand,
-      weaponRng01,
       RADAR_SURFACE_DEPTH_M,
-      DECK_GUN_ACQUIRE_RADIUS_NM,
+      DECK_GUN_CREW_DISP_BASE_M,
+      DECK_GUN_CREW_DISP_PER_NM_M,
+      DECK_GUN_CREW_DISP_PER_KN_M,
     } = await import('@war-patrol/shared');
     check('beam aspect dud ~2%', Math.abs(torpedoDudPctFromAspect(90) - 2) < 0.01);
     check('end-on dud ~10%', Math.abs(torpedoDudPctFromAspect(0) - 10) < 0.01);
@@ -4134,8 +4145,28 @@ async function main() {
         estimatedRangeNm: 1.5,
       });
       check(
-        'deck gun stationary fire = aim',
+        'deck gun stationary fire = aim (legacy helper)',
         Math.abs(stationary.fireHeading - 0) < 0.01,
+      );
+      check(
+        'deck gun crew dispersion grows with range',
+        deckGunCrewDispersionM(2, 0) >
+          deckGunCrewDispersionM(1, 0) &&
+          Math.abs(
+            deckGunCrewDispersionM(1, 0) -
+              (DECK_GUN_CREW_DISP_BASE_M + DECK_GUN_CREW_DISP_PER_NM_M),
+          ) < 0.01,
+      );
+      check(
+        'deck gun crew dispersion grows with speed',
+        deckGunCrewDispersionM(1, 20) >
+          deckGunCrewDispersionM(1, 0) &&
+          Math.abs(
+            deckGunCrewDispersionM(1, 10) -
+              (DECK_GUN_CREW_DISP_BASE_M +
+                DECK_GUN_CREW_DISP_PER_NM_M +
+                DECK_GUN_CREW_DISP_PER_KN_M * 10),
+          ) < 0.01,
       );
       const firer = {
         id: 'gunner',
@@ -4147,6 +4178,9 @@ async function main() {
         speed: 0,
         condition: 'afloat' as const,
         health: 100,
+        contactBook: undefined as
+          | { nextLabel: number; byTargetId: Record<string, number> }
+          | undefined,
       };
       const target = {
         id: 'tgt',
@@ -4161,19 +4195,31 @@ async function main() {
         lengthM: 115,
         beamM: 12,
       };
-      const hit = resolveDeckGunVolley({
+      const labelN = ensureContactLabel(firer, target.id);
+      // Search for a seed whose crew offset + museum roll produces a hit.
+      let hitSeed = 'deckgun-hit';
+      let hit = resolveDeckGunVolley({
         firer: firer as never,
-        fire: {
-          aimHeading: 0,
-          estimatedCourse: 90,
-          estimatedSpeedKn: 0,
-          estimatedRangeNm: 1.5,
-        },
+        fire: { targetLabelN: labelN },
         contacts: [firer as never, target as never],
         turnLengthSeconds: 180,
-        seed: 'deckgun-hit',
+        seed: hitSeed,
       });
-      check('deck gun perfect stationary solution hits', hit.outcome === 'hit', `got ${hit.outcome} miss=${hit.missDistanceM}`);
+      for (let s = 0; s < 256 && hit.outcome !== 'hit'; s++) {
+        hitSeed = `deckgun-hit-${s}`;
+        hit = resolveDeckGunVolley({
+          firer: firer as never,
+          fire: { targetLabelN: labelN },
+          contacts: [firer as never, target as never],
+          turnLengthSeconds: 180,
+          seed: hitSeed,
+        });
+      }
+      check(
+        'deck gun optics-contact stationary can hit',
+        hit.outcome === 'hit',
+        `got ${hit.outcome} miss=${hit.missDistanceM} seed=${hitSeed}`,
+      );
       check('deck gun volley damage applied amount', hit.damage === DECK_GUN_VOLLEY_DAMAGE);
       check('deck gun volley carries AOE radius', hit.radiusM === DECK_GUN_VOLLEY_RADIUS_M);
       check('deck gun bullseye miss band 10 m', DECK_GUN_BULLSEYE_MISS_M === 10);
@@ -4184,57 +4230,29 @@ async function main() {
         deckGunHitChance(0, DECK_GUN_VOLLEY_RADIUS_M) === 1 &&
           deckGunHitChance(10, DECK_GUN_VOLLEY_RADIUS_M) === 1,
       );
-      // ~3° aim error ≈ 145 m at 1.5 nm — inside AOE radius but past bullseye.
-      const edgeHit = resolveDeckGunVolley({
-        firer: firer as never,
-        fire: {
-          aimHeading: 3,
-          estimatedCourse: 90,
-          estimatedSpeedKn: 0,
-          estimatedRangeNm: 1.5,
-        },
-        contacts: [firer as never, target as never],
-        turnLengthSeconds: 180,
-        seed: 'deckgun-hit',
-      });
-      check(
-        'deck gun edge-of-AOE can still hit (low roll)',
-        edgeHit.outcome === 'hit' && edgeHit.missDistanceM > DECK_GUN_BULLSEYE_MISS_M,
-        `got ${edgeHit.outcome} miss=${edgeHit.missDistanceM}`,
-      );
-      // Find a seed whose per-contact roll misses near the AOE edge.
+      // Find a seed whose crew offset + museum roll miss.
       let edgeMissSeed = 'deckgun-rng-miss';
       let edgeMiss = resolveDeckGunVolley({
         firer: firer as never,
-        fire: {
-          aimHeading: 3,
-          estimatedCourse: 90,
-          estimatedSpeedKn: 0,
-          estimatedRangeNm: 1.5,
-        },
+        fire: { targetLabelN: labelN },
         contacts: [firer as never, target as never],
         turnLengthSeconds: 180,
         seed: edgeMissSeed,
       });
-      for (let s = 0; s < 64 && edgeMiss.outcome !== 'miss'; s++) {
+      for (let s = 0; s < 128 && edgeMiss.outcome !== 'miss'; s++) {
         edgeMissSeed = `deckgun-rng-miss-${s}`;
         edgeMiss = resolveDeckGunVolley({
           firer: firer as never,
-          fire: {
-            aimHeading: 3,
-            estimatedCourse: 90,
-            estimatedSpeedKn: 0,
-            estimatedRangeNm: 1.5,
-          },
+          fire: { targetLabelN: labelN },
           contacts: [firer as never, target as never],
           turnLengthSeconds: 180,
           seed: edgeMissSeed,
         });
       }
       check(
-        'deck gun RNG miss path (high roll at AOE edge)',
+        'deck gun RNG miss path exists',
         edgeMiss.outcome === 'miss' && edgeMiss.damage === 0,
-        `got ${edgeMiss.outcome} seed=${edgeMissSeed} roll=${weaponRng01(`${edgeMissSeed}|tgt`).toFixed(3)} miss=${edgeMiss.missDistanceM}`,
+        `got ${edgeMiss.outcome} seed=${edgeMissSeed} miss=${edgeMiss.missDistanceM}`,
       );
       const submerged = {
         ...target,
@@ -4244,97 +4262,93 @@ async function main() {
         class: 'Fleet Submarine' as const,
         position: { ...target.position, depth: 40 },
       };
+      const firerSubBook = {
+        ...firer,
+        contactBook: undefined as
+          | { nextLabel: number; byTargetId: Record<string, number> }
+          | undefined,
+      };
+      const subLabel = ensureContactLabel(firerSubBook, submerged.id);
       const missSub = resolveDeckGunVolley({
-        firer: firer as never,
-        fire: {
-          aimHeading: 0,
-          estimatedCourse: 90,
-          estimatedSpeedKn: 0,
-          estimatedRangeNm: 1.5,
-        },
-        contacts: [firer as never, submerged as never],
+        firer: firerSubBook as never,
+        fire: { targetLabelN: subLabel },
+        contacts: [firerSubBook as never, submerged as never],
         turnLengthSeconds: 180,
         seed: 'deckgun-sub',
       });
       check(
-        'deck gun cannot hit submerged sub',
-        missSub.outcome === 'miss' && missSub.damage === 0,
+        'deck gun cannot engage submerged sub contact',
+        missSub.outcome === 'out_of_range' && missSub.damage === 0,
         `got ${missSub.outcome}`,
       );
       check('near miss band at 80 m', deckGunMissBand(80) === 'near');
       check('far miss band above 80 m', deckGunMissBand(81) === 'far');
-      check('deck gun acquire radius 0.75 nm', DECK_GUN_ACQUIRE_RADIUS_NM === 0.75);
       {
-        const designate = deckGunDesignatePoint({
+        const aim = deckGunCrewAimPoint({
           firerPosition: firer.position,
-          aimHeading: 0,
-          estimatedRangeNm: 1.5,
+          targetPosition: target.position,
+          targetSpeedKn: 0,
+          seed: 'deckgun-aim-pt',
         });
-        const acq = acquireDeckGunContactNearDesignate({
-          designate,
-          firerId: firer.id,
-          contacts: [firer as never, target as never],
-        });
-        check('deck gun acquire finds surface contact near designate', Boolean(acq?.contact.id === 'tgt'));
+        check(
+          'deck gun crew aim stays within dispersion disk',
+          aim.offsetM <= aim.dispersionM + 1e-6,
+          `offset=${aim.offsetM} disp=${aim.dispersionM}`,
+        );
+        check(
+          'deck gun crew aim range matches engagement',
+          Math.abs(aim.rangeNm - 1.5) < 0.02,
+          `range=${aim.rangeNm}`,
+        );
       }
-      // Moving target: wrong player course/speed must be ignored — crew lead from truth.
+      // Faster target → wider dispersion (same seed geometry scale).
       {
+        const slowDisp = deckGunCrewDispersionM(1.5, 0);
+        const fastDisp = deckGunCrewDispersionM(1.5, 24);
+        check(
+          'deck gun fast target widens crew dispersion',
+          fastDisp > slowDisp + 50,
+          `slow=${slowDisp} fast=${fastDisp}`,
+        );
         const mover = {
           ...target,
           id: 'mover',
           name: 'Mover',
           heading: 90,
-          speed: 18,
+          speed: 24,
         };
-        const withWrongPlayer = resolveDeckGunVolley({
-          firer: firer as never,
-          fire: {
-            aimHeading: 0,
-            estimatedCourse: 0,
-            estimatedSpeedKn: 0,
-            estimatedRangeNm: 1.5,
-          },
-          contacts: [firer as never, mover as never],
+        const firerMover = {
+          ...firer,
+          contactBook: undefined as
+            | { nextLabel: number; byTargetId: Record<string, number> }
+            | undefined,
+        };
+        const moverLabel = ensureContactLabel(firerMover, mover.id);
+        const moverShot = resolveDeckGunVolley({
+          firer: firerMover as never,
+          fire: { targetLabelN: moverLabel, estimatedCourse: 0, estimatedSpeedKn: 0 },
+          contacts: [firerMover as never, mover as never],
           turnLengthSeconds: 180,
-          seed: 'deckgun-crew-lead',
-        });
-        const withTruthInOrder = resolveDeckGunVolley({
-          firer: firer as never,
-          fire: {
-            aimHeading: 0,
-            estimatedCourse: 90,
-            estimatedSpeedKn: 18,
-            estimatedRangeNm: 1.5,
-          },
-          contacts: [firer as never, mover as never],
-          turnLengthSeconds: 180,
-          seed: 'deckgun-crew-lead',
+          seed: 'deckgun-mover',
         });
         check(
-          'deck gun crew lead ignores wrong player course/speed',
-          Math.abs(withWrongPlayer.fireHeading - withTruthInOrder.fireHeading) < 0.01 &&
-            withWrongPlayer.outcome === withTruthInOrder.outcome,
-          `wrong fire=${withWrongPlayer.fireHeading} truthOrder fire=${withTruthInOrder.fireHeading}`,
-        );
-        check(
-          'deck gun crew lead is off pure aim for a mover',
-          Math.abs(withWrongPlayer.fireHeading - 0) > 0.5,
-          `fire=${withWrongPlayer.fireHeading}`,
+          'deck gun resolve uses contact book target (not player course/speed)',
+          moverShot.closestApproachUnitId === 'mover' || moverShot.hitUnitId === 'mover' ||
+            moverShot.outcome === 'miss' ||
+            moverShot.outcome === 'hit',
+          `outcome=${moverShot.outcome}`,
         );
         const noTarget = resolveDeckGunVolley({
           firer: firer as never,
-          fire: {
-            aimHeading: 0,
-            estimatedRangeNm: 1.5,
-          },
+          fire: { targetLabelN: 99 },
           contacts: [firer as never],
           turnLengthSeconds: 180,
           seed: 'deckgun-no-acq',
         });
         check(
-          'deck gun with no acquire still fires along aim (miss)',
-          noTarget.outcome === 'miss' && Math.abs(noTarget.fireHeading - 0) < 0.01,
-          `got ${noTarget.outcome} fire=${noTarget.fireHeading}`,
+          'deck gun unknown Contact N is out of range',
+          noTarget.outcome === 'out_of_range',
+          `got ${noTarget.outcome}`,
         );
       }
       check(
@@ -9222,6 +9236,13 @@ async function main() {
     });
     check('deck-gun gato controls', gunSub.status === 200);
     const gunSubTok = String(gunSub.json.token);
+    const gunSubSensors = await api('POST', `/api/games/${gunId}/auth/vessel`, {
+      accessToken: 'gato-demo',
+      password: 'red',
+      stationId: 'sensors',
+    });
+    check('deck-gun gato sensors', gunSubSensors.status === 200);
+    const gunSubSensorsTok = String(gunSubSensors.json.token);
 
     const ddMag = await api('GET', `/api/games/${gunId}/view`, undefined, gunDdTok);
     const ddUnit = (ddMag.json.view as { unit?: { deckGunLoad?: number } }).unit;
@@ -9245,10 +9266,7 @@ async function main() {
       `/api/games/${gunId}/orders`,
       {
         fireDeckGun: {
-          aimHeading: 0,
-          estimatedCourse: 90,
-          estimatedSpeedKn: 14,
-          estimatedRangeNm: 1.5,
+          targetLabelN: 1,
         },
       },
       gunSubTok,
@@ -9276,30 +9294,44 @@ async function main() {
     );
     await api('POST', `/api/games/${gunId}/orders`, { eot: 'stop' }, gunSubTok);
     await api('POST', `/api/games/${gunId}/orders`, { eot: 'stop' }, gunDdTok);
-
-    const gunView = await api('GET', `/api/games/${gunId}/view`, undefined, gunUTok);
-    const gunUnits = (gunView.json.view as {
-      units: Array<{
-        id: string;
-        position: { lat: number; lon: number; depth: number };
-        heading: number;
-        speed: number;
-      }>;
-    }).units;
-    const porter = gunUnits.find((u) => u.id === 'dd-101')!;
-    const gato = gunUnits.find((u) => u.id === 'ss-212')!;
-    const { bearingRangeNm } = await import('@war-patrol/shared');
-    const los = bearingRangeNm(gato.position, porter.position);
+    // Optics contact list requires raised mast (Sensors station owns the toggle).
+    const raiseGunPeri = await api(
+      'POST',
+      `/api/games/${gunId}/periscope`,
+      { raised: true },
+      gunSubSensorsTok,
+    );
+    check(
+      'raise peri for deck-gun optics',
+      raiseGunPeri.status === 200,
+      `status=${raiseGunPeri.status}`,
+    );
+    // Optics contacts live on the Sensors (lookout) view — Controls reuses that
+    // picture client-side via presentationSensors; server resolve uses the book.
+    const gunSensorsView = await api(
+      'GET',
+      `/api/games/${gunId}/view`,
+      undefined,
+      gunSubSensorsTok,
+    );
+    const gunOptics = (
+      (gunSensorsView.json.view as {
+        periscopeContacts?: Array<{ labelN: number; kind?: string; rangeNm: number }>;
+      }).periscopeContacts ?? []
+    ).filter((c) => c.kind !== 'periscope');
+    check(
+      'surfaced sub optics sees Porter for deck gun',
+      gunOptics.length >= 1,
+      `contacts=${gunOptics.length}`,
+    );
+    const gunTargetLabelN = gunOptics[0]!.labelN;
     const subFire = await api(
       'POST',
       `/api/games/${gunId}/orders`,
       {
         eot: 'stop',
         fireDeckGun: {
-          aimHeading: los.bearing,
-          estimatedCourse: porter.heading,
-          estimatedSpeedKn: porter.speed,
-          estimatedRangeNm: Math.round(los.rangeNm * 100) / 100,
+          targetLabelN: gunTargetLabelN,
         },
       },
       gunSubTok,
@@ -9362,29 +9394,35 @@ async function main() {
     );
     await api('POST', `/api/games/${gunId}/orders`, { eot: 'stop' }, gunSubTok);
     await api('POST', `/api/games/${gunId}/orders`, { eot: 'stop' }, gunDdTok);
-    const salvoView = await api('GET', `/api/games/${gunId}/view`, undefined, gunUTok);
-    const salvoUnits = (salvoView.json.view as {
-      units: Array<{
-        id: string;
-        position: { lat: number; lon: number; depth: number };
-        heading: number;
-        speed: number;
-        deckGunLoad?: number;
-      }>;
-    }).units;
-    const porterSalvo = salvoUnits.find((u) => u.id === 'dd-101')!;
-    const gatoSalvo = salvoUnits.find((u) => u.id === 'ss-212')!;
-    const losSalvo = bearingRangeNm(gatoSalvo.position, porterSalvo.position);
+    await api(
+      'POST',
+      `/api/games/${gunId}/periscope`,
+      { raised: true },
+      gunSubSensorsTok,
+    );
+    const salvoOpticsView = await api(
+      'GET',
+      `/api/games/${gunId}/view`,
+      undefined,
+      gunSubSensorsTok,
+    );
+    const salvoOptics = (
+      (salvoOpticsView.json.view as {
+        periscopeContacts?: Array<{ labelN: number; kind?: string }>;
+      }).periscopeContacts ?? []
+    ).filter((c) => c.kind !== 'periscope');
+    check(
+      'salvo optics still sees Porter',
+      salvoOptics.length >= 1,
+      `contacts=${salvoOptics.length}`,
+    );
     const subSalvo = await api(
       'POST',
       `/api/games/${gunId}/orders`,
       {
         eot: 'stop',
         fireDeckGun: {
-          aimHeading: losSalvo.bearing,
-          estimatedCourse: porterSalvo.heading,
-          estimatedSpeedKn: porterSalvo.speed,
-          estimatedRangeNm: Math.round(losSalvo.rangeNm * 100) / 100,
+          targetLabelN: salvoOptics[0]!.labelN,
           volleyCount: 2,
         },
       },
@@ -9525,55 +9563,75 @@ async function main() {
       ),
     );
 
-    // Destroyer fire vs submerged contact → miss (no useful surface engagement).
+    // Destroyer: queue while Gato is an optics hull contact, then dive before
+    // resolve → crew cannot engage a submerged contact (out of range / miss).
+    await api(
+      'PATCH',
+      `/api/games/${gunId}/units/ss-212`,
+      { position: { depth: 0 }, orderedDepth: 0 },
+      gunUTok,
+    );
+    // Clear awaiting so DD can fire (rearm umpire).
+    await api('POST', `/api/games/${gunId}/units/dd-101/rearm`, {}, gunUTok);
+    const gunDdSensors = await api('POST', `/api/games/${gunId}/auth/vessel`, {
+      accessToken: 'porter-demo',
+      password: 'blue',
+      stationId: 'sensors',
+    });
+    check('deck-gun porter sensors', gunDdSensors.status === 200);
+    const gunDdSensorsTok = String(gunDdSensors.json.token);
+    const ddOpticsView = await api(
+      'GET',
+      `/api/games/${gunId}/view`,
+      undefined,
+      gunDdSensorsTok,
+    );
+    const ddOptics = (
+      (ddOpticsView.json.view as {
+        periscopeContacts?: Array<{ labelN: number; kind?: string }>;
+      }).periscopeContacts ?? []
+    ).filter((c) => c.kind !== 'periscope');
+    check(
+      'DD lookout sees surfaced Gato for deck gun',
+      ddOptics.length >= 1,
+      `contacts=${ddOptics.length}`,
+    );
+    const ddFire = await api(
+      'POST',
+      `/api/games/${gunId}/orders`,
+      {
+        fireDeckGun: {
+          targetLabelN: ddOptics[0]!.labelN,
+        },
+      },
+      gunDdTok,
+    );
+    check('destroyer queues deck-gun fire', ddFire.status === 200, `status=${ddFire.status}`);
     await api(
       'PATCH',
       `/api/games/${gunId}/units/ss-212`,
       { position: { depth: 40 }, orderedDepth: 40 },
       gunUTok,
     );
-    // Clear awaiting so DD can fire (rearm umpire).
-    await api('POST', `/api/games/${gunId}/units/dd-101/rearm`, {}, gunUTok);
-    const ddView2 = await api('GET', `/api/games/${gunId}/view`, undefined, gunUTok);
-    const units2 = (ddView2.json.view as {
-      units: Array<{
-        id: string;
-        position: { lat: number; lon: number; depth: number };
-        heading: number;
-        speed: number;
-      }>;
-    }).units;
-    const porter2 = units2.find((u) => u.id === 'dd-101')!;
-    const gato2 = units2.find((u) => u.id === 'ss-212')!;
-    const los2 = bearingRangeNm(porter2.position, gato2.position);
-    const ddFire = await api(
-      'POST',
-      `/api/games/${gunId}/orders`,
-      {
-        fireDeckGun: {
-          aimHeading: los2.bearing,
-          estimatedCourse: gato2.heading,
-          estimatedSpeedKn: gato2.speed,
-          estimatedRangeNm: Math.round(los2.rangeNm * 100) / 100,
-        },
-      },
-      gunDdTok,
-    );
-    check('destroyer queues deck-gun fire', ddFire.status === 200);
     await api('POST', `/api/games/${gunId}/turn/lock`, {}, gunUTok);
     await api('POST', `/api/games/${gunId}/turn/resolve`, {}, gunUTok);
     const missView = await api('GET', `/api/games/${gunId}/view`, undefined, gunUTok);
     const missLog = (missView.json.view as { combatLog?: Array<{ kind: string; summary: string }> })
       .combatLog ?? [];
+    const ddMiss = missLog.filter(
+      (e) =>
+        e.kind === 'deck_gun_miss' &&
+        (e.summary ?? '').includes('Porter deck gun'),
+    );
     check(
-      'DD deck gun misses submerged sub',
-      missLog.some(
-        (e) =>
-          e.kind === 'deck_gun_miss' &&
-          (e.summary ?? '').includes('Porter') &&
-          ((e.summary ?? '').includes('MISS') || (e.summary ?? '').includes('no surface')),
-      ),
-      `log=${JSON.stringify(missLog.filter((e) => e.kind.startsWith('deck_gun')).slice(-3))}`,
+      'DD deck gun fails vs submerged sub',
+      ddMiss.length >= 1 &&
+        ddMiss.some(
+          (e) =>
+            (e.summary ?? '').includes('no range solution') ||
+            (e.summary ?? '').includes('no surface'),
+        ),
+      `log=${JSON.stringify(missLog.filter((e) => String(e.kind).startsWith('deck_gun')).slice(-5))}`,
     );
 
     // Kagerō also gets the destroyer magazine.

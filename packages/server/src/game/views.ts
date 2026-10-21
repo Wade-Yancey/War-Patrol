@@ -14,6 +14,7 @@ import {
   bearingRangeNm,
   buildOwnDamageLog,
   isActiveSonarPinging,
+  isDeckGunHull,
   isV1PlayerUnit,
   reconcileFormations,
 } from '@war-patrol/shared';
@@ -374,7 +375,13 @@ export function buildVesselView(
     }
   }
 
-  if (station.capabilities.includes('lookout')) {
+  // Full optics FoW on Sensors (lookout). Controls · Guns also needs the same
+  // contact list (read-only) so deck-gun targeting stays optics-bound, not
+  // omniscient — mast raise/lower still belongs to Sensors only.
+  const wantsOpticsPicture =
+    station.capabilities.includes('lookout') ||
+    (station.capabilities.includes('weapons') && isDeckGunHull(unit));
+  if (wantsOpticsPicture) {
     const peri = buildPeriscopeContacts(unit, save);
     view.periscopeContacts = peri.contacts;
     view.periscopeMaxRangeNm = peri.maxRangeNm;
@@ -384,7 +391,8 @@ export function buildVesselView(
     }
     // Scope down / optics offline → no visual FoW (including Sightings).
     // Shared by fleet-sub periscope and surface lookout.
-    if (peri.operational) {
+    // Sightings stay Sensors/lookout-only (Guns only needs hull Contact N).
+    if (peri.operational && station.capabilities.includes('lookout')) {
       const sightings = buildOpticsSightings(unit, save);
       if (sightings.length) {
         view.opticsSightings = sightings;
