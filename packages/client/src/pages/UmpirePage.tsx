@@ -584,6 +584,32 @@ export function UmpirePage() {
                     >
                       {mapFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
                     </button>
+                    {mapFullscreen && (
+                      <button
+                        type="button"
+                        className={
+                          isOpen && !umpire.turn.timerDeadline ? 'primary' : undefined
+                        }
+                        disabled={busy || !isOpen}
+                        title={
+                          umpire.turn.timerDeadline
+                            ? 'Stop the 3-minute order timer (stay open)'
+                            : 'Start a fixed 3-minute order timer'
+                        }
+                        aria-pressed={Boolean(umpire.turn.timerDeadline)}
+                        onClick={() =>
+                          void run(() =>
+                            api.turnTimer(
+                              gameId,
+                              token,
+                              umpire.turn.timerDeadline ? 0 : DEFAULT_TURN_SECONDS,
+                            ),
+                          )
+                        }
+                      >
+                        {umpire.turn.timerDeadline ? 'Stop' : 'Start 3m'}
+                      </button>
+                    )}
                     <button
                       type="button"
                       disabled={busy || !isOpen}
@@ -613,45 +639,6 @@ export function UmpirePage() {
                     </button>
                   </div>
                 </div>
-                {mapFullscreen && (
-                  <div
-                    className="umpire-gt-fullscreen-timer control-actions umpire-timer-actions"
-                    role="group"
-                    aria-label="Order timer"
-                  >
-                    <button
-                      type="button"
-                      className={isOpen && !umpire.turn.timerDeadline ? 'primary' : undefined}
-                      disabled={busy || !isOpen || timerSeconds < 60}
-                      title={
-                        umpire.turn.timerDeadline
-                          ? 'Restart countdown from the duration dial'
-                          : 'Start countdown from the duration dial'
-                      }
-                      onClick={() => void run(() => api.turnTimer(gameId, token, timerSeconds))}
-                    >
-                      {umpire.turn.timerDeadline ? 'Restart' : 'Start'}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy || !isOpen || !umpire.turn.timerDeadline}
-                      title="Add one minute to the live countdown (does not change Duration)"
-                      onClick={() =>
-                        void run(() => api.turnExtend(gameId, token, TIMER_EXTEND_SECONDS))
-                      }
-                    >
-                      Extend +1m
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy || !isOpen || !umpire.turn.timerDeadline}
-                      title="Clear countdown; stay open for manual Lock"
-                      onClick={() => void run(() => api.turnTimer(gameId, token, 0))}
-                    >
-                      Stop
-                    </button>
-                  </div>
-                )}
                 <AarTurnScrubber
                   historySnapshots={umpire.historySnapshots ?? []}
                   liveTurnNumber={umpire.turn.number}
