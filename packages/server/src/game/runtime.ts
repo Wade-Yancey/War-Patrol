@@ -614,6 +614,8 @@ export class GameRuntime {
     this.sessions.clearGame(save.id);
     this.clearTimer(save.id);
     this.games.set(save.id, save);
+    // Re-arm wall-clock auto-lock — Node timeouts die on unload/restart.
+    this.armTimer(save.id);
     this.bumpAndBroadcast(save.id);
     return save;
   }
@@ -1566,13 +1568,24 @@ export class GameRuntime {
     });
   }
 
+  /**
+   * Set configured order-timer duration and (when open) start/restart countdown.
+   * `seconds === 0` while open clears the running deadline without locking
+   * (paused / manual) and leaves `timerSeconds` unchanged.
+   */
   async setTimer(gameId: string, seconds: number): Promise<GameSave> {
     return this.enqueueGameMutation(gameId, async () => {
       this.clearTimer(gameId);
       const save = this.applyTouch(gameId, (s) => {
+        if (seconds <= 0) {
+          s.turn.timerDeadline = null;
+          return s;
+        }
         s.turn.timerSeconds = seconds;
         if (s.turn.phase === 'open') {
           s.turn.timerDeadline = setTimerDeadline(seconds);
+        } else {
+          s.turn.timerDeadline = null;
         }
         return s;
       });
@@ -1581,15 +1594,22 @@ export class GameRuntime {
     });
   }
 
+  /** Push the live deadline forward; does not change configured `timerSeconds`. */
   async extendTimer(gameId: string, extraSeconds: number): Promise<GameSave> {
     return this.enqueueGameMutation(gameId, async () => {
+      if (!Number.isFinite(extraSeconds) || extraSeconds <= 0) {
+        throw Object.assign(new Error('seconds must be positive'), { statusCode: 400 });
+      }
       this.clearTimer(gameId);
       const save = this.applyTouch(gameId, (s) => {
-        const base = s.turn.timerDeadline
-          ? Math.max(Date.now(), Date.parse(s.turn.timerDeadline))
-          : Date.now();
+        if (s.turn.phase !== 'open') {
+          throw Object.assign(new Error('Turn is not open'), { statusCode: 409 });
+        }
+        if (!s.turn.timerDeadline) {
+          throw Object.assign(new Error('No timer running'), { statusCode: 409 });
+        }
+        const base = Math.max(Date.now(), Date.parse(s.turn.timerDeadline));
         s.turn.timerDeadline = setTimerDeadline(extraSeconds, base);
-        s.turn.timerSeconds = s.turn.timerSeconds + extraSeconds;
         return s;
       });
       this.armTimer(gameId);
@@ -1597,12 +1617,17 @@ export class GameRuntime {
     });
   }
 
+  /** Restart countdown from configured `timerSeconds` (open phase only). */
   async resetTimer(gameId: string): Promise<GameSave> {
     return this.enqueueGameMutation(gameId, async () => {
       this.clearTimer(gameId);
       const save = this.applyTouch(gameId, (s) => {
         if (s.turn.phase === 'open') {
-          s.turn.timerDeadline = setTimerDeadline(s.turn.timerSeconds);
+          if (s.turn.timerSeconds <= 0) {
+            s.turn.timerDeadline = null;
+          } else {
+            s.turn.timerDeadline = setTimerDeadline(s.turn.timerSeconds);
+          }
         } else {
           s.turn.timerDeadline = null;
         }

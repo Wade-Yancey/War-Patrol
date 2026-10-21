@@ -2603,6 +2603,85 @@ async function main() {
     Boolean(bluePending?.name && redPending?.name),
   );
 
+  // 5b. Order timer: start / extend (deadline only) / stop (pause)
+  {
+    const started = await api(
+      'POST',
+      `/api/games/${gameId}/turn/timer`,
+      { seconds: 180 },
+      umpireToken,
+    );
+    check('timer start ok', started.status === 200);
+    const startedTurn = started.json.turn as Json;
+    check('timer start sets deadline', typeof startedTurn.timerDeadline === 'string');
+    check('timer start keeps configured 180', startedTurn.timerSeconds === 180);
+
+    const beforeExtend = Date.parse(String(startedTurn.timerDeadline));
+    const extended = await api(
+      'POST',
+      `/api/games/${gameId}/turn/extend`,
+      { seconds: 60 },
+      umpireToken,
+    );
+    check('timer extend ok', extended.status === 200);
+    const extendedTurn = extended.json.turn as Json;
+    check(
+      'timer extend does not bump configured duration',
+      extendedTurn.timerSeconds === 180,
+    );
+    check(
+      'timer extend pushes deadline',
+      typeof extendedTurn.timerDeadline === 'string' &&
+        Date.parse(String(extendedTurn.timerDeadline)) >= beforeExtend + 55_000,
+    );
+
+    const stopped = await api(
+      'POST',
+      `/api/games/${gameId}/turn/timer`,
+      { seconds: 0 },
+      umpireToken,
+    );
+    check('timer stop ok', stopped.status === 200);
+    const stoppedTurn = stopped.json.turn as Json;
+    check('timer stop clears deadline', stoppedTurn.timerDeadline === null);
+    check('timer stop keeps configured duration', stoppedTurn.timerSeconds === 180);
+    check('timer stop stays open', stoppedTurn.phase === 'open');
+
+    const extendPaused = await api(
+      'POST',
+      `/api/games/${gameId}/turn/extend`,
+      { seconds: 30 },
+      umpireToken,
+    );
+    check('timer extend while paused rejects', extendPaused.status === 409);
+  }
+
+  // 5c. Reload re-arms timer (side game — unload must not kill main verify sessions)
+  {
+    const side = await api('POST', '/api/games', {
+      scenarioId: 'destroyer-sub-demo',
+      name: 'Timer Reload Probe',
+    });
+    check('timer reload probe create', side.status === 200);
+    const sideId = side.json.gameId as string;
+    const sideAuth = await api('POST', `/api/games/${sideId}/auth/umpire`, {
+      password: 'umpire',
+    });
+    const sideToken = sideAuth.json.token as string;
+    await api('POST', `/api/games/${sideId}/turn/timer`, { seconds: 120 }, sideToken);
+    check(
+      'timer reload probe armed',
+      typeof runtime.requireGame(sideId).turn.timerDeadline === 'string',
+    );
+    await api('POST', `/api/games/${sideId}/save`, {}, sideToken);
+    runtime.unloadGame(sideId);
+    await runtime.loadSaveIntoMemory(sideId);
+    const reloaded = runtime.requireGame(sideId).turn;
+    check('timer deadline survives reload', typeof reloaded.timerDeadline === 'string');
+    check('timer still open after reload', reloaded.phase === 'open');
+    await runtime.deleteSave(sideId);
+  }
+
   // 6. Lock + resolve
   const locked = await api('POST', `/api/games/${gameId}/turn/lock`, {}, umpireToken);
   check('lock turn', locked.status === 200 && (locked.json.turn as Json).phase === 'locked');

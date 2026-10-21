@@ -941,9 +941,16 @@ export interface Scenario {
 export interface TurnState {
   number: number;
   phase: TurnPhase;
-  /** ISO deadline when timer is running; null if no timer. */
+  /**
+   * ISO wall-clock deadline while the order timer is running.
+   * Null = paused / no timer (open) or cleared on lock/resolve.
+   * Expiry auto-locks the turn on the server.
+   */
   timerDeadline: string | null;
-  /** Configured duration in seconds for the current / next open phase. */
+  /**
+   * Configured countdown length (seconds). Used by Start/Restart.
+   * Extend pushes `timerDeadline` only — it does not change this value.
+   */
   timerSeconds: number;
   /**
    * In-game clock (seconds since midnight, may exceed 86400 if multi-day).

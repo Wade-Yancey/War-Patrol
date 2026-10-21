@@ -257,12 +257,14 @@ export const api = {
       token,
       body: '{}',
     }),
+  /** Start/restart countdown from `seconds`, or stop (pause) with `seconds: 0`. */
   turnTimer: (gameId: string, token: string, seconds: number) =>
     request(`/api/games/${gameId}/turn/timer`, {
       method: 'POST',
       token,
       body: JSON.stringify({ seconds }),
     }),
+  /** Push live deadline; requires open + running timer. Does not change configured duration. */
   turnExtend: (gameId: string, token: string, seconds: number) =>
     request(`/api/games/${gameId}/turn/extend`, {
       method: 'POST',
