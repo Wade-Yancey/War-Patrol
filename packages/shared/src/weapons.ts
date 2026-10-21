@@ -474,7 +474,7 @@ export const DECK_GUN_VOLLEY_RADIUS_M = 150;
  * HP applied to each surface contact that a volley hits inside the AOE.
  * One application per target per volley (not ×15 shells).
  */
-export const DECK_GUN_VOLLEY_DAMAGE = 24;
+export const DECK_GUN_VOLLEY_DAMAGE = 20;
 
 /**
  * @deprecated Alias of {@link DECK_GUN_VOLLEY_DAMAGE} for older verify / docs.
@@ -489,13 +489,13 @@ export const DECK_GUN_NEAR_MISS_M = 80;
  * Museum-fun — good solutions usually hit; not a guaranteed bullseye once the
  * shell is off the dead-center band ({@link DECK_GUN_BULLSEYE_MISS_M}).
  */
-export const DECK_GUN_HIT_CHANCE_CENTER = 0.85;
+export const DECK_GUN_HIT_CHANCE_CENTER = 0.8;
 
 /**
  * Hit probability when the impact sits at the gate edge.
  * Linearly lerped with center chance by miss/gate closeness.
  */
-export const DECK_GUN_HIT_CHANCE_EDGE = 0.5;
+export const DECK_GUN_HIT_CHANCE_EDGE = 0.45;
 
 /**
  * Horizontal miss (m) at/under which a gate-qualified shell is an automatic hit.
@@ -2710,7 +2710,7 @@ export type DeckGunResolveResult = {
  * firer's contact book, place a crew RNG aim point around that target from
  * true range + speed ({@link deckGunCrewAimPoint}), then one AOE beaten zone
  * of {@link DECK_GUN_VOLLEY_RADIUS_M} around the aim point. Every surface
- * contact inside the radius rolls museum hit chance (center ~85%, edge ~50%;
+ * contact inside the radius rolls museum hit chance (center ~80%, edge ~45%;
  * bullseye auto-hit). Miss splash gets seeded scatter for umpire GT / AAR —
  * still one circle, not per-shell markers.
  */

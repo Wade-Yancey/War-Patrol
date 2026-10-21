@@ -4108,7 +4108,7 @@ async function main() {
     }
     check('deck gun max range 8 nm', DECK_GUN_MAX_RANGE_NM === 8);
     check('deck gun reload 2 turns', DECK_GUN_RELOAD_TURNS === 2);
-    check('deck gun volley damage 24', DECK_GUN_VOLLEY_DAMAGE === 24);
+    check('deck gun volley damage 20', DECK_GUN_VOLLEY_DAMAGE === 20);
     check('deck gun hit damage alias', DECK_GUN_HIT_DAMAGE === DECK_GUN_VOLLEY_DAMAGE);
     check(
       'sub deck gun ok at surface',
@@ -4223,8 +4223,8 @@ async function main() {
       check('deck gun volley damage applied amount', hit.damage === DECK_GUN_VOLLEY_DAMAGE);
       check('deck gun volley carries AOE radius', hit.radiusM === DECK_GUN_VOLLEY_RADIUS_M);
       check('deck gun bullseye miss band 10 m', DECK_GUN_BULLSEYE_MISS_M === 10);
-      check('deck gun hit chance center 0.85', DECK_GUN_HIT_CHANCE_CENTER === 0.85);
-      check('deck gun hit chance edge 0.5', DECK_GUN_HIT_CHANCE_EDGE === 0.5);
+      check('deck gun hit chance center 0.8', DECK_GUN_HIT_CHANCE_CENTER === 0.8);
+      check('deck gun hit chance edge 0.45', DECK_GUN_HIT_CHANCE_EDGE === 0.45);
       check(
         'deck gun bullseye hit chance is 1',
         deckGunHitChance(0, DECK_GUN_VOLLEY_RADIUS_M) === 1 &&
