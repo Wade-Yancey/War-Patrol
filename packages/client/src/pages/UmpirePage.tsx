@@ -139,6 +139,9 @@ export function UmpirePage() {
   }, [umpire, reviewTurn]);
 
   // Fullscreen / AAR map: Esc exits; lock page scroll while open.
+  // Body class lifts CRT overflow clipping so position:fixed can cover the
+  // true viewport (otherwise .crt-screen overflow chops the top and the
+  // stacked timer/modules peek through as a sliver).
   useEffect(() => {
     if (!mapFullscreen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -148,9 +151,11 @@ export function UmpirePage() {
     };
     window.addEventListener('keydown', onKey);
     const prevOverflow = document.body.style.overflow;
+    document.body.classList.add('umpire-map-fs');
     document.body.style.overflow = 'hidden';
     return () => {
       window.removeEventListener('keydown', onKey);
+      document.body.classList.remove('umpire-map-fs');
       document.body.style.overflow = prevOverflow;
     };
   }, [mapFullscreen]);
@@ -544,67 +549,6 @@ export function UmpirePage() {
               }
             />
 
-            <section className="panel stack umpire-control-group umpire-turn-control">
-              <h2>Order timer</h2>
-              <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-                {(() => {
-                  const running = Boolean(isOpen && umpire.turn.timerDeadline);
-                  if (!isOpen) {
-                    return 'Orders locked — Lock / Reopen / Resolve are on the map. Reopen, then Start.';
-                  }
-                  if (running) {
-                    return 'Running — expiry auto-locks. Stop pauses without locking. Extend adds time only.';
-                  }
-                  return 'Open · no timer — Start to arm auto-lock, or Lock on the map when crews are ready.';
-                })()}
-              </p>
-              <TouchNumber
-                label="Duration"
-                value={timerSeconds}
-                onChange={setTimerSeconds}
-                min={0}
-                max={3600}
-                step={TIMER_STEP_SECONDS}
-                showSlider
-                format={formatWallDuration}
-                parse={parseWallDuration}
-                hint="Configured length · ±30s · type 3 or 3:30 · Start uses this"
-              />
-              <div className="control-actions umpire-timer-actions">
-                <button
-                  type="button"
-                  className={isOpen && !umpire.turn.timerDeadline ? 'primary' : undefined}
-                  disabled={busy || !isOpen || timerSeconds < 60}
-                  title={
-                    umpire.turn.timerDeadline
-                      ? 'Restart countdown from the duration dial'
-                      : 'Start countdown from the duration dial'
-                  }
-                  onClick={() => void run(() => api.turnTimer(gameId, token, timerSeconds))}
-                >
-                  {umpire.turn.timerDeadline ? 'Restart' : 'Start'}
-                </button>
-                <button
-                  type="button"
-                  disabled={busy || !isOpen || !umpire.turn.timerDeadline}
-                  title="Add one minute to the live countdown (does not change Duration)"
-                  onClick={() =>
-                    void run(() => api.turnExtend(gameId, token, TIMER_EXTEND_SECONDS))
-                  }
-                >
-                  Extend +1m
-                </button>
-                <button
-                  type="button"
-                  disabled={busy || !isOpen || !umpire.turn.timerDeadline}
-                  title="Clear countdown; stay open for manual Lock"
-                  onClick={() => void run(() => api.turnTimer(gameId, token, 0))}
-                >
-                  Stop
-                </button>
-              </div>
-            </section>
-
             <section
               className={`panel umpire-gt-map${mapFullscreen ? ' umpire-gt-map--fullscreen' : ''}`}
               aria-modal={mapFullscreen || undefined}
@@ -779,6 +723,67 @@ export function UmpirePage() {
                   </div>
                 )}
                 </section>
+
+            <section className="panel stack umpire-control-group umpire-turn-control">
+              <h2>Order timer</h2>
+              <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
+                {(() => {
+                  const running = Boolean(isOpen && umpire.turn.timerDeadline);
+                  if (!isOpen) {
+                    return 'Orders locked — Lock / Reopen / Resolve are on the map. Reopen, then Start.';
+                  }
+                  if (running) {
+                    return 'Running — expiry auto-locks. Stop pauses without locking. Extend adds time only.';
+                  }
+                  return 'Open · no timer — Start to arm auto-lock, or Lock on the map when crews are ready.';
+                })()}
+              </p>
+              <TouchNumber
+                label="Duration"
+                value={timerSeconds}
+                onChange={setTimerSeconds}
+                min={0}
+                max={3600}
+                step={TIMER_STEP_SECONDS}
+                showSlider
+                format={formatWallDuration}
+                parse={parseWallDuration}
+                hint="Configured length · ±30s · type 3 or 3:30 · Start uses this"
+              />
+              <div className="control-actions umpire-timer-actions">
+                <button
+                  type="button"
+                  className={isOpen && !umpire.turn.timerDeadline ? 'primary' : undefined}
+                  disabled={busy || !isOpen || timerSeconds < 60}
+                  title={
+                    umpire.turn.timerDeadline
+                      ? 'Restart countdown from the duration dial'
+                      : 'Start countdown from the duration dial'
+                  }
+                  onClick={() => void run(() => api.turnTimer(gameId, token, timerSeconds))}
+                >
+                  {umpire.turn.timerDeadline ? 'Restart' : 'Start'}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || !isOpen || !umpire.turn.timerDeadline}
+                  title="Add one minute to the live countdown (does not change Duration)"
+                  onClick={() =>
+                    void run(() => api.turnExtend(gameId, token, TIMER_EXTEND_SECONDS))
+                  }
+                >
+                  Extend +1m
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || !isOpen || !umpire.turn.timerDeadline}
+                  title="Clear countdown; stay open for manual Lock"
+                  onClick={() => void run(() => api.turnTimer(gameId, token, 0))}
+                >
+                  Stop
+                </button>
+              </div>
+            </section>
 
             <PendingOrdersPanel units={umpire.units} />
 

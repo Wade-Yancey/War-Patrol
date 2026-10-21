@@ -604,13 +604,13 @@ function HydrophoneScopeInner({
               stroke="#2a3830"
               strokeWidth={8}
             />
-            <circle cx={CX} cy={CY} r={R} fill="#041208" stroke="#1a8f3c" strokeWidth={2} />
+            <circle cx={CX} cy={CY} r={R} fill="#0a0702" stroke="#b87a10" strokeWidth={2} />
             <circle
               cx={CX}
               cy={CY}
               r={R - 48}
               fill="none"
-              stroke="rgba(61,255,106,0.1)"
+              stroke="rgba(255,176,32,0.1)"
               strokeWidth={1}
             />
 
@@ -621,7 +621,7 @@ function HydrophoneScopeInner({
                   y1={t.y1}
                   x2={t.x2}
                   y2={t.y2}
-                  stroke={t.major ? '#3dff6a' : 'rgba(61,255,106,0.4)'}
+                  stroke={t.major ? '#ffb020' : 'rgba(255,176,32,0.4)'}
                   strokeWidth={t.major ? 2 : 1}
                 />
                 {t.cardinal && (
@@ -630,9 +630,9 @@ function HydrophoneScopeInner({
                     y={t.ty}
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    fill="#7dff9a"
+                    fill="#ffd070"
                     fontSize={18}
-                    fontFamily="Space Mono, ui-monospace, monospace"
+                    fontFamily="Courier Prime, ui-monospace, monospace"
                     fontWeight={700}
                   >
                     {t.cardinal}
@@ -644,9 +644,9 @@ function HydrophoneScopeInner({
                     y={t.ty}
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    fill="#5a9a68"
+                    fill="#a88840"
                     fontSize={11}
-                    fontFamily="Space Mono, ui-monospace, monospace"
+                    fontFamily="Courier Prime, ui-monospace, monospace"
                   >
                     {String(t.deg).padStart(3, '0')}
                   </text>
@@ -668,7 +668,7 @@ function HydrophoneScopeInner({
                 y1={CY - (R - 52)}
                 x2={CX}
                 y2={CY - (R - 8)}
-                stroke="#7dff9a"
+                stroke="#ffd070"
                 strokeWidth={2}
               />
             </g>
@@ -686,14 +686,14 @@ function HydrophoneScopeInner({
                 y1={CY + 18}
                 x2={CX}
                 y2={CY - (R - 10)}
-                stroke="#3dff6a"
+                stroke="#ffb020"
                 strokeWidth={3}
               />
               <polygon
                 points={`${CX},${CY - (R + 14)} ${CX - 10},${CY - (R - 2)} ${CX + 10},${CY - (R - 2)}`}
-                fill="#7dff9a"
+                fill="#ffd070"
               />
-              <circle cx={CX} cy={CY} r={7} fill="#041208" stroke="#3dff6a" strokeWidth={2} />
+              <circle cx={CX} cy={CY} r={7} fill="#0a0702" stroke="#ffb020" strokeWidth={2} />
             </g>
           </svg>
       </div>
