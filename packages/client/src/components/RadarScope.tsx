@@ -181,13 +181,13 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
         <defs>
           <radialGradient id="radar-glow" cx="50%" cy="50%" r="50%">
             <stop offset="0%" stopColor="#0a2a14" />
-            <stop offset="70%" stopColor="#0a0702" />
+            <stop offset="70%" stopColor="#030a08" />
             <stop offset="100%" stopColor="#010805" />
           </radialGradient>
         </defs>
 
         <circle cx={CX} cy={CY} r={SCOPE_R + 36} fill="#0a120c" stroke="#2a3830" strokeWidth={10} />
-        <circle cx={CX} cy={CY} r={SCOPE_R} fill="url(#radar-glow)" stroke="#b87a10" strokeWidth={2} />
+        <circle cx={CX} cy={CY} r={SCOPE_R} fill="url(#radar-glow)" stroke="#1a9a68" strokeWidth={2} />
 
         {rings.map((ring) => (
           <g key={ring.r}>
@@ -196,13 +196,13 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
               cy={CY}
               r={ring.r}
               fill="none"
-              stroke="rgba(255,176,32,0.22)"
+              stroke="rgba(77,255,176,0.22)"
               strokeWidth={1}
             />
             <text
               x={CX + 8}
               y={CY - ring.r + 14}
-              fill="#a88840"
+              fill="#4a9a72"
               fontSize={14}
               fontFamily="Courier Prime, ui-monospace, monospace"
             >
@@ -218,7 +218,7 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
               y1={b.y1}
               x2={b.x2}
               y2={b.y2}
-              stroke={b.major ? '#ffb020' : 'rgba(255,176,32,0.45)'}
+              stroke={b.major ? '#4dffb0' : 'rgba(77,255,176,0.45)'}
               strokeWidth={b.major ? 2 : 1}
             />
             {b.label && (
@@ -227,7 +227,7 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
                 y={b.ty}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                fill={b.major ? '#ffd070' : '#a88840'}
+                fill={b.major ? '#9affd0' : '#4a9a72'}
                 fontSize={b.major ? 16 : 11}
                 fontFamily="Courier Prime, ui-monospace, monospace"
               >
@@ -237,18 +237,18 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
           </g>
         ))}
 
-        <line x1={CX} y1={CY - SCOPE_R} x2={CX} y2={CY + SCOPE_R} stroke="rgba(255,176,32,0.18)" />
-        <line x1={CX - SCOPE_R} y1={CY} x2={CX + SCOPE_R} y2={CY} stroke="rgba(255,176,32,0.18)" />
+        <line x1={CX} y1={CY - SCOPE_R} x2={CX} y2={CY + SCOPE_R} stroke="rgba(77,255,176,0.18)" />
+        <line x1={CX - SCOPE_R} y1={CY} x2={CX + SCOPE_R} y2={CY} stroke="rgba(77,255,176,0.18)" />
 
         <line
           x1={CX}
           y1={CY}
           x2={CX + Math.cos(headingRad) * 36}
           y2={CY + Math.sin(headingRad) * 36}
-          stroke="#ffd070"
+          stroke="#9affd0"
           strokeWidth={3}
         />
-        <circle cx={CX} cy={CY} r={5} fill="#ffb020" />
+        <circle cx={CX} cy={CY} r={5} fill="#4dffb0" />
 
         <g
           className="radar-sweep"
@@ -256,14 +256,14 @@ function RadarScopeInner({ contacts, maxRangeNm, ownHeading }: Props) {
         >
           <path
             d={`M ${CX} ${CY} L ${CX} ${CY - SCOPE_R} A ${SCOPE_R} ${SCOPE_R} 0 0 1 ${CX + SCOPE_R * 0.35} ${CY - SCOPE_R * 0.94} Z`}
-            fill="rgba(255,176,32,0.14)"
+            fill="rgba(77,255,176,0.14)"
           />
           <line
             x1={CX}
             y1={CY}
             x2={CX}
             y2={CY - SCOPE_R}
-            stroke="#ffb020"
+            stroke="#4dffb0"
             strokeWidth={2.5}
             opacity={0.85}
           />

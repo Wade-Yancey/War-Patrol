@@ -22,7 +22,7 @@ export function ScopeContactLabelLayer({ placements }: Props) {
               y1={p.leader.y1}
               x2={p.leader.x2}
               y2={p.leader.y2}
-              stroke="#ffd070"
+              stroke="#9affd0"
               strokeWidth={1.25}
               opacity={0.55}
             />
@@ -32,7 +32,7 @@ export function ScopeContactLabelLayer({ placements }: Props) {
             y={p.labelY}
             textAnchor={p.textAnchor}
             fill="#c8ffd4"
-            stroke="#0a0702"
+            stroke="#030a08"
             strokeWidth={3}
             paintOrder="stroke"
             fontSize={p.fontSize}

@@ -58,9 +58,9 @@ type Intensity = 'full' | 'dim';
 
 function tickStroke(major: boolean, intensity: Intensity): string {
   if (intensity === 'full') {
-    return major ? '#ffb020' : 'rgba(255,176,32,0.4)';
+    return major ? '#4dffb0' : 'rgba(77,255,176,0.4)';
   }
-  return major ? 'rgba(255,176,32,0.45)' : 'rgba(255,176,32,0.22)';
+  return major ? 'rgba(77,255,176,0.45)' : 'rgba(77,255,176,0.22)';
 }
 
 interface RoseFaceProps {
@@ -94,8 +94,8 @@ function CrtCompassRoseFaceInner({ intensity = 'full', children }: RoseFaceProps
         cx={CX}
         cy={CY}
         r={R}
-        fill="#0a0702"
-        stroke={full ? '#b87a10' : 'rgba(26,143,60,0.45)'}
+        fill="#030a08"
+        stroke={full ? '#1a9a68' : 'rgba(26,154,104,0.45)'}
         strokeWidth={2}
       />
       <circle
@@ -103,7 +103,7 @@ function CrtCompassRoseFaceInner({ intensity = 'full', children }: RoseFaceProps
         cy={CY}
         r={R - 48}
         fill="none"
-        stroke="rgba(255,176,32,0.12)"
+        stroke="rgba(77,255,176,0.12)"
         strokeWidth={1}
       />
 
@@ -123,7 +123,7 @@ function CrtCompassRoseFaceInner({ intensity = 'full', children }: RoseFaceProps
               y={t.ty}
               textAnchor="middle"
               dominantBaseline="middle"
-              fill={full ? '#ffd070' : 'rgba(255,208,112,0.5)'}
+              fill={full ? '#9affd0' : 'rgba(154,255,208,0.5)'}
               fontSize={18}
               fontFamily="Courier Prime, ui-monospace, monospace"
               fontWeight={700}
@@ -137,7 +137,7 @@ function CrtCompassRoseFaceInner({ intensity = 'full', children }: RoseFaceProps
               y={t.ty}
               textAnchor="middle"
               dominantBaseline="middle"
-              fill={full ? '#a88840' : 'rgba(168,136,64,0.45)'}
+              fill={full ? '#4a9a72' : 'rgba(74,154,114,0.45)'}
               fontSize={11}
               fontFamily="Courier Prime, ui-monospace, monospace"
             >
@@ -179,8 +179,8 @@ function CrtCompassHdgNeedleInner({
     >
       <polygon
         points={`${CX},${CY - (R - 22)} ${CX - 7},${CY + 22} ${CX + 7},${CY + 22}`}
-        fill={full ? '#ffd070' : 'rgba(255,208,112,0.55)'}
-        stroke={full ? '#ffe0a0' : 'rgba(255,224,160,0.45)'}
+        fill={full ? '#9affd0' : 'rgba(154,255,208,0.55)'}
+        stroke={full ? '#b8ffe0' : 'rgba(184,255,224,0.45)'}
         strokeWidth={1}
       />
     </g>
@@ -210,7 +210,7 @@ function CrtCompassDashedBugInner({
         y1={CY}
         x2={CX}
         y2={CY - (R - 36)}
-        stroke="#ffb020"
+        stroke="#4dffb0"
         strokeWidth={2}
         strokeDasharray="5 4"
         opacity={0.85}
@@ -220,13 +220,13 @@ function CrtCompassDashedBugInner({
         y1={CY - (R - 36)}
         x2={CX}
         y2={CY - (R + 4)}
-        stroke="#ffb020"
+        stroke="#4dffb0"
         strokeWidth={2.5}
         opacity={0.9}
       />
       <polygon
         points={`${CX},${CY - (R + 16)} ${CX - 9},${CY - (R + 2)} ${CX + 9},${CY - (R + 2)}`}
-        fill="#ffb020"
+        fill="#4dffb0"
         opacity={0.95}
       />
     </g>
@@ -241,12 +241,12 @@ export function CrtCompassHub({ intensity = 'full' }: { intensity?: Intensity })
   const CY = COMPASS_CY;
   return (
     <>
-      <circle cx={CX} cy={CY} r={6} fill="#0a0702" stroke="#ffb020" strokeWidth={2} />
+      <circle cx={CX} cy={CY} r={6} fill="#030a08" stroke="#4dffb0" strokeWidth={2} />
       <circle
         cx={CX}
         cy={CY}
         r={2.5}
-        fill={intensity === 'full' ? '#ffb020' : 'rgba(255,176,32,0.4)'}
+        fill={intensity === 'full' ? '#4dffb0' : 'rgba(77,255,176,0.4)'}
       />
     </>
   );

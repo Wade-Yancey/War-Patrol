@@ -85,7 +85,7 @@ const SIDE_COLORS: Record<string, string> = {
   blue: '#6ec8ff',
   red: '#ff8a6a',
   civilian: '#c49bff',
-  neutral: '#ffe0a0',
+  neutral: '#b8ffe0',
 };
 
 function unitAccent(unit: UnitState): string {
@@ -411,11 +411,11 @@ function SeaSurfaceMarkerGlyph({
   }
   if (kind === 'debris') {
     return (
-      <g opacity={0.8} pointerEvents="none" stroke="#ffd070" strokeWidth={1.2} fill="none">
+      <g opacity={0.8} pointerEvents="none" stroke="#9affd0" strokeWidth={1.2} fill="none">
         <line x1={x - 5} y1={y - 2} x2={x - 1} y2={y + 1} />
         <line x1={x + 2} y1={y - 3} x2={x + 6} y2={y} />
         <line x1={x - 2} y1={y + 3} x2={x + 3} y2={y + 4} />
-        <circle cx={x} cy={y} r={1.2} fill="#a88840" stroke="none" />
+        <circle cx={x} cy={y} r={1.2} fill="#4a9a72" stroke="none" />
       </g>
     );
   }
@@ -1587,7 +1587,7 @@ function GroundTruthMapInner({
           role="img"
           aria-label="Ground truth lat/lon map with true north compass — drag to pan"
         >
-          <rect width={W} height={H} fill="#120c04" />
+          <rect width={W} height={H} fill="#051812" />
           <defs>
             <clipPath id="gt-plot-clip">
               <rect x={0} y={0} width={W} height={H} />
@@ -1602,7 +1602,7 @@ function GroundTruthMapInner({
                 <text
                   x={8}
                   y={clamp(p.y - 4, 12, H - 6)}
-                  fill="#a88840"
+                  fill="#4a9a72"
                   fontSize={10}
                   fontFamily="Courier Prime, ui-monospace, monospace"
                 >
@@ -1620,7 +1620,7 @@ function GroundTruthMapInner({
                 <text
                   x={clamp(m.x + 4, 4, W - 56)}
                   y={H - 8}
-                  fill="#a88840"
+                  fill="#4a9a72"
                   fontSize={10}
                   fontFamily="Courier Prime, ui-monospace, monospace"
                 >
@@ -1639,14 +1639,14 @@ function GroundTruthMapInner({
             opacity={0.7}
           />
 
-          <g stroke="#ffb020" strokeWidth={1.5} opacity={0.45}>
+          <g stroke="#4dffb0" strokeWidth={1.5} opacity={0.45}>
             <path d="M8 8 H28 M8 8 V28" fill="none" />
             <path d={`M${W - 8} 8 H${W - 28} M${W - 8} 8 V28`} fill="none" />
             <path d={`M8 ${H - 8} H28 M8 ${H - 8} V${H - 28}`} fill="none" />
             <path d={`M${W - 8} ${H - 8} H${W - 28} M${W - 8} ${H - 8} V${H - 28}`} fill="none" />
           </g>
 
-          <text x={12} y={18} fill="#a88840" fontSize={10} fontFamily="Courier Prime, ui-monospace, monospace">
+          <text x={12} y={18} fill="#4a9a72" fontSize={10} fontFamily="Courier Prime, ui-monospace, monospace">
             GROUND TRUTH · LAT/LON · {GRID_STEP_DEG}° GRID · TRAILS · INTENDED MOVE · WEAPONS · TRUE N
             {showSensorRanges ? ' · RANGES · CONES/ARCS' : ''}
           </text>
@@ -1867,7 +1867,7 @@ function GroundTruthMapInner({
                               ? '#a89060'
                               : '#ffc857'
                         }
-                        stroke="#120c04"
+                        stroke="#051812"
                         strokeWidth={1}
                       />
                       <text
@@ -1952,7 +1952,7 @@ function GroundTruthMapInner({
                         cy={c.tip.y}
                         r={3.5}
                         fill="#7ec8ff"
-                        stroke="#120c04"
+                        stroke="#051812"
                         strokeWidth={1}
                       />
                     ))}
@@ -2036,7 +2036,7 @@ function GroundTruthMapInner({
                         cy={g.tip.y}
                         r={g.kind === 'deck_gun_hit' ? 4 : 3}
                         fill={g.kind === 'deck_gun_hit' ? '#ff6a4a' : '#a89060'}
-                        stroke="#120c04"
+                        stroke="#051812"
                         strokeWidth={1}
                       />
                       <text
@@ -2088,7 +2088,7 @@ function GroundTruthMapInner({
                         r={5.5}
                         fill="#ff6a4a"
                         fillOpacity={0.7}
-                        stroke="#120c04"
+                        stroke="#051812"
                         strokeWidth={1}
                       />
                       <text
@@ -2175,7 +2175,7 @@ function GroundTruthMapInner({
                   x={m.x + m.labelDx}
                   y={m.y + m.labelNameDy}
                   textAnchor={m.labelAnchor}
-                  fill="#ffd070"
+                  fill="#9affd0"
                   fontSize={11}
                   fontFamily="Courier Prime, ui-monospace, monospace"
                 >
@@ -2186,7 +2186,7 @@ function GroundTruthMapInner({
                   x={m.x + m.labelDx}
                   y={m.y + m.labelIdentityDy}
                   textAnchor={m.labelAnchor}
-                  fill="#a88840"
+                  fill="#4a9a72"
                   fontSize={9}
                   fontFamily="Courier Prime, ui-monospace, monospace"
                 >
@@ -2197,7 +2197,7 @@ function GroundTruthMapInner({
                   x={m.x + m.labelDx}
                   y={m.y + m.labelStatsDy}
                   textAnchor={m.labelAnchor}
-                  fill="#a88840"
+                  fill="#4a9a72"
                   fontSize={10}
                   fontFamily="Courier Prime, ui-monospace, monospace"
                 >
@@ -2263,7 +2263,7 @@ function GroundTruthMapInner({
                       width={6}
                       height={6}
                       fill={d.color}
-                      stroke="#120c04"
+                      stroke="#051812"
                       strokeWidth={1}
                     />
                     <text
@@ -2287,7 +2287,7 @@ function GroundTruthMapInner({
               cx={COMPASS_CX}
               cy={COMPASS_CY}
               r={COMPASS_R + 14}
-              fill="#0a0702"
+              fill="#030a08"
               fillOpacity={0.82}
               stroke="#1a4a28"
               strokeWidth={1}
@@ -2323,7 +2323,7 @@ function GroundTruthMapInner({
                   y1={t.y1}
                   x2={t.x2}
                   y2={t.y2}
-                  stroke={t.deg === 0 ? '#ffd070' : '#ffb020'}
+                  stroke={t.deg === 0 ? '#9affd0' : '#4dffb0'}
                   strokeWidth={t.major ? 1.5 : 1}
                   strokeOpacity={t.major ? 0.9 : 0.45}
                 />
@@ -2333,7 +2333,7 @@ function GroundTruthMapInner({
                     y={t.ly}
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    fill={t.deg === 0 ? '#ffd070' : '#a88840'}
+                    fill={t.deg === 0 ? '#9affd0' : '#4a9a72'}
                     fontSize={t.deg % 90 === 0 ? 11 : 8}
                     fontFamily="Courier Prime, ui-monospace, monospace"
                     fontWeight={t.deg === 0 ? 700 : 400}
@@ -2345,15 +2345,15 @@ function GroundTruthMapInner({
             ))}
             <polygon
               points={`${COMPASS_N_TIP.x},${COMPASS_N_TIP.y} ${COMPASS_N_TIP.x - 5},${COMPASS_N_LEFT.y} ${COMPASS_N_TIP.x + 5},${COMPASS_N_LEFT.y}`}
-              fill="#ffd070"
+              fill="#9affd0"
               fillOpacity={0.95}
             />
-            <circle cx={COMPASS_CX} cy={COMPASS_CY} r={2.5} fill="#ffb020" />
+            <circle cx={COMPASS_CX} cy={COMPASS_CY} r={2.5} fill="#4dffb0" />
             <text
               x={COMPASS_CX}
               y={COMPASS_CY + COMPASS_R + 11}
               textAnchor="middle"
-              fill="#a88840"
+              fill="#4a9a72"
               fontSize={8}
               fontFamily="Courier Prime, ui-monospace, monospace"
             >
