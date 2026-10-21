@@ -675,7 +675,15 @@ function GroundTruthMapInner({
 }: Props) {
   const unitIds = useMemo(() => [...units.map((u) => u.id)].sort().join(','), [units]);
   const areaKey = useMemo(() => areaSignature(area), [area]);
-  const baseView = useMemo(() => fitUnitsView(units, area), [units, area]);
+  /**
+   * Geographic fit box — frozen across resolve / unit moves so pan+zoom stay
+   * where the operator left them. Refit only on roster/OA change or Recenter.
+   */
+  const [baseView, setBaseView] = useState(() => fitUnitsView(units, area));
+  const unitsRef = useRef(units);
+  const areaRef = useRef(area);
+  unitsRef.current = units;
+  areaRef.current = area;
   const turnLen = useMemo(
     () => resolveTurnLengthSeconds(turnLengthSeconds),
     [turnLengthSeconds],
@@ -717,8 +725,10 @@ function GroundTruthMapInner({
     setShowAirTrails((prev) => !prev);
   }, []);
 
-  // Reset camera when the unit set or operating area changes (not on every move).
+  // Refit + clear pan/zoom when the unit roster or operating area changes
+  // (not on every resolve move — that was snapping the GT camera).
   useEffect(() => {
+    setBaseView(fitUnitsView(unitsRef.current, areaRef.current));
     setZoomIdx(DEFAULT_ZOOM_IDX);
     setPanLat(0);
     setPanLon(0);
@@ -962,9 +972,10 @@ function GroundTruthMapInner({
       });
 
     // Deck-gun GT: muzzle pip + aim/fire line + one AOE radius circle per volley.
+    // Labels stay short; co-located multi-volley tips stack with leader lines.
     const unitById = new Map(units.map((u) => [u.id, u]));
     const nameById = new Map(units.map((u) => [u.id, u.name]));
-    const guns = detonations
+    const gunsRaw = detonations
       .filter(
         (e) =>
           e.kind === 'deck_gun_fire' || e.kind === 'deck_gun_hit' || e.kind === 'deck_gun_miss',
@@ -988,14 +999,17 @@ function GroundTruthMapInner({
           radiusM != null
             ? meterRadiusRadiiPx(e.position.lat, radiusM, view)
             : null;
+        // Short CRT labels — drop redundant "GUN" + aim on hit/miss (line shows aim).
         let label = 'GUN';
         if (e.kind === 'deck_gun_fire') {
-          label = aim ? `GUN FIRE · ${aim}°` : 'GUN FIRE';
+          label = aim ? `FIRE ${aim}°` : 'FIRE';
         } else if (e.kind === 'deck_gun_hit') {
-          label = `GUN HIT${targetName ? ` ${targetName}` : ''}${aim ? ` · ${aim}°` : ''}`;
+          label = targetName ? `HIT ${targetName}` : 'HIT';
         } else {
-          label = `GUN MISS${targetName ? ` ${targetName}` : ''}${aim ? ` · ${aim}°` : ''}`;
+          label = targetName ? `MISS ${targetName}` : 'MISS';
         }
+        /** Label anchor: muzzle for fire cues, impact tip for hit/miss. */
+        const labelAt = e.kind === 'deck_gun_fire' ? origin : tip;
         return {
           id: e.id,
           kind: e.kind,
@@ -1006,9 +1020,39 @@ function GroundTruthMapInner({
           showLine: e.kind !== 'deck_gun_fire',
           aoe,
           label,
+          labelAt,
+          labelDx: 8,
+          labelDy: e.kind === 'deck_gun_fire' ? -8 : -6,
           onPlot: uvBBoxHitsPlot([origin, tip]),
         };
       });
+
+    // Stack labels when multi-volley impacts (or muzzles) land on top of each other.
+    const GUN_LABEL_CLUSTER_PX = 36;
+    const GUN_LABEL_STACK_DY = 11;
+    const gunLabelAssigned = new Set<string>();
+    const guns = gunsRaw.map((g) => ({ ...g }));
+    for (const seed of guns) {
+      if (gunLabelAssigned.has(seed.id)) continue;
+      const cluster = guns.filter((o) => {
+        if (gunLabelAssigned.has(o.id)) return false;
+        // Only stack same anchor kind (fire vs impact) so muzzle text stays by firer.
+        if ((o.kind === 'deck_gun_fire') !== (seed.kind === 'deck_gun_fire')) return false;
+        const dx = o.labelAt.x - seed.labelAt.x;
+        const dy = o.labelAt.y - seed.labelAt.y;
+        return dx * dx + dy * dy <= GUN_LABEL_CLUSTER_PX * GUN_LABEL_CLUSTER_PX;
+      });
+      cluster.sort((a, b) => a.id.localeCompare(b.id));
+      for (const m of cluster) gunLabelAssigned.add(m.id);
+      if (cluster.length < 2) continue;
+      const mid = (cluster.length - 1) / 2;
+      for (let i = 0; i < cluster.length; i++) {
+        const g = cluster[i]!;
+        // Vertical stack + slight lateral fan so 3-volley piles stay readable.
+        g.labelDy = g.labelDy + (i - mid) * GUN_LABEL_STACK_DY;
+        g.labelDx = g.labelDx + (i - mid) * 4;
+      }
+    }
 
     // Aircraft bomb splash — lasting mark from recentDetonations (pruned after a few turns).
     const bombs = detonations
@@ -1457,11 +1501,13 @@ function GroundTruthMapInner({
 
   const zoomIn = () => setZoomIdx((i) => Math.min(ZOOM_STEPS.length - 1, i + 1));
   const zoomOut = () => setZoomIdx((i) => Math.max(0, i - 1));
-  const recenter = () => {
+  /** Explicit reset — re-fit to current units and clear pan/zoom. */
+  const recenter = useCallback(() => {
+    setBaseView(fitUnitsView(unitsRef.current, areaRef.current));
     setZoomIdx(DEFAULT_ZOOM_IDX);
     setPanLat(0);
     setPanLon(0);
-  };
+  }, []);
 
   const clientToLatLon = useCallback(
     (clientX: number, clientY: number): { lat: number; lon: number } | null => {
@@ -1973,86 +2019,96 @@ function GroundTruthMapInner({
 
             {weaponOverlays.guns
               .filter((g) => g.onPlot)
-              .map((g) => (
-                <g key={`gun-${g.id}`} opacity={0.9}>
-                  {g.showLine &&
-                    g.lineParts.map((points, partIdx) => (
-                      <polyline
-                        key={`gun-line-${g.id}-${partIdx}`}
-                        points={points}
-                        fill="none"
-                        stroke="#e8c07a"
-                        strokeWidth={1.35}
-                        strokeOpacity={0.75}
-                        strokeDasharray="4 3"
-                        strokeLinecap="round"
-                      />
-                    ))}
-                  {/* Muzzle / firer pip */}
-                  {uvHitsPlot(g.origin.u, g.origin.v) && (
-                    <>
-                      <circle
-                        cx={g.origin.x}
-                        cy={g.origin.y}
-                        r={3}
-                        fill="none"
-                        stroke="#e8c07a"
-                        strokeWidth={1.25}
-                      />
-                      <circle cx={g.origin.x} cy={g.origin.y} r={1.25} fill="#e8c07a" />
-                      {g.kind === 'deck_gun_fire' && (
+              .map((g) => {
+                const labelX = g.labelAt.x + g.labelDx;
+                const labelY = g.labelAt.y + g.labelDy;
+                const leader =
+                  Math.abs(g.labelDx - 8) > 0.5 ||
+                  Math.abs(g.labelDy - (g.kind === 'deck_gun_fire' ? -8 : -6)) > 0.5;
+                return (
+                  <g key={`gun-${g.id}`} opacity={0.9}>
+                    {g.showLine &&
+                      g.lineParts.map((points, partIdx) => (
+                        <polyline
+                          key={`gun-line-${g.id}-${partIdx}`}
+                          points={points}
+                          fill="none"
+                          stroke="#e8c07a"
+                          strokeWidth={1.35}
+                          strokeOpacity={0.75}
+                          strokeDasharray="4 3"
+                          strokeLinecap="round"
+                        />
+                      ))}
+                    {/* Muzzle / firer pip */}
+                    {uvHitsPlot(g.origin.u, g.origin.v) && (
+                      <>
+                        <circle
+                          cx={g.origin.x}
+                          cy={g.origin.y}
+                          r={3}
+                          fill="none"
+                          stroke="#e8c07a"
+                          strokeWidth={1.25}
+                        />
+                        <circle cx={g.origin.x} cy={g.origin.y} r={1.25} fill="#e8c07a" />
+                      </>
+                    )}
+                    {g.kind !== 'deck_gun_fire' && uvHitsPlot(g.tip.u, g.tip.v) && (
+                      <>
+                        {/* Volley AOE — one radius ellipse per volley (not per shell). */}
+                        {g.aoe && (
+                          <ellipse
+                            cx={g.tip.x}
+                            cy={g.tip.y}
+                            rx={Math.max(4, g.aoe.rx)}
+                            ry={Math.max(4, g.aoe.ry)}
+                            fill={g.kind === 'deck_gun_hit' ? '#ff6a4a' : '#a89060'}
+                            fillOpacity={0.12}
+                            stroke={g.kind === 'deck_gun_hit' ? '#ff6a4a' : '#a89060'}
+                            strokeWidth={1.25}
+                            strokeOpacity={0.85}
+                            strokeDasharray={g.kind === 'deck_gun_miss' ? '3 2' : undefined}
+                          />
+                        )}
+                        <circle
+                          cx={g.tip.x}
+                          cy={g.tip.y}
+                          r={g.kind === 'deck_gun_hit' ? 4 : 3}
+                          fill={g.kind === 'deck_gun_hit' ? '#ff6a4a' : '#a89060'}
+                          stroke="#030f0c"
+                          strokeWidth={1}
+                        />
+                      </>
+                    )}
+                    {uvHitsPlot(g.labelAt.u, g.labelAt.v) && (
+                      <>
+                        {leader && (
+                          <line
+                            x1={g.labelAt.x}
+                            y1={g.labelAt.y}
+                            x2={labelX - 2}
+                            y2={labelY}
+                            stroke="#e8c07a"
+                            strokeWidth={0.85}
+                            strokeOpacity={0.55}
+                          />
+                        )}
                         <text
                           className="map-plot-label"
-                          x={g.origin.x + 8}
-                          y={g.origin.y - 8}
+                          x={labelX}
+                          y={labelY}
                           fill="#e8c07a"
                           fontSize={8}
                           fontFamily="Courier Prime, ui-monospace, monospace"
                         >
                           {g.label}
                         </text>
-                      )}
-                    </>
-                  )}
-                  {g.kind !== 'deck_gun_fire' && uvHitsPlot(g.tip.u, g.tip.v) && (
-                    <>
-                      {/* Volley AOE — one radius ellipse per volley (not per shell). */}
-                      {g.aoe && (
-                        <ellipse
-                          cx={g.tip.x}
-                          cy={g.tip.y}
-                          rx={Math.max(4, g.aoe.rx)}
-                          ry={Math.max(4, g.aoe.ry)}
-                          fill={g.kind === 'deck_gun_hit' ? '#ff6a4a' : '#a89060'}
-                          fillOpacity={0.12}
-                          stroke={g.kind === 'deck_gun_hit' ? '#ff6a4a' : '#a89060'}
-                          strokeWidth={1.25}
-                          strokeOpacity={0.85}
-                          strokeDasharray={g.kind === 'deck_gun_miss' ? '3 2' : undefined}
-                        />
-                      )}
-                      <circle
-                        cx={g.tip.x}
-                        cy={g.tip.y}
-                        r={g.kind === 'deck_gun_hit' ? 4 : 3}
-                        fill={g.kind === 'deck_gun_hit' ? '#ff6a4a' : '#a89060'}
-                        stroke="#030f0c"
-                        strokeWidth={1}
-                      />
-                      <text
-                        className="map-plot-label"
-                        x={g.tip.x + 8}
-                        y={g.tip.y - 6}
-                        fill="#e8c07a"
-                        fontSize={8}
-                        fontFamily="Courier Prime, ui-monospace, monospace"
-                      >
-                        {g.label}
-                      </text>
-                    </>
-                  )}
-                </g>
-              ))}
+                      </>
+                    )}
+                  </g>
+                );
+              })}
 
             {weaponOverlays.bombs
               .filter((b) => b.onPlot)

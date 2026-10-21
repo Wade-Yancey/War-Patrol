@@ -8,7 +8,8 @@
   --bg-panel: #071410;
   --bg-elevated: #0b1c16;
   --ink: #9edcc4;
-  --ink-muted: #4a7a64;
+  /* Venue-readable secondary chrome — dimmer than ink, not near-void on dark mint */
+  --ink-muted: #5a9a68;
   --accent: var(--phosphor);
   --accent-strong: #5ee0a8;
   --danger: #e07050;
