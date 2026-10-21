@@ -80,9 +80,9 @@ export const STATION_GUIDES: Record<StationGuideId, StationGuideBlurb> = {
     title: 'Controls · Guns',
     purpose: 'Deck gun (surfaced / shallow enough to use).',
     bullets: [
-      'Aim, volleys, load state, submit fire or clear pending.',
-      'Too deep → gun won’t fire; surface or climb first.',
-      'Reload on this tab when the magazine says so.',
+      'Pick an optics Contact N (Sensors peri must be up), choose 1–3 volleys, submit or clear.',
+      'Crew RNG solves lead from range + speed — no player aim.',
+      'Too deep → gun won’t fire; surface or climb first. Reload here when the magazine says so.',
     ],
   },
   'sub/countermeasures': {
@@ -155,8 +155,8 @@ export const STATION_GUIDES: Record<StationGuideId, StationGuideBlurb> = {
     title: 'Controls · Guns',
     purpose: 'Deck-gun fire.',
     bullets: [
-      'Aim, volleys, submit fire or clear; reload here when empty/awaiting.',
-      'Magazine count is on this tab only — not under Engine orders.',
+      'Pick a lookout Contact N, choose 1–3 volleys, submit or clear; reload here when empty/awaiting.',
+      'Crew RNG solves lead from range + speed — no player aim. Magazine count is on this tab only.',
     ],
   },
   'dd/depth_charges': {

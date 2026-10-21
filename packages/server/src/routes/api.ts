@@ -445,13 +445,16 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         depthSettingM: number;
       } | null;
       fireDeckGun?: {
-        aimHeading: number;
-        estimatedCourse?: number;
-        estimatedSpeedKn?: number;
-        estimatedRangeNm: number;
+        /** Optics Contact N to engage (FoW designation). */
+        targetLabelN: number;
         volleyCount?: number;
         /** @deprecated Prefer volleyCount. */
         shotCount?: number;
+        /** @deprecated Ignored — optional for older clients. */
+        aimHeading?: number;
+        estimatedCourse?: number;
+        estimatedSpeedKn?: number;
+        estimatedRangeNm?: number;
       } | null;
       deployNoisemaker?: {
         depthM: number;

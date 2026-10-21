@@ -25,6 +25,8 @@ import {
   canDeckGunFireFromDepth,
   isDeckGunHull,
   DECK_GUN_MAX_RANGE_NM,
+  formatContactDesignation,
+  targetIdForContactLabel,
   torpedoRoomReady,
   checkTorpedoOrderArc,
   formatTorpedoArcRejectMessage,
@@ -111,6 +113,7 @@ import {
   setTimerDeadline,
 } from './turnEngine.js';
 import { appendCombatLog, logLine } from './weaponsResolve.js';
+import { buildPeriscopeContacts } from './periscope.js';
 import { buildViewForSession } from './views.js';
 
 /** Apply umpire helm course/EOT to one unit (same standing-course + pending-EOT model as stations). */
@@ -892,12 +895,35 @@ export class GameRuntime {
             { statusCode: 400 },
           );
         }
-        if (!(Number(patch.fireDeckGun.estimatedRangeNm) > 0)) {
-          throw Object.assign(new Error('Target range estimate required'), { statusCode: 400 });
+        const labelN = Math.floor(Number(patch.fireDeckGun.targetLabelN));
+        if (!Number.isFinite(labelN) || labelN < 1) {
+          throw Object.assign(new Error('Deck-gun optics contact required'), { statusCode: 400 });
         }
-        if (Number(patch.fireDeckGun.estimatedRangeNm) > DECK_GUN_MAX_RANGE_NM) {
+        // Optics-only: must be a hull contact in this vessel's current lookout /
+        // periscope picture — not radar/sonar and not a periscope feather.
+        const optics = buildPeriscopeContacts(unit, save);
+        const opticsHit = optics.contacts.find(
+          (c) => c.labelN === labelN && c.kind !== 'periscope',
+        );
+        if (!opticsHit) {
+          throw Object.assign(
+            new Error(
+              `Deck-gun target ${formatContactDesignation(labelN)} is not an optics hull contact`,
+            ),
+            { statusCode: 400 },
+          );
+        }
+        if (!(opticsHit.rangeNm > 0) || opticsHit.rangeNm > DECK_GUN_MAX_RANGE_NM) {
           throw Object.assign(
             new Error(`Deck-gun range max ${DECK_GUN_MAX_RANGE_NM} nm`),
+            { statusCode: 400 },
+          );
+        }
+        const targetId = targetIdForContactLabel(unit, labelN);
+        const targetUnit = targetId ? save.units.find((u) => u.id === targetId) : undefined;
+        if (!targetUnit) {
+          throw Object.assign(
+            new Error(`Deck-gun target ${formatContactDesignation(labelN)} unknown`),
             { statusCode: 400 },
           );
         }
@@ -915,6 +941,11 @@ export class GameRuntime {
         }
         // Fresh order supersedes any earlier blocked-shot notice.
         delete unit.deckGunFireBlock;
+        // Normalize so resolve always sees a clean targetLabelN.
+        patch.fireDeckGun = {
+          ...patch.fireDeckGun,
+          targetLabelN: labelN,
+        };
       }
       if (patch.deployNoisemaker !== undefined && patch.deployNoisemaker !== null) {
         if (!station.capabilities.includes('weapons') && !station.capabilities.includes('torpedo')) {

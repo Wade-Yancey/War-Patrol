@@ -59,6 +59,24 @@ export function ensureContactLabel(own: ContactBookHost, targetId: string): numb
   return n;
 }
 
+/**
+ * Reverse lookup: Contact N → target unit id from the own-ship book.
+ * Returns undefined when the designation is unknown (never assigned).
+ */
+export function targetIdForContactLabel(
+  own: ContactBookHost,
+  labelN: number,
+): string | undefined {
+  const n = Math.floor(Number(labelN));
+  if (!Number.isFinite(n) || n < 1) return undefined;
+  const book = own.contactBook;
+  if (!book?.byTargetId) return undefined;
+  for (const [id, raw] of Object.entries(book.byTargetId)) {
+    if (Math.floor(Number(raw)) === n) return id;
+  }
+  return undefined;
+}
+
 /** Normalize a persisted contact book from older saves / partial JSON. */
 export function normalizeContactBook(book: ContactBook | undefined): ContactBook | undefined {
   if (!book || typeof book !== 'object') return undefined;

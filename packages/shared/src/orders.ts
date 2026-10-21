@@ -63,7 +63,12 @@ function formatDeckGunOrderSummary(
   const raw = fire.volleyCount ?? fire.shotCount;
   const n = Math.max(1, Math.floor(Number(raw) || 1));
   const volleys = n > 1 ? ` ×${n}v` : ' ×1v';
-  return `GUN${volleys} aim ${formatCourseDegrees(fire.aimHeading)} · ${fire.estimatedRangeNm.toFixed(2)}nm (crew lead)`;
+  const labelN = Math.max(1, Math.floor(Number(fire.targetLabelN) || 0));
+  const contact =
+    labelN >= 1 ? `C${labelN}` : fire.aimHeading != null
+      ? `aim ${formatCourseDegrees(fire.aimHeading)}`
+      : 'C?';
+  return `GUN${volleys} → ${contact} (crew RNG)`;
 }
 
 function formatNoisemakerOrderSummary(

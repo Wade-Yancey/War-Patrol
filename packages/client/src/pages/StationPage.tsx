@@ -2621,7 +2621,6 @@ export function StationPage() {
 
             {controlsTab === 'guns' && canDeckGun && (
               <DeckGunControls
-                ownHeading={vessel.unit.heading}
                 vesselType={vessel.unit.type}
                 hullClass={vessel.unit.class}
                 keelDepthM={vessel.unit.position.depth}
@@ -2641,6 +2640,7 @@ export function StationPage() {
                     labelN: c.labelN,
                     relativeBearing: c.relativeBearing,
                     rangeNm: c.rangeNm,
+                    speedKn: c.speedKn,
                   }))}
                 onSubmit={(fireDeckGun) => void submit({ fireDeckGun })}
                 onClear={() => void submit({ fireDeckGun: null })}

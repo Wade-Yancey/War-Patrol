@@ -20,6 +20,7 @@ import {
   healthDamageApplied,
   isDeckGunHull,
   makeDetonationEvent,
+  formatContactDesignation,
   normalizeDeckGunFireOrder,
   normalizeHeading,
   resolveDeckGunVolley,
@@ -105,7 +106,7 @@ export function resolveDeckGunsForTurn(opts: {
             fire: { ...fire, volleyCount },
             volleyCount,
           });
-          const aimLabel = String(Math.round(normalizeHeading(fire.aimHeading))).padStart(3, '0');
+          const contactTag = formatContactDesignation(fire.targetLabelN);
           const volleyLabel = volleyCount > 1 ? ` ×${volleyCount} volleys` : ' ×1 volley';
           combatLogEntries.push(
             logLine({
@@ -113,10 +114,12 @@ export function resolveDeckGunsForTurn(opts: {
               turnNumber,
               gameTimeSeconds,
               actor: unit,
-              summary: `${unit.name} fired deck gun${volleyLabel} (${shells} shells) · aim ${aimLabel}° · est ${fire.estimatedRangeNm.toFixed(2)} nm (crew lead)`,
+              summary: `${unit.name} fired deck gun${volleyLabel} (${shells} shells) · ${contactTag} (crew RNG)`,
             }),
           );
           // One muzzle report per volley (cannon WAV), staggered for counting.
+          // aimHeading filled at volley resolve from crew aim; muzzle cue uses
+          // own heading as a placeholder until the first splash lands.
           for (let i = 0; i < volleyCount; i++) {
             detonations.push(
               makeDetonationEvent({
@@ -125,7 +128,7 @@ export function resolveDeckGunsForTurn(opts: {
                 position: { ...unit.position, depth: 0 },
                 turnNumber,
                 firerUnitId: unit.id,
-                aimHeading: fire.aimHeading,
+                aimHeading: normalizeHeading(unit.heading),
                 ...(i > 0 ? { audioDelaySec: i * DECK_GUN_FIRE_STAGGER_SEC } : {}),
               }),
             );
@@ -157,7 +160,7 @@ export function resolveDeckGunsForTurn(opts: {
         fireTurnFraction: fireFrac,
       });
       const fireLabel = String(Math.round(normalizeHeading(result.fireHeading))).padStart(3, '0');
-      const aimLabel = String(Math.round(normalizeHeading(salvo.fire.aimHeading))).padStart(3, '0');
+      const contactTag = formatContactDesignation(salvo.fire.targetLabelN);
       const volleyTag =
         salvo.volleyCount > 1 ? ` v${i + 1}/${salvo.volleyCount}` : '';
       const fireAudioDelay = i * DECK_GUN_FIRE_STAGGER_SEC;
@@ -200,7 +203,7 @@ export function resolveDeckGunsForTurn(opts: {
               actor: firer,
               target: damaged,
               damage: applied,
-              summary: `${firer.name} deck gun HIT${volleyTag} ${target.name} −${applied} HP (aim ${aimLabel}° · FIRE ${fireLabel}° · AOE ${Math.round(result.radiusM)} m · miss ${hit.missDistanceM.toFixed(0)} m)`,
+              summary: `${firer.name} deck gun HIT${volleyTag} ${target.name} −${applied} HP (${contactTag} · FIRE ${fireLabel}° · AOE ${Math.round(result.radiusM)} m · miss ${hit.missDistanceM.toFixed(0)} m)`,
               sourceDetonationId: primaryDetId ?? detId,
             }),
           );
@@ -273,7 +276,7 @@ export function resolveDeckGunsForTurn(opts: {
             target: result.closestApproachUnitId
               ? units.find((u) => u.id === result.closestApproachUnitId)
               : undefined,
-            summary: `${firer.name} deck gun MISS${volleyTag} (aim ${aimLabel}° · FIRE ${fireLabel}° · AOE ${Math.round(result.radiusM)} m)${cpaLabel}`,
+            summary: `${firer.name} deck gun MISS${volleyTag} (${contactTag} · FIRE ${fireLabel}° · AOE ${Math.round(result.radiusM)} m)${cpaLabel}`,
             sourceDetonationId: detId,
           }),
         );

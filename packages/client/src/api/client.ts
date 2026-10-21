@@ -118,14 +118,18 @@ export const api = {
         depthSettingM: number;
       } | null;
       fireDeckGun?: {
-        aimHeading: number;
-        estimatedRangeNm: number;
+        /** Optics Contact N to engage (FoW designation). */
+        targetLabelN: number;
         volleyCount?: number;
         /** @deprecated Prefer volleyCount — treated as volleys when volleyCount absent. */
         shotCount?: number;
-        /** @deprecated Ignored at resolve — optional for older clients. */
+        /** @deprecated Ignored — optional for older clients. */
+        aimHeading?: number;
+        /** @deprecated Ignored — optional for older clients. */
+        estimatedRangeNm?: number;
+        /** @deprecated Ignored — optional for older clients. */
         estimatedCourse?: number;
-        /** @deprecated Ignored at resolve — optional for older clients. */
+        /** @deprecated Ignored — optional for older clients. */
         estimatedSpeedKn?: number;
       } | null;
       deployNoisemaker?: {
