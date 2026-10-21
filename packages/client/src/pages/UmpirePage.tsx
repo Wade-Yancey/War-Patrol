@@ -140,8 +140,7 @@ export function UmpirePage() {
 
   // Fullscreen / AAR map: Esc exits; lock page scroll while open.
   // Body class lifts CRT overflow clipping so position:fixed can cover the
-  // true viewport (otherwise .crt-screen overflow chops the top and the
-  // stacked timer/modules peek through as a sliver).
+  // true viewport (otherwise .crt-screen overflow chops the overlay).
   useEffect(() => {
     if (!mapFullscreen) return;
     const onKey = (e: KeyboardEvent) => {
