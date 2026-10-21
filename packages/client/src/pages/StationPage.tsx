@@ -745,7 +745,7 @@ export function StationPage() {
     );
     const hitWhenById = torpedoHitBatchWhenSecById(hitBatch);
 
-    // Multi-round deck-gun salvos: one cannon report per shot, staggered ~2 s.
+    // Multi-volley deck-gun fire: one cannon report per volley, staggered ~2 s.
     const gunFireBatch = pending.filter(
       (e) => e.kind === 'deck_gun_fire' && !playedBridgeBlastRef.current.has(e.id),
     );

@@ -270,12 +270,12 @@ export interface DepthChargeDropOrder {
 }
 
 /**
- * Pending deck-gun salvo for the current turn (destroyer + fleet-sub Controls).
- * Player **designates** with aim LOS + rough range (+ optional Contact N fill);
- * resolve acquires the nearest surface contact near that point and applies crew
- * lead from **truth** course/speed. Player course/speed fields are optional /
- * ignored at resolve (kept for older orders / standing-order payloads).
- * `shotCount` is how many rounds to fire this turn (1 shell each; class-capped).
+ * Pending deck-gun fire for the current turn (destroyer + fleet-sub Controls).
+ * Player **designates** with aim LOS + rough range (+ optional Contact N fill)
+ * and selects **1–3 volleys**. Resolve acquires the nearest surface contact
+ * near that point and applies crew lead from **truth** course/speed. Player
+ * course/speed fields are optional / ignored at resolve (kept for older orders
+ * / standing-order payloads). Each volley is 15 shells modeled as one AOE.
  */
 export interface DeckGunFireOrder {
   /**
@@ -296,8 +296,14 @@ export interface DeckGunFireOrder {
   /** Player-entered rough range to designate point (nautical miles). */
   estimatedRangeNm: number;
   /**
-   * Rounds to fire this turn (1 shell each). Clamped to class max shots/turn
-   * and ready magazine. Default 1 when omitted (legacy orders).
+   * Volleys to fire this turn (1–3). Each volley costs
+   * {@link DECK_GUN_SHELLS_PER_VOLLEY} shells and resolves as one AOE.
+   * Default 1 when omitted.
+   */
+  volleyCount?: number;
+  /**
+   * @deprecated Prefer {@link volleyCount}. Treated as volley count when
+   * `volleyCount` is absent (older clients / standing-order payloads).
    */
   shotCount?: number;
 }
@@ -540,13 +546,17 @@ export interface WeaponDetonationEvent {
    */
   aimHeading?: number;
   /**
+   * Deck-gun volley AOE radius (m) for umpire GT / AAR — one circle per volley
+   * (hit or miss), not per shell. Omitted for non-gun detonations.
+   */
+  radiusM?: number;
+  /**
    * Wall-clock seconds after the client receives this cue before bridge SFX
    * (and the matching Damage-tab reveal) should play. Torpedo hits: compressed
    * presentation delay from intercept fraction within the turn (capped — see
    * `TORPEDO_HIT_AUDIO_MAX_DELAY_SEC`). Depth charges omit this and use the
    * client stagger schedule instead. Aircraft bombs use CPA fraction (same cap).
-   * Deck-gun fire and torpedo fire are staggered per round/fish; deck-gun hit
-   * may use a short delay so the cannon cue leads the explosion.
+   * Deck-gun fire / hit are staggered per **volley**; torpedo fire per fish.
    */
   audioDelaySec?: number;
 }

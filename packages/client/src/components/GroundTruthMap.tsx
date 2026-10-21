@@ -306,6 +306,11 @@ function rangeBandRadiiPx(lat: number, rangeNm: number, view: BoundingBox): { rx
   };
 }
 
+/** Same as {@link rangeBandRadiiPx} but takes a meter radius (deck-gun volley AOE). */
+function meterRadiusRadiiPx(lat: number, radiusM: number, view: BoundingBox): { rx: number; ry: number } {
+  return rangeBandRadiiPx(lat, Math.max(0, radiusM) / METERS_PER_NM, view);
+}
+
 function unitsSignature(units: UnitState[]): string {
   return units
     .map(
@@ -359,7 +364,7 @@ function weaponsSignature(
     )
     .map(
       (e) =>
-        `${e.id}:${e.kind}:${e.position.lat.toFixed(5)},${e.position.lon.toFixed(5)}:${e.aimHeading ?? ''}:${e.firerUnitId}:${e.targetUnitId ?? ''}`,
+        `${e.id}:${e.kind}:${e.position.lat.toFixed(5)},${e.position.lon.toFixed(5)}:${e.aimHeading ?? ''}:${e.firerUnitId}:${e.targetUnitId ?? ''}:${e.radiusM ?? ''}`,
     )
     .join('|');
   return `${t}#${d}#${n}#${g}`;
@@ -956,7 +961,7 @@ function GroundTruthMapInner({
         };
       });
 
-    // Deck-gun GT: muzzle pip + aim/fire line to splash (hit / miss).
+    // Deck-gun GT: muzzle pip + aim/fire line + one AOE radius circle per volley.
     const unitById = new Map(units.map((u) => [u.id, u]));
     const nameById = new Map(units.map((u) => [u.id, u.name]));
     const guns = detonations
@@ -975,6 +980,14 @@ function GroundTruthMapInner({
             ? String(Math.round(normalizeHeading(e.aimHeading))).padStart(3, '0')
             : null;
         const targetName = e.targetUnitId ? nameById.get(e.targetUnitId) : undefined;
+        const radiusM =
+          e.kind !== 'deck_gun_fire' && e.radiusM != null && Number.isFinite(e.radiusM) && e.radiusM > 0
+            ? e.radiusM
+            : null;
+        const aoe =
+          radiusM != null
+            ? meterRadiusRadiiPx(e.position.lat, radiusM, view)
+            : null;
         let label = 'GUN';
         if (e.kind === 'deck_gun_fire') {
           label = aim ? `GUN FIRE · ${aim}°` : 'GUN FIRE';
@@ -991,6 +1004,7 @@ function GroundTruthMapInner({
           tip,
           lineParts: clipPolylineParts([origin, tip]),
           showLine: e.kind !== 'deck_gun_fire',
+          aoe,
           label,
           onPlot: uvBBoxHitsPlot([origin, tip]),
         };
@@ -2002,10 +2016,25 @@ function GroundTruthMapInner({
                   )}
                   {g.kind !== 'deck_gun_fire' && uvHitsPlot(g.tip.u, g.tip.v) && (
                     <>
+                      {/* Volley AOE — one radius ellipse per volley (not per shell). */}
+                      {g.aoe && (
+                        <ellipse
+                          cx={g.tip.x}
+                          cy={g.tip.y}
+                          rx={Math.max(4, g.aoe.rx)}
+                          ry={Math.max(4, g.aoe.ry)}
+                          fill={g.kind === 'deck_gun_hit' ? '#ff6a4a' : '#a89060'}
+                          fillOpacity={0.12}
+                          stroke={g.kind === 'deck_gun_hit' ? '#ff6a4a' : '#a89060'}
+                          strokeWidth={1.25}
+                          strokeOpacity={0.85}
+                          strokeDasharray={g.kind === 'deck_gun_miss' ? '3 2' : undefined}
+                        />
+                      )}
                       <circle
                         cx={g.tip.x}
                         cy={g.tip.y}
-                        r={g.kind === 'deck_gun_hit' ? 5.5 : 4}
+                        r={g.kind === 'deck_gun_hit' ? 4 : 3}
                         fill={g.kind === 'deck_gun_hit' ? '#ff6a4a' : '#a89060'}
                         stroke="#061a0e"
                         strokeWidth={1}

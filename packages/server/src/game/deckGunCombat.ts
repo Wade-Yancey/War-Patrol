@@ -1,8 +1,7 @@
 /**
  * Destroyer + fleet-sub deck-gun resolve (surface engagement).
- * Kept separate from torpedo/DC substeps and aircraft attack runs so sibling
- * PRs (e.g. aircraft ammo/strafe) can land beside weaponsResolve without
- * merge thrash on this path.
+ * Volleys (15 shells/min each, 1–3 per turn) resolve as AOE beaten zones —
+ * one GT visual per volley, not per shell.
  */
 import { nanoid } from 'nanoid';
 import {
@@ -11,10 +10,11 @@ import {
   applyHealthDamageResult,
   buildDeckGunFireBlock,
   canDeckGunFireFromDepth,
-  clampDeckGunShotCount,
+  clampDeckGunVolleyCount,
   consumeDeckGunShells,
   deckGunMissBand,
-  deckGunSalvoFireFractions,
+  deckGunShellsForVolleys,
+  deckGunVolleyFireFractions,
   formatDeckGunFireBlockNotice,
   formatTorpedoMissDistance,
   healthDamageApplied,
@@ -22,7 +22,7 @@ import {
   makeDetonationEvent,
   normalizeDeckGunFireOrder,
   normalizeHeading,
-  resolveDeckGunShot,
+  resolveDeckGunVolley,
   type DeckGunFireOrder,
   type LatLonDepth,
   type UnitState,
@@ -37,18 +37,16 @@ export type DeckGunCombatResolveResult = {
   detonations: WeaponDetonationEvent[];
 };
 
-type PendingSalvo = {
+type PendingVolleys = {
   firerId: string;
   fire: DeckGunFireOrder;
-  shotCount: number;
+  volleyCount: number;
 };
 
 /**
  * Resolve pending `orders.fireDeckGun` after kinematics.
- * Consumes one shell per round in the salvo; submerged fleet boats block
- * with no ammo spent. Multi-shot salvos space rounds across the turn
- * timeline (per-shot hit checks) and emit one staggered muzzle report each.
- * Hit/miss splash detonations carry aim heading for umpire GT map lines.
+ * Consumes {@link deckGunShellsForVolleys} shells; submerged fleet boats block
+ * with no ammo spent. Each volley is one AOE resolve + one muzzle / splash cue.
  */
 export function resolveDeckGunsForTurn(opts: {
   units: UnitState[];
@@ -62,7 +60,7 @@ export function resolveDeckGunsForTurn(opts: {
   const detonations: WeaponDetonationEvent[] = [];
   const { turnNumber, turnLengthSeconds, gameTimeSeconds, startPositions } = opts;
 
-  const pending: PendingSalvo[] = [];
+  const pending: PendingVolleys[] = [];
 
   units = units.map((unit) => {
     let next = unit;
@@ -94,27 +92,32 @@ export function resolveDeckGunsForTurn(opts: {
         );
       } else {
         const fire = normalizeDeckGunFireOrder(fireOrder);
-        const shotCount = clampDeckGunShotCount(fire.shotCount, next);
-        if (shotCount > 0) {
-          next = consumeDeckGunShells(next, shotCount);
+        const volleyCount = clampDeckGunVolleyCount(fire.volleyCount ?? fire.shotCount, next);
+        if (volleyCount > 0) {
+          const shells = deckGunShellsForVolleys(volleyCount);
+          next = consumeDeckGunShells(next, shells);
           if (next.deckGunFireBlock) {
             const { deckGunFireBlock: _cleared, ...rest } = next;
             next = rest as UnitState;
           }
-          pending.push({ firerId: unit.id, fire: { ...fire, shotCount }, shotCount });
+          pending.push({
+            firerId: unit.id,
+            fire: { ...fire, volleyCount },
+            volleyCount,
+          });
           const aimLabel = String(Math.round(normalizeHeading(fire.aimHeading))).padStart(3, '0');
-          const salvoLabel = shotCount > 1 ? ` ×${shotCount}` : '';
+          const volleyLabel = volleyCount > 1 ? ` ×${volleyCount} volleys` : ' ×1 volley';
           combatLogEntries.push(
             logLine({
               kind: 'deck_gun_fire',
               turnNumber,
               gameTimeSeconds,
               actor: unit,
-              summary: `${unit.name} fired deck gun${salvoLabel} · aim ${aimLabel}° · est ${fire.estimatedRangeNm.toFixed(2)} nm (crew lead)`,
+              summary: `${unit.name} fired deck gun${volleyLabel} (${shells} shells) · aim ${aimLabel}° · est ${fire.estimatedRangeNm.toFixed(2)} nm (crew lead)`,
             }),
           );
-          // One muzzle report per round (cannon WAV), staggered for counting.
-          for (let i = 0; i < shotCount; i++) {
+          // One muzzle report per volley (cannon WAV), staggered for counting.
+          for (let i = 0; i < volleyCount; i++) {
             detonations.push(
               makeDetonationEvent({
                 id: `dgfire-${nanoid(8)}`,
@@ -141,30 +144,39 @@ export function resolveDeckGunsForTurn(opts: {
   for (const salvo of pending) {
     const firer = units.find((u) => u.id === salvo.firerId);
     if (!firer) continue;
-    const fractions = deckGunSalvoFireFractions(salvo.shotCount);
-    for (let i = 0; i < salvo.shotCount; i++) {
+    const fractions = deckGunVolleyFireFractions(salvo.volleyCount);
+    for (let i = 0; i < salvo.volleyCount; i++) {
       const fireFrac = fractions[i] ?? 0;
-      const result = resolveDeckGunShot({
+      const result = resolveDeckGunVolley({
         firer,
         fire: salvo.fire,
         contacts: units,
         startPositions,
         turnLengthSeconds,
-        seed: `${firer.id}|deckgun|${turnNumber}|${i}`,
+        seed: `${firer.id}|deckgun|${turnNumber}|v${i}`,
         fireTurnFraction: fireFrac,
       });
       const fireLabel = String(Math.round(normalizeHeading(result.fireHeading))).padStart(3, '0');
       const aimLabel = String(Math.round(normalizeHeading(salvo.fire.aimHeading))).padStart(3, '0');
-      const roundTag = salvo.shotCount > 1 ? ` r${i + 1}/${salvo.shotCount}` : '';
+      const volleyTag =
+        salvo.volleyCount > 1 ? ` v${i + 1}/${salvo.volleyCount}` : '';
       const fireAudioDelay = i * DECK_GUN_FIRE_STAGGER_SEC;
-      if (result.outcome === 'hit' && result.hitUnitId && result.damage > 0) {
-        const target = units.find((u) => u.id === result.hitUnitId);
-        if (target) {
-          const { unit: damaged, effects } = applyHealthDamageResult(target, result.damage);
+
+      if (result.outcome === 'hit' && result.hits.length > 0) {
+        const hitNames: string[] = [];
+        let primaryDetId: string | undefined;
+        for (const hit of result.hits) {
+          const target = units.find((u) => u.id === hit.unitId);
+          if (!target) continue;
+          const { unit: damaged, effects } = applyHealthDamageResult(target, hit.damage);
           const applied = healthDamageApplied(target, damaged);
           units = units.map((u) => (u.id === damaged.id ? damaged : u));
-          if (applied > 0) {
-            const detId = `dghit-${nanoid(8)}`;
+          if (applied <= 0) continue;
+          const detId = `dghit-${nanoid(8)}`;
+          if (!primaryDetId) primaryDetId = detId;
+          // One AOE visual per volley — only the primary (closest) hit emits a
+          // splash circle; further targets share combat-log lines only.
+          if (hit.unitId === result.hitUnitId) {
             detonations.push(
               makeDetonationEvent({
                 id: detId,
@@ -174,44 +186,61 @@ export function resolveDeckGunsForTurn(opts: {
                 firerUnitId: firer.id,
                 targetUnitId: damaged.id,
                 aimHeading: result.fireHeading,
+                radiusM: result.radiusM,
                 audioDelaySec: fireAudioDelay + DECK_GUN_HIT_AUDIO_DELAY_SEC,
               }),
             );
+          }
+          hitNames.push(`${target.name} −${applied}`);
+          combatLogEntries.push(
+            logLine({
+              kind: 'deck_gun_hit',
+              turnNumber,
+              gameTimeSeconds,
+              actor: firer,
+              target: damaged,
+              damage: applied,
+              summary: `${firer.name} deck gun HIT${volleyTag} ${target.name} −${applied} HP (aim ${aimLabel}° · FIRE ${fireLabel}° · AOE ${Math.round(result.radiusM)} m · miss ${hit.missDistanceM.toFixed(0)} m)`,
+              sourceDetonationId: primaryDetId ?? detId,
+            }),
+          );
+          combatLogEntries.push(
+            ...logCasualtyEffects(damaged, effects, {
+              turnNumber,
+              gameTimeSeconds,
+              actor: firer,
+            }),
+          );
+          if (
+            (damaged.condition === 'sunk' || damaged.condition === 'sinking') &&
+            target.condition === 'afloat'
+          ) {
             combatLogEntries.push(
               logLine({
-                kind: 'deck_gun_hit',
+                kind: 'unit_sunk',
                 turnNumber,
                 gameTimeSeconds,
-                actor: firer,
                 target: damaged,
-                damage: applied,
-                summary: `${firer.name} deck gun HIT${roundTag} ${target.name} −${applied} HP (aim ${aimLabel}° · FIRE ${fireLabel}° · miss ${result.missDistanceM.toFixed(0)} m)`,
-                sourceDetonationId: detId,
-              }),
-            );
-            combatLogEntries.push(
-              ...logCasualtyEffects(damaged, effects, {
-                turnNumber,
-                gameTimeSeconds,
                 actor: firer,
+                summary: `${damaged.name} SUNK / destroyed`,
               }),
             );
-            if (
-              (damaged.condition === 'sunk' || damaged.condition === 'sinking') &&
-              target.condition === 'afloat'
-            ) {
-              combatLogEntries.push(
-                logLine({
-                  kind: 'unit_sunk',
-                  turnNumber,
-                  gameTimeSeconds,
-                  target: damaged,
-                  actor: firer,
-                  summary: `${damaged.name} SUNK / destroyed`,
-                }),
-              );
-            }
           }
+        }
+        // If every hit applied 0 HP (already sunk), still drop a miss-style cue.
+        if (!primaryDetId && hitNames.length === 0) {
+          const detId = `dgmiss-${nanoid(8)}`;
+          detonations.push(
+            makeDetonationEvent({
+              id: detId,
+              kind: 'deck_gun_miss',
+              position: result.impact,
+              turnNumber,
+              firerUnitId: firer.id,
+              aimHeading: result.fireHeading,
+              radiusM: result.radiusM,
+            }),
+          );
         }
       } else {
         const cpaLabel =
@@ -219,7 +248,7 @@ export function resolveDeckGunsForTurn(opts: {
             ? ` — CPA ${result.closestApproachUnitName} ${formatTorpedoMissDistance(result.missDistanceM)} (${deckGunMissBand(result.missDistanceM)} miss)`
             : result.outcome === 'out_of_range'
               ? ' — no range solution'
-              : ' — no surface target in gate';
+              : ' — no surface target in AOE';
         const detId = `dgmiss-${nanoid(8)}`;
         detonations.push(
           makeDetonationEvent({
@@ -232,6 +261,7 @@ export function resolveDeckGunsForTurn(opts: {
               ? { targetUnitId: result.closestApproachUnitId }
               : {}),
             aimHeading: result.fireHeading,
+            radiusM: result.radiusM,
           }),
         );
         combatLogEntries.push(
@@ -243,7 +273,7 @@ export function resolveDeckGunsForTurn(opts: {
             target: result.closestApproachUnitId
               ? units.find((u) => u.id === result.closestApproachUnitId)
               : undefined,
-            summary: `${firer.name} deck gun MISS${roundTag} (aim ${aimLabel}° · FIRE ${fireLabel}°)${cpaLabel}`,
+            summary: `${firer.name} deck gun MISS${volleyTag} (aim ${aimLabel}° · FIRE ${fireLabel}° · AOE ${Math.round(result.radiusM)} m)${cpaLabel}`,
             sourceDetonationId: detId,
           }),
         );
