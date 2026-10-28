@@ -604,20 +604,24 @@ export function UmpirePage() {
                         {umpire.turn.timerDeadline ? 'Stop' : 'Start 3m'}
                       </button>
                     )}
-                    <button
-                      type="button"
-                      disabled={busy || !isOpen}
-                      onClick={() => void run(() => api.turnLock(gameId, token))}
-                    >
-                      Lock orders
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy || !isLocked}
-                      onClick={() => void run(() => api.turnReopen(gameId, token))}
-                    >
-                      Reopen
-                    </button>
+                    {!mapFullscreen && (
+                      <button
+                        type="button"
+                        disabled={busy || !isOpen}
+                        onClick={() => void run(() => api.turnLock(gameId, token))}
+                      >
+                        Lock orders
+                      </button>
+                    )}
+                    {!mapFullscreen && (
+                      <button
+                        type="button"
+                        disabled={busy || !isLocked}
+                        onClick={() => void run(() => api.turnReopen(gameId, token))}
+                      >
+                        Reopen
+                      </button>
+                    )}
                     <button
                       className="primary"
                       type="button"
@@ -629,7 +633,7 @@ export function UmpirePage() {
                       }
                       onClick={() => void run(() => api.turnResolve(gameId, token))}
                     >
-                      Resolve &amp; advance
+                      {mapFullscreen ? 'Resolve' : 'Resolve & advance'}
                     </button>
                   </div>
                 </div>

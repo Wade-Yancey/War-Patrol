@@ -600,17 +600,17 @@ function HydrophoneScopeInner({
               cx={CX}
               cy={CY}
               r={R + 28}
-              fill="#0a120c"
-              stroke="#2a3830"
+              fill="#0c1610"
+              stroke="#2e4038"
               strokeWidth={8}
             />
-            <circle cx={CX} cy={CY} r={R} fill="#010504" stroke="#147a52" strokeWidth={2} />
+            <circle cx={CX} cy={CY} r={R} fill="#020806" stroke="#178a5c" strokeWidth={2} />
             <circle
               cx={CX}
               cy={CY}
               r={R - 48}
               fill="none"
-              stroke="rgba(46,207,138,0.1)"
+              stroke="rgba(58,217,154,0.1)"
               strokeWidth={1}
             />
 
@@ -621,7 +621,7 @@ function HydrophoneScopeInner({
                   y1={t.y1}
                   x2={t.x2}
                   y2={t.y2}
-                  stroke={t.major ? '#2ecf8a' : 'rgba(46,207,138,0.4)'}
+                  stroke={t.major ? '#3ad99a' : 'rgba(58,217,154,0.4)'}
                   strokeWidth={t.major ? 2 : 1}
                 />
                 {t.cardinal && (
@@ -630,7 +630,7 @@ function HydrophoneScopeInner({
                     y={t.ty}
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    fill="#5ee0a8"
+                    fill="#72e8b8"
                     fontSize={18}
                     fontFamily="Courier Prime, ui-monospace, monospace"
                     fontWeight={700}
@@ -644,7 +644,7 @@ function HydrophoneScopeInner({
                     y={t.ty}
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    fill="#3a7a58"
+                    fill="#428a64"
                     fontSize={11}
                     fontFamily="Courier Prime, ui-monospace, monospace"
                   >
@@ -668,7 +668,7 @@ function HydrophoneScopeInner({
                 y1={CY - (R - 52)}
                 x2={CX}
                 y2={CY - (R - 8)}
-                stroke="#5ee0a8"
+                stroke="#72e8b8"
                 strokeWidth={2}
               />
             </g>
@@ -686,14 +686,14 @@ function HydrophoneScopeInner({
                 y1={CY + 18}
                 x2={CX}
                 y2={CY - (R - 10)}
-                stroke="#2ecf8a"
+                stroke="#3ad99a"
                 strokeWidth={3}
               />
               <polygon
                 points={`${CX},${CY - (R + 14)} ${CX - 10},${CY - (R - 2)} ${CX + 10},${CY - (R - 2)}`}
-                fill="#5ee0a8"
+                fill="#72e8b8"
               />
-              <circle cx={CX} cy={CY} r={7} fill="#010504" stroke="#2ecf8a" strokeWidth={2} />
+              <circle cx={CX} cy={CY} r={7} fill="#020806" stroke="#3ad99a" strokeWidth={2} />
             </g>
           </svg>
       </div>
