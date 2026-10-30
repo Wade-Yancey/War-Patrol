@@ -703,6 +703,10 @@ export function UmpirePage() {
                 )}
                 </section>
 
+            <section className="panel stack umpire-combat-log-panel">
+              <CombatLogPanel entries={gtDisplay?.combatLog ?? umpire.combatLog ?? []} />
+            </section>
+
             <section className="panel stack umpire-control-group umpire-turn-control">
               <h2>Order timer</h2>
               <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
@@ -1982,10 +1986,6 @@ export function UmpirePage() {
                     ))}
                 </div>
               )}
-            </section>
-
-            <section className="panel stack umpire-combat-log-panel">
-              <CombatLogPanel entries={gtDisplay?.combatLog ?? umpire.combatLog ?? []} />
             </section>
 
             <section className="panel stack umpire-control-group">
