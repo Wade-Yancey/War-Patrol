@@ -642,7 +642,7 @@ label {
 }
 
 /*
- * Umpire console: join → map → timer → ORD → unit edit → gopher → log → save.
+ * Umpire console: join → map → action log → timer → ORD → unit edit → gopher → save.
  * No side rail — wide screens stay one column.
  */
 .umpire-stack {

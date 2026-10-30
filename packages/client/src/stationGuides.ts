@@ -220,8 +220,8 @@ export const STATION_GUIDES: Record<StationGuideId, StationGuideBlurb> = {
     purpose: 'Short checklist — not a full host manual.',
     bullets: [
       'Player join URLs (top dropdown): Copy = clipboard full URL for tablets (uses public/tunnel URL when available). Open = open that station in this browser on the host origin — use Open for local umpire/test tabs; give players Copy links.',
-      'Vertical scan: Join (collapsed) → Ground-truth map (early for projection) → Order timer → ORD → Unit edit → Gopher → Action log → Save.',
-      'Map: Lock / Reopen / Resolve. Order timer sits under the map (also in fullscreen GT): Start · Extend +1m · Stop (pause, stay open). Expiry auto-locks.',
+      'Vertical scan: Join (collapsed) → Ground-truth map (early for projection) → Action log → Order timer → ORD → Unit edit → Gopher → Save.',
+      'Map: Lock / Reopen / Resolve. Action log sits directly under the map. Order timer follows (also in fullscreen GT): Start · Extend +1m · Stop (pause, stay open). Expiry auto-locks.',
       'Ground-truth map is yours alone; players never see it.',
       'Gopher task: Submit gopher task pushes a physical errand to a vessel’s Damage tab — complete/fail after they report by phone.',
       'Only Destroyer + Fleet Submarine get station links; carriers, merchants, aircraft, etc. are NPC/umpire-only.',
