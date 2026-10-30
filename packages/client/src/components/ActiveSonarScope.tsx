@@ -216,21 +216,21 @@ function ActiveSonarScopeInner({
         >
           <defs>
             <radialGradient id="sonar-glow" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#0c3018" />
-              <stop offset="70%" stopColor="#020806" />
-              <stop offset="100%" stopColor="#021008" />
+              <stop offset="0%" stopColor="#0a2a14" />
+              <stop offset="70%" stopColor="#041208" />
+              <stop offset="100%" stopColor="#010805" />
             </radialGradient>
             <clipPath id="sonar-cone-clip">
               <path d={conePath} />
             </clipPath>
           </defs>
 
-          <circle cx={CX} cy={CY} r={SCOPE_R + 36} fill="#0c1610" stroke="#2e4038" strokeWidth={10} />
-          <circle cx={CX} cy={CY} r={SCOPE_R} fill="url(#sonar-glow)" stroke="#178a5c" strokeWidth={2} />
+          <circle cx={CX} cy={CY} r={SCOPE_R + 36} fill="#0a120c" stroke="#2a3830" strokeWidth={10} />
+          <circle cx={CX} cy={CY} r={SCOPE_R} fill="url(#sonar-glow)" stroke="#1a8f3c" strokeWidth={2} />
 
           {/* Dim full disc; bright cone = search sector */}
           <circle cx={CX} cy={CY} r={SCOPE_R} fill="rgba(0,0,0,0.35)" />
-          <path d={conePath} fill="rgba(58,217,154,0.08)" stroke="#3ad99a" strokeWidth={2} />
+          <path d={conePath} fill="rgba(61,255,106,0.08)" stroke="#3dff6a" strokeWidth={2} />
 
           <g clipPath="url(#sonar-cone-clip)">
             {rings.map((ring) => (
@@ -240,7 +240,7 @@ function ActiveSonarScopeInner({
                   cy={CY}
                   r={ring.r}
                   fill="none"
-                  stroke="rgba(58,217,154,0.28)"
+                  stroke="rgba(61,255,106,0.28)"
                   strokeWidth={1}
                 />
               </g>
@@ -253,7 +253,7 @@ function ActiveSonarScopeInner({
             y1={CY}
             x2={leftEdge.x}
             y2={leftEdge.y}
-            stroke="#72e8b8"
+            stroke="#7dff9a"
             strokeWidth={1.5}
             strokeDasharray="6 8"
             opacity={0.7}
@@ -263,7 +263,7 @@ function ActiveSonarScopeInner({
             y1={CY}
             x2={rightEdge.x}
             y2={rightEdge.y}
-            stroke="#72e8b8"
+            stroke="#7dff9a"
             strokeWidth={1.5}
             strokeDasharray="6 8"
             opacity={0.7}
@@ -273,7 +273,7 @@ function ActiveSonarScopeInner({
             y1={CY}
             x2={tip.x}
             y2={tip.y}
-            stroke="#3ad99a"
+            stroke="#3dff6a"
             strokeWidth={2}
             opacity={0.85}
           />
@@ -281,7 +281,7 @@ function ActiveSonarScopeInner({
           <text
             x={tip.x}
             y={tip.y}
-            fill="#72e8b8"
+            fill="#7dff9a"
             fontSize={18}
             fontFamily="Courier Prime, ui-monospace, monospace"
             textAnchor="middle"
@@ -290,7 +290,7 @@ function ActiveSonarScopeInner({
             {String(Math.round(hdg)).padStart(3, '0')}
           </text>
 
-          <circle cx={CX} cy={CY} r={5} fill="#3ad99a" />
+          <circle cx={CX} cy={CY} r={5} fill="#3dff6a" />
 
           {blips.map((b) => (
             <g key={b.id}>
