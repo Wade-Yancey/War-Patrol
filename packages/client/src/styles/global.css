@@ -1,33 +1,32 @@
 :root {
-  /* Mint CRT — modest contrast lift over #306 dark mood; not the bright first mint */
-  --phosphor: #3ad99a;
-  --phosphor-dim: #178a5c;
-  --phosphor-deep: #082e22;
-  --bg-void: #020806;
-  --bg-crt: #05120e;
-  --bg-panel: #091a14;
-  --bg-elevated: #0e241c;
-  --ink: #b5e8d4;
-  /* Venue-readable secondary chrome — dimmer than ink, not near-void on mint */
-  --ink-muted: #64a878;
+  /* Classic CRT / sonar green — flatter/cheaper paints for tablet snappiness */
+  --phosphor: #3dff6a;
+  --phosphor-dim: #1a8f3c;
+  --phosphor-deep: #0a3d1c;
+  --bg-void: #010805;
+  --bg-crt: #041208;
+  --bg-panel: #0a1a10;
+  --bg-elevated: #0f2416;
+  --ink: #c8ffd4;
+  --ink-muted: #5a9a68;
   --accent: var(--phosphor);
-  --accent-strong: #72e8b8;
+  --accent-strong: #7dff9a;
   --danger: #e07050;
-  --ok: #3ad99a;
+  --ok: #3dff6a;
   --warn: #e0a050;
-  --line: rgba(58, 217, 154, 0.24);
+  --line: rgba(61, 255, 106, 0.22);
   /* Aliases used by station panels — keep one coherent token set */
   --border: color-mix(in srgb, var(--phosphor-dim) 70%, transparent);
   --muted: var(--ink-muted);
   --panel: var(--bg-panel);
-  --map-water: #041310;
-  --map-grid: rgba(58, 217, 154, 0.12);
-  --bezel: #0c1814;
-  --bezel-edge: #243830;
-  --bezel-inset: #030a08;
+  --map-water: #061a0e;
+  --map-grid: rgba(61, 255, 106, 0.16);
+  --bezel: #121a14;
+  --bezel-edge: #2a3830;
+  --bezel-inset: #060d08;
   --side-blue: #4a9fd4;
   --side-red: #d45a4a;
-  /* Civilian accent — purple stripe/badge only; CRT stays mint */
+  /* Civilian accent — purple stripe/badge only; CRT stays green */
   --side-civilian: #a56de8;
   --hit: 2.75rem;
   /* One family everywhere — Courier Prime: typewriter/instrument, venue-readable */
@@ -133,7 +132,7 @@ button.primary {
 }
 
 button.primary:hover:not(:disabled) {
-  background: #5a3a0c;
+  background: #0f4a24;
 }
 
 button.primary:active:not(:disabled) {
@@ -404,7 +403,7 @@ label {
   align-items: center;
   justify-content: center;
   padding: 1.25rem;
-  background: rgba(10, 7, 2, 0.78);
+  background: rgba(1, 8, 5, 0.72);
 }
 
 .sunk-modal {
@@ -1009,7 +1008,7 @@ label {
   min-height: 2rem;
   min-width: 2rem;
   padding: 0.2rem 0.45rem;
-  border-color: rgba(58, 217, 154, 0.14);
+  border-color: rgba(61, 255, 106, 0.14);
   background: transparent;
   color: var(--ink-muted);
   text-transform: none;
@@ -1018,7 +1017,7 @@ label {
 }
 
 .station-info-btn:hover:not(:disabled) {
-  border-color: rgba(58, 217, 154, 0.35);
+  border-color: rgba(61, 255, 106, 0.35);
   background: rgba(10, 26, 16, 0.65);
   color: var(--ink);
 }
@@ -1047,7 +1046,7 @@ label {
   align-items: flex-end;
   justify-content: center;
   padding: 0.75rem;
-  background: rgba(10, 7, 2, 0.62);
+  background: rgba(1, 8, 5, 0.62);
 }
 
 @media (min-width: 640px) {
@@ -1062,7 +1061,7 @@ label {
   max-height: min(78dvh, 34rem);
   margin: 0;
   overflow: auto;
-  box-shadow: 0 0 0 1px rgba(58, 217, 154, 0.18);
+  box-shadow: 0 0 0 1px rgba(61, 255, 106, 0.18);
 }
 
 .station-info-dialog-head {
@@ -1687,7 +1686,7 @@ label {
 
 .aar-mode-pill--live {
   color: var(--ok);
-  border-color: rgba(58, 217, 154, 0.45);
+  border-color: rgba(61, 255, 106, 0.45);
 }
 
 .aar-mode-pill--review {
@@ -1977,7 +1976,7 @@ body.umpire-map-fs .umpire-stack > :not(.umpire-gt-map--fullscreen) {
 
 /* Dark CRT halo so unit/sensor labels stay readable over trails & rings */
 .umpire-gt-map .map-plot-label {
-  stroke: #041310;
+  stroke: #061a0e;
   stroke-width: 3.5px;
   stroke-linejoin: round;
   paint-order: stroke fill;
@@ -2725,7 +2724,7 @@ body.umpire-map-fs .umpire-stack > :not(.umpire-gt-map--fullscreen) {
 }
 
 .helm-compass-swatch--hdg {
-  background: #72e8b8;
+  background: #7dff9a;
   clip-path: polygon(50% 0, 100% 100%, 0 100%);
 }
 
@@ -2734,12 +2733,12 @@ body.umpire-map-fs .umpire-stack > :not(.umpire-gt-map--fullscreen) {
   height: 0;
   border-left: 0.4rem solid transparent;
   border-right: 0.4rem solid transparent;
-  border-bottom: 0.7rem solid #3ad99a;
+  border-bottom: 0.7rem solid #3dff6a;
   background: none;
 }
 
 .helm-compass-swatch--set {
-  border: 1.5px solid #72e8b8;
+  border: 1.5px solid #7dff9a;
   border-radius: 50%;
   background: transparent;
 }
@@ -3162,13 +3161,13 @@ body.umpire-map-fs .umpire-stack > :not(.umpire-gt-map--fullscreen) {
 }
 
 .depth-gauge-swatch--keel {
-  background: #c4ead8;
+  background: #e8ffe8;
 }
 
 .depth-gauge-swatch--ord {
   background: repeating-linear-gradient(
     90deg,
-    #72e8b8 0 3px,
+    #7dff9a 0 3px,
     transparent 3px 6px
   );
 }
@@ -3176,7 +3175,7 @@ body.umpire-map-fs .umpire-stack > :not(.umpire-gt-map--fullscreen) {
 .depth-gauge-swatch--set {
   width: 0.4rem;
   height: 0.4rem;
-  border: 1.5px solid #72e8b8;
+  border: 1.5px solid #7dff9a;
   background: transparent;
   border-radius: 50%;
 }
@@ -3379,7 +3378,7 @@ body.umpire-map-fs .umpire-stack > :not(.umpire-gt-map--fullscreen) {
 .hydrophone-assume-btn--active {
   color: var(--phosphor);
   border-color: var(--phosphor);
-  background: color-mix(in srgb, var(--phosphor) 12%, #020806);
+  background: color-mix(in srgb, var(--phosphor) 12%, #041208);
 }
 
 .hydrophone-assume-btn:focus-visible {
@@ -3391,7 +3390,7 @@ body.umpire-map-fs .umpire-stack > :not(.umpire-gt-map--fullscreen) {
   width: 100%;
   height: 0.4rem;
   border: 1px solid color-mix(in srgb, var(--phosphor) 40%, transparent);
-  background: #020806;
+  background: #041208;
   overflow: hidden;
 }
 
@@ -3584,7 +3583,7 @@ body.umpire-map-fs .umpire-stack > :not(.umpire-gt-map--fullscreen) {
   margin: 0 0 0.85rem;
   padding: 0.65rem 0.75rem;
   border: 1px solid var(--accent-strong);
-  background: rgba(58, 217, 154, 0.08);
+  background: rgba(61, 255, 106, 0.08);
 }
 
 .damage-gopher-task-key {
@@ -3618,7 +3617,7 @@ body.umpire-map-fs .umpire-stack > :not(.umpire-gt-map--fullscreen) {
   margin: 0 0 0.75rem;
   padding: 0.5rem 0.7rem;
   border: 1px solid var(--accent-strong);
-  background: rgba(58, 217, 154, 0.08);
+  background: rgba(61, 255, 106, 0.08);
   font-size: 0.85rem;
 }
 
@@ -3772,7 +3771,7 @@ body.umpire-map-fs .umpire-stack > :not(.umpire-gt-map--fullscreen) {
 }
 
 .station-latch--raised:hover:not(:disabled) {
-  background: #5a3a0c;
+  background: #0f4a24;
 }
 
 .station-latch--lowered {
@@ -4292,7 +4291,7 @@ body.umpire-map-fs .umpire-stack > :not(.umpire-gt-map--fullscreen) {
 }
 
 .optics-bearing-compass-swatch--hdg {
-  background: #72e8b8;
+  background: #7dff9a;
   clip-path: polygon(50% 0, 100% 100%, 0 100%);
 }
 
@@ -4301,7 +4300,7 @@ body.umpire-map-fs .umpire-stack > :not(.umpire-gt-map--fullscreen) {
   height: 0;
   border-left: 0.4rem solid transparent;
   border-right: 0.4rem solid transparent;
-  border-bottom: 0.7rem solid #3ad99a;
+  border-bottom: 0.7rem solid #3dff6a;
   background: none;
 }
 

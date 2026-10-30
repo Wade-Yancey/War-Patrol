@@ -4,7 +4,7 @@ import { factionAccent } from '@war-patrol/shared';
 
 type Side = 'blue' | 'red' | 'civilian' | 'neutral' | undefined;
 
-/** CRT bezel + screen. Faction/side is a small accent stripe only — phosphor stays dark mint. */
+/** CRT bezel + screen. Faction/side is a small accent stripe only — phosphor stays green. */
 export function CrtShell({
   side = 'neutral',
   faction,
