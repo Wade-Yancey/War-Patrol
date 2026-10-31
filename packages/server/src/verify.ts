@@ -117,6 +117,7 @@ import {
   isV1PlayerHullClass,
   isV1PlayerUnit,
   isHydrophoneEmitter,
+  shortestBearingDelta,
   hydrophoneRadiatedSourceLevel,
   hydrophoneSelfNoise,
   hydrophoneListenQuality,
@@ -5719,6 +5720,109 @@ async function main() {
             hellcat.maxSpeed === 320 &&
             hellcat.turnRate === 12,
         ),
+      );
+      const bird = libArr.find((c) => c.id === 'bird-class');
+      check('library has bird-class', Boolean(bird), `count=${libArr.length}`);
+      check(
+        'bird-class is a 13 kn minesweeper on a Destroyer seat',
+        Boolean(
+          bird &&
+            bird.class === 'Destroyer' &&
+            bird.maxSpeed === 13 &&
+            bird.lengthM === 51.2 &&
+            bird.beamM === 9.1 &&
+            bird.turnRate === 5 &&
+            bird.defaultFaction === 'Blue',
+        ),
+      );
+      const junsen = libArr.find((c) => c.id === 'junsen-i-class');
+      check('library has junsen-i-class', Boolean(junsen), `count=${libArr.length}`);
+      check(
+        'junsen-i-class is an 18 kn cruiser submarine',
+        Boolean(
+          junsen &&
+            junsen.class === 'Fleet Submarine' &&
+            junsen.maxSpeed === 18 &&
+            junsen.lengthM === 97.5 &&
+            junsen.beamM === 9.2 &&
+            junsen.turnRate === 5 &&
+            junsen.defaultFaction === 'Red',
+        ),
+      );
+    }
+
+    {
+      const kmGame = await api('POST', '/api/games', {
+        scenarioId: 'i1-kiwi-kamimbo',
+        name: 'Verify Kiwi I-1',
+      });
+      check('i1-kiwi-kamimbo scenario create', kmGame.status === 200);
+      const kmId = String(kmGame.json.gameId);
+      const kmSave = runtime.requireGame(kmId);
+      const kiwi = kmSave.units.find((u) => u.id === 'ms-kiwi')!;
+      const moa = kmSave.units.find((u) => u.id === 'ms-moa')!;
+      const i1 = kmSave.units.find((u) => u.id === 'ss-i1')!;
+      const kiwiToI1 = bearingRangeNm(kiwi.position, i1.position);
+      const kiwiToMoa = bearingRangeNm(kiwi.position, moa.position);
+      check(
+        'Kiwi asdic contact is 3,000 yd dead ahead',
+        kiwiToI1.rangeNm > 1.47 &&
+          kiwiToI1.rangeNm < 1.5 &&
+          Math.abs(shortestBearingDelta(kiwi.heading, kiwiToI1.bearing)) < 1,
+      );
+      check(
+        'Moa is 1 nm on Kiwi beam, outside the asdic cone',
+        kiwiToMoa.rangeNm > 0.98 &&
+          kiwiToMoa.rangeNm < 1.02 &&
+          Math.abs(shortestBearingDelta(kiwi.heading, kiwiToMoa.bearing)) > 30,
+      );
+      const i1RadarSensor = i1.sensors?.find((s) => s.kind === 'radar');
+      const kiwiSonarSensor = kiwi.sensors?.find((s) => s.kind === 'active_sonar');
+      check(
+        'I-1 is a shallow submerged supply boat with 4+2 tubes and a 1 nm token radar',
+        i1.classId === 'junsen-i-class' &&
+          i1.position.depth === 30 &&
+          i1.orderedDepth === 30 &&
+          i1.maxSpeed === 18 &&
+          i1.torpedoForward === 4 &&
+          i1.torpedoAft === 2 &&
+          i1RadarSensor?.maxRangeNm === 1 &&
+          kiwiSonarSensor?.maxRangeNm === 2.5,
+      );
+      check(
+        'Kiwi is pinging at attack speed; Moa sonar is still off',
+        kiwi.classId === 'bird-class' &&
+          kiwi.activeSonarEnabled === true &&
+          kiwi.maxSpeed === 13 &&
+          kiwi.speed === 10 &&
+          kiwi.eot === 'ahead_flank' &&
+          moa.activeSonarEnabled === false &&
+          moa.heading === 270,
+      );
+      const kiwiSonar = buildActiveSonarContacts(kiwi, kmSave);
+      check(
+        'Kiwi sonar paints only I-1',
+        kiwiSonar.operational &&
+          kiwiSonar.contacts.length === 1 &&
+          kiwiSonar.contacts[0].rangeNm > 1.45 &&
+          kiwiSonar.contacts[0].rangeNm < 1.52,
+      );
+      const kiwiRadar = buildRadarContacts(kiwi, kmSave);
+      check(
+        'Kiwi radar sees Moa and not the submerged boat',
+        kiwiRadar.operational &&
+          kiwiRadar.contacts.length === 1 &&
+          kiwiRadar.contacts[0].rangeNm > 0.95 &&
+          kiwiRadar.contacts[0].rangeNm < 1.05,
+      );
+      const i1Radar = buildRadarContacts(i1, kmSave);
+      check(
+        'I-1 radar is dead while submerged',
+        !i1Radar.operational && i1Radar.unavailableReason === 'submerged',
+      );
+      check(
+        'Kamimbo clock opens at 21:05',
+        kmSave.turn.gameTimeSeconds === 75900,
       );
     }
 

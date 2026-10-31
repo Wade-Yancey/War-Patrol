@@ -1,0 +1,157 @@
+{
+  "schemaVersion": 1,
+  "id": "i1-kiwi-kamimbo",
+  "name": "Kiwi & Moa × I-1 — Kamimbo Bay",
+  "description": "Night of 29–30 Jan 1943 off Kamimbo Bay, northwest Guadalcanal. Opens on HMNZS Kiwi's asdic contact at 3,000 yd (clock 21:05): Lt Cdr Gordon Bridson's Bird-class minesweeper has turned in on Junsen Type J1 submarine I-1 (Lt Cdr Eiichi Sakamoto), submerged at 30 m on a supply run for the 17th Army, and is working up to 13 kn for a depth-charge attack. HMNZS Moa (Lt Cdr Peter Phipps) is 1 nm east, still steering west on patrol as the directing ship. The reef where I-1 grounded is 09°13′S 159°40′E, 0.9 nm due south of her start. Seats: Kiwi password kiwi token kiwi-demo; Moa password moa token moa-demo; I-1 password red token i1-demo; umpire umpire. Figures are minesweeper and cruiser-submarine stats on Destroyer and Fleet Submarine seats (13 kn, 51.2 m; 18 kn surfaced, 97.5 m; tubes seeded 4 bow + 2 stern; asdic 2.5 nm). The fleet-sub seat installs a radar set I-1 did not carry; it is cut to 1 nm and is dead while she is at 30 m. 21:05 is night for the optics sky (lookout range is unchanged). Published clocks for the grounding disagree (about 20:40 and 23:20). A ram registers only when I-1's keel is at or above 8 m and a bow is within 35° of the other hull; the reef itself is not modeled, so the umpire beaches her if she reaches 09°13′S 159°40′E. Star shell is not fired by the engine.",
+  "mode": "pvp",
+  "operatingArea": {
+    "minLat": -9.32,
+    "maxLat": -9.06,
+    "minLon": 159.52,
+    "maxLon": 159.82
+  },
+  "umpirePassword": "umpire",
+  "defaultTurnSeconds": 180,
+  "turnLengthSeconds": 180,
+  "startGameTimeSeconds": 75900,
+  "units": [
+    {
+      "id": "ms-kiwi",
+      "name": "HMNZS Kiwi",
+      "side": "blue",
+      "faction": "Blue",
+      "classId": "bird-class",
+      "type": "Ship",
+      "class": "Destroyer",
+      "position": {
+        "lat": -9.17705,
+        "lon": 159.66667,
+        "depth": 0
+      },
+      "heading": 180,
+      "speed": 10,
+      "eot": "ahead_flank",
+      "accessToken": "kiwi-demo",
+      "password": "kiwi",
+      "health": 100,
+      "maxSpeed": 13,
+      "lengthM": 51.2,
+      "beamM": 9.1,
+      "turnRate": 5,
+      "radarSignature": "small",
+      "activeSonarEnabled": true,
+      "depthChargeLoad": 24,
+      "deckGunLoad": 30,
+      "sensors": [
+        { "kind": "radar", "maxRangeNm": 6 },
+        { "kind": "active_sonar", "maxRangeNm": 2.5 },
+        { "kind": "hydrophone", "maxRangeNm": 12 },
+        { "kind": "lookout", "maxRangeNm": 6 }
+      ],
+      "stations": [
+        {
+          "id": "controls",
+          "name": "Controls",
+          "capabilities": ["helm", "engineering", "plot", "weapons"]
+        },
+        {
+          "id": "sensors",
+          "name": "Sensors",
+          "capabilities": ["radar", "active_sonar", "hydrophone", "lookout"]
+        }
+      ]
+    },
+    {
+      "id": "ms-moa",
+      "name": "HMNZS Moa",
+      "side": "blue",
+      "faction": "Blue",
+      "classId": "bird-class",
+      "type": "Ship",
+      "class": "Destroyer",
+      "position": {
+        "lat": -9.17705,
+        "lon": 159.68352,
+        "depth": 0
+      },
+      "heading": 270,
+      "speed": 8,
+      "eot": "ahead_standard",
+      "accessToken": "moa-demo",
+      "password": "moa",
+      "health": 100,
+      "maxSpeed": 13,
+      "lengthM": 51.2,
+      "beamM": 9.1,
+      "turnRate": 5,
+      "radarSignature": "small",
+      "activeSonarEnabled": false,
+      "depthChargeLoad": 18,
+      "deckGunLoad": 30,
+      "sensors": [
+        { "kind": "radar", "maxRangeNm": 6 },
+        { "kind": "active_sonar", "maxRangeNm": 2.5 },
+        { "kind": "hydrophone", "maxRangeNm": 12 },
+        { "kind": "lookout", "maxRangeNm": 6 }
+      ],
+      "stations": [
+        {
+          "id": "controls",
+          "name": "Controls",
+          "capabilities": ["helm", "engineering", "plot", "weapons"]
+        },
+        {
+          "id": "sensors",
+          "name": "Sensors",
+          "capabilities": ["radar", "active_sonar", "hydrophone", "lookout"]
+        }
+      ]
+    },
+    {
+      "id": "ss-i1",
+      "name": "I-1",
+      "side": "red",
+      "faction": "Red",
+      "classId": "junsen-i-class",
+      "type": "Submarine",
+      "class": "Fleet Submarine",
+      "position": {
+        "lat": -9.20169,
+        "lon": 159.66667,
+        "depth": 30
+      },
+      "orderedDepth": 30,
+      "heading": 180,
+      "speed": 3,
+      "eot": "ahead_1",
+      "accessToken": "i1-demo",
+      "password": "red",
+      "health": 100,
+      "maxSpeed": 18,
+      "lengthM": 97.5,
+      "beamM": 9.2,
+      "turnRate": 5,
+      "radarSignature": "medium",
+      "torpedoForward": 4,
+      "torpedoAft": 2,
+      "deckGunLoad": 30,
+      "sensors": [
+        { "kind": "radar", "maxRangeNm": 1 },
+        { "kind": "hydrophone", "maxRangeNm": 30 },
+        { "kind": "lookout", "maxRangeNm": 6 }
+      ],
+      "stations": [
+        {
+          "id": "controls",
+          "name": "Controls",
+          "capabilities": ["helm", "engineering", "plot", "weapons", "torpedo"]
+        },
+        {
+          "id": "sensors",
+          "name": "Sensors",
+          "capabilities": ["radar", "hydrophone", "lookout"]
+        }
+      ]
+    }
+  ]
+}

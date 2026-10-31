@@ -1,0 +1,21 @@
+{
+  "id": "junsen-i-class",
+  "name": "Junsen Type J1 Submarine",
+  "type": "Submarine",
+  "class": "Fleet Submarine",
+  "defaultFaction": "Red",
+  "maxSpeed": 18,
+  "lengthM": 97.5,
+  "beamM": 9.2,
+  "turnRate": 5,
+  "radarSignature": "medium",
+  "sensors": [
+    { "kind": "radar", "maxRangeNm": 1 },
+    { "kind": "hydrophone", "maxRangeNm": 30 },
+    { "kind": "lookout", "maxRangeNm": 6 }
+  ],
+  "defaultStations": [
+    { "id": "controls", "name": "Controls", "capabilities": ["helm", "engineering", "plot", "weapons", "torpedo"] },
+    { "id": "sensors", "name": "Sensors", "capabilities": ["radar", "hydrophone", "lookout"] }
+  ]
+}

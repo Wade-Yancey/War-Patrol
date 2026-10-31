@@ -1,0 +1,22 @@
+{
+  "id": "bird-class",
+  "name": "Bird-class Minesweeper",
+  "type": "Ship",
+  "class": "Destroyer",
+  "defaultFaction": "Blue",
+  "maxSpeed": 13,
+  "lengthM": 51.2,
+  "beamM": 9.1,
+  "turnRate": 5,
+  "radarSignature": "small",
+  "sensors": [
+    { "kind": "radar", "maxRangeNm": 6 },
+    { "kind": "active_sonar", "maxRangeNm": 2.5 },
+    { "kind": "hydrophone", "maxRangeNm": 12 },
+    { "kind": "lookout", "maxRangeNm": 6 }
+  ],
+  "defaultStations": [
+    { "id": "controls", "name": "Controls", "capabilities": ["helm", "engineering", "plot", "weapons"] },
+    { "id": "sensors", "name": "Sensors", "capabilities": ["radar", "active_sonar", "hydrophone", "lookout"] }
+  ]
+}
