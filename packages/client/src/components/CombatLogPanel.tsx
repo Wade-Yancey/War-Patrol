@@ -39,6 +39,8 @@ function kindLabel(kind: CombatLogEntry['kind']): string {
       return 'SUNK';
     case 'hull_implosion':
       return 'IMPLODE';
+    case 'collision':
+      return 'COLLISION';
     case 'subsystem_casualty':
       return 'CASUALTY';
     case 'gopher_task_pushed':

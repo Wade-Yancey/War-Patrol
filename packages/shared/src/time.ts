@@ -77,3 +77,35 @@ export function resolveStartGameTimeSeconds(value: number | undefined | null): n
   if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return value;
   return DEFAULT_START_GAME_TIME_SECONDS;
 }
+
+/**
+ * Optics sky bands on the in-game clock. Sunrise and sunset are fudged —
+ * the sim does not model latitude or season.
+ *
+ * Night before 05:00 and from 19:00. Twilight 05:00–07:00 and 17:00–19:00.
+ * Day 07:00–17:00.
+ */
+export type OpticsSkyPeriod = 'night' | 'twilight' | 'day';
+
+/** Fudged start of dawn twilight (hours, 24h). */
+export const OPTICS_DAWN_START_HOUR = 5;
+/** Fudged end of dawn — full daylight. */
+export const OPTICS_DAY_START_HOUR = 7;
+/** Fudged start of dusk twilight. */
+export const OPTICS_DUSK_START_HOUR = 17;
+/** Fudged nightfall. */
+export const OPTICS_NIGHT_START_HOUR = 19;
+
+/** Periscope / lookout backdrop from the in-game clock. */
+export function opticsSkyPeriod(gameTimeSeconds: number): OpticsSkyPeriod {
+  const day = ((Math.floor(gameTimeSeconds) % 86400) + 86400) % 86400;
+  const hour = day / 3600;
+  if (hour >= OPTICS_DAY_START_HOUR && hour < OPTICS_DUSK_START_HOUR) return 'day';
+  if (
+    (hour >= OPTICS_DAWN_START_HOUR && hour < OPTICS_DAY_START_HOUR) ||
+    (hour >= OPTICS_DUSK_START_HOUR && hour < OPTICS_NIGHT_START_HOUR)
+  ) {
+    return 'twilight';
+  }
+  return 'night';
+}
