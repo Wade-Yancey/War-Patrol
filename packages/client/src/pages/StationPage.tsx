@@ -26,6 +26,7 @@ import {
   isHydrophoneReloadCueLive,
   isRadarSurfaced,
   normalizeHeading,
+  opticsSkyPeriod,
   torpedoHitControlsGain,
   type ControlsInstrumentTab,
   type EotSetting,
@@ -2146,6 +2147,7 @@ export function StationPage() {
                     variant={opticsVariant}
                     blind={opticsScopeDown}
                     raising={opticsRaising}
+                    sky={opticsSkyPeriod(vessel.turn.gameTimeSeconds ?? 0)}
                   />
                 )}
               </section>
@@ -2544,6 +2546,44 @@ export function StationPage() {
                           : 'Submit course'}
                       </button>
                     </div>
+                    {canEot && (
+                      <>
+                        <div className="control-actions">
+                          <button
+                            type="button"
+                            disabled={
+                              !vessel.canSubmitOrders ||
+                              presentationSubs.steering === 'stuck' ||
+                              presentationSubs.steering === 'disabled' ||
+                              presentationSubs.propulsion === 'disabled'
+                            }
+                            aria-busy={
+                              (orderWritePending &&
+                                displayOrders.course !== undefined &&
+                                displayOrders.eot === 'ahead_flank') ||
+                              undefined
+                            }
+                            onClick={() => {
+                              const standing = displayOrders.eot ?? vessel.unit.eot;
+                              if (standing !== 'ahead_flank') void playEngineOrderBell();
+                              setEot('ahead_flank');
+                              void submit({ course, eot: 'ahead_flank' });
+                            }}
+                          >
+                            {orderWritePending &&
+                            displayOrders.course !== undefined &&
+                            displayOrders.eot === 'ahead_flank'
+                              ? 'Submitting…'
+                              : 'Ram — flank on this course'}
+                          </button>
+                        </div>
+                        <p className="muted helm-ram-hint">
+                          Rings up flank on the course above. Hulls that meet take collision
+                          damage — a bow-on ram hits harder, and that bow takes less. A
+                          submarine must be shallow (about 8 m or less) to strike a surface ship.
+                        </p>
+                      </>
+                    )}
                   </HelmCompass>
                 )}
               </section>

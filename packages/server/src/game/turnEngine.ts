@@ -6,6 +6,7 @@ import {
   applyVesselStandingOrders,
   applyCrushDepthImplosions,
   applyUnitKinematics,
+  resolveVesselCollisions,
   clampDepthChargeSetting,
   clampSubmarineDepth,
   depthChargeCountFromOrder,
@@ -90,8 +91,16 @@ export function resolveTurn(save: GameSave): GameSave {
   // Kinematics first (orders still present for weapon launch snapshot).
   const movedUnits = standingReady.map((unit) => applyUnitOrders(unit, turnLength, false));
 
+  // Hull contact along the move. Stops overlapping tracks at impact and
+  // applies ram / collision damage before weapons of the same resolve.
+  const collision = resolveVesselCollisions(movedUnits, startPositions, {
+    turnNumber: resolveTurnNumber,
+    gameTimeSeconds,
+    nowIso: now,
+  });
+
   // Periscope auto-lower when too deep; plot stamp accrue/reset (no frozen bonus).
-  const stampedUnits = applyPeriscopePlotStamps(movedUnits, save);
+  const stampedUnits = applyPeriscopePlotStamps(collision.units, save);
 
   // Past crush depth: per-turn implosion RNG (strictly deeper than crush).
   const crush = applyCrushDepthImplosions(stampedUnits, {
@@ -214,6 +223,7 @@ export function resolveTurn(save: GameSave): GameSave {
     recentDetonations: weapons.recentDetonations,
     seaSurfaceMarkers,
     combatLog: appendCombatLog(save.combatLog, [
+      ...collision.combatLogEntries,
       ...crush.combatLogEntries,
       ...weapons.combatLogEntries,
       ...noisemakers.combatLogEntries,

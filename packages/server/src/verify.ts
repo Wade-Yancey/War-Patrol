@@ -21,6 +21,12 @@ import {
   effectiveAircraftTurnRateDegPerMin,
   formatAircraftAttackModeTag,
   moveAlongHeading,
+  KNOTS_TO_MPS,
+  hullsShareWater,
+  resolveVesselCollisions,
+  opticsSkyPeriod,
+  buildOwnDamageLog,
+  defaultSubsystems,
   normalizeHeading,
   canOrderAircraftAttack,
   isAircraftAttackTarget,
@@ -153,6 +159,189 @@ async function main() {
   check('formatWallDuration minutes-first', formatWallDuration(180) === '3m');
   check('formatWallDuration with seconds', formatWallDuration(210) === '3m 30s');
   check('parseWallDuration bare minutes', parseWallDuration('3') === 180);
+
+  check('optics sky night before dawn', opticsSkyPeriod(2 * 3600) === 'night');
+  check('optics sky dawn twilight', opticsSkyPeriod(5 * 3600) === 'twilight');
+  check('optics sky day at 08:00', opticsSkyPeriod(8 * 3600) === 'day');
+  check('optics sky dusk twilight', opticsSkyPeriod(17 * 3600) === 'twilight');
+  check('optics sky night after 19:00', opticsSkyPeriod(19 * 3600) === 'night');
+  check(
+    'hulls share water only when shallow enough',
+    hullsShareWater('Ship', 0, 'Ship', 0) &&
+      hullsShareWater('Ship', 0, 'Submarine', 8) &&
+      !hullsShareWater('Ship', 0, 'Submarine', 20) &&
+      hullsShareWater('Submarine', 40, 'Submarine', 46) &&
+      !hullsShareWater('Aircraft', 0, 'Ship', 0),
+  );
+
+  {
+    const ship = (partial: Partial<UnitState> & Pick<UnitState, 'id' | 'name' | 'position'>): UnitState =>
+      ({
+        side: 'blue',
+        faction: 'Blue',
+        classId: 'fletcher-class',
+        type: 'Ship',
+        class: 'Destroyer',
+        condition: 'afloat',
+        health: 100,
+        heading: 0,
+        orderedCourse: 0,
+        orderedDepth: 0,
+        speed: 0,
+        eot: 'ahead_full',
+        stations: [],
+        subsystems: defaultSubsystems(),
+        orders: {},
+        maxSpeed: 36,
+        lengthM: 115,
+        beamM: 12,
+        turnRate: 6,
+        radarSignature: 'medium',
+        sensors: [],
+        activeSonarEnabled: false,
+        periscopeRaised: false,
+        periscopeExposure: 0,
+        plotStampTurns: 0,
+        torpedoLoad: 0,
+        torpedoForward: 0,
+        torpedoAft: 0,
+        torpedoForwardAwaitingReload: false,
+        torpedoAftAwaitingReload: false,
+        torpedoForwardReloadTurnsRemaining: 0,
+        torpedoAftReloadTurnsRemaining: 0,
+        depthChargeLoad: 0,
+        depthChargeAwaitingReload: false,
+        depthChargeReloadTurnsRemaining: 0,
+        bombLoad: 0,
+        deckGunLoad: 0,
+        deckGunAwaitingReload: false,
+        deckGunReloadTurnsRemaining: 0,
+        ...partial,
+      }) as UnitState;
+
+    const startA = { lat: 0, lon: 0, depth: 0 };
+    const endA = moveAlongHeading(startA, 0, 24 * KNOTS_TO_MPS * 180);
+    const startB = moveAlongHeading(startA, 0, 180);
+    const ram = resolveVesselCollisions(
+      [
+        ship({ id: 'dd-a', name: 'Porter', position: endA, speed: 24 }),
+        ship({
+          id: 'dd-b',
+          name: 'Cavalla',
+          position: { ...startB },
+          speed: 0,
+          heading: 90,
+          orderedCourse: 90,
+          side: 'red',
+          faction: 'Red',
+        }),
+      ],
+      new Map([
+        ['dd-a', startA],
+        ['dd-b', startB],
+      ]),
+      { turnNumber: 3, gameTimeSeconds: 8 * 3600, nowIso: '2026-01-01T00:00:00.000Z' },
+    );
+    const rammer = ram.units.find((u) => u.id === 'dd-a')!;
+    const target = ram.units.find((u) => u.id === 'dd-b')!;
+    check(
+      'bow ram damages target more than the rammer',
+      target.health < rammer.health && rammer.health < 100 && rammer.health >= 70,
+      `rammer=${rammer.health} target=${target.health}`,
+    );
+    check('bow ram sheds way and stops short', rammer.speed < 24 && rammer.position.lat < endA.lat);
+    check(
+      'bow ram combat log names the strike',
+      ram.combatLogEntries.some((e) => e.kind === 'collision' && e.summary.includes('Porter RAMMED Cavalla')),
+    );
+    const ownRam = buildOwnDamageLog('dd-a', ram.combatLogEntries);
+    const ownHit = buildOwnDamageLog('dd-b', ram.combatLogEntries);
+    check(
+      'own damage log distinguishes ram from being rammed',
+      ownRam.some((e) => e.kind === 'collision' && e.summary.startsWith('Ram —')) &&
+        ownHit.some((e) => e.kind === 'collision' && e.summary.startsWith('Rammed —')),
+      `ram=${ownRam.map((e) => e.summary).join('|')} hit=${ownHit.map((e) => e.summary).join('|')}`,
+    );
+
+    const wide = moveAlongHeading(startA, 90, 800);
+    const miss = resolveVesselCollisions(
+      [
+        ship({ id: 'dd-a', name: 'Porter', position: endA, speed: 24 }),
+        ship({ id: 'dd-c', name: 'Wide', position: wide, speed: 0, heading: 90 }),
+      ],
+      new Map([
+        ['dd-a', startA],
+        ['dd-c', wide],
+      ]),
+      { turnNumber: 1, gameTimeSeconds: 0, nowIso: 't' },
+    );
+    check(
+      'passing wide misses without damage',
+      miss.combatLogEntries.length === 0 && miss.units.every((u) => u.health === 100),
+    );
+
+    const deep = resolveVesselCollisions(
+      [
+        ship({ id: 'ship', name: 'Ship', position: { ...startB }, speed: 0, heading: 90 }),
+        ship({
+          id: 'sub',
+          name: 'Boat',
+          type: 'Submarine',
+          class: 'Fleet Submarine',
+          position: { ...endA, depth: 60 },
+          speed: 8,
+        }),
+      ],
+      new Map([
+        ['ship', { ...startB }],
+        ['sub', { ...startA, depth: 60 }],
+      ]),
+      { turnNumber: 1, gameTimeSeconds: 0, nowIso: 't' },
+    );
+    check('deep submarine does not collide with a surface ship', deep.units.every((u) => u.health === 100));
+
+    const nestedStart = moveAlongHeading(startA, 90, 5);
+    const nested = resolveVesselCollisions(
+      [
+        ship({ id: 'n1', name: 'N1', position: startA, speed: 0 }),
+        ship({ id: 'n2', name: 'N2', position: nestedStart, speed: 0 }),
+      ],
+      new Map([
+        ['n1', startA],
+        ['n2', nestedStart],
+      ]),
+      { turnNumber: 1, gameTimeSeconds: 0, nowIso: 't' },
+    );
+    check(
+      'resting overlap separates without hull damage',
+      nested.units.every((u) => u.health === 100) && nested.combatLogEntries.length === 0,
+    );
+
+    const meet = moveAlongHeading(startA, 0, 500);
+    const endNorth = moveAlongHeading(startA, 0, 20 * KNOTS_TO_MPS * 180);
+    const endSouth = moveAlongHeading(meet, 180, 20 * KNOTS_TO_MPS * 180);
+    const headOn = resolveVesselCollisions(
+      [
+        ship({ id: 'h1', name: 'Alpha', position: endNorth, speed: 20, heading: 0 }),
+        ship({ id: 'h2', name: 'Beta', position: endSouth, speed: 20, heading: 180 }),
+      ],
+      new Map([
+        ['h1', startA],
+        ['h2', meet],
+      ]),
+      { turnNumber: 4, gameTimeSeconds: 12 * 3600, nowIso: 't' },
+    );
+    check(
+      'head-on ram damages both hulls',
+      headOn.units.every((u) => u.health < 100) &&
+        headOn.combatLogEntries.some((e) => e.summary.includes('HEAD-ON RAM')),
+      headOn.combatLogEntries.map((e) => e.summary).join(' || '),
+    );
+    check(
+      'head-on own-damage copy',
+      buildOwnDamageLog('h1', headOn.combatLogEntries).some((e) => e.summary.startsWith('Head-on ram')),
+    );
+  }
 
   // Sub Controls hull-coupled active-sonar proximity curve (shared with client).
   check(

@@ -16,6 +16,7 @@ export * from './stations.js';
 export * from './turning.js';
 export * from './kinematics.js';
 export * from './time.js';
+export * from './collision.js';
 export * from './vessel.js';
 export * from './damage.js';
 export * from './performance.js';

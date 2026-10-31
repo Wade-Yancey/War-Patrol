@@ -40,6 +40,8 @@ function kindLabel(kind: OwnDamageEvent['kind']): string {
       return 'SUNK';
     case 'hull_implosion':
       return 'IMPLODED';
+    case 'collision':
+      return 'COLLISION';
     case 'subsystem_casualty':
       return 'CASUALTY';
     default:

@@ -39,6 +39,7 @@ export const STATION_GUIDES: Record<StationGuideId, StationGuideBlurb> = {
     purpose: 'Point the boat.',
     bullets: [
       'Set ordered course with the compass / steer nudges, then Submit course.',
+      'Ram rings up flank on that course. Hull contact deals damage; bow-on hits harder. You only strike a surface ship while shallow (about 8 m or less).',
       'Status strip shows heading vs ordered course — they can lag while you turn.',
       'Orders only stick while the turn is open.',
       'If steering is stuck/disabled, course submit is blocked until repaired.',
@@ -119,6 +120,7 @@ export const STATION_GUIDES: Record<StationGuideId, StationGuideBlurb> = {
       'Usable at/above periscope depth (~20 m order); deeper → unavailable.',
       'Mast toggle raises/lowers the scope immediately. Lowered = “Scope down” (blank visual) even if depth is fine.',
       'Click a Contact N for bearing, range, course, speed, and silhouette.',
+      'The sea and sky follow the game clock: day, twilight around 05:00–07:00 and 17:00–19:00, and night otherwise. Sunrise and sunset are approximate.',
       'Mast up can be spotted by lookouts — don’t leave it hanging.',
     ],
   },
@@ -138,6 +140,7 @@ export const STATION_GUIDES: Record<StationGuideId, StationGuideBlurb> = {
     purpose: 'Point the ship.',
     bullets: [
       'Same pattern as the sub: set course → Submit course.',
+      'Ram rings up flank on that course. If the hulls meet, both take collision damage; a bow-on strike hits harder and the ramming bow takes less.',
       'Watch heading lag during hard turns.',
       'Steering damage blocks course orders.',
     ],
@@ -191,6 +194,7 @@ export const STATION_GUIDES: Record<StationGuideId, StationGuideBlurb> = {
     purpose: 'Bridge visual (same idea as sub periscope, always “up”).',
     bullets: [
       'Contact list + silhouette / feather plates; click for precise readouts.',
+      'The sea and sky follow the game clock: day, twilight around 05:00–07:00 and 17:00–19:00, and night otherwise. Sunrise and sunset are approximate.',
       'No mast toggle on the destroyer — you’re already looking from the bridge.',
       'Good for confirming radar contacts and spotting periscope feathers.',
     ],

@@ -1096,6 +1096,7 @@ export type CombatLogKind =
   | 'noisemaker_deploy'
   | 'unit_sunk'
   | 'hull_implosion'
+  | 'collision'
   | 'subsystem_casualty'
   | 'gopher_task_pushed'
   | 'gopher_task_completed'
@@ -1143,6 +1144,7 @@ export interface OwnDamageEvent {
     | 'deck_gun_hit'
     | 'unit_sunk'
     | 'hull_implosion'
+    | 'collision'
     | 'subsystem_casualty'
   >;
   turnNumber: number;

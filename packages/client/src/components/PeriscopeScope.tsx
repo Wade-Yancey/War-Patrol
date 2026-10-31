@@ -9,6 +9,7 @@ import {
   type HullClass,
   type OpticsDamageLook,
   type OpticsSighting,
+  type OpticsSkyPeriod,
   type PeriscopeContact,
 } from '@war-patrol/shared';
 /** Vite-bundled PNGs (alpha) — guaranteed in the client graph (not fragile public-path strings). */
@@ -54,6 +55,11 @@ interface Props {
    * Must not flash “no contacts” — empty array is not a loading sentinel.
    */
   raising?: boolean;
+  /**
+   * In-game sky. Day is the default blue. Twilight and night recolor the
+   * sea/sky plane (sunrise and sunset are fudged on the game clock).
+   */
+  sky?: OpticsSkyPeriod;
 }
 
 /** Shared selection — contacts and sightings share the optics compass. */
@@ -194,6 +200,7 @@ function PeriscopeScopeInner({
   variant = 'periscope',
   blind = false,
   raising = false,
+  sky = 'day',
 }: Props) {
   const sorted = useMemo(() => {
     if (blind || raising) return [];
@@ -278,6 +285,13 @@ function PeriscopeScopeInner({
     periscopeSilhouetteFlipX(ownHeading, selected.relativeBearing, selected.courseDeg);
 
   const hasVisual = sorted.length > 0 || sortedSightings.length > 0;
+  const skyClass = blind
+    ? ' periscope-viewport--blind'
+    : sky === 'night'
+      ? ' periscope-viewport--night'
+      : sky === 'twilight'
+        ? ' periscope-viewport--twilight'
+        : '';
 
   return (
     <div className="radar-scope radar-console periscope-scope">
@@ -286,7 +300,7 @@ function PeriscopeScopeInner({
       </div>
 
       <div
-        className={`periscope-viewport${blind ? ' periscope-viewport--blind' : ''}`}
+        className={`periscope-viewport${skyClass}`}
         aria-label={viewportLabel}
       >
         {!blind && (
@@ -538,6 +552,7 @@ export const PeriscopeScope = memo(PeriscopeScopeInner, (prev, next) => {
     prev.variant === next.variant &&
     prev.blind === next.blind &&
     prev.raising === next.raising &&
+    (prev.sky ?? 'day') === (next.sky ?? 'day') &&
     contactsKey(prev.contacts) === contactsKey(next.contacts) &&
     prev.contacts.length === next.contacts.length &&
     prev.contacts.every((c, i) => {

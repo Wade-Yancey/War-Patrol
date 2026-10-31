@@ -3095,6 +3095,7 @@ export function presentationHealthFromUnrevealedDamage(
         e.kind === 'torpedo_hit' ||
         e.kind === 'aircraft_attack_damage' ||
         e.kind === 'deck_gun_hit' ||
+        e.kind === 'collision' ||
         // Crush implode stores prior HP on the line so the bar stays pre-bang
         // until the Dive needle finishes its crawl (same clock as sunk modal).
         e.kind === 'hull_implosion') &&
@@ -3125,6 +3126,7 @@ export function buildOwnDamageLog(
       e.kind !== 'deck_gun_hit' &&
       e.kind !== 'unit_sunk' &&
       e.kind !== 'hull_implosion' &&
+      e.kind !== 'collision' &&
       e.kind !== 'subsystem_casualty'
     ) {
       continue;
@@ -3157,6 +3159,15 @@ export function buildOwnDamageLog(
       case 'hull_implosion':
         summary = 'Hull imploded — crushed by pressure';
         break;
+      case 'collision': {
+        const hp = e.damage != null ? ` — −${e.damage} HP` : '';
+        if (e.summary.includes('HEAD-ON RAM')) summary = `Head-on ram${hp}`;
+        else if (e.targetName && e.summary.startsWith(`${e.targetName} RAMMED`)) {
+          summary = `Ram${hp}`;
+        } else if (e.summary.includes(' RAMMED ')) summary = `Rammed${hp}`;
+        else summary = `Hull collision${hp}`;
+        break;
+      }
       case 'subsystem_casualty':
         summary = e.summary;
         break;

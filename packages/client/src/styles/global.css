@@ -2765,6 +2765,13 @@ body.umpire-map-fs .umpire-stack > :not(.umpire-gt-map--fullscreen) {
   font-size: 0.85rem;
 }
 
+.helm-ram-hint {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  max-width: 36rem;
+}
+
 /* ——— Controls station (tablet-first): CRT console parity with Sensors ——— */
 .controls-station {
   display: flex;
@@ -3935,6 +3942,47 @@ body.umpire-map-fs .umpire-stack > :not(.umpire-gt-map--fullscreen) {
   height: 1px;
   background: var(--peri-horizon-line);
   opacity: 0.9;
+}
+
+/* Fudged clock: night before 05:00 and from 19:00. Dark sea, dim horizon. */
+.periscope-viewport--night {
+  --peri-sky-top: #070d18;
+  --peri-sky-horizon: #1a3054;
+  --peri-sea-top: #0c1a2c;
+  --peri-sea-deep: #061018;
+  --peri-horizon-line: color-mix(in srgb, #b7cbe4 55%, transparent);
+}
+
+/* Dawn 05:00–07:00 and dusk 17:00–19:00. */
+.periscope-viewport--twilight {
+  --peri-sky-top: #243656;
+  --peri-sky-horizon: #c4785a;
+  --peri-sea-top: #1a3348;
+  --peri-sea-deep: #0e1e2e;
+  --peri-horizon-line: color-mix(in srgb, #f0c2a8 70%, transparent);
+}
+
+.periscope-viewport--night .periscope-empty,
+.periscope-viewport--twilight .periscope-empty {
+  color: #e4ecf4;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
+}
+
+/* Feather and aftermath glyphs are inked for a day sky. */
+.periscope-viewport--night .periscope-feather {
+  filter: invert(1) brightness(0.92) contrast(0.95);
+}
+
+.periscope-viewport--twilight .periscope-feather {
+  filter: invert(0.92) sepia(0.28) brightness(1.05);
+}
+
+.periscope-viewport--night .periscope-aftermath-field {
+  filter: brightness(1.85) contrast(1.05);
+}
+
+.periscope-viewport--twilight .periscope-aftermath-field {
+  filter: brightness(1.3);
 }
 
 .periscope-sea {
