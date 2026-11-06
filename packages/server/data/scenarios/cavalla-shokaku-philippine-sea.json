@@ -32,9 +32,9 @@
       "speed": 18,
       "eot": "ahead_standard",
       "health": 100,
-      "maxSpeed": 34,
-      "lengthM": 258,
-      "beamM": 26,
+      "maxSpeed": 30,
+      "lengthM": 252,
+      "beamM": 28.3,
       "radarSignature": "large",
       "sensors": [
         {

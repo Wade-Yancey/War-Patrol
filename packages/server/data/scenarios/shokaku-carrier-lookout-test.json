@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "shokaku-carrier-lookout-test",
   "name": "Shōkaku carrier lookout / torpedo test",
-  "description": "NPC IJN fleet carrier drill: Gato at periscope depth south of an eastbound Shōkaku-class aircraft carrier (~1.5 nm, near-beam aspect). Carrier is umpire-controlled NPC only (no station join / password). Recognition plate OA 258 m / beam 26 m; carrier silhouette. Passwords: umpire / red (Gato token gato-demo).",
+  "description": "NPC IJN fleet carrier drill: Gato at periscope depth south of an eastbound Shōkaku-class aircraft carrier (~1.5 nm, near-beam aspect). Carrier is umpire-controlled NPC only (no station join / password). Recognition plate OA 826 ft (252 m) / beam 93 ft (28.3 m) / 30 kn; carrier silhouette. Passwords: umpire / red (Gato token gato-demo).",
   "mode": "pvp",
   "operatingArea": {
     "minLat": 34.32,
@@ -32,9 +32,9 @@
       "speed": 18,
       "eot": "ahead_standard",
       "health": 100,
-      "maxSpeed": 34,
-      "lengthM": 258,
-      "beamM": 26,
+      "maxSpeed": 30,
+      "lengthM": 252,
+      "beamM": 28.3,
       "radarSignature": "large",
       "sensors": [
         {

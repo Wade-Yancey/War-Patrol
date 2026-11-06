@@ -30,6 +30,12 @@ import { formatRelBearing } from './OpticsBearingCompass';
 import { StationInstrumentTitle } from './StationInfoButton';
 import { TouchNumber } from './TouchNumber';
 
+/**
+ * On-screen recognition plates are hidden while crews use the physical book.
+ * Flip to true to put the manual back on the torpedo calculator.
+ */
+const SHOW_RECOGNITION_MANUAL = false;
+
 interface RoomState {
   ready: number;
   awaitingReload: boolean;
@@ -100,7 +106,7 @@ function roomStatus(room: RoomState, capacity: number): string {
 /**
  * Torpedo firing calculator — all solution inputs are operator-entered.
  * Never auto-fills true course/speed/range/length from the sim (optics +
- * recognition manual + judgment). Input order matches optics viewer meta:
+ * the physical recognition book + judgment). Input order matches optics viewer meta:
  * Aim / LOS (relative) → range → course → speed → length (OA).
  * Aim = relative LOS; range/course/speed compute the fire heading; length
  * scales the geometric hit gate vs truth. Run depth is fixed in sim
@@ -365,45 +371,47 @@ export function TorpedoCalculator({
         disabled={disabled || loadBlocked}
       />
 
-      <div className="recognition-manual">
-        <button
-          type="button"
-          className="recognition-manual-toggle"
-          disabled={disabled || loadBlocked}
-          aria-expanded={manualOpen}
-          onClick={() => setManualOpen((o) => !o)}
-        >
-          Recognition manual {manualOpen ? '▴' : '▾'}
-        </button>
-        {manualOpen && (
-          <div className="recognition-manual-body">
-            <ul className="recognition-manual-list">
-              {RECOGNITION_MANUAL_ENTRIES.map((entry) => {
-                const selectedLen = estimatedLengthM === entry.lengthM;
-                return (
-                  <li key={entry.name}>
-                    <button
-                      type="button"
-                      className={
-                        selectedLen
-                          ? 'recognition-manual-row is-selected'
-                          : 'recognition-manual-row'
-                      }
-                      disabled={disabled || loadBlocked}
-                      onClick={() => setEstimatedLengthM(entry.lengthM)}
-                    >
-                      <span className="recognition-manual-name">{entry.name}</span>
-                      <span className="mono recognition-manual-dims">
-                        L {entry.lengthM} m · B {entry.beamM} m
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
-      </div>
+      {SHOW_RECOGNITION_MANUAL && (
+        <div className="recognition-manual">
+          <button
+            type="button"
+            className="recognition-manual-toggle"
+            disabled={disabled || loadBlocked}
+            aria-expanded={manualOpen}
+            onClick={() => setManualOpen((o) => !o)}
+          >
+            Recognition manual {manualOpen ? '▴' : '▾'}
+          </button>
+          {manualOpen && (
+            <div className="recognition-manual-body">
+              <ul className="recognition-manual-list">
+                {RECOGNITION_MANUAL_ENTRIES.map((entry) => {
+                  const selectedLen = estimatedLengthM === entry.lengthM;
+                  return (
+                    <li key={entry.name}>
+                      <button
+                        type="button"
+                        className={
+                          selectedLen
+                            ? 'recognition-manual-row is-selected'
+                            : 'recognition-manual-row'
+                        }
+                        disabled={disabled || loadBlocked}
+                        onClick={() => setEstimatedLengthM(entry.lengthM)}
+                      >
+                        <span className="recognition-manual-name">{entry.name}</span>
+                        <span className="mono recognition-manual-dims">
+                          L {entry.lengthM} m · B {entry.beamM} m
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       <TouchNumber
         label="Spread count"

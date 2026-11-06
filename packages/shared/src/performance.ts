@@ -11,7 +11,7 @@ import { isHullClass, resolveVesselIdentity } from './vessel.js';
  * - Fleet Submarine ~ Gato surfaced ~20 kn; submerged ~9 kn
  * - Destroyer ~ Fletcher ~36 kn (library also: Asashio ~34 kn)
  * - Cruiser ~ Cleveland / Baltimore ~32 kn
- * - Aircraft Carrier ~ Essex ~33 kn (library also: Shōkaku ~34 kn)
+ * - Aircraft Carrier ~ Essex ~33 kn (library also: Shōkaku ~30 kn)
  * - Merchant ~ Liberty ~11 kn
  * - Oiler ~ Cimarron fleet oiler ~18 kn
  * - Battleship ~ Iowa ~33 kn
