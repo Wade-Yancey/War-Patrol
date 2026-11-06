@@ -5051,12 +5051,12 @@ async function main() {
       ),
     );
     check(
-      'recognition manual has Shōkaku 258×26',
+      'recognition manual has Shōkaku 252×28.3',
       RECOGNITION_MANUAL_ENTRIES.some(
         (e) =>
           e.class === 'Aircraft Carrier' &&
-          e.lengthM === 258 &&
-          e.beamM === 26 &&
+          e.lengthM === 252 &&
+          e.beamM === 28.3 &&
           e.name.includes('Shōkaku'),
       ),
     );
@@ -5675,9 +5675,9 @@ async function main() {
         Boolean(
           shokaku &&
             shokaku.class === 'Aircraft Carrier' &&
-            shokaku.maxSpeed === 34 &&
-            shokaku.lengthM === 258 &&
-            shokaku.beamM === 26 &&
+            shokaku.maxSpeed === 30 &&
+            shokaku.lengthM === 252 &&
+            shokaku.beamM === 28.3 &&
             shokaku.turnRate === 4 &&
             shokaku.defaultFaction === 'Red',
         ),
@@ -5763,13 +5763,13 @@ async function main() {
       const carrier = cvUnits.find((u) => u.id === 'cv-shokaku');
       check('shokaku unit present', Boolean(carrier));
       check(
-        'shokaku seeded 258×26 / 34 kn / large / turnRate 4',
+        'shokaku seeded 252×28.3 / 30 kn / large / turnRate 4',
         carrier?.class === 'Aircraft Carrier' &&
           carrier.classId === 'shokaku-class' &&
           carrier.faction === 'Red' &&
-          carrier.lengthM === 258 &&
-          carrier.beamM === 26 &&
-          carrier.maxSpeed === 34 &&
+          carrier.lengthM === 252 &&
+          carrier.beamM === 28.3 &&
+          carrier.maxSpeed === 30 &&
           carrier.turnRate === 4 &&
           carrier.radarSignature === 'large',
       );
@@ -6012,9 +6012,9 @@ async function main() {
           cv.faction === 'Red' &&
           cv.heading === 135 &&
           cv.speed === 18 &&
-          cv.lengthM === 258 &&
-          cv.beamM === 26 &&
-          cv.maxSpeed === 34 &&
+          cv.lengthM === 252 &&
+          cv.beamM === 28.3 &&
+          cv.maxSpeed === 30 &&
           !cv.accessToken,
       );
       check(
@@ -6236,7 +6236,7 @@ async function main() {
       }
     }
 
-    // Wide-open event variant: same cast, longer approach (~2.6 nm quarter), seeded CAP loiter.
+    // Wide-open event variant: same cast, longer approach (~4 nm, ~8 min to abeam), seeded CAP loiter.
     {
       const wideGame = await api('POST', '/api/games', {
         scenarioId: 'cavalla-shokaku-philippine-sea-wide',
@@ -6287,8 +6287,8 @@ async function main() {
         const zekeUnit = wideSave.units.find((u) => u.id === 'ac-zeke-cap')!;
         const { rangeNm } = bearingRangeNm(ssUnit.position, cvUnit.position);
         check(
-          'philippine-sea-wide cavalla opens beyond museum beam range',
-          rangeNm >= 2.4 && rangeNm <= 2.8,
+          'philippine-sea-wide cavalla opens ~4 nm ahead on the starboard bow',
+          rangeNm >= 3.7 && rangeNm <= 4.3,
           `rangeNm=${rangeNm.toFixed(3)}`,
         );
         check(

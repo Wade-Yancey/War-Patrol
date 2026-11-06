@@ -2,13 +2,13 @@
   "schemaVersion": 1,
   "id": "cavalla-shokaku-philippine-sea-wide",
   "name": "Cavalla \u00d7 Sh\u014dkaku \u2014 Philippine Sea (Wide Open)",
-  "description": "Event-balance variant of Cavalla's 19 Jun 1944 Philippine Sea approach. Same cast as the museum tight seed (NPC Sh\u014dkaku SE-bound ~135\u00b0 recovering at 18 kn; NPC Zeke CAP loitering ~1.5 nm to port; playable Asashio-class Urakaze starboard; playable Gato USS Cavalla at PD 18 m) but Cavalla opens ~2.6 nm off the carrier's starboard quarter (not beam, not turn-1 TDC ready). Players need approach/plot turns before a good firing solution. Clock 11:00. Passwords: umpire / red (Urakaze) / blue (Cavalla); tokens urakaze-demo / cavalla-demo. Pair with cavalla-shokaku-philippine-sea for the historical tight geometry.",
+  "description": "Event-balance variant of Cavalla's 19 Jun 1944 Philippine Sea approach. Same cast as the museum tight seed (NPC Sh\u014dkaku SE-bound ~135\u00b0 recovering at 18 kn; NPC Zeke CAP loitering ~1.5 nm to port; playable Asashio-class Urakaze starboard; playable Gato USS Cavalla at PD 18 m) but Cavalla opens ~4 nm on the carrier's starboard bow — about 2.4 nm ahead along the track and 3.2 nm off to starboard (not beam, not turn-1 TDC ready). If Cavalla holds, the formation takes about 8 minutes to draw abeam, so the boat can wait and maneuver and Urakaze has time to turn and sweep sonar (the sub starts outside the forward search cone). Clock 11:00. Passwords: umpire / red (Urakaze) / blue (Cavalla); tokens urakaze-demo / cavalla-demo. Pair with cavalla-shokaku-philippine-sea for the historical tight geometry.",
   "mode": "pvp",
   "operatingArea": {
-    "minLat": 34.32,
+    "minLat": 34.28,
     "maxLat": 34.48,
-    "minLon": -120.12,
-    "maxLon": -119.88
+    "minLon": -120.15,
+    "maxLon": -119.84
   },
   "umpirePassword": "umpire",
   "defaultTurnSeconds": 180,
@@ -32,9 +32,9 @@
       "speed": 18,
       "eot": "ahead_standard",
       "health": 100,
-      "maxSpeed": 34,
-      "lengthM": 258,
-      "beamM": 26,
+      "maxSpeed": 30,
+      "lengthM": 252,
+      "beamM": 28.3,
       "radarSignature": "large",
       "sensors": [
         {
@@ -169,8 +169,8 @@
       "type": "Submarine",
       "class": "Fleet Submarine",
       "position": {
-        "lat": 34.35935,
-        "lon": -120.01793,
+        "lat": 34.33412,
+        "lon": -120.01141,
         "depth": 18
       },
       "orderedDepth": 18,
