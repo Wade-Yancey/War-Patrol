@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "id": "kagero-destroyer-lookout-test",
-  "name": "Kager\u014d destroyer lookout / torpedo test",
-  "description": "Playable IJN destroyer drill: Gato at periscope depth south of an eastbound Kager\u014d-class destroyer (~1.5 nm, near-beam aspect). Kager\u014d is a v1 player Destroyer seat (Controls + Sensors join URLs) alongside Fletcher. Recognition plate OA ~119 m / beam ~11 m; Kager\u014d silhouette. Passwords: umpire / red / red (tokens kagero-demo / gato-demo).",
+  "id": "asashio-destroyer-lookout-test",
+  "name": "Asashio destroyer lookout / torpedo test",
+  "description": "Playable IJN destroyer drill: Gato at periscope depth south of an eastbound Asashio-class destroyer (~1.5 nm, near-beam aspect). Asashio is a v1 player Destroyer seat (Controls + Sensors join URLs) alongside Fletcher. Recognition plate OA 356 ft (~109 m) / beam 33 ft (~10 m); 34 kn; Asashio silhouette. Passwords: umpire / red / red (tokens asashio-demo / gato-demo).",
   "mode": "pvp",
   "operatingArea": {
     "minLat": 34.32,
@@ -16,11 +16,11 @@
   "startGameTimeSeconds": 28800,
   "units": [
     {
-      "id": "dd-kagero",
-      "name": "Kager\u014d",
+      "id": "dd-asashio",
+      "name": "Asashio",
       "side": "red",
       "faction": "Red",
-      "classId": "kagero-class",
+      "classId": "asashio-class",
       "type": "Ship",
       "class": "Destroyer",
       "position": {
@@ -31,12 +31,12 @@
       "heading": 90,
       "speed": 18,
       "eot": "ahead_standard",
-      "accessToken": "kagero-demo",
+      "accessToken": "asashio-demo",
       "password": "red",
       "health": 100,
-      "maxSpeed": 35,
-      "lengthM": 119,
-      "beamM": 11,
+      "maxSpeed": 34,
+      "lengthM": 109,
+      "beamM": 10,
       "radarSignature": "medium",
       "activeSonarEnabled": false,
       "depthChargeLoad": 16,

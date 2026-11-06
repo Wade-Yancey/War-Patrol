@@ -398,7 +398,7 @@ export const DECK_GUN_SHELL_SPEED_KN = 800;
 export const DECK_GUN_MAX_RANGE_NM = 8;
 
 /**
- * Fletcher / Kagerō ready magazine (finite). Sized for full volleys:
+ * Fletcher / Asashio ready magazine (finite). Sized for full volleys:
  * {@link DECK_GUN_SHELLS_PER_VOLLEY} × {@link DECK_GUN_MAX_VOLLEYS_PER_TURN}.
  */
 export const DESTROYER_DECK_GUN_LOAD = 45;

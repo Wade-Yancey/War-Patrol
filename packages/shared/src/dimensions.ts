@@ -7,7 +7,7 @@ import { isHullClass, resolveVesselIdentity } from './vessel.js';
  *
  * Representative references:
  * - Fleet Submarine ~ Gato OA ~95 m
- * - Destroyer ~ Fletcher OA ~115 m (library also: Kagerō OA ~119 m)
+ * - Destroyer ~ Fletcher OA ~115 m (library also: Asashio OA 356 ft ≈ 109 m)
  * - Cruiser ~ Cleveland OA ~186 m
  * - Aircraft Carrier ~ Essex OA ~266 m (library also: Shōkaku OA ~258 m)
  * - Merchant ~ Liberty OA ~135 m
@@ -34,7 +34,7 @@ export const CLASS_LENGTH_M: Record<HullClass, number> = {
  *
  * Representative references:
  * - Fleet Submarine ~ Gato ~8.3 m
- * - Destroyer ~ Fletcher ~12 m (library also: Kagerō ~11 m)
+ * - Destroyer ~ Fletcher ~12 m (library also: Asashio beam 33 ft ≈ 10 m)
  * - Cruiser ~ Cleveland ~20 m
  * - Aircraft Carrier ~ Essex waterline ~28 m (library also: Shōkaku ~26 m)
  * - Merchant ~ Liberty ~17 m
@@ -139,10 +139,10 @@ export const RECOGNITION_MANUAL_ENTRIES: readonly RecognitionManualEntry[] = [
     beamM: CLASS_BEAM_M.Destroyer,
   },
   {
-    name: 'Kagerō-class Destroyer',
+    name: 'Asashio-class Destroyer',
     class: 'Destroyer',
-    lengthM: 119,
-    beamM: 11,
+    lengthM: 109,
+    beamM: 10,
   },
   {
     name: 'Cleveland-class Cruiser',

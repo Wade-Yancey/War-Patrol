@@ -1,12 +1,12 @@
 {
-  "id": "kagero-class",
-  "name": "Kagerō-class Destroyer",
+  "id": "asashio-class",
+  "name": "Asashio-class Destroyer",
   "type": "Ship",
   "class": "Destroyer",
   "defaultFaction": "Red",
-  "maxSpeed": 35,
-  "lengthM": 119,
-  "beamM": 11,
+  "maxSpeed": 34,
+  "lengthM": 109,
+  "beamM": 10,
   "turnRate": 7,
   "radarSignature": "medium",
   "sensors": [

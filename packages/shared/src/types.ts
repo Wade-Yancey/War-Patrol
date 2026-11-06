@@ -684,7 +684,7 @@ export interface UnitState {
   /**
    * Access token embedded in vessel join URLs.
    * Omitted for umpire/NPC hulls that are not v1 player classes (oilers, carriers, …).
-   * Playable Destroyer / Fleet Submarine units (Fletcher, Kagerō, Gato) always have one.
+   * Playable Destroyer / Fleet Submarine units (Fletcher, Asashio, Gato) always have one.
    */
   accessToken?: string;
   /** Optional vessel password (plain for Phase 1 local demo). */
@@ -881,7 +881,7 @@ export interface ScenarioUnitSeed {
   eot?: EotSetting;
   /**
    * Vessel join token. Required for playable Destroyer / Fleet Submarine seats
-   * (Fletcher, Kagerō, Gato). Omit for umpire/NPC-only hulls (oilers, carriers, aircraft).
+   * (Fletcher, Asashio, Gato). Omit for umpire/NPC-only hulls (oilers, carriers, aircraft).
    */
   accessToken?: string;
   password?: string;
@@ -1581,9 +1581,9 @@ export interface PeriscopeContact {
   silhouetteClass: HullClass;
   /**
    * Optional class-specific plate stem when multiple library hulls share a
-   * taxonomic class (e.g. Kagerō vs Fletcher both `Destroyer`; Zeke vs Hellcat
+   * taxonomic class (e.g. Asashio vs Fletcher both `Destroyer`; Zeke vs Hellcat
    * both `Fighter`). Values match public `/silhouettes/<plate>.png`
-   * (e.g. `"kagero"`, `"zeke"`).
+   * (e.g. `"asashio"`, `"zeke"`).
    * Identity is implied by the image only — not a side/name leak.
    */
   silhouettePlate?: string;

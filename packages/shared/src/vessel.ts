@@ -152,6 +152,7 @@ export function resolveVesselIdentity(input: {
   }
   if (
     classId.includes('fletcher') ||
+    classId.includes('asashio') ||
     classId.includes('kagero') ||
     classId.includes('kagerō') ||
     classId.includes('destroy')

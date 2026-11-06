@@ -254,34 +254,35 @@ export const DESTROYER_SILHOUETTE_URL = '/silhouettes/destroyer.png';
 export const SUBMARINE_SILHOUETTE_URL = '/silhouettes/submarine.png';
 export const OILER_SILHOUETTE_URL = '/silhouettes/oiler.png';
 export const CARRIER_SILHOUETTE_URL = '/silhouettes/carrier.png';
-/** Kagerō-class IJN destroyer plate (distinct from US Fletcher `destroyer.png`). */
-export const KAGERO_SILHOUETTE_URL = '/silhouettes/kagero.png';
+/** Asashio-class IJN destroyer plate (distinct from US Fletcher `destroyer.png`). */
+export const ASASHIO_SILHOUETTE_URL = '/silhouettes/asashio.png';
 /** Mitsubishi A6M Zeke nose-up top-down plate (distinct from generic Fighter fallback). */
 export const ZEKE_SILHOUETTE_URL = '/silhouettes/zeke.png';
 
 /**
  * Class-specific optics plate stem when multiple library hulls share a taxonomic
- * class (Kagerō vs Fletcher both `Destroyer`; Zeke vs Hellcat both `Fighter`).
+ * class (Asashio vs Fletcher both `Destroyer`; Zeke vs Hellcat both `Fighter`).
  * Matches `/silhouettes/<plate>.png`.
  */
 export function silhouettePlateForClassId(
   classId: string | undefined,
 ): string | undefined {
   const id = typeof classId === 'string' ? classId.toLowerCase() : '';
-  if (id.includes('kagero') || id.includes('kagerō')) return 'kagero';
+  // Legacy `kagero-class` saves paint the Asashio plate after that class was removed.
+  if (id.includes('asashio') || id.includes('kagero') || id.includes('kagerō')) return 'asashio';
   if (id.includes('zeke') || id.includes('a6m')) return 'zeke';
   return undefined;
 }
 
 /**
- * Public asset path for a class-specific plate stem (e.g. `"kagero"`).
+ * Public asset path for a class-specific plate stem (e.g. `"asashio"`).
  * Unknown plates → null (caller falls back to taxonomic class map).
  */
 export function silhouetteUrlForPlate(plate: string | undefined): string | null {
   if (!plate) return null;
   switch (plate) {
-    case 'kagero':
-      return KAGERO_SILHOUETTE_URL;
+    case 'asashio':
+      return ASASHIO_SILHOUETTE_URL;
     case 'zeke':
       return ZEKE_SILHOUETTE_URL;
     default:
@@ -297,7 +298,7 @@ export function silhouetteUrlForPlate(plate: string | undefined): string | null 
  * Aircraft Carrier → {@link CARRIER_SILHOUETTE_URL} (Shōkaku-class plate);
  * Fighter / Bomber → null until a plate stem is selected (Zeke via classId).
  * Other classes → null (UI falls back to the destroyer PNG).
- * Prefer {@link silhouetteUrlForOptics} when `classId` / plate may select Kagerō / Zeke art.
+ * Prefer {@link silhouetteUrlForOptics} when `classId` / plate may select Asashio / Zeke art.
  */
 export function silhouetteUrlForClass(
   hullClass: HullClass | string | undefined,
@@ -318,7 +319,7 @@ export function silhouetteUrlForClass(
 }
 
 /**
- * Optics plate URL: class-specific plate (Kagerō / Zeke) wins over taxonomic class map.
+ * Optics plate URL: class-specific plate (Asashio / Zeke) wins over taxonomic class map.
  */
 export function silhouetteUrlForOptics(opts: {
   hullClass?: HullClass | string;

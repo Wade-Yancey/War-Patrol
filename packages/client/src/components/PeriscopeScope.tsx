@@ -15,7 +15,7 @@ import {
 /** Vite-bundled PNGs (alpha) — guaranteed in the client graph (not fragile public-path strings). */
 import carrierSilhouettePng from '../assets/silhouettes/carrier.png';
 import destroyerSilhouettePng from '../assets/silhouettes/destroyer.png';
-import kageroSilhouettePng from '../assets/silhouettes/kagero.png';
+import asashioSilhouettePng from '../assets/silhouettes/asashio.png';
 import oilerSilhouettePng from '../assets/silhouettes/oiler.png';
 import submarineSilhouettePng from '../assets/silhouettes/submarine.png';
 import zekeSilhouettePng from '../assets/silhouettes/zeke.png';
@@ -70,7 +70,7 @@ type OpticsSelection =
 /** Intrinsic pixel size for the plate `<img>` (matches source PNG). */
 const SILHOUETTE_SIZE: Record<string, { width: number; height: number }> = {
   Destroyer: { width: 349, height: 79 },
-  kagero: { width: 353, height: 79 },
+  asashio: { width: 865, height: 187 },
   'Fleet Submarine': { width: 350, height: 55 },
   Oiler: { width: 510, height: 98 },
   'Aircraft Carrier': { width: 720, height: 87 },
@@ -85,7 +85,7 @@ function silhouetteSrcForContact(
   hullClass: HullClass | string | undefined,
   plate: string | undefined,
 ): string {
-  if (plate === 'kagero') return kageroSilhouettePng;
+  if (plate === 'asashio') return asashioSilhouettePng;
   if (plate === 'zeke') return zekeSilhouettePng;
   switch (hullClass) {
     case 'Fleet Submarine':
@@ -104,7 +104,7 @@ function silhouetteAlt(
   hullClass: HullClass | string | undefined,
   plate: string | undefined,
 ): string {
-  if (plate === 'kagero') return 'Kagerō destroyer silhouette';
+  if (plate === 'asashio') return 'Asashio destroyer silhouette';
   if (plate === 'zeke') return 'Mitsubishi Zeke fighter silhouette';
   if (hullClass === 'Fleet Submarine') return 'Submarine silhouette';
   if (hullClass === 'Oiler') return 'Oiler silhouette';

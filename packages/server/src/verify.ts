@@ -1789,8 +1789,9 @@ async function main() {
     silhouetteUrlForClass('Aircraft Carrier') === '/silhouettes/carrier.png',
   );
   check(
-    'kagero plate stem from classId',
-    silhouettePlateForClassId('kagero-class') === 'kagero' &&
+    'asashio plate stem from classId',
+    silhouettePlateForClassId('asashio-class') === 'asashio' &&
+      silhouettePlateForClassId('kagero-class') === 'asashio' &&
       silhouettePlateForClassId('fletcher-class') === undefined,
   );
   check(
@@ -1799,13 +1800,13 @@ async function main() {
       silhouettePlateForClassId('hellcat-fighter') === undefined,
   );
   check(
-    'kagero optics plate distinct from Fletcher destroyer',
-    silhouetteUrlForOptics({ hullClass: 'Destroyer', classId: 'kagero-class' }) ===
-      '/silhouettes/kagero.png' &&
+    'asashio optics plate distinct from Fletcher destroyer',
+    silhouetteUrlForOptics({ hullClass: 'Destroyer', classId: 'asashio-class' }) ===
+      '/silhouettes/asashio.png' &&
       silhouetteUrlForOptics({ hullClass: 'Destroyer', classId: 'fletcher-class' }) ===
         '/silhouettes/destroyer.png' &&
-      periscopeSilhouetteUrl('Destroyer', { classId: 'kagero-class' }) ===
-        '/silhouettes/kagero.png',
+      periscopeSilhouetteUrl('Destroyer', { classId: 'asashio-class' }) ===
+        '/silhouettes/asashio.png',
   );
   check(
     'zeke optics plate for Fighter classId',
@@ -1923,7 +1924,7 @@ async function main() {
     assertSilhouettePng('submarine.png', 1000);
     assertSilhouettePng('oiler.png', 1000);
     assertSilhouettePng('carrier.png', 1000);
-    assertSilhouettePng('kagero.png', 1000);
+    assertSilhouettePng('asashio.png', 1000);
     assertSilhouettePng('zeke.png', 1000);
   }
   // Controls · Guns gets a read-only optics contact list (deck-gun targeting);
@@ -5038,9 +5039,9 @@ async function main() {
       RECOGNITION_MANUAL_ENTRIES.some((e) => e.class === 'Destroyer' && e.lengthM === 115),
     );
     check(
-      'recognition manual has Kagerō 119×11',
+      'recognition manual has Asashio 109×10',
       RECOGNITION_MANUAL_ENTRIES.some(
-        (e) => e.class === 'Destroyer' && e.lengthM === 119 && e.beamM === 11,
+        (e) => e.class === 'Destroyer' && e.lengthM === 109 && e.beamM === 10,
       ),
     );
     check(
@@ -5636,8 +5637,8 @@ async function main() {
       scArr.some((s) => s.id === 'shokaku-carrier-lookout-test'),
     );
     check(
-      'kagero-destroyer-lookout-test scenario listed',
-      scArr.some((s) => s.id === 'kagero-destroyer-lookout-test'),
+      'asashio-destroyer-lookout-test scenario listed',
+      scArr.some((s) => s.id === 'asashio-destroyer-lookout-test'),
     );
     check(
       'cavalla-shokaku-philippine-sea scenario listed',
@@ -5681,19 +5682,23 @@ async function main() {
             shokaku.defaultFaction === 'Red',
         ),
       );
-      const kagero = libArr.find((c) => c.id === 'kagero-class');
-      check('library has kagero-class', Boolean(kagero), `count=${libArr.length}`);
+      const asashio = libArr.find((c) => c.id === 'asashio-class');
+      check('library has asashio-class', Boolean(asashio), `count=${libArr.length}`);
       check(
-        'kagero-class is Destroyer playable IJN hull',
+        'asashio-class is Destroyer playable IJN hull',
         Boolean(
-          kagero &&
-            kagero.class === 'Destroyer' &&
-            kagero.maxSpeed === 35 &&
-            kagero.lengthM === 119 &&
-            kagero.beamM === 11 &&
-            kagero.turnRate === 7 &&
-            kagero.defaultFaction === 'Red',
+          asashio &&
+            asashio.class === 'Destroyer' &&
+            asashio.maxSpeed === 34 &&
+            asashio.lengthM === 109 &&
+            asashio.beamM === 10 &&
+            asashio.turnRate === 7 &&
+            asashio.defaultFaction === 'Red',
         ),
+      );
+      check(
+        'library no longer has kagero-class',
+        !libArr.some((c) => c.id === 'kagero-class'),
       );
       const zeke = libArr.find((c) => c.id === 'zeke-fighter');
       check('library has zeke-fighter', Boolean(zeke), `count=${libArr.length}`);
@@ -5833,10 +5838,10 @@ async function main() {
 
     {
       const kgGame = await api('POST', '/api/games', {
-        scenarioId: 'kagero-destroyer-lookout-test',
-        name: 'Verify Kagerō Destroyer',
+        scenarioId: 'asashio-destroyer-lookout-test',
+        name: 'Verify Asashio Destroyer',
       });
-      check('kagero destroyer scenario create', kgGame.status === 200);
+      check('asashio destroyer scenario create', kgGame.status === 200);
       const kgId = String(kgGame.json.gameId);
       const kgUmp = await api('POST', `/api/games/${kgId}/auth/umpire`, {
         password: 'umpire',
@@ -5864,57 +5869,57 @@ async function main() {
         }>;
       };
       const kgUnits = kgUmpireView.units ?? [];
-      const dd = kgUnits.find((u) => u.id === 'dd-kagero');
-      check('kagero unit present', Boolean(dd));
+      const dd = kgUnits.find((u) => u.id === 'dd-asashio');
+      check('asashio unit present', Boolean(dd));
       check(
-        'kagero seeded 119×11 / 35 kn / medium / turnRate 7',
+        'asashio seeded 109×10 / 34 kn / medium / turnRate 7',
         dd?.class === 'Destroyer' &&
-          dd.classId === 'kagero-class' &&
+          dd.classId === 'asashio-class' &&
           dd.faction === 'Red' &&
-          dd.lengthM === 119 &&
-          dd.beamM === 11 &&
-          dd.maxSpeed === 35 &&
+          dd.lengthM === 109 &&
+          dd.beamM === 10 &&
+          dd.maxSpeed === 34 &&
           dd.turnRate === 7 &&
           dd.radarSignature === 'medium',
       );
-      check('kagero has vessel accessToken (playable)', Boolean(dd?.accessToken));
+      check('asashio has vessel accessToken (playable)', Boolean(dd?.accessToken));
       {
         const kgSave = runtime.requireGame(kgId);
-        const kgUnit = kgSave.units.find((u) => u.id === 'dd-kagero')!;
+        const kgUnit = kgSave.units.find((u) => u.id === 'dd-asashio')!;
         check(
-          'kagero is a v1 player Destroyer unit',
+          'asashio is a v1 player Destroyer unit',
           isV1PlayerHullClass(kgUnit.class) &&
             isV1PlayerUnit(kgUnit) &&
             kgUnit.class === 'Destroyer',
         );
         check(
-          'kagero turnRate destroyer band (7°/min)',
+          'asashio turnRate destroyer band (7°/min)',
           kgUnit.turnRate === 7 &&
             kgUnit.turnRate === defaultTurnRateForClass('Destroyer'),
         );
       }
       const kgLinks = kgUmpireView.vesselLinks ?? [];
-      const kgLink = kgLinks.find((l) => l.unitId === 'dd-kagero');
+      const kgLink = kgLinks.find((l) => l.unitId === 'dd-asashio');
       const kgGatoLink = kgLinks.find((l) => l.unitId === 'ss-212');
       check(
-        'kagero vessel link is playable (Controls + Sensors joins)',
+        'asashio vessel link is playable (Controls + Sensors joins)',
         kgLink?.playerVessel === true &&
           Array.isArray(kgLink.stations) &&
           (kgLink.stations as unknown[]).length === 2,
       );
       check(
-        'gato remains playable in kagero scenario',
+        'gato remains playable in asashio scenario',
         kgGatoLink?.playerVessel === true &&
           Array.isArray(kgGatoLink.stations) &&
           (kgGatoLink.stations as unknown[]).length === 2,
       );
 
       const kgDdAuth = await api('POST', `/api/games/${kgId}/auth/vessel`, {
-        accessToken: 'kagero-demo',
+        accessToken: 'asashio-demo',
         password: 'red',
         stationId: 'controls',
       });
-      check('kagero controls station auth', kgDdAuth.status === 200);
+      check('asashio controls station auth', kgDdAuth.status === 200);
 
       await api(
         'PATCH',
@@ -5927,7 +5932,7 @@ async function main() {
         password: 'red',
         stationId: 'sensors',
       });
-      check('kagero scenario gato sensors auth', kgGatoAuth.status === 200);
+      check('asashio scenario gato sensors auth', kgGatoAuth.status === 200);
       const kgGatoTok = String(kgGatoAuth.json.token);
       const raiseKgPeri = await api(
         'POST',
@@ -5935,15 +5940,15 @@ async function main() {
         { raised: true },
         kgGatoTok,
       );
-      check('kagero scenario raise periscope', raiseKgPeri.status === 200);
+      check('asashio scenario raise periscope', raiseKgPeri.status === 200);
       const kgPeriView = await api('GET', `/api/games/${kgId}/view`, undefined, kgGatoTok);
       const kgPeriContacts = (kgPeriView.json.view as { periscopeContacts?: Array<Json> })
         .periscopeContacts;
       check(
-        'kagero peri paints destroyer class + kagero plate',
+        'asashio peri paints destroyer class + asashio plate',
         Array.isArray(kgPeriContacts) &&
           kgPeriContacts.some(
-            (c) => c.silhouetteClass === 'Destroyer' && c.silhouettePlate === 'kagero',
+            (c) => c.silhouetteClass === 'Destroyer' && c.silhouettePlate === 'asashio',
           ),
       );
     }
@@ -6028,15 +6033,15 @@ async function main() {
           !zekeCap.accessToken,
       );
       check(
-        'philippine-sea urakaze playable Kagerō seed',
+        'philippine-sea urakaze playable Asashio seed',
         dd?.class === 'Destroyer' &&
-          dd.classId === 'kagero-class' &&
+          dd.classId === 'asashio-class' &&
           dd.faction === 'Red' &&
           dd.name === 'Urakaze' &&
           dd.heading === 135 &&
-          dd.lengthM === 119 &&
-          dd.beamM === 11 &&
-          dd.maxSpeed === 35 &&
+          dd.lengthM === 109 &&
+          dd.beamM === 10 &&
+          dd.maxSpeed === 34 &&
           Boolean(dd.accessToken),
       );
       check(
@@ -6162,11 +6167,11 @@ async function main() {
       const periContacts = (periView.json.view as { periscopeContacts?: Array<Json> })
         .periscopeContacts;
       check(
-        'philippine-sea peri sees carrier + kagero escort + zeke CAP',
+        'philippine-sea peri sees carrier + asashio escort + zeke CAP',
         Array.isArray(periContacts) &&
           periContacts.some((c) => c.silhouetteClass === 'Aircraft Carrier') &&
           periContacts.some(
-            (c) => c.silhouetteClass === 'Destroyer' && c.silhouettePlate === 'kagero',
+            (c) => c.silhouetteClass === 'Destroyer' && c.silhouettePlate === 'asashio',
           ) &&
           periContacts.some(
             (c) => c.silhouetteClass === 'Fighter' && c.silhouettePlate === 'zeke',
@@ -9823,15 +9828,15 @@ async function main() {
       `log=${JSON.stringify(missLog.filter((e) => String(e.kind).startsWith('deck_gun')).slice(-5))}`,
     );
 
-    // Kagerō also gets the destroyer magazine.
+    // Asashio also gets the destroyer magazine.
     const kagGame = await api('POST', '/api/games', {
-      scenarioId: 'kagero-destroyer-lookout-test',
-      name: 'Verify Kagero Deck Gun',
+      scenarioId: 'asashio-destroyer-lookout-test',
+      name: 'Verify Asashio Deck Gun',
     });
-    check('kagero deck-gun scenario create', kagGame.status === 200);
+    check('asashio deck-gun scenario create', kagGame.status === 200);
     const kagId = String(kagGame.json.gameId);
     const kagAuth = await api('POST', `/api/games/${kagId}/auth/vessel`, {
-      accessToken: 'kagero-demo',
+      accessToken: 'asashio-demo',
       password: 'red',
       stationId: 'controls',
     });
@@ -9844,7 +9849,7 @@ async function main() {
         (kagView.json.view as { units: Array<{ class?: string; deckGunLoad?: number }> }).units ?? []
       ).find((u) => u.class === 'Destroyer');
       check(
-        'Kagerō destroyer has deck-gun magazine',
+        'Asashio destroyer has deck-gun magazine',
         kagDd?.deckGunLoad === 45,
         `load=${kagDd?.deckGunLoad}`,
       );
@@ -9852,7 +9857,7 @@ async function main() {
       const kagView = await api('GET', `/api/games/${kagId}/view`, undefined, String(kagAuth.json.token));
       const kagUnit = (kagView.json.view as { unit?: { deckGunLoad?: number } }).unit;
       check(
-        'Kagerō destroyer has deck-gun magazine',
+        'Asashio destroyer has deck-gun magazine',
         kagUnit?.deckGunLoad === 45,
         `load=${kagUnit?.deckGunLoad}`,
       );
