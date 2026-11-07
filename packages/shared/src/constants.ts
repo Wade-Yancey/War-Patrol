@@ -65,6 +65,22 @@ export const TURN_RATE_DEG_PER_MIN_BY_CLASS = {
 /** Meters in one nautical mile. */
 export const METERS_PER_NM = 1852;
 
+/** International foot. Crew ship-length entry uses feet; the sim stores meters. */
+export const METERS_PER_FOOT = 0.3048;
+
+export function metersToFeet(meters: number): number {
+  return meters / METERS_PER_FOOT;
+}
+
+export function feetToMeters(feet: number): number {
+  return feet * METERS_PER_FOOT;
+}
+
+/** Compact crew readout of a sim length, e.g. `377ft`. */
+export function formatLengthFeet(lengthM: number): string {
+  return `${Math.round(metersToFeet(lengthM))}ft`;
+}
+
 /** Stub surface-search radar max range (nm) for destroyer-class demos. */
 export const RADAR_MAX_RANGE_NM = 25;
 

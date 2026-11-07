@@ -1,3 +1,4 @@
+import { formatLengthFeet } from './constants.js';
 import { EOT_LABELS } from './eot.js';
 import type { UnitOrders, UnitState } from './types.js';
 import { isV1PlayerUnit } from './vessel.js';
@@ -38,7 +39,7 @@ function formatTorpedoOrderSummary(
       ? ` ×${count}@${(fire.spreadDeg || 0).toFixed(1)}°`
       : '';
   const room = fire.room === 'aft' ? 'aft' : 'fwd';
-  return `TORP ${room} aim ${formatCourseDegrees(fire.aimHeading)}${spread} · CRS ${formatCourseDegrees(fire.estimatedCourse)} · ${fire.estimatedSpeedKn.toFixed(1)}kn · ${fire.estimatedRangeNm.toFixed(2)}nm · L${Math.round(fire.estimatedLengthM)}m`;
+  return `TORP ${room} aim ${formatCourseDegrees(fire.aimHeading)}${spread} · CRS ${formatCourseDegrees(fire.estimatedCourse)} · ${fire.estimatedSpeedKn.toFixed(1)}kn · ${fire.estimatedRangeNm.toFixed(2)}nm · L${formatLengthFeet(fire.estimatedLengthM)}`;
 }
 
 function formatDepthChargeOrderSummary(

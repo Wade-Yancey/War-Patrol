@@ -1467,6 +1467,18 @@ async function main() {
       }).includes('NMKR · SET 050 m'),
     );
     check(
+      'torpedo pending summary shows target length in feet',
+      formatPendingOrdersSummary({
+        fireTorpedo: {
+          aimHeading: 0,
+          estimatedCourse: 90,
+          estimatedSpeedKn: 10,
+          estimatedRangeNm: 1,
+          estimatedLengthM: 115,
+        },
+      }).includes('L377ft'),
+    );
+    check(
       'DC pending summary uses count (legacy pattern → ×4)',
       formatPendingOrdersSummary({
         dropDepthCharges: { pattern: 'pair', depthSettingM: 50 },
