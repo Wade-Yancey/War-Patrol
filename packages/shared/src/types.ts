@@ -188,8 +188,8 @@ export interface TorpedoFireOrder {
   estimatedRangeNm: number;
   /**
    * Player-entered estimated target overall length (meters).
-   * Look up from the recognition manual (class OA). Scales the geometric hit
-   * gate vs true hull length — wrong ID shrinks the intercept chord.
+   * The torpedo calculator accepts feet and converts on submit. Scales the
+   * geometric hit gate vs true hull length — wrong ID shrinks the intercept chord.
    * Never auto-filled from sim truth.
    */
   estimatedLengthM: number;

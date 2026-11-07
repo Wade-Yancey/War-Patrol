@@ -14,8 +14,11 @@ import {
   TORPEDO_SPREAD_MIN_DEG,
   TORPEDO_SPREAD_STEP_DEG,
   checkTorpedoOrderArc,
+  feetToMeters,
+  formatLengthFeet,
   formatTorpedoArcBlockNotice,
   formatTorpedoArcRejectMessage,
+  metersToFeet,
   relativeBearingDeg,
   torpedoFireHeadingFromSolution,
   torpedoRoomArcHalfDeg,
@@ -107,9 +110,10 @@ function roomStatus(room: RoomState, capacity: number): string {
  * Torpedo firing calculator — all solution inputs are operator-entered.
  * Never auto-fills true course/speed/range/length from the sim (optics +
  * the physical recognition book + judgment). Input order matches optics viewer meta:
- * Aim / LOS (relative) → range → course → speed → length (OA).
+ * Aim / LOS (relative) → range → course → speed → length (OA, feet).
  * Aim = relative LOS; range/course/speed compute the fire heading; length
- * scales the geometric hit gate vs truth. Run depth is fixed in sim
+ * scales the geometric hit gate vs truth (converted to meters on submit).
+ * Run depth is fixed in sim
  * (shallow anti-surface default) — not operator-set.
  * Supports single shot or angular fan spreads (multiple tracked fish).
  * Fire is allowed with the periscope down.
@@ -144,8 +148,8 @@ export function TorpedoCalculator({
   const [estimatedRangeNm, setEstimatedRangeNm] = useState(
     () => pending?.estimatedRangeNm ?? 0,
   );
-  const [estimatedLengthM, setEstimatedLengthM] = useState(
-    () => pending?.estimatedLengthM ?? 0,
+  const [estimatedLengthFt, setEstimatedLengthFt] = useState(() =>
+    Math.round(metersToFeet(pending?.estimatedLengthM ?? 0)),
   );
   const [room, setRoom] = useState<TorpedoRoomId>(() => pending?.room ?? 'forward');
   const [spreadCount, setSpreadCount] = useState(
@@ -216,7 +220,7 @@ export function TorpedoCalculator({
     !loadBlocked &&
     !arcBlocked &&
     estimatedRangeNm > 0 &&
-    estimatedLengthM > 0;
+    estimatedLengthFt > 0;
 
   return (
     <section className="panel stack controls-weapons-panel station-instrument-panel">
@@ -362,12 +366,12 @@ export function TorpedoCalculator({
       />
       <TouchNumber
         label="Est. target length (OA)"
-        value={estimatedLengthM}
-        onChange={setEstimatedLengthM}
+        value={estimatedLengthFt}
+        onChange={setEstimatedLengthFt}
         min={0}
-        max={400}
-        step={5}
-        unit="m"
+        max={1500}
+        step={1}
+        unit="ft"
         disabled={disabled || loadBlocked}
       />
 
@@ -386,7 +390,8 @@ export function TorpedoCalculator({
             <div className="recognition-manual-body">
               <ul className="recognition-manual-list">
                 {RECOGNITION_MANUAL_ENTRIES.map((entry) => {
-                  const selectedLen = estimatedLengthM === entry.lengthM;
+                  const lengthFt = Math.round(metersToFeet(entry.lengthM));
+                  const selectedLen = estimatedLengthFt === lengthFt;
                   return (
                     <li key={entry.name}>
                       <button
@@ -397,11 +402,11 @@ export function TorpedoCalculator({
                             : 'recognition-manual-row'
                         }
                         disabled={disabled || loadBlocked}
-                        onClick={() => setEstimatedLengthM(entry.lengthM)}
+                        onClick={() => setEstimatedLengthFt(lengthFt)}
                       >
                         <span className="recognition-manual-name">{entry.name}</span>
                         <span className="mono recognition-manual-dims">
-                          L {entry.lengthM} m · B {entry.beamM} m
+                          L {lengthFt} ft · B {entry.beamM} m
                         </span>
                       </button>
                     </li>
@@ -459,7 +464,7 @@ export function TorpedoCalculator({
               estimatedCourse,
               estimatedSpeedKn,
               estimatedRangeNm,
-              estimatedLengthM,
+              estimatedLengthM: feetToMeters(estimatedLengthFt),
               spreadCount: effectiveCount,
               spreadDeg,
             })
@@ -488,7 +493,7 @@ export function TorpedoCalculator({
             : ''}{' '}
           · tgt CRS {String(Math.round(pending.estimatedCourse)).padStart(3, '0')}° ·{' '}
           {pending.estimatedSpeedKn.toFixed(1)}kn · {pending.estimatedRangeNm.toFixed(2)}nm · L
-          {Math.round(pending.estimatedLengthM)}m
+          {formatLengthFeet(pending.estimatedLengthM)}
           {' → fire '}
           {String(
             Math.round(
@@ -545,7 +550,7 @@ export function TorpedoCalculator({
               .map((t) => (
                 <li key={t.id}>
                   HDG {String(Math.round(t.heading)).padStart(3, '0')}° · rem{' '}
-                  {t.remainingRunNm.toFixed(1)} nm · L{Math.round(t.estimatedLengthM)}m
+                  {t.remainingRunNm.toFixed(1)} nm · L{formatLengthFeet(t.estimatedLengthM)}
                 </li>
               ))}
           </ul>
